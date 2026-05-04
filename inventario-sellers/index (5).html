@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VEREX — Mi Inventario</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+    :root {
+        --negro: #0a0a0a; --blanco: #f8f6f1; --dorado: #C9A84C;
+        --dorado-claro: #E8C96A; --plateado: #B8BCC8;
+        --gris: #2a2a2a; --gris2: #3d3d3d; --verde: #2d7a4f; --rojo: #c0392b;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'DM Sans',sans-serif; background:var(--negro); color:var(--blanco); min-height:100vh; }
+    .header { background:var(--negro); border-bottom:1px solid var(--gris); padding:16px 20px; text-align:center; position:sticky; top:0; z-index:10; }
+    .logo { font-family:'Cormorant Garamond',serif; font-size:24px; color:var(--dorado); letter-spacing:3px; }
+    .vendedor-sub { font-size:12px; color:var(--plateado); margin-top:4px; }
+    .tabs { display:flex; gap:8px; padding:6px; background:var(--gris); margin:16px 20px 0; border-radius:12px; }
+    .tab-btn {
+        flex:1; padding:12px; border:none; border-radius:10px;
+        font-family:'DM Sans',sans-serif; font-size:13px; font-weight:700; cursor:pointer;
+        position:relative; overflow:hidden;
+        background:linear-gradient(135deg,#1a1a1a,#2e2e2e,#1a1a1a);
+        color:#555; text-shadow:0 1px 2px rgba(0,0,0,0.5);
+        border:1px solid rgba(255,255,255,0.06);
+        transition: color 0.3s, box-shadow 0.3s, filter 0.3s;
+    }
+    .tab-btn::before {
+        content:''; position:absolute; inset:-1px; border-radius:11px;
+        background:linear-gradient(135deg,#3a3a3a,#7a7a7a,#4a4a4a,#9a9a9a,#2a2a2a,#6a6a6a,#3a3a3a);
+        z-index:0; opacity:0.5; transition:opacity 0.3s;
+    }
+    .tab-btn span { position:relative; z-index:1; }
+    .tab-btn:hover {
+        color:#fff;
+        box-shadow: 0 0 18px rgba(255,255,255,0.08);
+    }
+    .tab-btn:hover::before { opacity:0.9; }
+    .tab-btn.activo {
+        color:#fff;
+        box-shadow: 0 0 20px rgba(201,168,76,0.4), inset 0 0 20px rgba(201,168,76,0.08);
+        background: linear-gradient(135deg,#0d2a4a,#1a6db5,#0d4a8a,#3a9de8,#0d2a4a);
+        border-color: rgba(58,157,232,0.4);
+    }
+    .tab-btn.activo::before { display:none; }
+    .main { padding:20px; max-width:600px; margin:0 auto; }
+    .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:20px; }
+    .stat { background:var(--gris); border:1px solid #333; border-radius:10px; padding:12px; text-align:center; }
+    .stat-num { font-size:20px; font-weight:700; color:var(--dorado); }
+    .stat-label { font-size:11px; color:var(--plateado); margin-top:2px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px; }
+    .item { background:var(--gris); border:1px solid #333; border-radius:10px; overflow:hidden; cursor:pointer; transition:border-color 0.2s; }
+    .item:hover { border-color:var(--dorado); }
+    .item img { width:100%; height:130px; object-fit:contain; background:var(--gris2); display:block; }
+    .item-no-foto { width:100%; height:130px; background:var(--gris2); display:flex; align-items:center; justify-content:center; font-size:32px; }
+    .item-info { padding:10px; }
+    .item-codigo { font-size:10px; color:var(--dorado); font-weight:600; margin-bottom:3px; }
+    .item-nombre { font-size:12px; font-weight:500; margin-bottom:4px; line-height:1.3; }
+    .item-precio { font-size:13px; font-weight:700; color:var(--dorado-claro); }
+    .item-disp { font-size:11px; color:var(--plateado); margin-top:2px; }
+    .venta-item { display:flex; align-items:center; gap:12px; padding:12px; background:var(--gris); border:1px solid #333; border-radius:10px; margin-bottom:10px; }
+    .venta-item img { width:56px; height:56px; object-fit:cover; border-radius:8px; flex-shrink:0; }
+    .venta-info { flex:1; min-width:0; }
+    .venta-codigo { font-size:10px; color:var(--dorado); font-weight:600; }
+    .venta-nombre { font-size:13px; font-weight:500; }
+    .venta-precio { font-size:12px; color:var(--plateado); }
+    .venta-fecha { font-size:11px; color:var(--plateado); margin-top:2px; }
+    .venta-badge { font-size:10px; font-weight:600; padding:3px 8px; border-radius:20px; background:rgba(45,122,79,0.2); color:#4caf82; flex-shrink:0; }
+    .buscar-venta { display:flex; gap:8px; margin-bottom:16px; }
+    .buscar-venta input { flex:1; padding:12px 14px; background:var(--gris2); border:1px solid #333; border-radius:8px; color:var(--blanco); font-family:'DM Sans',sans-serif; font-size:14px; outline:none; }
+    .buscar-venta input:focus { border-color:var(--dorado); }
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:11px 20px; border:none; border-radius:8px; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:700; cursor:pointer; transition:filter 0.2s, transform 0.1s; text-shadow:0 1px 3px rgba(0,0,0,0.4); }
+    .btn:hover { filter:brightness(1.15) saturate(1.2); }
+    .btn:active { transform:scale(0.97); }
+    .btn-dorado { background:linear-gradient(135deg,#7a5500,#C9A84C,#a87d20,#F5D78E,#7a5500); color:#fff8e1; box-shadow:0 2px 8px rgba(201,168,76,0.4); }
+    .btn-gris { background:linear-gradient(135deg,#4a4a4a,#c0c0c0,#7a7a7a,#e8e8e8,#4a4a4a); color:#1a1a1a; box-shadow:0 2px 6px rgba(192,192,192,0.3); }
+    .btn-full { width:100%; }
+    .btn-verde { background:linear-gradient(135deg,#0a3d20,#27ae60,#0e6b35,#52d68a,#0a3d20); color:#e8fff2; box-shadow:0 2px 8px rgba(39,174,96,0.4); }
+    .btn-rojo { background:linear-gradient(135deg,#6b1a1a,#e74c3c,#a02020,#f57a6a,#6b1a1a); color:#fff0f0; box-shadow:0 2px 8px rgba(231,76,60,0.4); }
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:1000; align-items:center; justify-content:center; padding:20px; }
+    .modal-overlay.active { display:flex; }
+    .modal-box { background:var(--gris); border:1px solid #333; border-radius:16px; padding:24px; max-width:420px; width:100%; max-height:90vh; overflow-y:auto; animation:modalIn 0.3s cubic-bezier(.34,1.56,.64,1); }
+    @keyframes modalIn { from { transform:scale(0.85) translateY(20px); opacity:0; } to { transform:scale(1) translateY(0); opacity:1; } }
+    .modal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
+    .modal-header h3 { font-family:'Cormorant Garamond',serif; font-size:20px; color:var(--dorado); }
+    .modal-close { background:none; border:none; color:var(--plateado); font-size:22px; cursor:pointer; }
+    #toast { position:fixed; bottom:80px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--gris2); color:var(--blanco); padding:10px 20px; border-radius:20px; font-size:13px; opacity:0; transition:all 0.3s; z-index:9999; white-space:nowrap; pointer-events:none; }
+    #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+    .cerrado { display:flex; align-items:center; justify-content:center; min-height:100vh; text-align:center; padding:20px; flex-direction:column; gap:12px; }
+    .cerrado-icon { font-size:52px; }
+    .cerrado p { color:var(--plateado); font-size:14px; }
+    .loading { display:flex; align-items:center; justify-content:center; min-height:60vh; color:var(--plateado); font-size:14px; }
+    input[type=number], input[type=text] { width:100%; padding:12px 14px; background:var(--gris2); border:1px solid #333; border-radius:8px; color:var(--blanco); font-family:'DM Sans',sans-serif; font-size:14px; outline:none; margin-bottom:12px; }
+    input[type=number]:focus, input[type=text]:focus { border-color:var(--dorado); }
+    .prod-seleccionado { display:flex; align-items:center; gap:12px; padding:12px; background:var(--gris2); border:1px solid var(--dorado); border-radius:10px; margin-bottom:14px; }
+    .prod-seleccionado img { width:52px; height:52px; object-fit:cover; border-radius:6px; }
+    .notif-entrega { background:rgba(201,168,76,0.1); border:2px solid var(--dorado); border-radius:12px; padding:16px; margin-bottom:16px; }
+    @media(max-width:400px) { .grid { grid-template-columns:repeat(2,1fr); } }
+</style>
+</head>
+<body>
+<div id="toast"></div>
+<div id="pantalla-cargando" class="loading">⏳ Cargando inventario...</div>
+<div id="pantalla-cerrado" class="cerrado" style="display:none;">
+    <div class="cerrado-icon">🔒</div>
+    <p>Este inventario ha sido cerrado o el link no es válido.</p>
+</div>
+
+<div id="pantalla-inventario" style="display:none;">
+    <div class="header">
+        <div class="logo">VEREX</div>
+        <div class="vendedor-sub" id="sub-vendedor">Mi Inventario</div>
+    </div>
+    <div class="tabs">
+        <button class="tab-btn activo" id="tab-inv" onclick="cambiarTab('inventario')"><span>📦 Mi Inventario</span></button>
+        <button class="tab-btn" id="tab-ventas" onclick="cambiarTab('ventas')"><span>💰 Mis Ventas</span></button>
+    </div>
+    <div id="content-inventario" class="main">
+        <!-- Notificación de entrega pendiente -->
+        <div id="notif-entrega-container"></div>
+        <div class="stats">
+            <div class="stat"><div class="stat-num" id="st-stock">0</div><div class="stat-label">En Stock</div></div>
+            <div class="stat"><div class="stat-num" id="st-vendido">0</div><div class="stat-label">Vendidos</div></div>
+            <div class="stat"><div class="stat-num" id="st-valor">$0</div><div class="stat-label">Valor</div></div>
+        </div>
+        <p style="font-size:12px;color:var(--plateado);margin-bottom:14px;">Toca un producto para registrar una venta.</p>
+        <div class="grid" id="grid-inv"></div>
+    </div>
+    <div id="content-ventas" class="main" style="display:none;">
+        <div class="buscar-venta">
+            <input type="text" id="bus-ventas" placeholder="Buscar venta..." oninput="filtrarVentas()">
+            <button class="btn btn-gris" onclick="abrirModalRegistrar(null)">+ Registrar</button>
+        </div>
+        <div id="lista-ventas"></div>
+    </div>
+</div>
+
+<!-- Modal Confirmar Entrega -->
+<div class="modal-overlay" id="modal-confirmar-entrega">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>📦 Confirmar Recepción</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-confirmar-entrega')">×</button>
+        </div>
+        <p style="font-size:13px;color:var(--plateado);margin-bottom:14px;">Confirma que recibiste los siguientes productos:</p>
+        <div id="entrega-items-lista" style="margin-bottom:14px;max-height:200px;overflow-y:auto;"></div>
+        <p style="font-size:13px;color:var(--plateado);margin-bottom:8px;">Firma aquí para confirmar:</p>
+        <div style="background:#fff;border-radius:10px;margin-bottom:10px;position:relative;">
+            <canvas id="firma-canvas-vendedor" width="370" height="160" style="width:100%;height:160px;border-radius:10px;display:block;cursor:crosshair;touch-action:none;"></canvas>
+            <div id="firma-placeholder-vendedor" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#ccc;font-size:13px;pointer-events:none;">Firma aquí con el dedo</div>
+        </div>
+        <button class="btn btn-gris btn-full" style="margin-bottom:12px;padding:8px;" onclick="limpiarFirmaVendedor()">🗑️ Limpiar firma</button>
+        <p style="font-size:13px;color:var(--plateado);margin-bottom:6px;">Ingresa el código del recibo:</p>
+        <input type="text" id="codigo-recibo-input" placeholder="Ej: K7XR2M" style="text-transform:uppercase;letter-spacing:4px;font-size:18px;text-align:center;">
+        <button class="btn btn-dorado btn-full" onclick="confirmarRecepcionEntrega()">✅ Confirmar Recepción</button>
+    </div>
+</div>
+
+<!-- Modal Registrar Venta -->
+<div class="modal-overlay" id="modal-registrar">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>💰 Registrar Venta</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-registrar')">×</button>
+        </div>
+        <div id="reg-paso1">
+            <div class="buscar-venta" style="margin-bottom:12px;">
+                <input type="text" id="bus-prod-venta" placeholder="Buscar por nombre o código..." oninput="filtrarProdVenta()">
+                <button class="btn btn-gris" style="padding:10px;" onclick="abrirScanner()">📷</button>
+            </div>
+            <div id="lista-prod-venta" style="max-height:300px;overflow-y:auto;"></div>
+        </div>
+        <div id="reg-paso2" style="display:none;">
+            <div class="prod-seleccionado" id="prod-seleccionado-info"></div>
+            <p style="font-size:13px;color:var(--plateado);margin-bottom:10px;">¿Cuántas unidades vendiste?</p>
+            <input type="number" id="venta-cantidad" value="1" min="1">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <button class="btn btn-gris" onclick="volverPaso1()">← Volver</button>
+                <button class="btn btn-verde btn-full" onclick="confirmarVenta()">✅ Confirmar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Solicitar corrección -->
+<div class="modal-overlay" id="modal-eliminar">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>⚠️ Solicitar Corrección</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-eliminar')">×</button>
+        </div>
+        <p style="font-size:13px;color:var(--plateado);margin-bottom:14px;">Describe el motivo de la corrección:</p>
+        <textarea id="motivo-eliminar" placeholder="Ej: Me equivoqué en la cantidad..." style="width:100%;padding:12px;background:var(--gris2);border:1px solid #333;border-radius:8px;color:var(--blanco);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;min-height:80px;resize:none;margin-bottom:12px;"></textarea>
+        <button class="btn btn-dorado btn-full" onclick="enviarSolicitud()">📨 Enviar Solicitud</button>
+    </div>
+</div>
+
+<script>
+const API_URL    = "https://script.google.com/macros/s/AKfycbwQpYsRuojSCD3icpgPl91I4601tpvXgwP5q4JciaVrAQuRxJcvxVoJLOGl4IpAUuvtow/exec";
+const SECRET_KEY = "VEREX_2026_PRO";
+
+let vendedorData = null;
+let invActivo    = [];
+let ventasData   = [];
+let prodSeleccionado = null;
+let ventaEliminarId = null;
+let entregasPendientes = [];
+let entregaConfirmando = null;
+let _firmaVendedorActiva = false;
+
+async function init() {
+    const params     = new URLSearchParams(window.location.search);
+    const vendedorId = params.get("inv");
+    const token      = params.get("token");
+    if (!vendedorId || !token) { mostrarCerrado(); return; }
+    try {
+        const res  = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"VERIFICAR_TOKEN", key:SECRET_KEY, vendedor:vendedorId, token }) });
+        const data = await res.json();
+        if (!data.ok) { mostrarCerrado(); return; }
+        vendedorData = data.vendedor;
+
+        const [res2, res3] = await Promise.all([
+            fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_CONSIGNACION", key:SECRET_KEY }) }),
+            fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_ENTREGAS_PENDIENTES", key:SECRET_KEY, vendedor:vendedorId }) })
+        ]);
+        const data2 = await res2.json();
+        const data3 = await res3.json();
+
+        const fechaCorte = vendedorData.fechaCorte ? new Date(vendedorData.fechaCorte) : null;
+        invActivo = (data2.consignacion || []).filter(c => {
+            if (c.vendedor !== vendedorId) return false;
+            if (c.estado !== "activo") return false;
+            if (!fechaCorte) return true;
+            return new Date(c.fecha) >= fechaCorte;
+        });
+        entregasPendientes = data3.entregas || [];
+
+        await cargarVentas(vendedorId);
+        mostrarInventario();
+    } catch(e) { mostrarCerrado(); }
+}
+
+async function cargarVentas(vendedorId) {
+    try {
+        const res = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_VENTAS_VENDEDOR", key:SECRET_KEY, vendedor:vendedorId }) });
+        const data = await res.json();
+        ventasData = data.ventas || [];
+    } catch(e) { ventasData = []; }
+}
+
+function mostrarCerrado() {
+    document.getElementById("pantalla-cargando").style.display = "none";
+    document.getElementById("pantalla-cerrado").style.display  = "flex";
+}
+
+function mostrarInventario() {
+    document.getElementById("pantalla-cargando").style.display   = "none";
+    document.getElementById("pantalla-inventario").style.display = "block";
+    document.getElementById("sub-vendedor").textContent = "Inventario de " + (vendedorData.nombre || "");
+    renderNotifEntregas();
+    actualizarStats();
+    renderInventario();
+    renderVentas();
+}
+
+function actualizarStats() {
+    const stock   = invActivo.reduce((s,c) => s + Math.max(0, parseInt(c.cantidad||0) - parseInt(c.vendido||0)), 0);
+    const vendido = invActivo.reduce((s,c) => s + parseInt(c.vendido||0), 0);
+    const valor   = invActivo.reduce((s,c) => s + Math.max(0, parseInt(c.cantidad||0) - parseInt(c.vendido||0)) * parseFloat(c.precio||0), 0);
+    document.getElementById("st-stock").textContent   = stock;
+    document.getElementById("st-vendido").textContent = vendido;
+    document.getElementById("st-valor").textContent   = "$" + valor.toFixed(2);
+}
+
+function renderNotifEntregas() {
+    const container = document.getElementById("notif-entrega-container");
+    if (!entregasPendientes.length) { container.innerHTML = ""; return; }
+    container.innerHTML = entregasPendientes.map(e => {
+        let items = [];
+        try { items = typeof e.items === "string" ? JSON.parse(e.items) : (e.items || []); } catch(_) {}
+        return `<div class="notif-entrega">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                <span style="font-size:24px;">📦</span>
+                <div>
+                    <div style="font-size:14px;font-weight:700;color:var(--dorado);">Tienes una entrega pendiente de confirmar</div>
+                    <div style="font-size:12px;color:var(--plateado);">${items.length} producto(s) — ${new Date(e.fecha).toLocaleDateString("es-SV")}</div>
+                </div>
+            </div>
+            <div style="font-size:12px;color:var(--plateado);margin-bottom:12px;">${items.slice(0,3).map(i=>'• '+i.nombre).join('<br>')}</div>
+            <button class="btn btn-dorado btn-full" onclick="abrirConfirmarEntrega('${e.id}')">✍️ Confirmar Recepción</button>
+        </div>`;
+    }).join('');
+}
+
+function renderInventario() {
+    const grid    = document.getElementById("grid-inv");
+    const activos = invActivo.filter(c => parseInt(c.cantidad||0) - parseInt(c.vendido||0) > 0);
+    if (!activos.length) {
+        grid.innerHTML = '<p style="color:var(--plateado);font-size:13px;grid-column:1/-1;">No hay productos en inventario.</p>';
+        return;
+    }
+    grid.innerHTML = activos.map(c => {
+        const disp = parseInt(c.cantidad||0) - parseInt(c.vendido||0);
+        const foto = c.foto ? '<img src="'+c.foto+'" alt="'+c.nombre+'">' : '<div class="item-no-foto">💍</div>';
+        return '<div class="item" onclick="seleccionarProducto(\''+c.id+'\')">'+foto
+            +'<div class="item-info"><div class="item-codigo">'+c.codigo+'</div>'
+            +'<div class="item-nombre">'+c.nombre+'</div>'
+            +'<div class="item-precio">$'+parseFloat(c.precio||0).toFixed(2)+'</div>'
+            +'<div class="item-disp">'+disp+' disponibles</div></div></div>';
+    }).join('');
+}
+
+function renderVentas() {
+    const lista = document.getElementById("lista-ventas");
+    if (!ventasData.length) { lista.innerHTML = '<p style="color:var(--plateado);font-size:13px;">No hay ventas registradas aún.</p>'; return; }
+    lista.innerHTML = ventasData.slice().reverse().map(v => {
+        const fecha = v.fecha ? new Date(v.fecha).toLocaleDateString("es-SV", {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : "—";
+        const foto = v.foto ? '<img src="'+v.foto+'" onerror="this.style.display=\'none\'">' : '<div style="width:56px;height:56px;background:var(--gris2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;">💍</div>';
+        return '<div class="venta-item">'+foto
+            +'<div class="venta-info"><div class="venta-codigo">'+v.codigo+'</div>'
+            +'<div class="venta-nombre">'+v.nombre+'</div>'
+            +'<div class="venta-precio">$'+parseFloat(v.precio||0).toFixed(2)+' · '+v.cantidad+' unidad(es)</div>'
+            +'<div class="venta-fecha">📅 '+fecha+'</div></div>'
+            +'<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">'
+            +'<span class="venta-badge">✅ Registrada</span>'
+            +'<button onclick="solicitarEliminar(\''+v.id+'\')" style="background:rgba(192,57,43,0.15);border:none;color:#e74c3c;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;">Solicitar corrección</button>'
+            +'</div></div>';
+    }).join('');
+}
+
+function filtrarVentas() {
+    const busq = document.getElementById("bus-ventas").value.toLowerCase();
+    if (!busq) { renderVentas(); return; }
+    const filtradas = ventasData.filter(v => (v.nombre||"").toLowerCase().includes(busq) || (v.codigo||"").toLowerCase().includes(busq));
+    const lista = document.getElementById("lista-ventas");
+    if (!filtradas.length) { lista.innerHTML = '<p style="color:var(--plateado);font-size:13px;">No se encontraron ventas.</p>'; return; }
+    lista.innerHTML = filtradas.slice().reverse().map(v => {
+        const fecha = v.fecha ? new Date(v.fecha).toLocaleDateString("es-SV") : "—";
+        return '<div class="venta-item"><div class="venta-info"><div class="venta-codigo">'+v.codigo+'</div><div class="venta-nombre">'+v.nombre+'</div><div class="venta-precio">$'+parseFloat(v.precio||0).toFixed(2)+' · '+v.cantidad+' unidad(es)</div><div class="venta-fecha">📅 '+fecha+'</div></div><span class="venta-badge">✅ Registrada</span></div>';
+    }).join('');
+}
+
+// ── CONFIRMAR ENTREGA ────────────────────────────────────────────────
+function abrirConfirmarEntrega(id) {
+    entregaConfirmando = entregasPendientes.find(e => e.id === id);
+    if (!entregaConfirmando) return;
+    let items = [];
+    try { items = typeof entregaConfirmando.items === "string" ? JSON.parse(entregaConfirmando.items) : (entregaConfirmando.items || []); } catch(_) {}
+    document.getElementById("entrega-items-lista").innerHTML = items.map(i =>
+        '<div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--gris2);border-radius:8px;margin-bottom:6px;">'
+        +(i.foto?'<img src="'+i.foto+'" style="width:40px;height:40px;object-fit:cover;border-radius:6px;">':'<div style="width:40px;height:40px;background:var(--gris);border-radius:6px;display:flex;align-items:center;justify-content:center;">💍</div>')
+        +'<div><div style="font-size:10px;color:var(--dorado);font-weight:600;">'+i.codigo+'</div><div style="font-size:13px;">'+i.nombre+'</div><div style="font-size:11px;color:var(--plateado);">$'+parseFloat(i.precio||0).toFixed(2)+'</div></div></div>'
+    ).join('');
+    document.getElementById("codigo-recibo-input").value = "";
+    limpiarFirmaVendedor();
+    abrirModal("modal-confirmar-entrega");
+    setTimeout(() => inicializarFirmaVendedor(), 300);
+}
+
+function inicializarFirmaVendedor() {
+    const canvas = document.getElementById("firma-canvas-vendedor");
+    const ctx = canvas.getContext("2d");
+    ctx.strokeStyle = "#1a1a2e"; ctx.lineWidth = 2.5; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    let dibujando = false;
+
+    function getPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        if (e.touches) return { x:(e.touches[0].clientX-rect.left)*scaleX, y:(e.touches[0].clientY-rect.top)*scaleY };
+        return { x:(e.clientX-rect.left)*scaleX, y:(e.clientY-rect.top)*scaleY };
+    }
+
+    canvas.onmousedown = canvas.ontouchstart = (e) => { e.preventDefault(); dibujando=true; _firmaVendedorActiva=true; document.getElementById("firma-placeholder-vendedor").style.display="none"; const p=getPos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); };
+    canvas.onmousemove = canvas.ontouchmove  = (e) => { e.preventDefault(); if(!dibujando)return; const p=getPos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(p.x,p.y); };
+    canvas.onmouseup  = canvas.ontouchend   = (e) => { e.preventDefault(); dibujando=false; };
+}
+
+function limpiarFirmaVendedor() {
+    const canvas = document.getElementById("firma-canvas-vendedor");
+    canvas.getContext("2d").clearRect(0,0,canvas.width,canvas.height);
+    _firmaVendedorActiva = false;
+    document.getElementById("firma-placeholder-vendedor").style.display = "block";
+}
+
+async function confirmarRecepcionEntrega() {
+    if (!entregaConfirmando) return;
+    if (!_firmaVendedorActiva) { toast("⚠️ Por favor firma primero"); return; }
+    const codigo = document.getElementById("codigo-recibo-input").value.trim().toUpperCase();
+    if (!codigo) { toast("⚠️ Ingresa el código del recibo"); return; }
+
+    const btn = document.querySelector("#modal-confirmar-entrega .btn-dorado");
+    btn.textContent = "⏳ Confirmando..."; btn.disabled = true;
+
+    try {
+        const firmaImg = document.getElementById("firma-canvas-vendedor").toDataURL("image/png");
+        const res = await fetch(API_URL, {
+            method:'POST',
+            body:JSON.stringify({
+                accion: "CONFIRMAR_ENTREGA_RECIBO",
+                key: SECRET_KEY,
+                id: entregaConfirmando.id,
+                codigoRecibo: codigo,
+                firmaImg
+            })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            toast("✅ Recepción confirmada correctamente");
+            entregasPendientes = entregasPendientes.filter(e => e.id !== entregaConfirmando.id);
+            cerrarModal("modal-confirmar-entrega");
+            renderNotifEntregas();
+        } else {
+            toast("⚠️ " + (data.error || "Error al confirmar"));
+        }
+    } catch(e) { toast("⚠️ Error de conexión"); }
+
+    btn.textContent = "✅ Confirmar Recepción"; btn.disabled = false;
+}
+
+// ── REGISTRAR VENTA ──────────────────────────────────────────────────
+function seleccionarProducto(id) {
+    const prod = invActivo.find(c => String(c.id) === String(id));
+    if (!prod) return;
+    prodSeleccionado = prod;
+    mostrarPaso2();
+    abrirModal("modal-registrar");
+}
+
+function abrirModalRegistrar(prod) {
+    prodSeleccionado = prod;
+    if (prod) { mostrarPaso2(); } else {
+        document.getElementById("reg-paso1").style.display = "block";
+        document.getElementById("reg-paso2").style.display = "none";
+        document.getElementById("bus-prod-venta").value = "";
+        renderListaProdVenta(invActivo.filter(c => parseInt(c.cantidad||0)-parseInt(c.vendido||0)>0));
+    }
+    abrirModal("modal-registrar");
+}
+
+function mostrarPaso2() {
+    const p = prodSeleccionado; if (!p) return;
+    const disp = parseInt(p.cantidad||0)-parseInt(p.vendido||0);
+    document.getElementById("reg-paso1").style.display = "none";
+    document.getElementById("reg-paso2").style.display = "block";
+    document.getElementById("venta-cantidad").value = "1";
+    document.getElementById("venta-cantidad").max = disp;
+    document.getElementById("prod-seleccionado-info").innerHTML =
+        (p.foto?'<img src="'+p.foto+'" style="width:52px;height:52px;object-fit:cover;border-radius:6px;">'
+        :'<div style="width:52px;height:52px;background:var(--gris2);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:20px;">💍</div>')
+        +'<div><div style="font-size:10px;color:var(--dorado);font-weight:600;">'+p.codigo+'</div>'
+        +'<div style="font-size:13px;font-weight:600;">'+p.nombre+'</div>'
+        +'<div style="font-size:12px;color:var(--plateado);">$'+parseFloat(p.precio||0).toFixed(2)+' · '+disp+' disponibles</div></div>';
+}
+
+function volverPaso1() { document.getElementById("reg-paso1").style.display="block"; document.getElementById("reg-paso2").style.display="none"; prodSeleccionado=null; }
+
+function renderListaProdVenta(prods) {
+    const lista = document.getElementById("lista-prod-venta");
+    if (!prods.length) { lista.innerHTML='<p style="color:var(--plateado);font-size:13px;">No hay productos disponibles.</p>'; return; }
+    lista.innerHTML = prods.map(c => {
+        const disp = parseInt(c.cantidad||0)-parseInt(c.vendido||0);
+        return '<div onclick="seleccionarProdModal(\''+c.id+'\')" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--gris2);border-radius:8px;margin-bottom:8px;cursor:pointer;border:1px solid #333;" onmouseover="this.style.borderColor=\'var(--dorado)\'" onmouseout="this.style.borderColor=\'#333\'">'
+            +(c.foto?'<img src="'+c.foto+'" style="width:44px;height:44px;object-fit:cover;border-radius:6px;">'
+            :'<div style="width:44px;height:44px;background:var(--gris);border-radius:6px;display:flex;align-items:center;justify-content:center;">💍</div>')
+            +'<div style="flex:1;min-width:0;"><div style="font-size:10px;color:var(--dorado);font-weight:600;">'+c.codigo+'</div>'
+            +'<div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+c.nombre+'</div>'
+            +'<div style="font-size:11px;color:var(--plateado);">$'+parseFloat(c.precio||0).toFixed(2)+' · '+disp+' disp.</div></div></div>';
+    }).join('');
+}
+
+function seleccionarProdModal(id) { const prod=invActivo.find(c=>String(c.id)===String(id)); if(!prod)return; prodSeleccionado=prod; mostrarPaso2(); }
+
+function filtrarProdVenta() {
+    const busq = document.getElementById("bus-prod-venta").value.toLowerCase();
+    renderListaProdVenta(invActivo.filter(c => (parseInt(c.cantidad||0)-parseInt(c.vendido||0)>0) && ((c.nombre||"").toLowerCase().includes(busq)||(c.codigo||"").toLowerCase().includes(busq))));
+}
+
+function abrirScanner() {
+    const codigo = prompt("Ingresa el código del producto:");
+    if (!codigo) return;
+    const prod = invActivo.find(c => String(c.codigo).toUpperCase()===codigo.toUpperCase() && parseInt(c.cantidad||0)-parseInt(c.vendido||0)>0);
+    if (prod) { prodSeleccionado=prod; mostrarPaso2(); } else { toast("⚠️ Producto no encontrado o sin stock"); }
+}
+
+async function confirmarVenta() {
+    if (!prodSeleccionado) return;
+    const cantidad = parseInt(document.getElementById("venta-cantidad").value)||1;
+    const disp = parseInt(prodSeleccionado.cantidad||0)-parseInt(prodSeleccionado.vendido||0);
+    if (cantidad>disp) { toast("⚠️ Cantidad mayor a disponible"); return; }
+    const btn = document.querySelector("#reg-paso2 .btn-verde");
+    btn.textContent="⏳ Registrando..."; btn.disabled=true;
+    try {
+        const res = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"REGISTRAR_VENTA_VENDEDOR", key:SECRET_KEY, id:prodSeleccionado.id, vendedor:vendedorData.codigo, codigo:prodSeleccionado.codigo, nombre:prodSeleccionado.nombre, precio:prodSeleccionado.precio, foto:prodSeleccionado.foto||"", cantidad }) });
+        const data = await res.json();
+        if (data.ok) {
+            const item = invActivo.find(c=>String(c.id)===String(prodSeleccionado.id));
+            if (item) item.vendido=parseInt(item.vendido||0)+cantidad;
+            ventasData.push({ id:data.ventaId||Date.now(), codigo:prodSeleccionado.codigo, nombre:prodSeleccionado.nombre, precio:prodSeleccionado.precio, foto:prodSeleccionado.foto||"", cantidad, fecha:new Date().toISOString() });
+            toast("✅ Venta registrada correctamente");
+            cerrarModal("modal-registrar");
+            actualizarStats();
+            renderInventario();
+        } else { toast("⚠️ Error: "+(data.error||"No se pudo registrar")); }
+    } catch(e) { toast("⚠️ Error de conexión"); }
+    btn.textContent="✅ Confirmar"; btn.disabled=false;
+}
+
+function solicitarEliminar(id) { ventaEliminarId=id; document.getElementById("motivo-eliminar").value=""; abrirModal("modal-eliminar"); }
+
+async function enviarSolicitud() {
+    const motivo = document.getElementById("motivo-eliminar").value.trim();
+    if (!motivo) { toast("⚠️ Describe el motivo"); return; }
+    const btn = document.querySelector("#modal-eliminar .btn-dorado");
+    btn.textContent="⏳ Enviando..."; btn.disabled=true;
+    try {
+        await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"SOLICITAR_CORRECCION_VENTA", key:SECRET_KEY, ventaId:ventaEliminarId, vendedor:vendedorData.codigo, vendedorNombre:vendedorData.nombre, motivo }) });
+        toast("✅ Solicitud enviada al administrador");
+        cerrarModal("modal-eliminar");
+    } catch(e) { toast("⚠️ Error al enviar"); }
+    btn.textContent="📨 Enviar Solicitud"; btn.disabled=false;
+}
+
+function cambiarTab(tab) {
+    document.getElementById("content-inventario").style.display = tab==="inventario"?"block":"none";
+    document.getElementById("content-ventas").style.display     = tab==="ventas"?"block":"none";
+    ["inv","ventas"].forEach(t => {
+        const key = t==="inv"?"inventario":"ventas";
+        const btn = document.getElementById("tab-"+t);
+        // Solo toggle de clase — el CSS maneja todo el diseño
+        btn.classList.toggle("activo", tab===key);
+        btn.removeAttribute("style"); // limpiar estilos inline anteriores
+    });
+    if (tab==="ventas") renderVentas();
+}
+
+function abrirModal(id) { document.getElementById(id).classList.add("active"); }
+function cerrarModal(id) { document.getElementById(id).classList.remove("active"); }
+
+function toast(msg) {
+    const t=document.getElementById("toast");
+    t.textContent=msg; t.classList.add("show");
+    setTimeout(()=>t.classList.remove("show"),2800);
+}
+
+init();
+</script>
+</body>
+</html>

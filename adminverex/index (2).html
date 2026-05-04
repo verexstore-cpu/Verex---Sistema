@@ -1,0 +1,2189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VEREX | Admin</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        :root {
+            --azul:#00BFFF; --azul-d:#009ACD; --fondo:#f0f2f5;
+            --card:#fff; --borde:#e2e2e2; --texto:#1a1a1a;
+            --gris:#f7f7f7; --verde:#22c55e; --rojo:#ef4444;
+            --naranja:#f97316; --ambar:#f59e0b;
+        }
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body{font-family:'Segoe UI',sans-serif;background:var(--fondo);color:var(--texto);}
+
+        /* LOGIN */
+        #login-screen{display:flex;justify-content:center;align-items:center;min-height:100vh;background:#0a0a0a;}
+        .login-box{background:#fff;border-radius:16px;padding:44px 38px;width:360px;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,.5);}
+        .login-box h1{font-size:20px;letter-spacing:4px;font-weight:800;margin-bottom:6px;}
+        .login-box p{font-size:13px;color:#888;margin-bottom:28px;}
+        .login-box input{width:100%;padding:12px 14px;border:1.5px solid var(--borde);border-radius:8px;font-size:15px;margin-bottom:14px;background:var(--gris);transition:border-color .2s;}
+        .login-box input:focus{outline:none;border-color:var(--azul);background:#fff;}
+        .login-box button{width:100%;padding:13px;background:#111;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:1px;transition:background .2s;}
+        .login-box button:hover{background:var(--azul);}
+        #login-err{color:var(--rojo);font-size:13px;margin-top:10px;display:none;}
+
+        /* HEADER */
+        #panel{display:none;}
+        header{background:#111;color:#fff;display:flex;justify-content:space-between;align-items:center;padding:14px 26px;position:sticky;top:0;z-index:200;}
+        header h1{font-size:15px;letter-spacing:3px;color:var(--azul);}
+        .h-right{display:flex;gap:10px;align-items:center;}
+        .btn-header{background:none;border:1px solid #555;color:#aaa;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;transition:all .2s;text-decoration:none;display:inline-block;}
+        .btn-header:hover{border-color:var(--azul);color:var(--azul);}
+        .btn-logout:hover{border-color:var(--rojo)!important;color:var(--rojo)!important;}
+
+        /* NOTIF */
+        #notif-btn{position:relative;}
+        #notif-badge{position:absolute;top:-7px;right:-7px;background:var(--rojo);color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center;}
+        .notif-panel{position:fixed;top:58px;right:16px;width:310px;background:#fff;border-radius:12px;border:1px solid var(--borde);box-shadow:0 8px 30px rgba(0,0,0,.15);z-index:300;display:none;max-height:380px;overflow-y:auto;}
+        .notif-panel.open{display:block;}
+        .notif-hdr{padding:11px 15px;border-bottom:1px solid var(--borde);font-weight:700;font-size:13px;display:flex;justify-content:space-between;align-items:center;}
+        .notif-hdr button{font-size:11px;background:none;border:none;color:var(--azul);cursor:pointer;font-weight:600;}
+        .notif-item{padding:11px 15px;border-bottom:1px solid var(--borde);font-size:13px;cursor:pointer;}
+        .notif-item:hover{background:var(--gris);}
+        .notif-item.nueva{border-left:3px solid var(--azul);}
+        .notif-item .nt{font-size:11px;color:#aaa;margin-top:2px;}
+
+        /* TABS */
+        .tabs{display:flex;background:#fff;border-bottom:2px solid var(--borde);padding:0 22px;overflow-x:auto;}
+        .tab{padding:13px 18px;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;color:#888;white-space:nowrap;transition:all .2s;margin-bottom:-2px;}
+        .tab:hover{color:var(--azul);}
+        .tab.active{color:var(--azul);border-bottom-color:var(--azul);}
+        .tab-content{display:none;padding:22px;max-width:980px;margin:0 auto;}
+        .tab-content.active{display:block;}
+
+        /* CARDS */
+        .card{background:var(--card);border-radius:12px;border:1px solid var(--borde);padding:20px;margin-bottom:18px;box-shadow:0 2px 8px rgba(0,0,0,.04);}
+        .card h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#666;margin-bottom:14px;padding-bottom:9px;border-bottom:1px solid var(--borde);}
+
+        /* FORM */
+        label{display:block;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;margin-top:11px;}
+        label:first-child{margin-top:0;}
+        input[type="text"],input[type="number"],input[type="password"],select,textarea{width:100%;padding:9px 11px;border:1.5px solid var(--borde);border-radius:7px;font-size:14px;background:var(--gris);transition:border-color .2s,background .2s;font-family:inherit;}
+        input:focus,select:focus,textarea:focus{outline:none;border-color:var(--azul);background:#fff;}
+        .g2{display:grid;grid-template-columns:1fr 1fr;gap:13px;}
+        .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:11px;}
+
+        /* BUTTONS */
+        .btn{padding:8px 16px;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:4px;}
+        .btn:hover{opacity:.85;transform:translateY(-1px);}
+        .bp{background:#111;color:#fff;}
+        .ba{background:var(--azul);color:#fff;}
+        .bv{background:var(--verde);color:#fff;}
+        .br{background:var(--rojo);color:#fff;}
+        .bn{background:var(--naranja);color:#fff;}
+        .bam{background:var(--ambar);color:#fff;}
+        .bg{background:#e5e7eb;color:#374151;}
+        .bfull{width:100%;justify-content:center;margin-top:12px;padding:11px;}
+
+        /* BADGE */
+        .badge{display:inline-block;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;}
+        .bv2{background:#dcfce7;color:#15803d;}
+        .br2{background:#fee2e2;color:#b91c1c;}
+        .bam2{background:#fef3c7;color:#92400e;}
+        .baz2{background:#dbeafe;color:#1e40af;}
+        .bg2{background:#f1f5f9;color:#64748b;}
+        .bn2{background:#ffedd5;color:#c2410c;}
+
+        /* TOGGLE */
+        .tog-wrap{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;background:var(--gris);border-radius:10px;border:1px solid var(--borde);margin-bottom:10px;}
+        .tog-info h3{font-size:14px;font-weight:700;margin-bottom:2px;}
+        .tog-info p{font-size:12px;color:#888;}
+        .tog{position:relative;width:48px;height:25px;flex-shrink:0;}
+        .tog input{opacity:0;width:0;height:0;}
+        .sl{position:absolute;inset:0;background:#ccc;border-radius:25px;cursor:pointer;transition:background .3s;}
+        .sl::before{content:"";position:absolute;width:17px;height:17px;left:4px;top:4px;background:#fff;border-radius:50%;transition:transform .3s;box-shadow:0 1px 4px rgba(0,0,0,.2);}
+        .tog input:checked+.sl{background:var(--verde);}
+        .tog input:checked+.sl::before{transform:translateX(23px);}
+
+        /* STATS */
+        .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:11px;margin-bottom:18px;}
+        .stat{background:#fff;border:1px solid var(--borde);border-radius:10px;padding:15px;text-align:center;}
+        .stat .num{font-size:26px;font-weight:800;color:var(--azul);}
+        .stat .lbl{font-size:11px;color:#888;margin-top:2px;text-transform:uppercase;letter-spacing:.5px;}
+
+        /* CHART */
+        .chart{display:flex;align-items:flex-end;gap:5px;height:110px;margin-top:10px;}
+        .bw{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;}
+        .bar{width:100%;background:var(--azul);border-radius:4px 4px 0 0;min-height:4px;transition:height .5s;}
+        .blbl{font-size:10px;color:#aaa;}
+        .bval{font-size:10px;font-weight:700;color:var(--azul);}
+
+        /* TABLE */
+        .tw{overflow-x:auto;}
+        table{width:100%;border-collapse:collapse;font-size:13px;}
+        th{background:var(--gris);color:#555;font-size:10px;text-transform:uppercase;letter-spacing:.5px;padding:9px 10px;text-align:left;border-bottom:2px solid var(--borde);white-space:nowrap;}
+        td{padding:9px 10px;border-bottom:1px solid var(--borde);vertical-align:middle;}
+        tr:last-child td{border-bottom:none;}
+        tr:hover td{background:#fafafa;}
+
+        /* TALLAS */
+        #sec-tallas{background:var(--gris);padding:13px;border-radius:10px;border:2px solid var(--azul);margin-top:11px;}
+        .gt{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:7px;}
+        .ti{text-align:center;background:#fff;padding:6px 4px;border-radius:6px;border:1px solid var(--borde);font-size:11px;font-weight:700;color:var(--azul);}
+        .ti input{padding:4px;text-align:center;font-size:13px;margin-top:3px;}
+
+        /* PREVIEW */
+        .prev{background:#e1f5fe;border:1px dashed var(--azul);border-radius:8px;padding:11px 13px;margin-top:12px;font-size:13px;color:#0277bd;}
+
+        /* PROD CARD */
+        .pc{display:flex;align-items:center;gap:12px;padding:11px;background:var(--gris);border-radius:10px;border:1px solid var(--borde);margin-bottom:9px;}
+        .pc img{width:52px;height:52px;object-fit:cover;border-radius:7px;flex-shrink:0;}
+        .pi{flex:1;min-width:0;}
+        .pi .pn{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .pi .pd{font-size:12px;color:#888;margin-top:1px;}
+        .pa{display:flex;gap:6px;flex-shrink:0;}
+
+        /* ENVÍO ROW */
+        .er{display:flex;align-items:center;gap:9px;padding:10px 13px;background:var(--gris);border-radius:8px;border:1px solid var(--borde);margin-bottom:8px;font-size:13px;}
+        .er span{flex:1;}
+
+        /* CUPÓN ROW */
+        .cr{display:flex;align-items:center;gap:9px;padding:10px 13px;background:var(--gris);border:1px solid var(--borde);border-radius:8px;margin-bottom:8px;font-size:13px;}
+        .cc{font-weight:800;font-size:14px;min-width:100px;}
+        .cd{color:var(--verde);font-weight:700;min-width:40px;}
+        .cf{flex:1;}
+
+        /* SEARCH */
+        .sb{display:flex;gap:8px;margin-bottom:12px;}
+        .sb input{flex:1;}
+        .sb select{width:155px;}
+
+        /* ESTADO SELECT */
+        .es{padding:5px 7px;border-radius:5px;font-size:12px;font-weight:600;border:1.5px solid var(--borde);background:#fff;cursor:pointer;}
+
+        /* MODAL */
+        .mo{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;display:none;align-items:center;justify-content:center;padding:20px;}
+        .mo.open{display:flex;}
+        .mb{background:#fff;border-radius:14px;padding:26px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+        .mb h3{font-size:15px;margin-bottom:16px;}
+        .mc{float:right;background:none;border:none;font-size:20px;cursor:pointer;color:#888;margin-top:-4px;}
+
+        /* TOAST */
+        #toast{position:fixed;bottom:22px;right:22px;background:#111;color:#fff;padding:11px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;opacity:0;transform:translateY(8px);transition:all .3s;pointer-events:none;max-width:280px;}
+        #toast.show{opacity:1;transform:translateY(0);}
+
+        @media(max-width:640px){
+            .g2,.g3{grid-template-columns:1fr;}
+            .tab{padding:11px 12px;font-size:12px;}
+            .tab-content{padding:16px 12px;}
+
+            /* Ocultar tabla en móvil */
+            .tw { display: none; }
+
+            /* Tarjetas de pedidos en móvil */
+            #cards-ped { display: block; }
+        }
+
+        @media(min-width:641px){
+            #cards-ped { display: none; }
+        }
+
+        /* Tarjeta de pedido */
+        .ped-card {
+            background: #fff;
+            border: 1px solid var(--borde);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.05);
+        }
+        .ped-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .ped-card-num {
+            font-family: monospace;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--azul);
+        }
+        .ped-card-fecha {
+            font-size: 11px;
+            color: #aaa;
+        }
+        .ped-card-body {
+            font-size: 13px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-bottom: 12px;
+        }
+        .ped-card-body span { color: #444; }
+        .ped-card-body b { color: #111; }
+        .ped-card-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            border-top: 1px solid var(--borde);
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+    <div class="login-box">
+        <h1>VEREX STORE</h1>
+        <p>Panel de Administración</p>
+        <input type="password" id="in-pass" placeholder="Contraseña" onkeydown="if(event.key==='Enter')login()">
+        <button onclick="login()">INGRESAR</button>
+        <p id="login-err">⚠️ Contraseña incorrecta</p>
+    </div>
+</div>
+
+<!-- PANEL -->
+<div id="panel">
+    <header>
+        <h1>VEREX — ADMIN</h1>
+        <div class="h-right">
+            <button id="notif-btn" class="btn-header" onclick="toggleNotif()">
+                🔔 Pedidos
+                <span id="notif-badge"></span>
+            </button>
+            <a href="verex-store.html" target="_blank" class="btn-header">👁️ Ver Tienda</a>
+            <a href="https://verex-consignacion.pages.dev" target="_blank" class="btn-header">📦 Consignación</a>
+            <button class="btn-header" onclick="abrirCambiarClave()" style="border-color:#f59e0b;color:#f59e0b;">🔑 Cambiar Clave</button>
+            <button class="btn-header btn-logout" onclick="logout()">Salir</button>
+        </div>
+    </header>
+
+    <!-- Panel notificaciones -->
+    <div class="notif-panel" id="notif-panel">
+        <div class="notif-hdr">
+            <span>Pedidos Recientes</span>
+            <button onclick="marcarLeidos()">Marcar leídos</button>
+        </div>
+        <div id="notif-lista"></div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs">
+        <div class="tab active" onclick="tab(0)">🏠 Dashboard</div>
+        <div class="tab" onclick="tab(1)">📋 Pedidos</div>
+        <div class="tab" onclick="tab(2)">📦 Productos</div>
+        <div class="tab" onclick="tab(5)">👥 Clientes</div>
+        <div class="tab" onclick="tab(3)">🚚 Envío</div>
+        <div class="tab" onclick="tab(4)">🎟️ Cupones</div>
+        <div class="tab" onclick="tab(6);cargarConsignacion()">👤 Vendedores</div>
+    </div>
+
+    <!-- TAB 0: DASHBOARD -->
+    <div class="tab-content active" id="tab-0">
+        <div class="card">
+            <h2>🏠 Control de Tienda</h2>
+            <div class="tog-wrap">
+                <div class="tog-info">
+                    <h3>Tienda Pública</h3>
+                    <p>Activa o desactiva el acceso de clientes al catálogo.</p>
+                </div>
+                <label class="tog"><input type="checkbox" id="tog-tienda" onchange="guardarConfig()"><span class="sl"></span></label>
+            </div>
+            <div id="estado-info" style="font-size:13px;color:#888;padding:4px 0 0;"></div>
+        </div>
+
+        <div class="stats" id="stats-grid">
+            <div class="stat"><div class="num" id="s-prod">—</div><div class="lbl">Productos</div></div>
+            <div class="stat"><div class="num" id="s-ped">—</div><div class="lbl">Pedidos totales</div></div>
+            <div class="stat"><div class="num" id="s-mes">—</div><div class="lbl">Ingresos del mes</div></div>
+            <div class="stat"><div class="num" id="s-cup">—</div><div class="lbl">Cupones activos</div></div>
+        </div>
+
+        <div class="card">
+            <h2>📊 Ventas Últimas 8 Semanas</h2>
+            <div class="chart" id="chart"></div>
+        </div>
+
+        <div class="card">
+            <h2>🏆 Productos Más Pedidos</h2>
+            <div id="top-prod"></div>
+        </div>
+    </div>
+
+    <!-- TAB 1: PEDIDOS -->
+    <div class="tab-content" id="tab-1">
+        <div class="card">
+            <h2>📋 Gestión de Pedidos</h2>
+            <div class="sb" style="flex-wrap:wrap;gap:8px;">
+                <input type="text" id="bus-ped" placeholder="Buscar cliente o producto..."
+                       oninput="renderPedidos()" style="min-width:180px;">
+                <select id="fil-estado" onchange="renderPedidos()" style="width:140px;">
+                    <option value="">Todos los estados</option>
+                    <option>Pendiente</option>
+                    <option>En camino</option>
+                    <option>Entregado</option>
+                    <option>Cancelado</option>
+                </select>
+                <select id="fil-periodo" onchange="renderPedidos()" style="width:140px;">
+                    <option value="todo">Todo el tiempo</option>
+                    <option value="hoy">Hoy</option>
+                    <option value="semana">Esta semana</option>
+                    <option value="mes">Este mes</option>
+                    <option value="custom">Rango personalizado</option>
+                </select>
+            </div>
+
+            <!-- Rango personalizado -->
+            <div id="rango-custom" style="display:none;gap:8px;margin-top:8px;flex-wrap:wrap;" class="sb">
+                <div style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                    <label style="text-transform:none;font-size:13px;color:#555;margin:0;">Desde</label>
+                    <input type="date" id="fecha-desde" onchange="renderPedidos()" style="width:150px;">
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                    <label style="text-transform:none;font-size:13px;color:#555;margin:0;">Hasta</label>
+                    <input type="date" id="fecha-hasta" onchange="renderPedidos()" style="width:150px;">
+                </div>
+            </div>
+
+            <!-- Resumen + botón exportar -->
+            <div style="display:flex;justify-content:space-between;align-items:center;
+                        margin:12px 0 8px;padding:10px 14px;background:var(--gris);
+                        border-radius:8px;font-size:13px;">
+                <span id="resumen-pedidos" style="color:#555;">— pedidos · Total: —</span>
+                <button class="btn ba" style="padding:7px 16px;font-size:12px;"
+                        onclick="exportarExcel()">
+                    📊 Exportar a Excel
+                </button>
+            </div>
+
+            <div class="tw">
+                <table>
+                    <thead><tr>
+                        <th>#</th><th>N° Pedido</th><th>Fecha</th><th>Cliente</th>
+                        <th>WhatsApp</th><th>Municipio</th><th>Productos</th>
+                        <th>Total</th><th>Pago</th><th>Estado</th><th></th>
+                    </tr></thead>
+                    <tbody id="tb-ped"></tbody>
+                </table>
+            </div>
+
+            <!-- Vista móvil: tarjetas -->
+            <div id="cards-ped"></div>
+        </div>
+    </div>
+
+    <!-- TAB 2: PRODUCTOS -->
+    <div class="tab-content" id="tab-2">
+        <div class="card">
+            <h2>📦 Catálogo Actual</h2>
+            <div class="sb">
+                <input type="text" id="bus-prod" placeholder="Buscar..." oninput="renderProductos()">
+            </div>
+            <div id="lista-prod"></div>
+        </div>
+
+        <div class="card">
+            <h2>➕ Nuevo Producto</h2>
+            <div class="g2">
+                <div>
+                    <label>Tipo de Joya</label>
+                    <select id="sel-tipo" onchange="actualizarNombre()">
+                        <option value="AN">Anillo (AN)</option>
+                        <option value="AR">Aretes (AR)</option>
+                        <option value="CD">Cadena (CD)</option>
+                        <option value="PL">Pulsera (PL)</option>
+                        <option value="CN">Conjunto (CN)</option>
+                        <option value="RL">Reloj (RL)</option>
+                        <option value="OT">Otro (OT)</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Material</label>
+                    <select id="sel-mat" onchange="actualizarNombre()">
+                        <option>Plata Fina 925</option>
+                        <option>Acero 316L</option>
+                        <option>Relojes</option>
+                        <option>Plata 925 + Oro Laminado</option>
+                    </select>
+                </div>
+            </div>
+            <label>Característica / Estilo</label>
+            <input type="text" id="in-det" placeholder="Ej: Mariposa, Zirconia..." oninput="actualizarNombre()">
+            <div class="g2">
+                <div><label>Precio ($)</label><input type="number" id="in-prec" step="0.01" placeholder="0.00"></div>
+                <div><label>URL Imagen</label><input type="text" id="in-img" placeholder="https://ik.imagekit.io/..."></div>
+            </div>
+            <div id="sec-tallas">
+                <!-- Checkbox pareja -->
+                <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;
+                              font-size:13px;text-transform:none;font-weight:600;color:#555;
+                              background:#fff8e1;padding:10px 14px;border-radius:8px;
+                              border:1.5px solid #fde68a;cursor:pointer;">
+                    <input type="checkbox" id="chk-pareja" onchange="togglePareja()"
+                           style="width:16px;height:16px;accent-color:#f59e0b;">
+                    💑 Es anillo de pareja (doble talla: Dama y Caballero)
+                </label>
+
+                <!-- Tallas simple (default) -->
+                <div id="sec-talla-simple">
+                    <label style="color:var(--azul);margin:0 0 5px;">📊 Stock por Tallas (5–14)</label>
+                    <div class="gt">
+                        <div class="ti">T5 <input type="number" class="ts" data-t="5"  value="0" min="0"></div>
+                        <div class="ti">T6 <input type="number" class="ts" data-t="6"  value="0" min="0"></div>
+                        <div class="ti">T7 <input type="number" class="ts" data-t="7"  value="0" min="0"></div>
+                        <div class="ti">T8 <input type="number" class="ts" data-t="8"  value="0" min="0"></div>
+                        <div class="ti">T9 <input type="number" class="ts" data-t="9"  value="0" min="0"></div>
+                        <div class="ti">T10<input type="number" class="ts" data-t="10" value="0" min="0"></div>
+                        <div class="ti">T11<input type="number" class="ts" data-t="11" value="0" min="0"></div>
+                        <div class="ti">T12<input type="number" class="ts" data-t="12" value="0" min="0"></div>
+                        <div class="ti">T13<input type="number" class="ts" data-t="13" value="0" min="0"></div>
+                        <div class="ti">T14<input type="number" class="ts" data-t="14" value="0" min="0"></div>
+                    </div>
+                </div>
+
+                <!-- Tallas pareja (dama + caballero) -->
+                <div id="sec-talla-pareja" style="display:none;">
+                    <div style="margin-bottom:10px;">
+                        <label style="color:#d4537e;margin:0 0 5px;">👩 Stock Tallas Dama (5–14)</label>
+                        <div class="gt">
+                            <div class="ti" style="color:#d4537e;">T5 <input type="number" class="ts-d" data-t="D5"  value="0" min="0"></div>
+                            <div class="ti" style="color:#d4537e;">T6 <input type="number" class="ts-d" data-t="D6"  value="0" min="0"></div>
+                            <div class="ti" style="color:#d4537e;">T7 <input type="number" class="ts-d" data-t="D7"  value="0" min="0"></div>
+                            <div class="ti" style="color:#d4537e;">T8 <input type="number" class="ts-d" data-t="D8"  value="0" min="0"></div>
+                            <div class="ti" style="color:#d4537e;">T9 <input type="number" class="ts-d" data-t="D9"  value="0" min="0"></div>
+                            <div class="ti" style="color:#d4537e;">T10<input type="number" class="ts-d" data-t="D10" value="0" min="0"></div>
+                            <div class="ti" style="color:#d4537e;">T11<input type="number" class="ts-d" data-t="D11" value="0" min="0"></div>
+                            <div class="ti" style="color:#d4537e;">T12<input type="number" class="ts-d" data-t="D12" value="0" min="0"></div>
+                            <div class="ti" style="color:#d4537e;">T13<input type="number" class="ts-d" data-t="D13" value="0" min="0"></div>
+                            <div class="ti" style="color:#d4537e;">T14<input type="number" class="ts-d" data-t="D14" value="0" min="0"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <label style="color:#185fa5;margin:0 0 5px;">👨 Stock Tallas Caballero (5–14)</label>
+                        <div class="gt">
+                            <div class="ti" style="color:#185fa5;">T5 <input type="number" class="ts-h" data-t="H5"  value="0" min="0"></div>
+                            <div class="ti" style="color:#185fa5;">T6 <input type="number" class="ts-h" data-t="H6"  value="0" min="0"></div>
+                            <div class="ti" style="color:#185fa5;">T7 <input type="number" class="ts-h" data-t="H7"  value="0" min="0"></div>
+                            <div class="ti" style="color:#185fa5;">T8 <input type="number" class="ts-h" data-t="H8"  value="0" min="0"></div>
+                            <div class="ti" style="color:#185fa5;">T9 <input type="number" class="ts-h" data-t="H9"  value="0" min="0"></div>
+                            <div class="ti" style="color:#185fa5;">T10<input type="number" class="ts-h" data-t="H10" value="0" min="0"></div>
+                            <div class="ti" style="color:#185fa5;">T11<input type="number" class="ts-h" data-t="H11" value="0" min="0"></div>
+                            <div class="ti" style="color:#185fa5;">T12<input type="number" class="ts-h" data-t="H12" value="0" min="0"></div>
+                            <div class="ti" style="color:#185fa5;">T13<input type="number" class="ts-h" data-t="H13" value="0" min="0"></div>
+                            <div class="ti" style="color:#185fa5;">T14<input type="number" class="ts-h" data-t="H14" value="0" min="0"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="prev"><b>Nombre:</b> <span id="out-nom">—</span> &nbsp;|&nbsp; <b>Código:</b> <span id="out-cod">—</span></div>
+            <button class="btn bp bfull" onclick="publicarProducto()">Publicar Joya en Catálogo</button>
+        </div>
+    </div>
+
+    <!-- TAB 3: ENVÍO -->
+    <!-- ══ TAB 5: CLIENTES ══════════════════════════════════════════ -->
+    <div class="tab-content" id="tab-5">
+        <div class="card">
+            <h2>👥 Clientes Registrados</h2>
+            <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+                <input id="bus-cli" type="text" placeholder="Buscar por nombre, teléfono o código..."
+                    oninput="renderClientes()" style="flex:1;min-width:200px;">
+            </div>
+            <p id="resumen-cli" style="font-size:13px;color:#888;margin-bottom:12px;"></p>
+
+            <!-- Tabla escritorio -->
+            <div class="tw">
+                <table>
+                    <thead><tr>
+                        <th>Código</th><th>Cliente</th><th>WhatsApp</th>
+                        <th>Municipio</th><th>Pedidos</th><th>Registro</th><th>Cupón</th>
+                    </tr></thead>
+                    <tbody id="tb-cli"></tbody>
+                </table>
+            </div>
+
+            <!-- Tarjetas móvil -->
+            <div id="cards-cli"></div>
+        </div>
+    </div>
+
+    <div class="tab-content" id="tab-3">
+
+        <!-- Banner editable -->
+        <div class="card">
+            <h2>📢 Banner de la Tienda</h2>
+            <div class="tog-wrap" style="margin-bottom:14px;">
+                <div class="tog-info">
+                    <h3>Mostrar banner</h3>
+                    <p>Activa o desactiva la barra informativa en la tienda.</p>
+                </div>
+                <label class="tog"><input type="checkbox" id="tog-banner" onchange="guardarBanner()"><span class="sl"></span></label>
+            </div>
+            <label>Texto del banner</label>
+            <input type="text" id="banner-texto"
+                   placeholder="🚚 Envío GRATIS en compras mayores a $50"
+                   oninput="previewBanner()">
+            <label style="margin-top:12px;">Color de fondo</label>
+            <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;" id="banner-colores">
+                <div class="color-opt active" data-color="#111111"
+                     style="width:32px;height:32px;background:#111;border-radius:6px;cursor:pointer;border:3px solid #00BFFF;"
+                     onclick="elegirColor('#111111',this)"></div>
+                <div class="color-opt" data-color="#00BFFF"
+                     style="width:32px;height:32px;background:#00BFFF;border-radius:6px;cursor:pointer;border:3px solid transparent;"
+                     onclick="elegirColor('#00BFFF',this)"></div>
+                <div class="color-opt" data-color="#22c55e"
+                     style="width:32px;height:32px;background:#22c55e;border-radius:6px;cursor:pointer;border:3px solid transparent;"
+                     onclick="elegirColor('#22c55e',this)"></div>
+                <div class="color-opt" data-color="#ef4444"
+                     style="width:32px;height:32px;background:#ef4444;border-radius:6px;cursor:pointer;border:3px solid transparent;"
+                     onclick="elegirColor('#ef4444',this)"></div>
+                <div class="color-opt" data-color="#f59e0b"
+                     style="width:32px;height:32px;background:#f59e0b;border-radius:6px;cursor:pointer;border:3px solid transparent;"
+                     onclick="elegirColor('#f59e0b',this)"></div>
+                <div class="color-opt" data-color="#7c3aed"
+                     style="width:32px;height:32px;background:#7c3aed;border-radius:6px;cursor:pointer;border:3px solid transparent;"
+                     onclick="elegirColor('#7c3aed',this)"></div>
+            </div>
+            <!-- Preview -->
+            <div id="banner-preview" style="margin-top:14px;padding:10px 20px;border-radius:8px;
+                 text-align:center;font-size:13px;font-weight:600;color:#fff;
+                 background:#111;display:none;letter-spacing:0.5px;">
+            </div>
+            <button class="btn ba bfull" onclick="guardarBanner()">💾 Guardar Banner</button>
+        </div>
+
+        <!-- Carrusel de imágenes -->
+        <div class="card">
+            <h2>🖼️ Carrusel de Imágenes</h2>
+            <div class="tog-wrap" style="margin-bottom:14px;">
+                <div class="tog-info">
+                    <h3>Mostrar carrusel</h3>
+                    <p>Activa o desactiva el carrusel en la tienda.</p>
+                </div>
+                <label class="tog"><input type="checkbox" id="tog-carrusel" onchange="guardarCarrusel()"><span class="sl"></span></label>
+            </div>
+            <div id="lista-carrusel"></div>
+            <div class="card" style="border:2px dashed var(--borde);box-shadow:none;margin-top:14px;margin-bottom:0;">
+                <h2 style="font-size:11px;">➕ Nueva Imagen</h2>
+                <label>URL de imagen (ImageKit)</label>
+                <input type="text" id="car-url" placeholder="https://ik.imagekit.io/...">
+                <label style="margin-top:10px;">Título (opcional)</label>
+                <input type="text" id="car-titulo" placeholder="Nueva colección">
+                <label style="margin-top:10px;">Subtítulo (opcional)</label>
+                <input type="text" id="car-subtitulo" placeholder="Accesorios exclusivos">
+                <button class="btn ba bfull" style="margin-top:12px;" onclick="agregarSlide()">➕ Agregar Imagen</button>
+            </div>
+            <button class="btn ba bfull" style="margin-top:14px;" onclick="guardarCarrusel()">💾 Guardar Carrusel</button>
+        </div>
+
+        <div class="card">
+            <h2>🚚 Reglas de Costo de Envío</h2>
+            <p style="font-size:13px;color:#888;margin-bottom:14px;">Se aplica la primera regla que coincida con el subtotal del pedido.</p>
+            <div id="lista-envio"></div>
+            <div class="card" style="border:2px dashed var(--borde);box-shadow:none;margin-bottom:0;margin-top:14px;">
+                <h2 style="font-size:11px;">➕ Nueva Regla</h2>
+                <div class="g3">
+                    <div><label>Monto mínimo ($)</label><input type="number" id="env-min" placeholder="0.00" step="0.01"></div>
+                    <div><label>Monto máximo ($)</label><input type="number" id="env-max" placeholder="49.99" step="0.01"></div>
+                    <div><label>Costo (0 = Gratis)</label><input type="number" id="env-cos" placeholder="2.00" step="0.01"></div>
+                </div>
+                <button class="btn ba bfull" onclick="agregarEnvio()">Agregar Regla</button>
+            </div>
+        </div>
+        <div class="card" style="background:#fffbeb;border-color:#fde68a;">
+            <h2 style="color:#92400e;">💡 Ejemplo de configuración</h2>
+            <p style="font-size:13px;color:#92400e;line-height:1.8;">
+                $0 – $29.99 → Envío $3.00<br>
+                $30 – $59.99 → Envío $2.00<br>
+                $60 – $9999 (en adelante) → GRATIS
+            </p>
+        </div>
+    </div>
+
+    <!-- TAB 4: CUPONES -->
+    <div class="tab-content" id="tab-4">
+        <div class="card">
+            <h2>🎟️ Cupones Registrados</h2>
+            <div id="lista-cup"></div>
+        </div>
+        <div class="card">
+            <h2>➕ Crear Cupón</h2>
+
+            <div class="g2">
+                <div>
+                    <label>Código</label>
+                    <input type="text" id="cup-cod" placeholder="MADRE20" style="text-transform:uppercase">
+                </div>
+                <div>
+                    <label>Estado inicial</label>
+                    <select id="cup-act">
+                        <option value="true">✅ Activo</option>
+                        <option value="false">❌ Inactivo</option>
+                    </select>
+                </div>
+            </div>
+
+            <label>Tipo de Cupón</label>
+            <select id="cup-tipo" onchange="cambiarTipoCupon()">
+                <option value="porcentaje_total">🏷️ Descuento % — Toda la tienda</option>
+                <option value="porcentaje_categoria">🏷️ Descuento % — Por categoría</option>
+                <option value="segundo_mitad">🎁 2do producto a mitad de precio</option>
+                <option value="monto_minimo">💰 Descuento por monto mínimo</option>
+                <option value="envio_gratis">🚚 Envío gratis</option>
+                <option value="descuento_fijo">💵 Descuento fijo en dinero</option>
+            </select>
+
+            <!-- Descuento % -->
+            <div id="sec-porc" style="margin-top:12px;">
+                <label>Descuento (%)</label>
+                <input type="number" id="cup-desc" placeholder="10" min="1" max="100">
+            </div>
+
+            <!-- Descuento fijo -->
+            <div id="sec-fijo" style="display:none;margin-top:12px;">
+                <label>Monto de descuento ($)</label>
+                <input type="number" id="cup-monto-fijo" placeholder="5.00" step="0.01" min="0.01">
+            </div>
+
+            <!-- Monto mínimo (para tipo monto_minimo) -->
+            <div id="sec-monto-min" style="display:none;margin-top:12px;">
+                <div class="g2">
+                    <div>
+                        <label>Compra mínima ($)</label>
+                        <input type="number" id="cup-min" placeholder="80.00" step="0.01" min="0">
+                    </div>
+                    <div>
+                        <label>Descuento a aplicar ($)</label>
+                        <input type="number" id="cup-desc-min" placeholder="10.00" step="0.01" min="0">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Categorías (para porcentaje por categoría) -->
+            <div id="sec-cats" style="display:none;margin-top:12px;">
+                <label>Aplica a categorías</label>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+                    <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
+                        <input type="checkbox" class="cup-cat" value="AN"> Anillos</label>
+                    <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
+                        <input type="checkbox" class="cup-cat" value="AR"> Aretes</label>
+                    <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
+                        <input type="checkbox" class="cup-cat" value="CD"> Cadenas</label>
+                    <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
+                        <input type="checkbox" class="cup-cat" value="PL"> Pulseras</label>
+                    <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
+                        <input type="checkbox" class="cup-cat" value="CN"> Conjuntos</label>
+                    <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
+                        <input type="checkbox" class="cup-cat" value="RL"> Relojes</label>
+                    <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
+                        <input type="checkbox" class="cup-cat" value="OT"> Otros</label>
+                </div>
+            </div>
+
+            <!-- Límite de usos -->
+            <div style="margin-top:12px;">
+                <label>Límite de usos (0 = ilimitado)</label>
+                <input type="number" id="cup-limite" placeholder="0" min="0" value="0">
+            </div>
+
+            <!-- Preview del cupón -->
+            <div id="cup-preview" style="display:none;background:#e1f5fe;border:1px dashed var(--azul);
+                 border-radius:8px;padding:11px 14px;margin-top:14px;font-size:13px;color:#0277bd;">
+            </div>
+
+            <button class="btn bv bfull" onclick="crearCupon()">Crear Cupón</button>
+        </div>
+    </div>
+</div>
+
+<!-- TAB 6: VENDEDORES / CONSIGNACIÓN -->
+<div class="tab-content" id="tab-6">
+    <div class="card">
+        <h2>👤 Vendedores — Ventas por Consignación</h2>
+        <div id="vend-loading" style="color:#888;font-size:13px;padding:10px 0;">⏳ Cargando...</div>
+        <div id="vend-lista"></div>
+    </div>
+</div>
+
+<!-- MODAL VENTAS VENDEDOR -->
+<div class="mo" id="modal-ventas-vend">
+    <div class="mb" style="max-width:660px;">
+        <button class="mc" onclick="cerrarModalVentas()">✕</button>
+        <h3 id="mv-titulo">Ventas del Vendedor</h3>
+        <div id="mv-stats" style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;"></div>
+        <div class="sb">
+            <input type="text" id="mv-buscar" placeholder="Buscar producto..." oninput="filtrarVentasModal()">
+        </div>
+        <div class="tw">
+            <table>
+                <thead><tr>
+                    <th>Foto</th><th>Código</th><th>Producto</th>
+                    <th>Precio</th><th>Entregado</th><th>Vendido</th><th>Disponible</th>
+                </tr></thead>
+                <tbody id="mv-tbody"></tbody>
+            </table>
+        </div>
+        <p id="mv-vacio" style="display:none;color:#aaa;font-size:13px;text-align:center;padding:20px;">Sin ventas registradas.</p>
+    </div>
+</div>
+
+<!-- MODAL EDITAR PRODUCTO -->
+<div class="mo" id="modal-edit">
+    <div class="mb">
+        <button class="mc" onclick="cerrarModal()">✕</button>
+        <h3>✏️ Editar Producto</h3>
+        <input type="hidden" id="ed-cod">
+        <input type="hidden" id="ed-es-anillo">
+        <label>Nombre</label><input type="text" id="ed-nom">
+        <label>Precio ($)</label><input type="number" id="ed-prec" step="0.01">
+        <label>URL Imagen</label><input type="text" id="ed-img">
+
+        <!-- Tallas visuales (solo anillos) -->
+        <div id="ed-sec-tallas" style="display:none;margin-top:12px;">
+            <!-- Simple -->
+            <div id="ed-sec-simple" style="background:var(--gris);padding:13px;border-radius:10px;border:2px solid var(--azul);">
+                <label style="color:var(--azul);margin:0 0 8px;font-size:12px;">📊 STOCK POR TALLAS (5–14)</label>
+                <div class="gt" style="margin-top:8px;">
+                    <div class="ti">T5  <input type="number" class="ed-ts" data-t="5"  value="0" min="0"></div>
+                    <div class="ti">T6  <input type="number" class="ed-ts" data-t="6"  value="0" min="0"></div>
+                    <div class="ti">T7  <input type="number" class="ed-ts" data-t="7"  value="0" min="0"></div>
+                    <div class="ti">T8  <input type="number" class="ed-ts" data-t="8"  value="0" min="0"></div>
+                    <div class="ti">T9  <input type="number" class="ed-ts" data-t="9"  value="0" min="0"></div>
+                    <div class="ti">T10 <input type="number" class="ed-ts" data-t="10" value="0" min="0"></div>
+                    <div class="ti">T11 <input type="number" class="ed-ts" data-t="11" value="0" min="0"></div>
+                    <div class="ti">T12 <input type="number" class="ed-ts" data-t="12" value="0" min="0"></div>
+                    <div class="ti">T13 <input type="number" class="ed-ts" data-t="13" value="0" min="0"></div>
+                    <div class="ti">T14 <input type="number" class="ed-ts" data-t="14" value="0" min="0"></div>
+                </div>
+            </div>
+            <!-- Pareja -->
+            <div id="ed-sec-pareja" style="display:none;">
+                <div style="background:#fdf2f8;padding:13px;border-radius:10px;border:2px solid #d4537e;margin-bottom:10px;">
+                    <label style="color:#d4537e;margin:0 0 8px;font-size:12px;">👩 TALLAS DAMA</label>
+                    <div class="gt" style="margin-top:8px;">
+                        <div class="ti" style="color:#d4537e;">T5 <input type="number" class="ed-ts-d" data-t="D5"  value="0" min="0"></div>
+                        <div class="ti" style="color:#d4537e;">T6 <input type="number" class="ed-ts-d" data-t="D6"  value="0" min="0"></div>
+                        <div class="ti" style="color:#d4537e;">T7 <input type="number" class="ed-ts-d" data-t="D7"  value="0" min="0"></div>
+                        <div class="ti" style="color:#d4537e;">T8 <input type="number" class="ed-ts-d" data-t="D8"  value="0" min="0"></div>
+                        <div class="ti" style="color:#d4537e;">T9 <input type="number" class="ed-ts-d" data-t="D9"  value="0" min="0"></div>
+                        <div class="ti" style="color:#d4537e;">T10<input type="number" class="ed-ts-d" data-t="D10" value="0" min="0"></div>
+                        <div class="ti" style="color:#d4537e;">T11<input type="number" class="ed-ts-d" data-t="D11" value="0" min="0"></div>
+                        <div class="ti" style="color:#d4537e;">T12<input type="number" class="ed-ts-d" data-t="D12" value="0" min="0"></div>
+                        <div class="ti" style="color:#d4537e;">T13<input type="number" class="ed-ts-d" data-t="D13" value="0" min="0"></div>
+                        <div class="ti" style="color:#d4537e;">T14<input type="number" class="ed-ts-d" data-t="D14" value="0" min="0"></div>
+                    </div>
+                </div>
+                <div style="background:#eff6ff;padding:13px;border-radius:10px;border:2px solid #185fa5;">
+                    <label style="color:#185fa5;margin:0 0 8px;font-size:12px;">👨 TALLAS CABALLERO</label>
+                    <div class="gt" style="margin-top:8px;">
+                        <div class="ti" style="color:#185fa5;">T5 <input type="number" class="ed-ts-h" data-t="H5"  value="0" min="0"></div>
+                        <div class="ti" style="color:#185fa5;">T6 <input type="number" class="ed-ts-h" data-t="H6"  value="0" min="0"></div>
+                        <div class="ti" style="color:#185fa5;">T7 <input type="number" class="ed-ts-h" data-t="H7"  value="0" min="0"></div>
+                        <div class="ti" style="color:#185fa5;">T8 <input type="number" class="ed-ts-h" data-t="H8"  value="0" min="0"></div>
+                        <div class="ti" style="color:#185fa5;">T9 <input type="number" class="ed-ts-h" data-t="H9"  value="0" min="0"></div>
+                        <div class="ti" style="color:#185fa5;">T10<input type="number" class="ed-ts-h" data-t="H10" value="0" min="0"></div>
+                        <div class="ti" style="color:#185fa5;">T11<input type="number" class="ed-ts-h" data-t="H11" value="0" min="0"></div>
+                        <div class="ti" style="color:#185fa5;">T12<input type="number" class="ed-ts-h" data-t="H12" value="0" min="0"></div>
+                        <div class="ti" style="color:#185fa5;">T13<input type="number" class="ed-ts-h" data-t="H13" value="0" min="0"></div>
+                        <div class="ti" style="color:#185fa5;">T14<input type="number" class="ed-ts-h" data-t="H14" value="0" min="0"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:16px;">
+            <button class="btn bp" style="flex:1;" onclick="guardarEdicion()">💾 Guardar</button>
+            <button class="btn br" style="flex:1;" onclick="desactivarProducto()">🗑️ Desactivar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Guía C807 -->
+<div id="modal-c807" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10000;justify-content:center;align-items:center;padding:20px;">
+    <div style="background:#fff;border-radius:16px;padding:24px;max-width:420px;width:100%;max-height:90vh;overflow-y:auto;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 style="margin:0;font-size:16px;">📋 Datos para Guía C807</h3>
+            <button onclick="document.getElementById('modal-c807').style.display='none'"
+                style="background:none;border:none;font-size:20px;cursor:pointer;">✕</button>
+        </div>
+        <div id="c807-contenido"></div>
+        <button onclick="copiarTodoC807()"
+            style="width:100%;padding:12px;background:#00875A;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;margin-top:16px;">
+            📋 Copiar Todo
+        </button>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═════════════════════════════════════════════
+//  CONFIG
+// ═════════════════════════════════════════════
+const API_URL    = "https://verex-api.verexstore.workers.dev/";
+const SECRET_KEY = ""; // Moved to Worker
+const ADMIN_PASS = "verex2026";
+
+let cfg = {
+    tiendaActiva: true,
+    reglasEnvio: [{ min:0, max:49.99, costo:2 }, { min:50, max:9999, costo:0 }]
+};
+let productos=[], pedidos=[], cupones=[];
+let notifLeidas = new Set(JSON.parse(localStorage.getItem("vx_notif")||"[]"));
+
+// ═════════════════════════════════════════════
+//  AUTH
+// ═════════════════════════════════════════════
+function login() {
+    if (document.getElementById("in-pass").value === ADMIN_PASS) {
+        sessionStorage.setItem("vxa","1");
+        document.getElementById("login-screen").style.display = "none";
+        document.getElementById("panel").style.display = "block";
+        init();
+    } else {
+        document.getElementById("login-err").style.display = "block";
+        document.getElementById("in-pass").value = "";
+    }
+}
+function logout() { sessionStorage.clear(); location.reload(); }
+if (sessionStorage.getItem("vxa")==="1") {
+    document.getElementById("login-screen").style.display = "none";
+    document.getElementById("panel").style.display = "block";
+}
+
+// ═════════════════════════════════════════════
+//  TABS
+// ═════════════════════════════════════════════
+function tab(i) {
+    document.querySelectorAll(".tab").forEach(t => {
+        const match = t.getAttribute("onclick")?.match(/tab\((\d+)\)/);
+        if (match) t.classList.toggle("active", parseInt(match[1]) === i);
+    });
+    document.querySelectorAll(".tab-content").forEach(c => {
+        const id = parseInt(c.id.replace("tab-",""));
+        c.classList.toggle("active", i === id);
+    });
+}
+
+// ═════════════════════════════════════════════
+//  TOAST
+// ═════════════════════════════════════════════
+function toast(msg, bg) {
+    const t = document.getElementById("toast");
+    t.textContent=msg; t.style.background=bg||"#111";
+    t.classList.add("show");
+    setTimeout(()=>t.classList.remove("show"),3200);
+}
+
+// ═════════════════════════════════════════════
+//  INIT + POLLING
+// ═════════════════════════════════════════════
+async function init() {
+    const saved = localStorage.getItem("vx_cfg");
+    if (saved) cfg = JSON.parse(saved);
+    renderEstado(); renderEnvio(); actualizarNombre();
+    await cargarDatos();
+    setInterval(()=>cargarDatos(true), 45000);
+}
+
+async function cargarDatos(silencioso=false) {
+    try {
+        const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_TIENDA", _pass: ADMIN_PASS }) });
+        const data = await res.json();
+        productos = data.productos || [];
+        pedidos   = (data.pedidos || []).reverse();
+        cupones   = data.cupones  || [];
+        clientes  = data.clientes || [];
+        if (data.config) {
+            if (data.config.tiendaActiva !== undefined) cfg.tiendaActiva  = data.config.tiendaActiva;
+            if (data.config.reglasEnvio  !== undefined) cfg.reglasEnvio   = data.config.reglasEnvio;
+            localStorage.setItem("vx_cfg", JSON.stringify(cfg));
+        }
+        renderAll(silencioso);
+    } catch(e) {
+        if (!silencioso) toast("⚠️ Error conectando con la API","#ef4444");
+    }
+}
+
+function renderAll(sil=false) {
+    renderStats(); renderChart(); renderTop();
+    renderPedidos(); renderProductos(); renderCupones(); renderClientes();
+    renderEnvio(); renderEstado(); actualizarNotif(sil); renderBannerAdmin(); renderCarruselAdmin();
+}
+
+// ═════════════════════════════════════════════
+//  DASHBOARD
+// ═════════════════════════════════════════════
+function renderEstado() {
+    document.getElementById("tog-tienda").checked = cfg.tiendaActiva;
+    document.getElementById("estado-info").innerHTML = cfg.tiendaActiva
+        ? `<span class="badge bv2">✅ ABIERTA</span> <span style="margin-left:7px;">Clientes pueden ver y comprar.</span>`
+        : `<span class="badge br2">🔴 CERRADA</span> <span style="margin-left:7px;">Catálogo oculto para clientes.</span>`;
+}
+
+function renderStats() {
+    document.getElementById("s-prod").textContent = productos.length;
+    document.getElementById("s-ped").textContent  = pedidos.length;
+    document.getElementById("s-cup").textContent  = cupones.filter(c=>c.activo).length;
+    const hoy = new Date();
+    const ing = pedidos
+        .filter(p=>{ const f=new Date(p.fecha); return f.getMonth()===hoy.getMonth()&&f.getFullYear()===hoy.getFullYear(); })
+        .reduce((s,p)=>s+(parseFloat(String(p.total).replace(/[^0-9.]/g,""))||0),0);
+    document.getElementById("s-mes").textContent = `$${ing.toFixed(0)}`;
+}
+
+function renderChart() {
+    const cont = document.getElementById("chart"); cont.innerHTML="";
+    const hoy  = new Date();
+    const sem  = Array.from({length:8},(_,i)=>{
+        const ini = new Date(hoy); ini.setDate(hoy.getDate()-i*7);
+        const fin = new Date(hoy); fin.setDate(hoy.getDate()-(i-1)*7);
+        return { lbl:`S${8-i}`, n: pedidos.filter(p=>{ const f=new Date(p.fecha); return f>=ini&&f<fin; }).length };
+    }).reverse();
+    const mx = Math.max(...sem.map(s=>s.n),1);
+    sem.forEach(s=>{ cont.innerHTML+=`<div class="bw"><span class="bval">${s.n}</span><div class="bar" style="height:${Math.max(s.n/mx*100,3)}%"></div><span class="blbl">${s.lbl}</span></div>`; });
+}
+
+function renderTop() {
+    const cont = document.getElementById("top-prod");
+    const cnt  = {};
+    pedidos.forEach(p=>String(p.productos||"").split(",").forEach(i=>{
+        const n=i.trim().split("(")[0].trim(); if(n) cnt[n]=(cnt[n]||0)+1;
+    }));
+    const top = Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    cont.innerHTML = top.length ? top.map(([n,v],i)=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--borde);">
+            <span style="font-size:17px;font-weight:800;color:var(--azul);min-width:22px;">${i+1}</span>
+            <span style="flex:1;font-size:13px;">${n}</span>
+            <span class="badge baz2">${v} pedido${v>1?'s':''}</span>
+        </div>`).join('')
+    : '<p style="color:#aaa;font-size:13px;">Sin datos aún.</p>';
+}
+
+// ═════════════════════════════════════════════
+//  PEDIDOS
+// ═════════════════════════════════════════════
+const EST_COLOR = { "Pendiente":"bam2","En camino":"baz2","Entregado":"bv2","Cancelado":"br2" };
+
+function filtrarPorPeriodo(lista) {
+    const periodo = document.getElementById("fil-periodo").value;
+
+    // Fecha local de hoy sin hora (usando hora local, no UTC)
+    const ahora = new Date();
+    const hoy   = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+
+    // Mostrar/ocultar rango personalizado
+    document.getElementById("rango-custom").style.display =
+        periodo === "custom" ? "flex" : "none";
+
+    return lista.filter(p => {
+        if (!p.fecha) return true;
+        // Convertir fecha a hora local (corrige el desfase UTC)
+        const raw = new Date(p.fecha);
+        const f   = new Date(raw.getFullYear(), raw.getMonth(), raw.getDate());
+        if (periodo === "hoy")   return f.getTime() === hoy.getTime();
+        if (periodo === "semana") {
+            const ini = new Date(hoy); ini.setDate(hoy.getDate() - hoy.getDay());
+            return f >= ini && f <= hoy;
+        }
+        if (periodo === "mes")
+            return f.getMonth()===hoy.getMonth() && f.getFullYear()===hoy.getFullYear();
+        if (periodo === "custom") {
+            const desde = document.getElementById("fecha-desde").value;
+            const hasta = document.getElementById("fecha-hasta").value;
+            if (desde && f < new Date(desde)) return false;
+            if (hasta && f > new Date(hasta + "T23:59:59")) return false;
+        }
+        return true;
+    });
+}
+
+function renderPedidos() {
+    const busq = document.getElementById("bus-ped").value.toLowerCase();
+    const fil  = document.getElementById("fil-estado").value;
+    const tb   = document.getElementById("tb-ped");
+
+    let list = pedidos.filter(p =>
+        (!busq || (p.cliente||"").toLowerCase().includes(busq) ||
+                  (p.productos||"").toLowerCase().includes(busq) ||
+                  (p.numeroPedido||"").toLowerCase().includes(busq)) &&
+        (!fil  || p.estado === fil)
+    );
+    list = filtrarPorPeriodo(list);
+
+    // Resumen
+    const ingresos = list.reduce((s,p) => s + (parseFloat(String(p.total).replace(/[^0-9.]/g,""))||0), 0);
+    document.getElementById("resumen-pedidos").innerHTML =
+        `<b>${list.length}</b> pedido${list.length!==1?"s":""} · Total: <b style="color:var(--verde)">$${ingresos.toFixed(2)}</b>`;
+
+    if (!list.length) {
+        tb.innerHTML=`<tr><td colspan="10" style="text-align:center;color:#aaa;padding:18px;">Sin resultados</td></tr>`;
+        return;
+    }
+
+    tb.innerHTML = list.map((p,i) => {
+        const fecha = p.fecha ? new Date(p.fecha).toLocaleDateString("es-SV") : "—";
+        const tel   = String(p.telefono||"").replace(/\D/g,"");
+        const opts  = ["Pendiente","En camino","Entregado","Cancelado"]
+            .map(s=>`<option value="${s}" ${p.estado===s?"selected":""}>${s}</option>`).join('');
+        return `<tr>
+            <td style="color:#aaa;">${list.length-i}</td>
+            <td>
+                <span style="font-family:monospace;font-size:12px;color:var(--azul);font-weight:700;">${p.numeroPedido||"—"}</span>
+            </td>
+            <td style="white-space:nowrap;">${fecha}</td>
+            <td><b>${p.cliente||"—"}</b></td>
+            <td><a href="https://wa.me/${tel}" target="_blank"
+                   style="color:var(--verde);font-weight:600;text-decoration:none;">${p.telefono||"—"}</a></td>
+            <td>${p.municipio||"—"}</td>
+            <td style="font-size:12px;color:#555;max-width:160px;white-space:nowrap;
+                       overflow:hidden;text-overflow:ellipsis;">${p.productos||"—"}</td>
+            <td><b style="color:var(--verde)">${p.total||"—"}</b></td>
+            <td style="font-size:12px;">${p.metodoPago||"—"}</td>
+            <td><select class="es" onchange="cambiarEstado(this,'${p.cliente}','${p.fecha}')">${opts}</select></td>
+            <td style="white-space:nowrap;display:flex;gap:6px;padding:6px 4px;align-items:center;">
+                <button class="btn" style="background:#ef4444;color:#fff;padding:6px 12px;font-size:12px;font-weight:700;"
+                    onclick='generarPDFAdmin(${i},"${p.numeroPedido||""}")'>📄 PDF</button>
+                <button class="btn" style="background:#00875A;color:#fff;padding:6px 12px;font-size:12px;font-weight:700;"
+                    onclick='event.stopPropagation();mostrarGuiaC807("${p.numeroPedido||""}")'>📋 C807</button>
+                <button class="btn br" style="padding:6px 10px;font-size:12px;"
+                    onclick='eliminarPedido("${p.numeroPedido||""}")'>🗑️</button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    // ── TARJETAS MÓVIL ──────────────────────────────────────────────
+    const cards = document.getElementById("cards-ped");
+    cards.innerHTML = list.map((p,i) => {
+        const fecha = p.fecha ? new Date(p.fecha).toLocaleDateString("es-SV") : "—";
+        const tel   = String(p.telefono||"").replace(/\D/g,"");
+        const opts  = ["Pendiente","En camino","Entregado","Cancelado"]
+            .map(s=>`<option value="${s}" ${p.estado===s?"selected":""}>${s}</option>`).join('');
+        const estColor = {"Pendiente":"bam2","En camino":"baz2","Entregado":"bv2","Cancelado":"br2"};
+        return `<div class="ped-card">
+            <div class="ped-card-header">
+                <span class="ped-card-num">${p.numeroPedido||"—"}</span>
+                <span class="ped-card-fecha">${fecha}</span>
+            </div>
+            <div class="ped-card-body">
+                <span>👤 <b>${p.cliente||"—"}</b></span>
+                <span>📱 <a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-weight:600;text-decoration:none;">${p.telefono||"—"}</a></span>
+                <span>📍 ${p.municipio||"—"}</span>
+                <span>🛍️ ${p.productos||"—"}</span>
+                <span>💰 <b style="color:var(--verde)">${p.total||"—"}</b></span>
+                <span>💳 ${p.metodoPago||"—"}</span>
+            </div>
+            <div class="ped-card-footer">
+                <select class="es" onchange="cambiarEstado(this,'${p.cliente}','${p.fecha}')">${opts}</select>
+                <div style="display:flex;gap:6px;">
+                    <button class="btn" style="background:#ef4444;color:#fff;padding:6px 12px;font-size:12px;"
+                        onclick='generarPDFAdmin(${i},"${p.numeroPedido||""}")'>📄 PDF</button>
+                    <button class="btn" style="background:#00875A;color:#fff;padding:6px 12px;font-size:12px;"
+                        onclick='mostrarGuiaC807("${p.numeroPedido||""}")'>📋 C807</button>
+                    <button class="btn br" style="padding:6px 10px;font-size:12px;"
+                        onclick='eliminarPedido("${p.numeroPedido||""}")'>🗑️</button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ═════════════════════════════════════════════
+//  CLIENTES
+// ═════════════════════════════════════════════
+let clientes = [];
+
+function renderClientes() {
+    const busq = (document.getElementById("bus-cli")?.value || "").toLowerCase();
+    const list = clientes.filter(c =>
+        !busq ||
+        (c.nombre||"").toLowerCase().includes(busq) ||
+        (c.telefono||"").toString().includes(busq) ||
+        (c.codigo||"").toLowerCase().includes(busq)
+    );
+
+    document.getElementById("resumen-cli").textContent =
+        `${list.length} cliente${list.length !== 1 ? "s" : ""} registrado${list.length !== 1 ? "s" : ""}`;
+
+    // Tabla escritorio
+    const tb = document.getElementById("tb-cli");
+    if (tb) tb.innerHTML = list.map((c,i) => {
+        const tel   = String(c.telefono||"").replace(/\D/g,"");
+        const fecha = c.fechaRegistro ? new Date(c.fechaRegistro).toLocaleDateString("es-SV") : "—";
+        return `<tr>
+            <td><span style="font-family:monospace;font-weight:700;color:var(--azul);">${c.codigo||"—"}</span></td>
+            <td><b>${c.nombre||"—"}</b></td>
+            <td><a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-weight:600;text-decoration:none;">${c.telefono||"—"}</a></td>
+            <td>${c.municipio||"—"}</td>
+            <td style="text-align:center;"><b>${c.totalPedidos||0}</b></td>
+            <td style="font-size:12px;color:#888;">${fecha}</td>
+            <td><button class="btn" style="background:#111;color:#fff;padding:4px 10px;font-size:12px;"
+                onclick='generarCuponCliente("${c.codigo}","${c.nombre}","${c.telefono}")'>🎫 Generar</button></td>
+        </tr>`;
+    }).join('');
+
+    // Tarjetas móvil
+    const cards = document.getElementById("cards-cli");
+    if (cards) cards.innerHTML = list.map((c,i) => {
+        const tel   = String(c.telefono||"").replace(/\D/g,"");
+        const fecha = c.fechaRegistro ? new Date(c.fechaRegistro).toLocaleDateString("es-SV") : "—";
+        return `<div class="ped-card">
+            <div class="ped-card-header">
+                <span class="ped-card-num">${c.codigo||"—"}</span>
+                <span class="ped-card-fecha">${fecha}</span>
+            </div>
+            <div class="ped-card-body">
+                <span>👤 <b>${c.nombre||"—"}</b></span>
+                <span>📱 <a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-weight:600;text-decoration:none;">${c.telefono||"—"}</a></span>
+                <span>📍 ${c.municipio||"—"}</span>
+                <span>🛍️ <b>${c.totalPedidos||0}</b> pedidos</span>
+            </div>
+            <div class="ped-card-footer">
+                <button class="btn" style="background:#111;color:#fff;padding:6px 14px;font-size:13px;width:100%;"
+                    onclick='generarCuponCliente("${c.codigo}","${c.nombre}","${c.telefono}")'>🎫 Generar Cupón</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function generarCuponCliente(codigo, nombre, telefono) {
+    const descuento = prompt(`Descuento para ${nombre} (%):`, "10");
+    if (!descuento || isNaN(descuento)) return;
+    const codigoCupon = `${codigo}-${Math.random().toString(36).substr(2,4).toUpperCase()}`;
+    const datos = {
+        accion: "CREAR_CUPON", _pass: ADMIN_PASS,
+        codigo: codigoCupon, tipo: "porcentaje",
+        descuento: parseFloat(descuento), categorias: "",
+        montoMinimo: 0, limiteUsos: 1, activo: true,
+        codigoCliente: codigo
+    };
+    await fetch(API_URL, { method:'POST', mode:'no-cors', body: JSON.stringify(datos) });
+    const tel = String(telefono).replace(/\D/g,"");
+    const msg = "Hola " + nombre + "! Tienes un cupon exclusivo de VEREX: " + codigoCupon + " con " + descuento + "% de descuento. Valido para tu proxima compra!";
+    window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`);
+    toast(`✅ Cupón ${codigoCupon} generado y enviado`, "#22c55e");
+    cargarDatos();
+}
+
+// ═════════════════════════════════════════════
+//  PDF DE PEDIDO
+// ═════════════════════════════════════════════
+function generarPDFAdmin(idx, numeroPedido) {
+    // Reconstruir lista filtrada igual que renderPedidos
+    const busq = document.getElementById("bus-ped").value.toLowerCase();
+    const fil  = document.getElementById("fil-estado").value;
+    let list = pedidos.filter(p =>
+        (!busq || (p.cliente||"").toLowerCase().includes(busq) ||
+                  (p.productos||"").toLowerCase().includes(busq) ||
+                  (p.numeroPedido||"").toLowerCase().includes(busq)) &&
+        (!fil  || p.estado === fil)
+    );
+    list = filtrarPorPeriodo(list);
+    const p = list[idx];
+    if (!p) return toast("⚠️ Pedido no encontrado", "#ef4444");
+
+    // Parsear items desde el campo productos (texto) o items JSON si existe
+    let items = [];
+    try { items = typeof p.items === "string" ? JSON.parse(p.items) : (p.items || []); } catch(_) {}
+
+    // Si no hay items estructurados, construir uno genérico desde el texto
+    if (!items.length && p.productos) {
+        String(p.productos || "").split(",").forEach(prod => {
+            const match = prod.trim().match(/^(.+?)\s*\((.+?)\)$/);
+            items.push({
+                codigo:      p.numeroPedido || "—",
+                nombre:      match ? match[1].trim() : prod.trim(),
+                tallaElegida: match ? match[2].trim() : "",
+                precioNum:   0,
+            });
+        });
+    }
+
+    // Calcular valores financieros desde el total guardado
+    const totalStr  = String(p.total || "").replace(/[^0-9.]/g, "");
+    const totalNum  = parseFloat(totalStr) || 0;
+
+    const datos = {
+        nombre:       p.cliente    || "—",
+        tel:          p.telefono   || "—",
+        ubicacion:    p.municipio  || "—",
+        direccion:    p.direccion  || "—",
+        metodoPago:   p.metodoPago || "—",
+        numeroPedido: p.numeroPedido || numeroPedido || "—",
+        items,
+        cuponUsado:   p.cuponUsado || "",
+        descMonto:    p.descMonto  || 0,
+        envio:        p.envio      || 0,
+        totalFinal:   p.total      || `$${totalNum.toFixed(2)}`,
+    };
+
+    try {
+        const doc = generarPDF(datos);
+        doc.save(`Verex_${datos.numeroPedido.replace(/#/g,"")}.pdf`);
+        toast("📄 PDF generado correctamente", "#22c55e");
+    } catch(e) {
+        console.error(e);
+        toast("⚠️ Error generando PDF", "#ef4444");
+    }
+}
+
+function generarPDF(datos) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'in', format: [4, 6] });
+
+    const marginL = 0.35;
+    const pageW   = 4;
+    const marginR = pageW - marginL;
+    const tableW  = marginR - marginL;
+    const cellPad = 0.07;
+    const rowH    = 0.26;
+
+    const cols = [
+        { x: marginL, w: 0.72, label: "Código",      align: "left"  },
+        { x: 1.09,    w: 1.92, label: "Descripción", align: "left"  },
+        { x: 3.03,    w: 0.62, label: "Precio",      align: "right" },
+    ];
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.text("Nota de Pedido - VEREX STORE", pageW / 2, 0.45, { align: "center" });
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`N° Pedido: ${datos.numeroPedido || "—"}`, pageW / 2, 0.62, { align: "center" });
+    doc.setTextColor(0, 0, 0);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    let y = 0.90;
+    const lh = 0.175;
+    doc.text(`Cliente: ${datos.nombre}`,     marginL, y); y += lh;
+    doc.text(`Teléfono: ${datos.tel}`,        marginL, y); y += lh;
+    doc.text(`Ubicación: ${datos.ubicacion}`, marginL, y); y += lh;
+    doc.text(`Dirección: ${datos.direccion}`, marginL, y); y += lh;
+    if (datos.metodoPago) { doc.text(`Pago: ${datos.metodoPago}`, marginL, y); y += lh; }
+    y += 0.12;
+
+    function drawRow(rowY, height, fillRGB) {
+        if (fillRGB) { doc.setFillColor(...fillRGB); doc.rect(marginL, rowY, tableW, height, 'F'); }
+        doc.setDrawColor(190, 190, 190);
+        doc.setLineWidth(0.005);
+        doc.rect(marginL, rowY, tableW, height, 'S');
+        let cx = marginL;
+        cols.slice(0, -1).forEach(col => { cx += col.w; doc.line(cx, rowY, cx, rowY + height); });
+    }
+
+    function cellText(text, col, rowY, height, style) {
+        doc.setFont("helvetica", style || "normal");
+        const str = String(text);
+        if (col.align === "right") {
+            doc.setFontSize(8.5);
+            doc.text(str, col.x + col.w - cellPad, rowY + height / 2 + 0.032, { align: "right" });
+        } else {
+            const maxW = col.w - cellPad * 2;
+            doc.setFontSize(8.5);
+            let lines = doc.splitTextToSize(str, maxW);
+            if (lines.length > 1) { doc.setFontSize(7.5); lines = doc.splitTextToSize(str, maxW); }
+            if (lines.length === 1) {
+                doc.text(lines[0], col.x + cellPad, rowY + height / 2 + 0.032);
+            } else {
+                doc.text(lines[0], col.x + cellPad, rowY + height / 2 - 0.04);
+                doc.text(lines[1], col.x + cellPad, rowY + height / 2 + 0.10);
+            }
+        }
+        doc.setFontSize(8.5);
+    }
+
+    doc.setFontSize(8.5);
+    drawRow(y, rowH, null);
+    cols.forEach(col => cellText(col.label, col, y, rowH, "bold"));
+    y += rowH;
+
+    let subtotal = 0;
+    (datos.items || []).forEach(item => {
+        const talla = item.tallaElegida || item.talla || "";
+        const tallaEsUnica = talla === "Única" || talla === "";
+        const tallaCorta = tallaEsUnica ? "" : "T" + talla.replace(/[^0-9]/g, "");
+        const descripcion = tallaCorta ? `${item.nombre}  ${tallaCorta}` : item.nombre;
+        drawRow(y, rowH, null);
+        cellText(item.codigo,                     cols[0], y, rowH);
+        cellText(descripcion,                     cols[1], y, rowH);
+        cellText(`$${(item.precioNum||0).toFixed(2)}`, cols[2], y, rowH);
+        subtotal += (item.precioNum || 0);
+        y += rowH;
+    });
+
+    const cupon     = datos.cuponUsado || "";
+    const envio     = datos.envio ?? 0;
+    const descMonto = datos.descMonto ?? 0;
+    const total     = subtotal - descMonto + envio;
+
+    function totalRow(label, value, bold, bigger) {
+        const h = bigger ? rowH + 0.04 : rowH;
+        doc.setDrawColor(190, 190, 190);
+        doc.setLineWidth(0.005);
+        doc.rect(marginL, y, tableW, h, 'S');
+        const ty = y + h / 2 + (bigger ? 0.04 : 0.032);
+        doc.setFont("helvetica", bold ? "bold" : "normal");
+        doc.setFontSize(bigger ? 10 : 8.5);
+        doc.text(label, cols[2].x - cellPad, ty, { align: "right" });
+        doc.text(value, cols[2].x + cols[2].w - cellPad, ty, { align: "right" });
+        y += h;
+    }
+
+    totalRow("SUBTOTAL", `$${subtotal.toFixed(2)}`);
+    if (descMonto > 0) {
+        totalRow(cupon ? `DESC. (${cupon})` : `DESC.`, `-$${descMonto.toFixed(2)}`);
+    }
+    totalRow("ENVÍO", envio > 0 ? `$${envio.toFixed(2)}` : "GRATIS");
+    totalRow("TOTAL FINAL:", `$${total.toFixed(2)}`, true, true);
+
+    doc.setFont("times", "italic");
+    doc.setFontSize(8);
+    doc.setTextColor(120, 120, 120);
+    doc.text("Gracias por tu compra.", pageW / 2, 5.68, { align: "center" });
+    doc.text("El mundo es mejor cuando tu brillas.", pageW / 2, 5.81, { align: "center" });
+    doc.setTextColor(0, 0, 0);
+
+    return doc;
+}
+
+async function eliminarPedido(numeroPedido) {
+    if (!confirm(`⚠️ VEREX STORE\n\n¿Eliminar el pedido ${numeroPedido}?\nEsta acción no se puede deshacer.`)) return;
+    const idx = pedidos.findIndex(p => p.numeroPedido === numeroPedido);
+    if (idx >= 0) pedidos.splice(idx, 1);
+    renderPedidos();
+    await fetch(API_URL, { method:'POST', mode:'no-cors',
+        body: JSON.stringify({ accion:"ELIMINAR_PEDIDO", _pass:ADMIN_PASS, numeroPedido })
+    });
+    toast("🗑️ Pedido eliminado", "#ef4444");
+}
+
+// Municipios zona metropolitana de San Salvador
+const ZONA_METRO = [
+    "antiguo cuscatlán","apopa","ayutuxtepeque","ciudad delgado","cuscatancingo",
+    "ilopango","mejicanos","nejapa","san marcos","san martín","san martin",
+    "san salvador","santa tecla","santo tomás","santo tomas","soyapango","tonacatepeque"
+];
+
+function esZonaMetro(municipio) {
+    const m = (municipio || "").toLowerCase();
+    return ZONA_METRO.some(z => m.includes(z));
+}
+
+function mensajeWhatsApp(estado, p) {
+    const nombre = p.cliente || "cliente";
+    const numero = p.numeroPedido || "—";
+    const metro  = esZonaMetro(p.municipio);
+
+    if (estado === "En camino") {
+        const tiempo = metro
+            ? "Como estás cerca, lo tendrás en tus manos hoy o mañana."
+            : "En 1 a 2 días hábiles estará en tus manos.";
+        return "Hola " + nombre + ", tu pedido " + numero + " ya está en camino hacia ti! " + tiempo + " Gracias por elegir VEREX!";
+    }
+    if (estado === "Entregado") {
+        return "Hola " + nombre + ", tu pedido " + numero + " fue entregado con éxito. Esperamos que lo ames tanto como nosotros al hacerlo llegar hasta ti. Gracias por ser parte de VEREX!";
+    }
+    return null;
+}
+
+async function cambiarEstado(sel, cliente, fecha) {
+    const estado = sel.value;
+    const p = pedidos.find(p => p.cliente === cliente && String(p.fecha) === String(fecha));
+    if (p) p.estado = estado;
+
+    await fetch(API_URL, { method:'POST', mode:'no-cors',
+        body: JSON.stringify({ accion:"ACTUALIZAR_ESTADO_PEDIDO", _pass:ADMIN_PASS, cliente, fecha, estado })
+    });
+
+    // Enviar mensaje de WhatsApp si aplica
+    const msg = mensajeWhatsApp(estado, p);
+    if (msg && p) {
+        const tel = String(p.telefono || "").replace(/\D/g, "");
+        if (tel) window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`);
+    }
+
+    toast(`✅ Estado: ${estado}`);
+}
+
+// ═════════════════════════════════════════════
+//  NOTIFICACIONES
+// ═════════════════════════════════════════════
+function actualizarNotif(sil=false) {
+    const rec    = pedidos.slice(0,10);
+    const nuevos = rec.filter(p=>!notifLeidas.has(String(p.fecha)+p.cliente));
+    const badge  = document.getElementById("notif-badge");
+    if (nuevos.length) {
+        badge.textContent=nuevos.length; badge.style.display="flex";
+        if (sil) toast(`🔔 ${nuevos.length} pedido${nuevos.length>1?"s":""} nuevo${nuevos.length>1?"s":""}`, "#00BFFF");
+    } else badge.style.display="none";
+    document.getElementById("notif-lista").innerHTML = rec.length
+        ? rec.map(p=>`<div class="notif-item ${!notifLeidas.has(String(p.fecha)+p.cliente)?"nueva":""}" onclick="irPedido('${p.cliente}')">
+                <b>${p.cliente||"—"}</b> — ${p.total||""}
+                <div class="nt">${p.fecha?new Date(p.fecha).toLocaleString("es-SV"):""} · ${p.municipio||""}</div>
+            </div>`).join('')
+        : '<p style="padding:14px;color:#aaa;font-size:13px;">Sin pedidos aún.</p>';
+}
+
+function toggleNotif() { document.getElementById("notif-panel").classList.toggle("open"); }
+
+function marcarLeidos() {
+    pedidos.slice(0,10).forEach(p=>notifLeidas.add(String(p.fecha)+p.cliente));
+    localStorage.setItem("vx_notif",JSON.stringify([...notifLeidas]));
+    actualizarNotif(); document.getElementById("notif-panel").classList.remove("open");
+}
+
+function irPedido(cliente) {
+    tab(1); document.getElementById("bus-ped").value=cliente; renderPedidos();
+    document.getElementById("notif-panel").classList.remove("open");
+}
+
+document.addEventListener("click", e=>{
+    if (!e.target.closest("#notif-panel")&&!e.target.closest("#notif-btn"))
+        document.getElementById("notif-panel").classList.remove("open");
+});
+
+// ═════════════════════════════════════════════
+//  PRODUCTOS
+// ═════════════════════════════════════════════
+function renderProductos() {
+    const busq = document.getElementById("bus-prod").value.toLowerCase();
+    const cont = document.getElementById("lista-prod");
+    const list = productos.filter(p=>!busq||(p.nombre||"").toLowerCase().includes(busq)||(p.codigo||"").toLowerCase().includes(busq));
+    if (!list.length) { cont.innerHTML='<p style="color:#aaa;font-size:13px;">Sin productos.</p>'; return; }
+    cont.innerHTML = list.map(p=>{
+        let stock="";
+        try { const s=JSON.parse(p.caracteristicas||"{}"); const t=Object.values(s).reduce((a,b)=>a+Number(b),0); stock=t>0?`Stock: ${t}`:`<span style="color:var(--rojo)">Agotado</span>`; }
+        catch(_){ stock="Sin tallas"; }
+        const dest = p.destacado===true||p.destacado==="TRUE";
+        return `<div class="pc">
+            <img src="${p.img||''}" alt="" onerror="this.style.display='none'">
+            <div class="pi">
+                <div class="pn">${p.nombre||"—"} ${dest?'<span class="badge bam2">⭐ Destacado</span>':''}</div>
+                <div class="pd">Ref: ${p.codigo||"—"} · $${parseFloat(p.precio||0).toFixed(2)} · ${stock}</div>
+            </div>
+            <div class="pa">
+                <button class="btn bg" onclick='abrirEditar(${JSON.stringify(p)})'>✏️</button>
+                <button class="btn ${dest?'bam':'bg'}" onclick="toggleDest('${p.codigo}',${!dest})" title="${dest?'Quitar':'Marcar'} destacado">⭐</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function abrirEditar(p) {
+    document.getElementById("ed-cod").value  = p.codigo;
+    document.getElementById("ed-nom").value  = p.nombre;
+    document.getElementById("ed-prec").value = p.precio;
+    document.getElementById("ed-img").value  = p.img;
+
+    // Mostrar tallas solo para anillos
+    const esAnillo = (p.codigo || "").startsWith("AN-");
+    const secTallas = document.getElementById("ed-sec-tallas");
+    secTallas.style.display = esAnillo ? "block" : "none";
+    document.getElementById("ed-es-anillo").value = esAnillo ? "1" : "0";
+
+    // Rellenar inputs de tallas con stock actual
+    if (esAnillo) {
+        let stocks = {};
+        try { stocks = JSON.parse(p.caracteristicas || "{}"); } catch(_) {}
+        // Detectar si es pareja por claves D* o H*
+        const esPareja = Object.keys(stocks).some(k => k.startsWith("D") || k.startsWith("H"));
+        document.getElementById("ed-sec-simple").style.display = esPareja ? "none"  : "block";
+        document.getElementById("ed-sec-pareja").style.display = esPareja ? "block" : "none";
+        document.getElementById("ed-es-anillo").value = esPareja ? "pareja" : "1";
+        if (esPareja) {
+            document.querySelectorAll(".ed-ts-d").forEach(i => { i.value = stocks[i.dataset.t] || 0; });
+            document.querySelectorAll(".ed-ts-h").forEach(i => { i.value = stocks[i.dataset.t] || 0; });
+        } else {
+            document.querySelectorAll(".ed-ts").forEach(i => { i.value = stocks[i.dataset.t] || 0; });
+        }
+    }
+
+    document.getElementById("modal-edit").classList.add("open");
+}
+function cerrarModal() { document.getElementById("modal-edit").classList.remove("open"); }
+
+async function guardarEdicion() {
+    // Leer stock desde inputs visuales si es anillo
+    let caracteristicas = undefined;
+    const edTipo = document.getElementById("ed-es-anillo").value;
+    if (edTipo === "1" || edTipo === "pareja") {
+        const stocks = {};
+        if (edTipo === "pareja") {
+            document.querySelectorAll(".ed-ts-d").forEach(i => { const v=parseInt(i.value); if(v>0) stocks[i.dataset.t]=v; });
+            document.querySelectorAll(".ed-ts-h").forEach(i => { const v=parseInt(i.value); if(v>0) stocks[i.dataset.t]=v; });
+        } else {
+            document.querySelectorAll(".ed-ts").forEach(inp => { const v=parseInt(inp.value); if(v>0) stocks[inp.dataset.t]=v; });
+        }
+        caracteristicas = JSON.stringify(stocks);
+    }
+
+    const datos = {
+        accion: "EDITAR_PRODUCTO", _pass: ADMIN_PASS,
+        codigo: document.getElementById("ed-cod").value,
+        nombre: document.getElementById("ed-nom").value,
+        precio: document.getElementById("ed-prec").value,
+        img:    document.getElementById("ed-img").value,
+        ...(caracteristicas !== undefined && { caracteristicas }),
+    };
+    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify(datos)});
+    cerrarModal(); toast("✅ Producto actualizado","#22c55e");
+    await cargarDatos(true);
+}
+
+async function desactivarProducto() {
+    const cod=document.getElementById("ed-cod").value;
+    if (!confirm(`¿Desactivar ${cod}?`)) return;
+    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ELIMINAR_PRODUCTO",_pass:ADMIN_PASS,codigo:cod})});
+    cerrarModal(); toast("🗑️ Producto desactivado");
+    await cargarDatos(true);
+}
+
+async function toggleDest(codigo, destacado) {
+    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"EDITAR_PRODUCTO",_pass:ADMIN_PASS,codigo,destacado})});
+    toast(destacado?"⭐ Marcado como destacado":"Quitado de destacados");
+    await cargarDatos(true);
+}
+
+// Nuevo producto
+function togglePareja() {
+    const esPareja = document.getElementById("chk-pareja").checked;
+    document.getElementById("sec-talla-simple").style.display = esPareja ? "none" : "block";
+    document.getElementById("sec-talla-pareja").style.display = esPareja ? "block" : "none";
+}
+
+function actualizarNombre() {
+    const t=document.getElementById("sel-tipo"); if(!t) return;
+    const pref = t.value;
+    const tipo = t.options[t.selectedIndex].text.split(" ")[0]; // "Anillo", "Aretes", etc.
+    const mat  = document.getElementById("sel-mat").value;
+    const det  = (document.getElementById("in-det")||{}).value.trim()||"";
+    // Nombre: Tipo + Característica + Material  (ej: "Anillo Mariposa Plata Fina 925")
+    const partes = [tipo, det, mat].filter(Boolean);
+    document.getElementById("out-nom").textContent = partes.join(" ");
+    // Código único por tipo (regenera si cambia el tipo)
+    if (!window._c || !window._c.startsWith(pref+"-"))
+        window._c = `${pref}-${Math.floor(1000+Math.random()*9000)}`;
+    document.getElementById("out-cod").textContent = window._c;
+    // Tallas solo para Anillos
+    document.getElementById("sec-tallas").style.display = pref==="AN" ? "block" : "none";
+}
+
+async function publicarProducto() {
+    const nombre=document.getElementById("out-nom").textContent;
+    const precio=document.getElementById("in-prec").value;
+    const img=document.getElementById("in-img").value.trim();
+    const codigo=document.getElementById("out-cod").textContent;
+    if (!precio||!img) return toast("⚠️ Falta precio o imagen","#f97316");
+    const esPareja = document.getElementById("chk-pareja")?.checked;
+    const stocks = {};
+    if (esPareja) {
+        // Guardar tallas dama (D5-D14) y caballero (H5-H14)
+        document.querySelectorAll(".ts-d").forEach(i => { const v=parseInt(i.value); if(v>0) stocks[i.dataset.t]=v; });
+        document.querySelectorAll(".ts-h").forEach(i => { const v=parseInt(i.value); if(v>0) stocks[i.dataset.t]=v; });
+    } else {
+        document.querySelectorAll(".ts").forEach(i => { const v=parseInt(i.value); if(v>0) stocks[i.dataset.t]=v; });
+    }
+    const btn=document.querySelector("#tab-2 .bfull");
+    btn.textContent="Publicando..."; btn.disabled=true;
+    try {
+        await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"CREAR_PRODUCTO",_pass:ADMIN_PASS,nombre,precio,img,codigo,caracteristicas:JSON.stringify(stocks)})});
+        toast("✅ Producto publicado","#22c55e");
+        document.getElementById("in-prec").value=document.getElementById("in-img").value=document.getElementById("in-det").value="";
+        document.querySelectorAll(".ts").forEach(i=>i.value=0);
+        window._c=null;
+        const chkP = document.getElementById("chk-pareja");
+        if (chkP) { chkP.checked=false; togglePareja(); }
+        actualizarNombre();
+        await cargarDatos(true);
+    } catch(e){ toast("❌ Error de conexión","#ef4444"); }
+    finally { btn.textContent="Publicar Joya en Catálogo"; btn.disabled=false; }
+}
+
+// ═════════════════════════════════════════════
+//  ENVÍO
+// ═════════════════════════════════════════════
+function renderEnvio() {
+    const cont=document.getElementById("lista-envio"); cont.innerHTML="";
+    if (!cfg.reglasEnvio.length) { cont.innerHTML='<p style="color:#aaa;font-size:13px;">Sin reglas configuradas.</p>'; return; }
+    cfg.reglasEnvio.forEach((r,i)=>{
+        const mx=r.max>=9999?"en adelante":`$${parseFloat(r.max).toFixed(2)}`;
+        const cs=r.costo===0?'<b style="color:var(--verde)">GRATIS</b>':`<b>$${parseFloat(r.costo).toFixed(2)}</b>`;
+        cont.innerHTML+=`<div class="er"><span>💰 $${parseFloat(r.min).toFixed(2)} → ${mx} · Envío: ${cs}</span>
+            <button class="btn br" style="padding:5px 11px;font-size:12px;" onclick="eliminarEnvio(${i})">Eliminar</button></div>`;
+    });
+}
+
+function agregarEnvio() {
+    const min=parseFloat(document.getElementById("env-min").value);
+    const max=parseFloat(document.getElementById("env-max").value)||9999;
+    const cos=parseFloat(document.getElementById("env-cos").value);
+    if (isNaN(min)||isNaN(cos)) return toast("⚠️ Completa los campos","#f97316");
+    cfg.reglasEnvio.push({min,max,costo:cos});
+    cfg.reglasEnvio.sort((a,b)=>a.min-b.min);
+    saveConfig(); renderEnvio();
+    document.getElementById("env-min").value=document.getElementById("env-max").value=document.getElementById("env-cos").value="";
+    toast("✅ Regla agregada","#22c55e");
+}
+
+function eliminarEnvio(i) {
+    cfg.reglasEnvio.splice(i,1); saveConfig(); renderEnvio(); toast("🗑️ Regla eliminada");
+}
+
+// ═════════════════════════════════════════════
+//  CUPONES
+// ═════════════════════════════════════════════
+const TIPO_LABEL = {
+    porcentaje_total:    "% Tienda",
+    porcentaje_categoria:"% Categoría",
+    segundo_mitad:       "2do mitad precio",
+    monto_minimo:        "Monto mínimo",
+    envio_gratis:        "Envío gratis",
+    descuento_fijo:      "$ Fijo",
+};
+
+function descCuponLabel(cup) {
+    switch(cup.tipo) {
+        case "porcentaje_total":
+        case "porcentaje_categoria": return `-${cup.descuento}%`;
+        case "segundo_mitad":        return "2do -50%";
+        case "monto_minimo":         return `-$${parseFloat(cup.descuentoFijo||cup.descuento||0).toFixed(2)}`;
+        case "envio_gratis":         return "Envío gratis";
+        case "descuento_fijo":       return `-$${parseFloat(cup.descuentoFijo||cup.descuento||0).toFixed(2)}`;
+        default: return `${cup.descuento||0}%`;
+    }
+}
+
+function renderCupones() {
+    const cont=document.getElementById("lista-cup"); cont.innerHTML="";
+    if (!cupones.length) { cont.innerHTML='<p style="color:#aaa;font-size:13px;">Sin cupones registrados.</p>'; return; }
+    cupones.forEach((cup,i)=>{
+        const tipo  = TIPO_LABEL[cup.tipo] || cup.tipo || "General";
+        const desc  = descCuponLabel(cup);
+        const cats  = cup.categorias ? ` · ${cup.categorias}` : "";
+        const usos  = cup.limiteUsos > 0 ? ` · ${cup.usosActuales||0}/${cup.limiteUsos} usos` : "";
+        cont.innerHTML+=`<div class="cr">
+            <span class="cc">${cup.codigo}</span>
+            <span style="font-size:11px;background:#e1f5fe;color:#0277bd;padding:3px 8px;border-radius:20px;font-weight:600;">${tipo}</span>
+            <span class="cd">${desc}</span>
+            <span class="cf" style="font-size:12px;color:#888;">${cats}${usos}</span>
+            <span class="cf"><span class="badge ${cup.activo?"bv2":"br2"}">${cup.activo?"Activo":"Inactivo"}</span></span>
+            <button class="btn ${cup.activo?"bn":"bv"}" style="padding:5px 11px;font-size:12px;" onclick="toggleCupon(${i})">${cup.activo?"Desactivar":"Activar"}</button>
+            <button class="btn br" style="padding:5px 11px;font-size:12px;" onclick="eliminarCupon(${i})">Eliminar</button>
+        </div>`;
+    });
+}
+
+function cambiarTipoCupon() {
+    const tipo = document.getElementById("cup-tipo").value;
+    document.getElementById("sec-porc").style.display      = ["porcentaje_total","porcentaje_categoria"].includes(tipo) ? "block" : "none";
+    document.getElementById("sec-fijo").style.display      = tipo === "descuento_fijo" ? "block" : "none";
+    document.getElementById("sec-monto-min").style.display = tipo === "monto_minimo" ? "block" : "none";
+    document.getElementById("sec-cats").style.display      = ["porcentaje_categoria","segundo_mitad"].includes(tipo) ? "block" : "none";
+    actualizarPreviewCupon();
+}
+
+function actualizarPreviewCupon() {
+    const tipo = document.getElementById("cup-tipo").value;
+    const cod  = document.getElementById("cup-cod").value.trim().toUpperCase() || "CODIGO";
+    const prev = document.getElementById("cup-preview");
+    let texto  = "";
+    switch(tipo) {
+        case "porcentaje_total": {
+            const d = document.getElementById("cup-desc").value || "X";
+            texto = `Cupón <b>${cod}</b>: ${d}% de descuento en toda la tienda.`; break; }
+        case "porcentaje_categoria": {
+            const d    = document.getElementById("cup-desc").value || "X";
+            const cats = [...document.querySelectorAll(".cup-cat:checked")].map(x=>x.value).join(", ") || "ninguna";
+            texto = `Cupón <b>${cod}</b>: ${d}% de descuento en categorías: ${cats}.`; break; }
+        case "segundo_mitad": {
+            const cats = [...document.querySelectorAll(".cup-cat:checked")].map(x=>x.value).join(", ") || "todo el carrito";
+            texto = `Cupón <b>${cod}</b>: El producto de menor valor queda al 50%.`; break; }
+        case "monto_minimo": {
+            const min = document.getElementById("cup-min").value || "X";
+            const d   = document.getElementById("cup-desc-min").value || "X";
+            texto = `Cupón <b>${cod}</b>: $${d} de descuento en compras mayores a $${min}.`; break; }
+        case "envio_gratis":
+            texto = `Cupón <b>${cod}</b>: Envío gratis sin importar el monto.`; break;
+        case "descuento_fijo": {
+            const d = document.getElementById("cup-monto-fijo").value || "X";
+            texto = `Cupón <b>${cod}</b>: $${d} de descuento fijo en la compra.`; break; }
+    }
+    prev.innerHTML = `💡 ${texto}`;
+    prev.style.display = texto ? "block" : "none";
+}
+
+async function crearCupon() {
+    const cod   = document.getElementById("cup-cod").value.trim().toUpperCase();
+    const tipo  = document.getElementById("cup-tipo").value;
+    const act   = document.getElementById("cup-act").value === "true";
+    const limite = parseInt(document.getElementById("cup-limite").value) || 0;
+
+    if (!cod) return toast("⚠️ Ingresa un código de cupón", "#f97316");
+    if (cupones.find(c => c.codigo === cod)) return toast("⚠️ Ese código ya existe", "#f97316");
+
+    const cats = [...document.querySelectorAll(".cup-cat:checked")].map(x => x.value).join(",");
+
+    let descuento = 0, descuentoFijo = 0, montoMinimo = 0;
+
+    switch(tipo) {
+        case "porcentaje_total":
+        case "porcentaje_categoria":
+            descuento = parseFloat(document.getElementById("cup-desc").value);
+            if (!descuento) return toast("⚠️ Ingresa el porcentaje", "#f97316");
+            break;
+        case "segundo_mitad":
+            descuento = 50;
+            break;
+        case "monto_minimo":
+            montoMinimo  = parseFloat(document.getElementById("cup-min").value);
+            descuentoFijo = parseFloat(document.getElementById("cup-desc-min").value);
+            if (!montoMinimo || !descuentoFijo) return toast("⚠️ Completa monto y descuento", "#f97316");
+            break;
+        case "envio_gratis":
+            descuento = 100;
+            break;
+        case "descuento_fijo":
+            descuentoFijo = parseFloat(document.getElementById("cup-monto-fijo").value);
+            if (!descuentoFijo) return toast("⚠️ Ingresa el monto de descuento", "#f97316");
+            break;
+    }
+
+    const nuevo = { codigo:cod, tipo, descuento, descuentoFijo, montoMinimo,
+                    categorias:cats, limiteUsos:limite, usosActuales:0, activo:act };
+    cupones.push(nuevo); renderCupones();
+
+    // Limpiar form
+    document.getElementById("cup-cod").value = "";
+    document.getElementById("cup-desc").value = "";
+    document.getElementById("cup-monto-fijo").value = "";
+    document.getElementById("cup-min").value = "";
+    document.getElementById("cup-desc-min").value = "";
+    document.getElementById("cup-limite").value = "0";
+    document.querySelectorAll(".cup-cat").forEach(x => x.checked = false);
+    document.getElementById("cup-preview").style.display = "none";
+
+    await fetch(API_URL, { method:'POST', mode:'no-cors',
+        body: JSON.stringify({ accion:"CREAR_CUPON", _pass:ADMIN_PASS, ...nuevo }) });
+    toast("✅ Cupón creado", "#22c55e");
+}
+
+async function toggleCupon(i) {
+    cupones[i].activo=!cupones[i].activo; renderCupones();
+    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"TOGGLE_CUPON",_pass:ADMIN_PASS,codigo:cupones[i].codigo,activo:cupones[i].activo})});
+    toast(cupones[i].activo?"✅ Cupón activado":"🔴 Cupón desactivado");
+}
+
+async function eliminarCupon(i) {
+    if (!confirm(`¿Eliminar cupón "${cupones[i].codigo}"?`)) return;
+    const cod=cupones[i].codigo; cupones.splice(i,1); renderCupones();
+    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ELIMINAR_CUPON",_pass:ADMIN_PASS,codigo:cod})});
+    toast("🗑️ Cupón eliminado");
+}
+
+// ═════════════════════════════════════════════
+//  CONFIG
+// ═════════════════════════════════════════════
+function guardarConfig() {
+    cfg.tiendaActiva=document.getElementById("tog-tienda").checked;
+    saveConfig(); renderEstado();
+    toast(cfg.tiendaActiva?"✅ Tienda activada":"🔴 Tienda desactivada", cfg.tiendaActiva?"#22c55e":"#ef4444");
+}
+
+function exportarExcel() {
+    const busq    = document.getElementById("bus-ped").value.toLowerCase();
+    const fil     = document.getElementById("fil-estado").value;
+    let list = pedidos.filter(p =>
+        (!busq || (p.cliente||"").toLowerCase().includes(busq) ||
+                  (p.productos||"").toLowerCase().includes(busq)) &&
+        (!fil  || p.estado === fil)
+    );
+    list = filtrarPorPeriodo(list);
+
+    if (!list.length) return toast("⚠️ No hay pedidos para exportar","#f97316");
+
+    // Construir datos para Excel
+    const rows = list.map(p => ({
+        "N° Pedido":   p.numeroPedido || "—",
+        "Fecha":       p.fecha ? new Date(p.fecha).toLocaleDateString("es-SV") : "—",
+        "Cliente":     p.cliente    || "—",
+        "Teléfono":    p.telefono   || "—",
+        "Municipio":   p.municipio  || "—",
+        "Dirección":   p.direccion  || "—",
+        "Productos":   p.productos  || "—",
+        "Total":       p.total      || "—",
+        "Método Pago": p.metodoPago || "—",
+        "Estado":      p.estado     || "—",
+    }));
+
+    // Fila de total al final
+    const ingresos = list.reduce((s,p) =>
+        s + (parseFloat(String(p.total).replace(/[^0-9.]/g,""))||0), 0);
+    rows.push({
+        "N° Pedido": "", "Fecha": "", "Cliente": "", "Teléfono": "",
+        "Municipio": "", "Dirección": "", "Productos": "",
+        "Total": `TOTAL: $${ingresos.toFixed(2)}`,
+        "Método Pago": "", "Estado": `${list.length} pedidos`,
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    // Ancho de columnas
+    ws["!cols"] = [
+        {wch:16},{wch:12},{wch:20},{wch:14},{wch:18},
+        {wch:24},{wch:40},{wch:10},{wch:22},{wch:12}
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, "Pedidos");
+
+    // Nombre del archivo con período
+    const periodo = document.getElementById("fil-periodo").value;
+    const hoy = new Date();
+    const nombrePeriodo = {
+        "hoy":    `${hoy.getDate()}-${hoy.getMonth()+1}-${hoy.getFullYear()}`,
+        "semana": `Semana_${hoy.getDate()}-${hoy.getMonth()+1}`,
+        "mes":    `${hoy.toLocaleString("es",{month:"long"})}_${hoy.getFullYear()}`,
+        "custom": "Rango_personalizado",
+        "todo":   "Todos_los_pedidos",
+    }[periodo] || "Pedidos";
+
+    XLSX.writeFile(wb, `Verex_Ventas_${nombrePeriodo}.xlsx`);
+    toast(`✅ Excel exportado: ${list.length} pedidos`, "#22c55e");
+}
+
+// ── BANNER ──────────────────────────────────────────────────────────
+let bannerColor = "#111111";
+
+function elegirColor(color, el) {
+    bannerColor = color;
+    document.querySelectorAll(".color-opt").forEach(e => e.style.border = "3px solid transparent");
+    el.style.border = "3px solid var(--azul)";
+    previewBanner();
+}
+
+function previewBanner() {
+    const texto = document.getElementById("banner-texto").value.trim();
+    const prev  = document.getElementById("banner-preview");
+    if (texto) {
+        prev.textContent    = texto;
+        prev.style.background = bannerColor;
+        prev.style.display  = "block";
+    } else {
+        prev.style.display = "none";
+    }
+}
+
+function guardarBanner() {
+    const activo = document.getElementById("tog-banner").checked;
+    const texto  = document.getElementById("banner-texto").value.trim();
+    cfg.banner = { activo, texto, color: bannerColor };
+    saveConfig();
+    toast("✅ Banner guardado", "#22c55e");
+}
+
+function renderBannerAdmin() {
+    if (!cfg.banner) return;
+    document.getElementById("tog-banner").checked  = cfg.banner.activo || false;
+    document.getElementById("banner-texto").value  = cfg.banner.texto  || "";
+    if (cfg.banner.color) {
+        bannerColor = cfg.banner.color;
+        document.querySelectorAll(".color-opt").forEach(el => {
+            el.style.border = el.dataset.color === bannerColor
+                ? "3px solid var(--azul)" : "3px solid transparent";
+        });
+    }
+    previewBanner();
+}
+
+// ── GUÍA C807 ────────────────────────────────────────────────────────
+let _c807Texto = "";
+
+function mostrarGuiaC807(numeroPedido) {
+    const p = pedidos.find(x => x.numeroPedido === numeroPedido);
+    if (!p) { toast("⚠️ Pedido no encontrado", "#ef4444"); return; }
+
+    const tel = p.telLlamada || p.telefono || "—";
+
+    const campos = [
+        { label: "Número de orden",     valor: String(p.numeroPedido || "—") },
+        { label: "Nombre",              valor: String(p.cliente      || "—") },
+        { label: "Teléfono",            valor: String(tel) },
+        { label: "Correo",              valor: String(p.correo       || "—") },
+        { label: "Departamento",        valor: String(p.departamento || "—") },
+        { label: "Municipio/Distrito",  valor: String(p.municipio    || "—") },
+        { label: "Dirección",           valor: String(p.direccion    || "—") },
+        { label: "Contenido",           valor: String(p.productos    || "—") },
+    ];
+
+    _c807Texto = campos.map(c => `${c.label}: ${c.valor}`).join("\n");
+
+    document.getElementById("c807-contenido").innerHTML = campos.map(c => `
+        <div style="margin-bottom:10px;">
+            <div style="font-size:11px;color:#888;font-weight:600;text-transform:uppercase;">${c.label}</div>
+            <div style="display:flex;align-items:center;gap:8px;background:#f5f5f5;border-radius:6px;padding:8px 10px;margin-top:3px;">
+                <span style="flex:1;font-size:14px;font-weight:500;">${c.valor}</span>
+                <button onclick="navigator.clipboard.writeText('${c.valor.replace(/'/g,"\\'")}');this.textContent='✅';setTimeout(()=>this.textContent='📋',1500)"
+                    style="background:none;border:none;font-size:16px;cursor:pointer;flex-shrink:0;">📋</button>
+            </div>
+        </div>`).join('');
+
+    const modal = document.getElementById("modal-c807");
+    modal.style.display = "flex";
+}
+
+function copiarTodoC807() {
+    navigator.clipboard.writeText(_c807Texto);
+    toast("✅ Datos copiados al portapapeles", "#00875A");
+}
+
+// ── CARRUSEL ─────────────────────────────────────────────────────────
+function renderCarruselAdmin() {
+    if (!cfg.carrusel) cfg.carrusel = { activo: false, slides: [] };
+    document.getElementById("tog-carrusel").checked = cfg.carrusel.activo || false;
+    const lista = document.getElementById("lista-carrusel");
+    if (!cfg.carrusel.slides.length) {
+        lista.innerHTML = '<p style="font-size:13px;color:#aaa;margin-bottom:10px;">No hay imágenes agregadas.</p>';
+        return;
+    }
+    lista.innerHTML = cfg.carrusel.slides.map((s, i) => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--borde);border-radius:8px;margin-bottom:8px;">
+            <img src="${s.url}" style="width:60px;height:50px;object-fit:cover;border-radius:6px;" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2260%22 height=%2250%22><rect width=%2260%22 height=%2250%22 fill=%22%23eee%22/><text x=%2250%%22 y=%2250%%22 text-anchor=%22middle%22 dy=%22.3em%22 font-size=%2210%22>?</text></svg>'">
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s.titulo || "Sin título"}</div>
+                <div style="font-size:11px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s.subtitulo || ""}</div>
+            </div>
+            <button class="btn br" style="padding:5px 10px;font-size:12px;flex-shrink:0;" onclick="eliminarSlide(${i})">🗑️</button>
+        </div>`).join('');
+}
+
+function agregarSlide() {
+    const url      = document.getElementById("car-url").value.trim();
+    const titulo   = document.getElementById("car-titulo").value.trim();
+    const subtitulo = document.getElementById("car-subtitulo").value.trim();
+    if (!url) return toast("⚠️ Ingresa una URL de imagen", "#ef4444");
+    if (!cfg.carrusel) cfg.carrusel = { activo: false, slides: [] };
+    if (cfg.carrusel.slides.length >= 4) return toast("⚠️ Máximo 4 imágenes", "#ef4444");
+    cfg.carrusel.slides.push({ url, titulo, subtitulo });
+    document.getElementById("car-url").value = "";
+    document.getElementById("car-titulo").value = "";
+    document.getElementById("car-subtitulo").value = "";
+    renderCarruselAdmin();
+    toast("✅ Imagen agregada", "#22c55e");
+}
+
+function eliminarSlide(i) {
+    cfg.carrusel.slides.splice(i, 1);
+    renderCarruselAdmin();
+}
+
+function guardarCarrusel() {
+    if (!cfg.carrusel) cfg.carrusel = { activo: false, slides: [] };
+    cfg.carrusel.activo = document.getElementById("tog-carrusel").checked;
+    saveConfig();
+    toast("✅ Carrusel guardado", "#22c55e");
+}
+
+function saveConfig() {
+    localStorage.setItem("vx_cfg",JSON.stringify(cfg));
+    fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ACTUALIZAR_CONFIG",_pass:ADMIN_PASS,config:cfg})});
+}
+
+// ═════════════════════════════════════════════
+//  CAMBIAR CONTRASEÑA
+// ═════════════════════════════════════════════
+function abrirCambiarClave() {
+    document.getElementById("pass-actual").value = "";
+    document.getElementById("pass-nueva").value = "";
+    document.getElementById("pass-confirmar").value = "";
+    document.getElementById("pass-error").style.display = "none";
+    document.getElementById("modal-pass").style.display = "flex";
+}
+
+async function hashStr(str) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(str);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function guardarNuevaClave() {
+    const actual    = document.getElementById("pass-actual").value;
+    const nueva     = document.getElementById("pass-nueva").value;
+    const confirmar = document.getElementById("pass-confirmar").value;
+    const errEl     = document.getElementById("pass-error");
+    errEl.style.display = "none";
+
+    if (!actual || !nueva || !confirmar) { errEl.textContent = "⚠️ Completa todos los campos"; errEl.style.display = "block"; return; }
+    if (nueva.length < 6) { errEl.textContent = "⚠️ Mínimo 6 caracteres"; errEl.style.display = "block"; return; }
+    if (nueva !== confirmar) { errEl.textContent = "⚠️ Las contraseñas no coinciden"; errEl.style.display = "block"; return; }
+    if (actual !== ADMIN_PASS) { errEl.textContent = "⚠️ Contraseña actual incorrecta"; errEl.style.display = "block"; return; }
+
+    const btn = document.querySelector("#modal-pass button:last-child");
+    btn.textContent = "⏳ Guardando..."; btn.disabled = true;
+    try {
+        const nuevoHash = await hashStr(nueva);
+        await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"ACTUALIZAR_PASS_HASH", _pass: ADMIN_PASS, nuevoHash }) });
+        toast("✅ Contraseña actualizada. Úsala en tu próximo login.", "#22c55e");
+        document.getElementById("modal-pass").style.display = "none";
+    } catch(e) {
+        errEl.textContent = "⚠️ Error al guardar"; errEl.style.display = "block";
+    }
+    btn.textContent = "💾 Guardar Nueva Contraseña"; btn.disabled = false;
+}
+
+// ═════════════════════════════════════════════
+//  INIT
+// ═════════════════════════════════════════════
+if (sessionStorage.getItem("vxa")==="1") init();
+actualizarNombre();
+
+// ═════════════════════════════════════════════
+//  TAB 6 — VENDEDORES / CONSIGNACIÓN
+// ═════════════════════════════════════════════
+let _consigData = null;   // { vendedores, consignacion }
+let _vendorActual = null; // vendedor abierto en el modal
+
+async function cargarConsignacion(forzar = false) {
+    if (_consigData && !forzar) { renderVendedores(); return; }
+    document.getElementById("vend-loading").style.display = "block";
+    document.getElementById("vend-lista").innerHTML = "";
+    try {
+        const res  = await fetch(API_URL, { method:"POST", body: JSON.stringify({ accion:"GET_CONSIGNACION", _pass: ADMIN_PASS }) });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "Error");
+        _consigData = data;
+        renderVendedores();
+    } catch(e) {
+        document.getElementById("vend-loading").style.display = "none";
+        document.getElementById("vend-lista").innerHTML = '<p style="color:#ef4444;font-size:13px;">⚠️ Error al cargar datos de consignación.</p>';
+    }
+}
+
+function renderVendedores() {
+    document.getElementById("vend-loading").style.display = "none";
+    const vendedores   = _consigData.vendedores   || [];
+    const consignacion = _consigData.consignacion  || [];
+
+    if (!vendedores.length) {
+        document.getElementById("vend-lista").innerHTML = '<p style="color:#aaa;font-size:13px;">No hay vendedores registrados.</p>';
+        return;
+    }
+
+    const html = vendedores.map(v => {
+        const items = consignacion.filter(c => String(c.vendedor) === String(v.codigo) && c.estado === "activo");
+        const totalEntregado = items.reduce((s,c) => s + (parseInt(c.cantidad)||0), 0);
+        const totalVendido   = items.reduce((s,c) => s + (parseInt(c.vendido)||0), 0);
+        const totalDisp      = totalEntregado - totalVendido;
+        const valorDisp      = items.reduce((s,c) => s + Math.max(0, (parseInt(c.cantidad)||0)-(parseInt(c.vendido)||0)) * parseFloat(c.precio||0), 0);
+        const hayVentas      = items.some(c => (parseInt(c.vendido)||0) > 0);
+
+        return `<div style="display:flex;align-items:center;gap:12px;padding:13px;background:var(--gris);border:1px solid var(--borde);border-radius:10px;margin-bottom:9px;flex-wrap:wrap;">
+            <div style="width:40px;height:40px;background:#111;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">👤</div>
+            <div style="flex:1;min-width:150px;">
+                <div style="font-weight:700;font-size:14px;">${v.nombre || v.codigo}</div>
+                <div style="font-size:12px;color:#888;margin-top:2px;">📱 ${v.telefono||"—"}</div>
+            </div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;text-align:center;">
+                <div><div style="font-weight:800;font-size:16px;color:var(--azul);">${totalEntregado}</div><div style="color:#888;">Entregado</div></div>
+                <div><div style="font-weight:800;font-size:16px;color:var(--verde);">${totalVendido}</div><div style="color:#888;">Vendido</div></div>
+                <div><div style="font-weight:800;font-size:16px;color:var(--naranja);">${totalDisp}</div><div style="color:#888;">Disponible</div></div>
+                <div><div style="font-weight:800;font-size:16px;color:#7c3aed;">$${valorDisp.toFixed(2)}</div><div style="color:#888;">Valor</div></div>
+            </div>
+            <button class="btn ba" onclick="abrirVentasVendedor('${v.codigo}')" ${!hayVentas?'style="opacity:.5"':''}>
+                💰 Ver ventas
+            </button>
+        </div>`;
+    }).join("");
+
+    document.getElementById("vend-lista").innerHTML = html +
+        `<button class="btn bg" onclick="cargarConsignacion(true)" style="margin-top:6px;">🔄 Actualizar</button>`;
+}
+
+function abrirVentasVendedor(codigoVend) {
+    const vendedor     = (_consigData.vendedores||[]).find(v => String(v.codigo) === String(codigoVend));
+    const consignacion = _consigData.consignacion || [];
+    const items        = consignacion.filter(c => String(c.vendedor) === String(codigoVend) && c.estado === "activo");
+
+    _vendorActual = { codigo: codigoVend, nombre: vendedor?.nombre || codigoVend, items };
+
+    document.getElementById("mv-titulo").textContent = "💰 Ventas — " + (vendedor?.nombre || codigoVend);
+    document.getElementById("mv-buscar").value = "";
+
+    const totalVendido  = items.reduce((s,c) => s + (parseInt(c.vendido)||0), 0);
+    const totalIngresos = items.reduce((s,c) => s + (parseInt(c.vendido)||0) * parseFloat(c.precio||0), 0);
+    const totalDisp     = items.reduce((s,c) => s + Math.max(0,(parseInt(c.cantidad)||0)-(parseInt(c.vendido)||0)), 0);
+
+    document.getElementById("mv-stats").innerHTML = `
+        <div class="stat" style="min-width:100px;"><div class="num" style="font-size:20px;">${totalVendido}</div><div class="lbl">Unidades vendidas</div></div>
+        <div class="stat" style="min-width:100px;"><div class="num" style="font-size:20px;color:#22c55e;">$${totalIngresos.toFixed(2)}</div><div class="lbl">Ingresos totales</div></div>
+        <div class="stat" style="min-width:100px;"><div class="num" style="font-size:20px;color:#f97316;">${totalDisp}</div><div class="lbl">Aún disponibles</div></div>`;
+
+    renderFilasVentas(items);
+    document.getElementById("modal-ventas-vend").classList.add("open");
+}
+
+function renderFilasVentas(items) {
+    const vendidos = items.filter(c => (parseInt(c.vendido)||0) > 0);
+    document.getElementById("mv-vacio").style.display = vendidos.length ? "none" : "block";
+    document.getElementById("mv-tbody").innerHTML = vendidos.map(c => {
+        const cantidad = parseInt(c.cantidad)||0;
+        const vendido  = parseInt(c.vendido)||0;
+        const disp     = Math.max(0, cantidad - vendido);
+        const foto     = c.foto ? `<img src="${c.foto}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;">` : `<div style="width:36px;height:36px;background:#eee;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;">💍</div>`;
+        return `<tr>
+            <td>${foto}</td>
+            <td style="font-weight:700;font-size:12px;color:var(--azul);">${c.codigo||""}</td>
+            <td>${c.nombre||""}</td>
+            <td>$${parseFloat(c.precio||0).toFixed(2)}</td>
+            <td style="text-align:center;">${cantidad}</td>
+            <td style="text-align:center;font-weight:700;color:var(--verde);">${vendido}</td>
+            <td style="text-align:center;color:${disp>0?"var(--naranja)":"#aaa"};">${disp}</td>
+        </tr>`;
+    }).join("");
+}
+
+function filtrarVentasModal() {
+    if (!_vendorActual) return;
+    const busq = document.getElementById("mv-buscar").value.toLowerCase();
+    const filtrados = _vendorActual.items.filter(c =>
+        (c.nombre||"").toLowerCase().includes(busq) || (c.codigo||"").toLowerCase().includes(busq)
+    );
+    renderFilasVentas(filtrados);
+}
+
+function cerrarModalVentas() {
+    document.getElementById("modal-ventas-vend").classList.remove("open");
+}
+</script>
+
+<!-- Modal Cambiar Contraseña -->
+<div id="modal-pass" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10000;justify-content:center;align-items:center;padding:20px;">
+    <div style="background:#fff;border-radius:16px;padding:28px;max-width:380px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.4);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+            <h3 style="margin:0;font-size:16px;font-weight:700;">🔑 Cambiar Contraseña</h3>
+            <button onclick="document.getElementById('modal-pass').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;">✕</button>
+        </div>
+        <div style="margin-bottom:12px;">
+            <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px;">Contraseña actual</label>
+            <input type="password" id="pass-actual" placeholder="••••••••" style="width:100%;padding:10px 12px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:14px;background:#f7f7f7;">
+        </div>
+        <div style="margin-bottom:12px;">
+            <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px;">Nueva contraseña</label>
+            <input type="password" id="pass-nueva" placeholder="••••••••" style="width:100%;padding:10px 12px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:14px;background:#f7f7f7;">
+        </div>
+        <div style="margin-bottom:20px;">
+            <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px;">Confirmar nueva contraseña</label>
+            <input type="password" id="pass-confirmar" placeholder="••••••••" style="width:100%;padding:10px 12px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:14px;background:#f7f7f7;">
+        </div>
+        <p id="pass-error" style="color:#ef4444;font-size:13px;margin-bottom:12px;display:none;"></p>
+        <button onclick="guardarNuevaClave()" style="width:100%;padding:12px;background:#111;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;">
+            💾 Guardar Nueva Contraseña
+        </button>
+    </div>
+</div>
+
+</body>
+</html>
