@@ -731,11 +731,18 @@ Responde ÚNICAMENTE con este JSON:
       // ── REGISTRAR ENTREGA PENDIENTE (para confirmación del vendedor)
       case "REGISTRAR_ENTREGA_PENDIENTE": {
         let hEnt = hoja("entregas");
+        const HEADERS_ENT = ["id","vendedor","fecha","items","estado","codigoRecibo","fechaConfirmacion"];
         if (!hEnt) {
           hEnt = SS.insertSheet("entregas");
-          hEnt.getRange(1,1,1,6).setValues([["id","vendedor","fecha","items","estado","codigoRecibo"]]);
+          hEnt.getRange(1,1,1,HEADERS_ENT.length).setValues([HEADERS_ENT]);
         } else if (hEnt.getLastRow() === 0) {
-          hEnt.getRange(1,1,1,6).setValues([["id","vendedor","fecha","items","estado","codigoRecibo"]]);
+          hEnt.getRange(1,1,1,HEADERS_ENT.length).setValues([HEADERS_ENT]);
+        } else {
+          // Agregar columna fechaConfirmacion si no existe
+          const hdRow = hEnt.getRange(1,1,1,hEnt.getLastColumn()).getValues()[0];
+          if (!hdRow.includes("fechaConfirmacion")) {
+            hEnt.getRange(1, hEnt.getLastColumn()+1).setValue("fechaConfirmacion");
+          }
         }
         const items = d.items || [];
         const itemsJSON = JSON.stringify(items.map(i => ({
@@ -747,7 +754,8 @@ Responde ÚNICAMENTE con este JSON:
           new Date(),
           itemsJSON,
           "pendiente",
-          d.codigoRecibo || ""
+          d.codigoRecibo || "",
+          ""
         ]);
         return jsonResp({ ok: true });
       }
@@ -875,19 +883,38 @@ Responde ÚNICAMENTE con este JSON:
         const hiId      = hd.indexOf("id");
         const hiEstado  = hd.indexOf("estado");
         const hiCodRec  = hd.indexOf("codigoRecibo");
+        const hiFechaConf = hd.indexOf("fechaConfirmacion");
         let confirmado  = false;
         allEnt.slice(1).forEach((row, ri) => {
           if (String(row[hiId]) === String(d.id)) {
-            // Verificar código de recibo
-            const codigoEsperado = String(row[hiCodRec] || "").toUpperCase();
+            const codigoEsperado  = String(row[hiCodRec] || "").toUpperCase();
             const codigoIngresado = String(d.codigoRecibo || "").toUpperCase();
             if (codigoEsperado && codigoEsperado !== codigoIngresado) return;
             hEnt.getRange(ri + 2, hiEstado + 1).setValue("confirmado");
+            if (hiFechaConf >= 0) hEnt.getRange(ri + 2, hiFechaConf + 1).setValue(new Date());
             confirmado = true;
           }
         });
         if (!confirmado) return jsonResp({ ok: false, error: "Código de recibo incorrecto o entrega no encontrada" });
         return jsonResp({ ok: true });
+      }
+
+      // ── ENTREGAS CONFIRMADAS (para notificación en admin) ─────────
+      case "GET_ENTREGAS_CONFIRMADAS": {
+        const hEnt = hoja("entregas");
+        if (!hEnt) return jsonResp({ ok: true, entregas: [] });
+        const rows = sheetToObjects(hEnt);
+        const entregas = rows
+          .filter(r => r.estado === "confirmado")
+          .map(r => ({
+            id:               String(r.id),
+            vendedor:         String(r.vendedor),
+            fecha:            r.fecha,
+            fechaConfirmacion: r.fechaConfirmacion || "",
+            items:            typeof r.items === "string" ? r.items : JSON.stringify(r.items || []),
+            codigoRecibo:     r.codigoRecibo || ""
+          }));
+        return jsonResp({ ok: true, entregas });
       }
 
       // ── VENTAS DEL VENDEDOR ───────────────────────────────────────
