@@ -980,6 +980,16 @@ Responde ÚNICAMENTE con este JSON:
         return jsonResp({ ok: true, ventas });
       }
 
+      case "GET_ABONOS_VENTA": {
+        const hAb = hoja("abonos");
+        if (!hAb) return jsonResp({ ok: true, abonos: [] });
+        const rows = sheetToObjects(hAb);
+        const abonos = rows
+          .filter(r => String(r.ventaId) === String(d.ventaId))
+          .map(r => ({ id: String(r.id), fecha: r.fecha, monto: parseFloat(r.monto)||0 }));
+        return jsonResp({ ok: true, abonos });
+      }
+
       case "REGISTRAR_ABONO": {
         const hVD = hoja("ventas_directas");
         if (!hVD) return jsonResp({ ok: false, error: "Hoja no encontrada" });
