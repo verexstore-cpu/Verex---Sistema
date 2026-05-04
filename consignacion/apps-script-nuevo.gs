@@ -917,6 +917,97 @@ Responde ÚNICAMENTE con este JSON:
         return jsonResp({ ok: true, entregas });
       }
 
+      // ── VENTA DIRECTA ─────────────────────────────────────────────
+      case "REGISTRAR_VENTA_DIRECTA": {
+        let hVD = hoja("ventas_directas");
+        if (!hVD) {
+          hVD = SS.insertSheet("ventas_directas");
+          hVD.getRange(1,1,1,10).setValues([["id","fecha","cliente","telefono","items","total","tipo","enganche","saldoPendiente","estado"]]);
+        }
+        const itemsJSON = JSON.stringify(d.items || []);
+        hVD.appendRow([
+          d.id || "VD_"+Date.now(),
+          d.fecha ? new Date(d.fecha) : new Date(),
+          d.cliente || "",
+          d.telefono || "",
+          itemsJSON,
+          parseFloat(d.total) || 0,
+          d.tipo || "contado",
+          parseFloat(d.enganche) || 0,
+          parseFloat(d.saldoPendiente) || 0,
+          d.estado || "pagado"
+        ]);
+        // Descontar del stock bodega
+        try {
+          const hStock = hoja("stock");
+          if (hStock) {
+            const allS = hStock.getDataRange().getValues();
+            const sh = allS[0];
+            const siCod = sh.indexOf("codigo");
+            const siBod = sh.indexOf("stock_bodega");
+            (d.items || []).forEach(item => {
+              allS.slice(1).forEach((row, ri) => {
+                if (String(row[siCod]) === String(item.codigo)) {
+                  const nuevo = Math.max(0, (parseInt(row[siBod])||0) - (parseInt(item.cantidad)||1));
+                  hStock.getRange(ri+2, siBod+1).setValue(nuevo);
+                }
+              });
+            });
+          }
+        } catch(e) {}
+        return jsonResp({ ok: true });
+      }
+
+      case "GET_VENTAS_DIRECTAS": {
+        const hVD = hoja("ventas_directas");
+        if (!hVD) return jsonResp({ ok: true, ventas: [] });
+        const rows = sheetToObjects(hVD);
+        const filtro = d.estado || "";
+        const ventas = rows
+          .filter(r => !filtro || r.estado === filtro)
+          .map(r => ({
+            id:             String(r.id),
+            fecha:          r.fecha,
+            cliente:        r.cliente || "",
+            telefono:       r.telefono || "",
+            items:          typeof r.items === "string" ? r.items : JSON.stringify(r.items||[]),
+            total:          parseFloat(r.total) || 0,
+            tipo:           r.tipo || "contado",
+            enganche:       parseFloat(r.enganche) || 0,
+            saldoPendiente: parseFloat(r.saldoPendiente) || 0,
+            estado:         r.estado || "pagado"
+          }));
+        return jsonResp({ ok: true, ventas });
+      }
+
+      case "REGISTRAR_ABONO": {
+        const hVD = hoja("ventas_directas");
+        if (!hVD) return jsonResp({ ok: false, error: "Hoja no encontrada" });
+        const allVD = hVD.getDataRange().getValues();
+        const hdVD  = allVD[0];
+        const viId   = hdVD.indexOf("id");
+        const viSal  = hdVD.indexOf("saldoPendiente");
+        const viEst  = hdVD.indexOf("estado");
+        let ok = false;
+        allVD.slice(1).forEach((row, ri) => {
+          if (String(row[viId]) === String(d.ventaId)) {
+            const nuevoSaldo = Math.max(0, (parseFloat(row[viSal])||0) - (parseFloat(d.monto)||0));
+            hVD.getRange(ri+2, viSal+1).setValue(nuevoSaldo);
+            if (nuevoSaldo <= 0) hVD.getRange(ri+2, viEst+1).setValue("pagado");
+            // Registrar en hoja abonos
+            let hAb = hoja("abonos");
+            if (!hAb) {
+              hAb = SS.insertSheet("abonos");
+              hAb.getRange(1,1,1,4).setValues([["id","ventaId","fecha","monto"]]);
+            }
+            hAb.appendRow(["AB_"+Date.now(), d.ventaId, d.fecha ? new Date(d.fecha) : new Date(), parseFloat(d.monto)||0]);
+            ok = true;
+          }
+        });
+        if (!ok) return jsonResp({ ok: false, error: "Venta no encontrada" });
+        return jsonResp({ ok: true });
+      }
+
       // ── VENTAS DEL VENDEDOR ───────────────────────────────────────
       case "GET_VENTAS_VENDEDOR": {
         const hCons = hoja("consignacion");
