@@ -423,6 +423,58 @@ export default {
           break;
         }
 
+        // ══ ADMIN TIENDA ══════════════════════════════════════════
+        case "GET_TIENDA": {
+          if (!esAdmin) return forbidden();
+          const [prods, peds, cups, clis, cfgDoc] = await Promise.all([
+            fs.getAll("stock"),
+            fs.getAll("pedidos"),
+            fs.getAll("cupones"),
+            fs.getAll("clientes"),
+            fs.get("config", "settings"),
+          ]);
+          result = {
+            ok: true,
+            productos: prods.filter(p => p.estado !== "inactivo"),
+            pedidos:   peds,
+            cupones:   cups,
+            clientes:  clis,
+            config:    cfgDoc || {}
+          };
+          break;
+        }
+
+        case "CREAR_PRODUCTO": {
+          if (!esAdmin) return forbidden();
+          const prodId = d.codigo || `PROD_${Date.now()}`;
+          await fs.set("stock", prodId, {
+            codigo:            prodId,
+            codigoBase:        prodId,
+            nombre:            d.nombre || "",
+            precio:            parseFloat(d.precio) || 0,
+            foto:              d.img || "",
+            descripcion:       d.caracteristicas || "",
+            descripcionTienda: d.caracteristicas || "",
+            categoria:         d.categoria || "",
+            talla:             "",
+            stock_bodega:      parseInt(d.cantidad) || 0,
+            stock_tienda:      0,
+            stock_consignacion:0,
+            stock_vendido:     0,
+            estado:            "activo",
+            fechaRegistro:     new Date().toISOString()
+          });
+          result = { ok: true };
+          break;
+        }
+
+        case "ELIMINAR_PEDIDO": {
+          if (!esAdmin) return forbidden();
+          await fs.delete("pedidos", d.numeroPedido);
+          result = { ok: true };
+          break;
+        }
+
         // ══ ALIAS ════════════════════════════════════════════════
         case "GET_STOCK": {
           const stock = await fs.getAll("stock");
