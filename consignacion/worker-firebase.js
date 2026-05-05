@@ -24,6 +24,26 @@ export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response("", { headers: CORS });
 
+    // ── GET: catálogo público ──────────────────────────────────────
+    if (request.method === "GET") {
+      try {
+        const token = await getFirestoreToken(env.FIREBASE_SA_EMAIL, env.FIREBASE_SA_KEY);
+        const fs    = new Firestore(token, FS_BASE);
+        const [prods, cups, cfgDoc] = await Promise.all([
+          fs.getAll("stock"),
+          fs.getAll("cupones"),
+          fs.get("config", "settings"),
+        ]);
+        return json({
+          productos: prods.filter(p => p.estado !== "inactivo"),
+          cupones:   cups.filter(c => c.activo !== false && c.activo !== "false"),
+          config:    cfgDoc || {}
+        });
+      } catch(e) {
+        return json({ ok: false, error: e.message }, 500);
+      }
+    }
+
     try {
       const d = await request.json();
 
@@ -420,6 +440,83 @@ export default {
             }
           });
           result = { ok: true, codigo: `${prefijo}${String(maxNum + 1).padStart(3, "0")}` };
+          break;
+        }
+
+        // ══ CATÁLOGO / TIENDA PÚBLICA ════════════════════════════
+        case "GET_CATALOGO": {
+          const [prods, cups, cfgDoc] = await Promise.all([
+            fs.getAll("stock"),
+            fs.getAll("cupones"),
+            fs.get("config", "settings"),
+          ]);
+          result = {
+            ok: true,
+            productos: prods.filter(p => p.estado !== "inactivo"),
+            cupones:   cups.filter(c => c.activo !== false && c.activo !== "false"),
+            config:    cfgDoc || {}
+          };
+          break;
+        }
+
+        case "NUEVO_PEDIDO": {
+          // Generar número de pedido #10DDMM-001
+          const now    = new Date();
+          const dd     = String(now.getDate()).padStart(2, "0");
+          const mm     = String(now.getMonth() + 1).padStart(2, "0");
+          const prefijo = `#10${dd}${mm}`;
+          const todosLosPedidos = await fs.getAll("pedidos");
+          const hoyStr = now.toISOString().slice(0, 10);
+          const correl = todosLosPedidos.filter(p => (p.fecha || "").slice(0, 10) === hoyStr).length + 1;
+          const numeroPedido = `${prefijo}-${String(correl).padStart(3, "0")}`;
+          // Crear o actualizar cliente
+          const clientes = await fs.getAll("clientes");
+          const cliExist = clientes.find(c => String(c.telefono) === String(d.telefono));
+          let codigoCliente = "";
+          if (cliExist) {
+            codigoCliente = cliExist.codigo;
+            await fs.update("clientes", codigoCliente, { totalPedidos: (parseInt(cliExist.totalPedidos)||0) + 1 });
+          } else {
+            codigoCliente = `CVX-${String(clientes.length + 1).padStart(3, "0")}`;
+            await fs.set("clientes", codigoCliente, {
+              codigo: codigoCliente, nombre: d.cliente, telefono: d.telefono,
+              municipio: d.municipio || "", direccion: d.direccion || "",
+              departamento: d.departamento || "", totalPedidos: 1,
+              fechaRegistro: new Date().toISOString()
+            });
+          }
+          // Guardar pedido
+          await fs.set("pedidos", numeroPedido, {
+            id: numeroPedido, numeroPedido, fecha: new Date().toISOString(),
+            cliente: d.cliente, telefono: d.telefono, municipio: d.municipio || "",
+            departamento: d.departamento || "", direccion: d.direccion || "",
+            correo: d.correo || "", telLlamada: d.telLlamada || "",
+            productos: d.productos || "", total: d.total || 0,
+            estado: "Pendiente", metodoPago: d.metodoPago || "",
+            items: d.items || "", cuponUsado: d.cuponUsado || "",
+            descMonto: d.descMonto || 0, envio: d.envio || 0
+          });
+          result = { ok: true, numeroPedido, codigoCliente };
+          break;
+        }
+
+        case "BUSCAR_CLIENTE": {
+          const cliAll = await fs.getAll("clientes");
+          const cli = cliAll.find(c =>
+            String(c.codigo) === String(d.codigo) ||
+            String(c.telefono) === String(d.codigo)
+          );
+          result = cli ? { ok: true, cliente: cli } : { ok: false };
+          break;
+        }
+
+        case "VERIFICAR_TOKEN": {
+          const vend = await fs.get("vendedores", d.vendedor);
+          if (!vend) { result = { ok: false }; break; }
+          result = {
+            ok: String(vend.tokenInventario) === String(d.token),
+            vendedor: vend
+          };
           break;
         }
 
