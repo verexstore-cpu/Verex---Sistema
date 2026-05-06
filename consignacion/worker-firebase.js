@@ -789,36 +789,36 @@ export default {
           if (!esAdmin) return forbidden();
           if (!env.AI) { result = { ok: false, error: "AI binding no configurado" }; break; }
           try {
-            // Limpiar prefijo data: para obtener solo base64 puro
             const base64 = (d.imagen || "").replace(/^data:image\/[^;]+;base64,/, "");
             if (!base64) { result = { ok: false, error: "No se recibió imagen" }; break; }
 
+            // Workers AI necesita los bytes como array, no image_url
+            const imageBytes = Array.from(
+              Uint8Array.from(atob(base64), c => c.charCodeAt(0))
+            );
+
             const material = d.material || "Plata 925";
             const prompt =
-              `Eres un experto en joyería. Analiza esta foto y responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional:\n` +
-              `{\n` +
-              `  "nombre": "nombre descriptivo en español (ej: Anillo corazón con zirconia T8)",\n` +
-              `  "categoria": "solo UNA de estas opciones: AN, PU, CO, AR, DJ, CJ",\n` +
-              `  "descripcion": "descripcion corta max 12 palabras"\n` +
-              `}\n` +
-              `El material es ${material}. Categorías: AN=anillo, PU=pulsera, CO=collar, AR=aretes, DJ=dije, CJ=conjunto.`;
+              `Eres experto en joyería. Analiza la foto y responde SOLO con JSON sin texto extra:\n` +
+              `{"nombre":"nombre en español ej Anillo corazon con zirconia","categoria":"AN|PU|CO|AR|DJ|CJ","descripcion":"max 10 palabras"}\n` +
+              `Material: ${material}. AN=anillo PU=pulsera CO=collar AR=aretes DJ=dije CJ=conjunto.`;
 
             const aiRes = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
-              messages: [{
-                role: "user",
-                content: [
-                  { type: "text",      text: prompt },
-                  { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64}` } }
-                ]
-              }],
-              max_tokens: 150
+              image:      imageBytes,
+              prompt,
+              max_tokens: 200
             });
 
             const texto = (aiRes.response || "").trim();
             const match = texto.match(/\{[\s\S]*?\}/);
-            if (!match) { result = { ok: false, error: "IA no devolvió JSON válido" }; break; }
+            if (!match) { result = { ok: false, error: "IA: " + texto.slice(0,100) }; break; }
             const parsed = JSON.parse(match[0]);
-            result = { ok: true, resultado: { nombre: parsed.nombre || "", categoria: parsed.categoria || "", descripcion: parsed.descripcion || "", material } };
+            result = { ok: true, resultado: {
+              nombre:      parsed.nombre      || "",
+              categoria:   parsed.categoria   || "",
+              descripcion: parsed.descripcion || "",
+              material
+            }};
           } catch(eIA) {
             result = { ok: false, error: "Error IA: " + eIA.message };
           }
