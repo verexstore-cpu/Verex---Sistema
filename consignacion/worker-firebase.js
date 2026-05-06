@@ -759,9 +759,34 @@ export default {
         }
 
         // ══ IMAGEN / FOTO (servicios externos no disponibles) ════
-        case "ANALIZAR_IMAGEN":
         case "SUBIR_FOTO": {
-          result = { ok: false, error: "Servicio de imagen no disponible. Sube la foto manualmente." };
+          if (!esAdmin) return forbidden();
+          const ikKey = env.IMAGEKIT_PRIVATE_KEY;
+          if (!ikKey) { result = { ok: false, error: "ImageKit no configurado en secrets" }; break; }
+          const authHeader = "Basic " + btoa(ikKey + ":");
+          const ext        = (d.imagen || "").startsWith("data:image/png") ? "png" : "jpg";
+          const fileName   = (d.nombre || ("foto_" + Date.now())) + "." + ext;
+          const form       = new FormData();
+          form.append("file",     d.imagen);   // base64 con o sin prefijo data:
+          form.append("fileName", fileName);
+          form.append("folder",   "/consignacion");
+          form.append("useUniqueFileName", "true");
+          const ikRes  = await fetch("https://upload.imagekit.io/api/v1/files/upload", {
+            method: "POST",
+            headers: { "Authorization": authHeader },
+            body:   form
+          });
+          const ikData = await ikRes.json();
+          if (ikData.url) {
+            result = { ok: true, url: ikData.url };
+          } else {
+            result = { ok: false, error: ikData.message || "Error subiendo foto a ImageKit" };
+          }
+          break;
+        }
+
+        case "ANALIZAR_IMAGEN": {
+          result = { ok: false, error: "Análisis de imagen no disponible." };
           break;
         }
 
