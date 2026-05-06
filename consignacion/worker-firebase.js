@@ -778,7 +778,9 @@ export default {
           });
           const ikData = await ikRes.json();
           if (ikData.url) {
-            result = { ok: true, url: ikData.url };
+            // Agregar transformaciones ImageKit: WebP + calidad 85 + nitidez automática
+            const urlOptimizada = ikData.url + "?tr=f-webp,q-85,e-sharpen";
+            result = { ok: true, url: urlOptimizada };
           } else {
             result = { ok: false, error: ikData.message || "Error subiendo foto a ImageKit" };
           }
@@ -803,13 +805,13 @@ export default {
               `{"nombre":"nombre en español ej Anillo corazon con zirconia","categoria":"AN|PU|CO|AR|DJ|CJ","descripcion":"max 10 palabras"}\n` +
               `Material: ${material}. AN=anillo PU=pulsera CO=collar AR=aretes DJ=dije CJ=conjunto.`;
 
-            const aiRes = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+            const aiRes = await env.AI.run("@cf/llava-hf/llava-1.5-7b-hf", {
               image:      imageBytes,
               prompt,
               max_tokens: 200
             });
 
-            const texto = (aiRes.response || "").trim();
+            const texto = (aiRes.description || aiRes.response || "").trim();
             const match = texto.match(/\{[\s\S]*?\}/);
             if (!match) { result = { ok: false, error: "IA: " + texto.slice(0,100) }; break; }
             const parsed = JSON.parse(match[0]);
