@@ -801,9 +801,17 @@ export default {
 
             const material = d.material || "Plata 925";
             const prompt =
-              `Eres experto en joyería. Analiza la foto y responde SOLO con JSON sin texto extra:\n` +
-              `{"nombre":"nombre en español ej Anillo corazon con zirconia","categoria":"AN|PU|CO|AR|DJ|CJ","descripcion":"max 10 palabras"}\n` +
-              `Material: ${material}. AN=anillo PU=pulsera CO=collar AR=aretes DJ=dije CJ=conjunto.`;
+              `You are a professional jewelry analyst. Examine this jewelry photo VERY carefully and respond ONLY with a valid JSON object — no extra text, no markdown.\n\n` +
+              `Analyze these details precisely:\n` +
+              `1. TYPE: Is it a ring, bracelet, necklace, earrings, pendant/charm, or set?\n` +
+              `2. SHAPE/DESIGN: heart, flower, cross, bow, star, wave, snake, geometric, plain/smooth, infinity, butterfly, etc.\n` +
+              `3. STONES: zirconia, emerald, ruby, pearl, crystal, opal, or no stones?\n` +
+              `4. COLORS/FINISH: shiny, matte, colorful enamel, multicolor, gold-plated, rose gold, bicolor?\n` +
+              `5. SPECIAL DETAILS: engravings, texture, pattern, filigree, etc.\n\n` +
+              `Material provided: ${material}\n\n` +
+              `Categories: AN=anillo(ring) PU=pulsera(bracelet) CO=collar(necklace) AR=aretes(earrings) DJ=dije(pendant/charm) CJ=conjunto(set)\n\n` +
+              `Respond ONLY with this JSON (name and description in SPANISH):\n` +
+              `{"nombre":"descriptive Spanish name max 5 words e.g. Anillo ola bicolor esmaltado","categoria":"AN","descripcion":"brief Spanish description max 8 words"}`;
 
             const aiRes = await env.AI.run("@cf/llava-hf/llava-1.5-7b-hf", {
               image:      imageBytes,
