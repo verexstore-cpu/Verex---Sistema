@@ -846,8 +846,7 @@ class Firestore {
         }
       }
     };
-    const projectBase = this.base.replace(`/documents`, "");
-    const url  = `${projectBase}:runQuery`;
+    const url  = `${this.base}:runQuery`;
     const res  = await fetch(url, {
       method:  "POST",
       headers: this.headers(),
@@ -856,7 +855,7 @@ class Firestore {
     const data = await res.json();
     return (Array.isArray(data) ? data : [])
       .filter(r => r.document)
-      .map(r => fieldsToObj(r.document.fields));
+      .map(r => ({ ...fieldsToObj(r.document.fields), id: r.document.name.split("/").pop() }));
   }
 }
 
