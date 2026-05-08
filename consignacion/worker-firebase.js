@@ -83,6 +83,7 @@ export default {
             const doc = {
               ...item,
               codigo,
+              precio:             Math.round((parseFloat(item.precio) || 0) * 100) / 100,
               stock_bodega:       item.stock_bodega       !== undefined ? parseInt(item.stock_bodega)       : qty,
               stock_tienda:       item.stock_tienda        !== undefined ? parseInt(item.stock_tienda)        : 0,
               stock_consignacion: item.stock_consignacion !== undefined ? parseInt(item.stock_consignacion) : 0,
@@ -586,7 +587,7 @@ export default {
             codigo:             prodId,
             codigoBase:         prodId,
             nombre:             d.nombre || "",
-            precio:             parseFloat(d.precio) || 0,
+            precio:             Math.round((parseFloat(d.precio) || 0) * 100) / 100,
             foto:               d.img || "",
             descripcion:        d.caracteristicas || "",
             descripcionTienda:  d.caracteristicas || "",
@@ -674,7 +675,7 @@ export default {
           if (!esAdmin) return forbidden();
           const upd = {};
           if (d.nombre      !== undefined) upd.nombre            = d.nombre;
-          if (d.precio      !== undefined) upd.precio            = parseFloat(d.precio) || 0;
+          if (d.precio      !== undefined) upd.precio            = Math.round((parseFloat(d.precio) || 0) * 100) / 100;
           if (d.img         !== undefined) upd.foto              = d.img;
           if (d.descripcion !== undefined) upd.descripcionTienda = d.descripcion;
           if (d.destacado   !== undefined) upd.destacado         = d.destacado;
