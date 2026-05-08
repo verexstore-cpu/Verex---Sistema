@@ -842,43 +842,33 @@ export default {
             if (!base64) { result = { ok: false, error: "No se recibió imagen" }; break; }
             const material = d.material || "Plata 925";
 
-            const systemPrompt =
-              `You are an expert jewelry product cataloger for a Latin American jewelry store. ` +
-              `Your job is to look at a jewelry photo and output ONLY a JSON object — no markdown, no explanation, no extra text.\n\n` +
-              `STEP 1 — Identify the jewelry TYPE by looking at the image carefully:\n` +
-              `- RING: worn on finger, circular shape, small\n` +
-              `- BRACELET/PULSERA: worn on wrist, larger circular or linked chain\n` +
-              `- NECKLACE/COLLAR: long chain or piece worn around neck\n` +
-              `- EARRINGS/ARETES: come in PAIRS, have a hook/stud back, worn on ears\n` +
-              `- PENDANT/DIJE: decorative charm/pendant, NO chain, standalone piece\n` +
-              `- SET/CONJUNTO: multiple pieces together (e.g., ring+earrings, necklace+bracelet)\n` +
-              `- ANKLET/TOBILLERA: thin chain/bracelet for ankle\n` +
-              `- ROSARY/ROSARIO: religious beaded necklace with cross or medal\n\n` +
-              `STEP 2 — Identify design details:\n` +
-              `- Shape/motif: heart, star, cross, flower, butterfly, infinity, snake, geometric, wave, moon, sun, etc.\n` +
-              `- Stones: zirconia, crystal, opal, pearl, ruby, emerald, or "sin piedras"\n` +
-              `- Finish: brillante, mate, esmaltado, enchapado oro, enchapado oro rosa, bicolor\n\n` +
-              `Material: ${material}\n\n` +
-              `Categories: AN=Anillo PU=Pulsera CO=Collar AR=Aretes DJ=Dije CJ=Conjunto TB=Tobillera RS=Rosario CD=Cadena con dije CA=Cadena\n\n` +
-              `Output ONLY this JSON with Spanish text:\n` +
-              `{"nombre":"[CATEGORY WORD] [design] [material] [stones/finish] — max 6 words","categoria":"[CODE]","descripcion":"Short 1-sentence Spanish description, max 15 words","descripcion_tienda":"Elegant 1-sentence Spanish marketing description for online store, max 20 words"}\n\n` +
-              `IMPORTANT: The "nombre" field MUST start with the correct Spanish category word matching the jewelry type you see.\n` +
-              `Examples of correct nombres: "Pulsera corazón zirconia plata", "Collar mariposa esmaltado", "Aretes luna estrella", "Dije cruz zirconia", "Tobillera cadena fina", NOT always "Anillo"`;
+            const imageBytes = Array.from(Uint8Array.from(atob(base64), c => c.charCodeAt(0)));
 
-            const aiRes = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64}` } },
-                    { type: "text",      text: systemPrompt }
-                  ]
-                }
-              ],
-              max_tokens: 400
+            // Identifica primero el tipo de joya antes de pedir el JSON
+            const promptTipo =
+              `Look at this jewelry photo carefully. What type of jewelry is it?\n` +
+              `Answer with EXACTLY one of these codes based on what you see:\n` +
+              `AN = ring (worn on finger, small circular band)\n` +
+              `PU = bracelet (worn on wrist, wider, has beads or links)\n` +
+              `CO = necklace (long chain worn around neck)\n` +
+              `AR = earrings (come in pairs, have ear hook/stud)\n` +
+              `DJ = pendant/charm (decorative piece, no chain)\n` +
+              `CJ = set (multiple jewelry pieces together)\n` +
+              `TB = anklet (thin chain for ankle)\n` +
+              `RS = rosary (religious beads with cross)\n` +
+              `CD = necklace with pendant\n` +
+              `CA = plain chain\n\n` +
+              `Material: ${material}\n\n` +
+              `Now describe what you see: the shape/motif (heart, star, cross, butterfly, snake, flower, etc.), stones (zirconia, crystal, pearl, opal, or none), and finish (shiny, matte, enamel, gold-plated, rose gold, bicolor).\n\n` +
+              `Respond ONLY with valid JSON — no text before or after:\n` +
+              `{"categoria":"??","nombre":"[Spanish category word] [design] [detail] max 5 words","descripcion":"Spanish description max 12 words","descripcion_tienda":"Elegant Spanish marketing sentence max 18 words"}\n\n` +
+              `CRITICAL: categoria must match what you actually see in the image. If it looks like a bracelet with beads and a charm, use PU. If it has two matching pieces for ears, use AR. Do NOT default to AN unless it is clearly a ring.`;
+
+            const aiRes = await env.AI.run("@cf/llava-hf/llava-1.5-7b-hf", {
+              image: imageBytes, prompt: promptTipo, max_tokens: 300
             });
 
-            const texto = (aiRes.response || "").trim();
+            const texto = (aiRes.description || aiRes.response || "").trim();
             const match = texto.match(/\{[\s\S]*?\}/);
             if (!match) { result = { ok: false, error: "IA no devolvió JSON: " + texto.slice(0, 120) }; break; }
             let parsed;
