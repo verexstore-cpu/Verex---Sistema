@@ -759,7 +759,7 @@ export default {
           });
           const ikData = await ikRes.json();
           if (ikData.url) {
-            const urlOptimizada = ikData.url + "?tr=w-600,q-85,f-webp,e-sharpen,e-contrast";
+            const urlOptimizada = ikData.url + "?tr=w-600,q-85,f-webp,e-sharpen";
             result = { ok: true, url: urlOptimizada };
           } else {
             result = { ok: false, error: ikData.message || "Error subiendo foto" };
