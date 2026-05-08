@@ -60,10 +60,29 @@ export default {
         case "STOCK_REGISTRAR": {
           if (!esAdmin) return forbidden();
           const items = Array.isArray(d.items) ? d.items : [d];
+          const codigos = [];
           for (const item of items) {
+            // Auto-generar código si no viene o se pide
+            let codigo = item.codigo;
+            if (!codigo || item.autoGenerarCodigo) {
+              const prefijo = String(item.categoria || "GEN").toUpperCase().slice(0, 2);
+              const allStock = await sb.getAll("stock");
+              let maxNum = 0;
+              allStock.forEach(s => {
+                const base = String(s.codigoBase || s.codigo || "");
+                if (base.startsWith(prefijo)) {
+                  const num = parseInt(base.replace(prefijo, "")) || 0;
+                  if (num > maxNum) maxNum = num;
+                }
+              });
+              const codigoBase = `${prefijo}${String(maxNum + 1).padStart(3, "0")}`;
+              codigo = item.talla ? `${codigoBase}T${item.talla}` : codigoBase;
+              item.codigoBase = item.codigoBase || codigoBase;
+            }
             const qty = parseInt(item.cantidad) || 1;
             const doc = {
               ...item,
+              codigo,
               stock_bodega:       item.stock_bodega       !== undefined ? parseInt(item.stock_bodega)       : qty,
               stock_tienda:       item.stock_tienda        !== undefined ? parseInt(item.stock_tienda)        : 0,
               stock_consignacion: item.stock_consignacion !== undefined ? parseInt(item.stock_consignacion) : 0,
@@ -72,9 +91,10 @@ export default {
               stock_total:        item.stock_total         !== undefined ? parseInt(item.stock_total)         : qty,
               estado:             item.estado || "bodega",
             };
-            await sb.set("stock", item.codigo, doc);
+            await sb.set("stock", codigo, doc);
+            codigos.push(codigo);
           }
-          result = { ok: true };
+          result = { ok: true, codigos };
           break;
         }
 
