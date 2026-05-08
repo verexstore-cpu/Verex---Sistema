@@ -836,47 +836,66 @@ export default {
 
         case "ANALIZAR_IMAGEN": {
           if (!esAdmin) return forbidden();
-          if (!env.AI) { result = { ok: false, error: "AI binding no configurado" }; break; }
           try {
             const base64 = (d.imagen || "").replace(/^data:image\/[^;]+;base64,/, "");
             if (!base64) { result = { ok: false, error: "No se recibió imagen" }; break; }
             const material = d.material || "Plata 925";
 
-            const imageBytes = Array.from(Uint8Array.from(atob(base64), c => c.charCodeAt(0)));
+            // Detectar tipo de imagen (jpeg por defecto)
+            const mimeMatch = (d.imagen || "").match(/^data:(image\/[^;]+);base64,/);
+            const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
 
-            const promptTipo =
-              `Analiza esta foto de joyería y responde ÚNICAMENTE con un objeto JSON válido. Sin texto adicional antes ni después del JSON.\n\n` +
-              `PASO 1 — Identifica el TIPO de joya mirando la imagen:\n` +
-              `AN = anillo (se lleva en el dedo, aro circular pequeño)\n` +
-              `PU = pulsera (se lleva en la muñeca, tiene cuentas, eslabones o charms)\n` +
-              `CO = collar (cadena larga para el cuello, sin dije visible)\n` +
-              `CD = collar con dije (cadena + colgante decorativo)\n` +
-              `AR = aretes (vienen EN PAR, tienen gancho o palillo para la oreja)\n` +
-              `DJ = dije (pieza decorativa suelta, sin cadena)\n` +
-              `CJ = conjunto (varias piezas juntas: ej. pulsera+aretes)\n` +
-              `TB = tobillera (cadena fina para el tobillo)\n` +
-              `RS = rosario (cuentas religiosas con cruz o medalla)\n` +
-              `CA = cadena sola (sin dije ni deco)\n\n` +
-              `PASO 2 — Describe detalles: forma/motivo (corazón, estrella, cruz, mariposa, elefante, flor, etc.), piedras (zirconia, cristal, perla, ópalo, o sin piedras), acabado (brillante, mate, esmaltado, enchapado oro, bicolor).\n\n` +
+            const promptGemini =
+              `Eres un experto catalogador de joyería. Analiza esta foto y responde ÚNICAMENTE con un JSON válido, sin texto adicional.\n\n` +
+              `TIPOS de joya (elige el código correcto según lo que VES en la imagen):\n` +
+              `AN = anillo (aro pequeño para dedo)\n` +
+              `PU = pulsera (para la muñeca, con cuentas, eslabones o charms)\n` +
+              `CO = collar (cadena larga para el cuello)\n` +
+              `CD = collar con dije (cadena + colgante)\n` +
+              `AR = aretes (vienen en PAR, tienen gancho para la oreja)\n` +
+              `DJ = dije (colgante suelto sin cadena)\n` +
+              `CJ = conjunto (varias piezas juntas)\n` +
+              `TB = tobillera (cadena fina para tobillo)\n` +
+              `RS = rosario (cuentas religiosas con cruz)\n` +
+              `CA = cadena sola\n\n` +
               `Material: ${material}\n\n` +
-              `Responde SOLO con este JSON (texto en ESPAÑOL, máximo 60 tokens en total):\n` +
-              `{"categoria":"XX","nombre":"[tipo] [motivo] [detalle]","descripcion":"descripción breve en español"}`;
+              `Responde SOLO con este JSON (en ESPAÑOL):\n` +
+              `{"categoria":"XX","nombre":"[tipo en español] [motivo] [detalle] máx 5 palabras","descripcion":"descripción en español máx 12 palabras","descripcion_tienda":"frase elegante para tienda online máx 18 palabras"}`;
 
-            const aiRes = await env.AI.run("@cf/llava-hf/llava-1.5-7b-hf", {
-              image: imageBytes, prompt: promptTipo, max_tokens: 150
-            });
+            // ── Usar Gemini Flash (gratis, excelente en visión) ──────────
+            const geminiKey = env.GEMINI_KEY;
+            if (!geminiKey) { result = { ok: false, error: "GEMINI_KEY no configurada en Cloudflare" }; break; }
 
-            const texto = (aiRes.description || aiRes.response || "").trim();
-            // Extraer el primer JSON completo (con { ... })
-            const match = texto.match(/\{[^{}]*\}/);
-            if (!match) { result = { ok: false, error: "IA no devolvió JSON: " + texto.slice(0, 150) }; break; }
+            const geminiRes = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents: [{
+                    parts: [
+                      { inline_data: { mime_type: mimeType, data: base64 } },
+                      { text: promptGemini }
+                    ]
+                  }],
+                  generationConfig: { maxOutputTokens: 300, temperature: 0.2 }
+                })
+              }
+            );
+
+            if (!geminiRes.ok) {
+              const errTxt = await geminiRes.text();
+              result = { ok: false, error: "Gemini error " + geminiRes.status + ": " + errTxt.slice(0, 150) };
+              break;
+            }
+
+            const geminiData = await geminiRes.json();
+            const texto = (geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "").trim();
+            const match = texto.match(/\{[\s\S]*?\}/);
+            if (!match) { result = { ok: false, error: "Gemini no devolvió JSON: " + texto.slice(0, 150) }; break; }
             let parsed;
             try { parsed = JSON.parse(match[0]); }
-            catch(pe) {
-              // Intentar reparar JSON truncado añadiendo cierre
-              try { parsed = JSON.parse(match[0] + '"}'); }
-              catch(_) { result = { ok: false, error: "JSON inválido: " + match[0].slice(0, 120) }; break; }
-            }
+            catch(pe) { result = { ok: false, error: "JSON inválido de Gemini: " + match[0].slice(0, 120) }; break; }
 
             result = { ok: true, resultado: {
               nombre:            parsed.nombre            || "",
