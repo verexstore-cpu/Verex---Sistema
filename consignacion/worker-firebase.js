@@ -834,6 +834,17 @@ export default {
           break;
         }
 
+        case "GEMINI_TEST": {
+          if (!esAdmin) return forbidden();
+          const gKey = env.GEMINI_KEY;
+          if (!gKey) { result = { ok: false, error: "No hay GEMINI_KEY" }; break; }
+          const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${gKey}`);
+          const data = await r.json();
+          const nombres = (data.models || []).map(m => m.name).filter(n => n.includes("gemini"));
+          result = { ok: r.ok, status: r.status, modelos: nombres, error: data.error?.message };
+          break;
+        }
+
         case "ANALIZAR_IMAGEN": {
           if (!esAdmin) return forbidden();
           try {
