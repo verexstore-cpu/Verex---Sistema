@@ -881,6 +881,10 @@ class Supabase {
       `${this.url}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}&select=id,data&limit=1`,
       { headers: this._headers() }
     );
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`SB get ${table}/${id}: ${res.status} ${txt}`);
+    }
     const rows = await res.json();
     if (!Array.isArray(rows) || rows.length === 0) return null;
     return { id: rows[0].id, ...rows[0].data };
@@ -892,6 +896,10 @@ class Supabase {
       `${this.url}/rest/v1/${table}?select=id,data&limit=10000`,
       { headers: this._headers() }
     );
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`SB getAll ${table}: ${res.status} ${txt}`);
+    }
     const rows = await res.json();
     if (!Array.isArray(rows)) return [];
     return rows.map(r => ({ id: r.id, ...r.data }));
