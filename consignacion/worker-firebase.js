@@ -31,7 +31,7 @@ export default {
           sb.get("config", "settings"),
         ]);
         return json({
-          productos: prods.filter(p => p.estado !== "inactivo"),
+          productos: prods.filter(p => p.enCatalogo === true && p.estado !== "inactivo"),
           cupones:   cups.filter(c => c.activo !== false && c.activo !== "false"),
           config:    cfgDoc || {}
         });
@@ -529,7 +529,7 @@ export default {
           ]);
           result = {
             ok: true,
-            productos: prods.filter(p => p.estado !== "inactivo"),
+            productos: prods.filter(p => p.enCatalogo === true && p.estado !== "inactivo"),
             cupones:   cups.filter(c => c.activo !== false && c.activo !== "false"),
             config:    cfgDoc || {}
           };
@@ -721,8 +721,41 @@ export default {
           if (d.img         !== undefined) upd.foto              = d.img;
           if (d.descripcion !== undefined) upd.descripcionTienda = d.descripcion;
           if (d.destacado   !== undefined) upd.destacado         = d.destacado;
+          if (d.enCatalogo  !== undefined) upd.enCatalogo        = Boolean(d.enCatalogo);
           await sb.update("stock", d.codigo, upd);
           result = { ok: true };
+          break;
+        }
+
+        case "ROTAR_CATALOGO": {
+          if (!esAdmin) return forbidden();
+          // d.porcentaje: número 0-100, d.guardarConfig: {dias, porcentaje} opcional
+          const todos = await sb.getAll("stock");
+          const activos = todos.filter(p => p.estado !== "inactivo");
+          const pct  = Math.min(100, Math.max(0, parseInt(d.porcentaje) || 30));
+          const cant = Math.max(1, Math.round(activos.length * pct / 100));
+          // Shuffle Fisher-Yates
+          const mezclados = activos.slice();
+          for (let i = mezclados.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [mezclados[i], mezclados[j]] = [mezclados[j], mezclados[i]];
+          }
+          const enCatalogo  = new Set(mezclados.slice(0, cant).map(p => p.codigo));
+          // Actualizar todos en paralelo
+          await Promise.all(activos.map(p =>
+            sb.update("stock", p.codigo, { enCatalogo: enCatalogo.has(p.codigo) })
+          ));
+          // Guardar fecha de rotación en config
+          const cfg = (await sb.get("config", "settings")) || {};
+          if (!cfg.rotacion) cfg.rotacion = {};
+          cfg.rotacion.ultimaRotacion = new Date().toISOString();
+          if (d.guardarConfig) {
+            cfg.rotacion.activa     = Boolean(d.guardarConfig.activa);
+            cfg.rotacion.dias       = parseInt(d.guardarConfig.dias)       || 8;
+            cfg.rotacion.porcentaje = parseInt(d.guardarConfig.porcentaje) || 30;
+          }
+          await sb.set("config", "settings", cfg);
+          result = { ok: true, total: activos.length, enCatalogo: cant };
           break;
         }
 
