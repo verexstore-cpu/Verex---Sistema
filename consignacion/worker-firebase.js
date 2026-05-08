@@ -867,14 +867,14 @@ export default {
             if (!geminiKey) { result = { ok: false, error: "GEMINI_KEY no configurada en Cloudflare" }; break; }
 
             const geminiRes = await fetch(
-              `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${geminiKey}`,
               {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   contents: [{
                     parts: [
-                      { inline_data: { mime_type: mimeType, data: base64 } },
+                      { inlineData: { mimeType: mimeType, data: base64 } },
                       { text: promptGemini }
                     ]
                   }],
