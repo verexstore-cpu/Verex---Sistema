@@ -857,21 +857,27 @@ export default {
             const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
 
             const promptGemini =
-              `Eres un experto catalogador de joyería. Analiza esta foto y responde ÚNICAMENTE con un JSON válido, sin texto adicional.\n\n` +
-              `TIPOS de joya (elige el código correcto según lo que VES en la imagen):\n` +
+              `Eres un experto catalogador de joyería latinoamericana. Analiza esta foto y responde ÚNICAMENTE con un JSON válido, sin texto adicional antes ni después.\n\n` +
+              `MATERIAL (ya definido por el admin, NO lo detectes tú): ${material}\n\n` +
+              `PASO 1 — Identifica el TIPO de joya mirando la imagen:\n` +
               `AN = anillo (aro pequeño para dedo)\n` +
               `PU = pulsera (para la muñeca, con cuentas, eslabones o charms)\n` +
-              `CO = collar (cadena larga para el cuello)\n` +
-              `CD = collar con dije (cadena + colgante)\n` +
-              `AR = aretes (vienen en PAR, tienen gancho para la oreja)\n` +
-              `DJ = dije (colgante suelto sin cadena)\n` +
-              `CJ = conjunto (varias piezas juntas)\n` +
+              `CO = collar (cadena larga para el cuello sin dije)\n` +
+              `CD = collar con dije (cadena + colgante decorativo)\n` +
+              `AR = aretes (vienen en PAR, tienen gancho o palillo para la oreja)\n` +
+              `DJ = dije (colgante decorativo suelto, sin cadena)\n` +
+              `CJ = conjunto (varias piezas juntas, ej: pulsera+aretes)\n` +
               `TB = tobillera (cadena fina para tobillo)\n` +
-              `RS = rosario (cuentas religiosas con cruz)\n` +
-              `CA = cadena sola\n\n` +
-              `Material: ${material}\n\n` +
-              `Responde SOLO con este JSON (en ESPAÑOL):\n` +
-              `{"categoria":"XX","nombre":"[tipo en español] [motivo] [detalle] máx 5 palabras","descripcion":"descripción en español máx 12 palabras","descripcion_tienda":"frase elegante para tienda online máx 18 palabras"}`;
+              `RS = rosario (cuentas religiosas con cruz o medalla)\n` +
+              `CA = cadena sola (sin dije ni decoración)\n\n` +
+              `PASO 2 — Describe lo que VES: forma/motivo (corazón, estrella, elefante, mariposa, cruz, flor, etc.), piedras (zirconia, cristal, ópalo, rubí, perla, o sin piedras), acabado (brillante, esmaltado, bicolor, enchapado).\n\n` +
+              `REGLAS IMPORTANTES:\n` +
+              `- El campo "nombre" DEBE incluir: [tipo de joya] + [motivo/diseño] + [material: ${material}]\n` +
+              `- El campo "descripcion" DEBE mencionar: tipo, diseño, piedras/acabado Y el material ${material}\n` +
+              `- El campo "descripcion_tienda" es una frase elegante de marketing que incluye el material ${material}\n` +
+              `- Todo en ESPAÑOL\n\n` +
+              `Responde SOLO con este JSON:\n` +
+              `{"categoria":"XX","nombre":"[tipo] [diseño] [${material}] máx 6 palabras","descripcion":"[tipo] de ${material} con [diseño y detalles], máx 12 palabras","descripcion_tienda":"frase elegante de marketing con material incluido, máx 18 palabras"}`;
 
             // ── Usar Groq (gratis, llama-3.2-11b-vision) ─────────────────
             const groqKey = env.GROQ_KEY;
