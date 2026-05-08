@@ -408,6 +408,41 @@ export default {
           break;
         }
 
+        // ══ CATÁLOGO PÚBLICO POR VENDEDOR (sin auth) ══════════════
+        case "CATALOGO_VENDEDOR": {
+          const vendCod = d.vendedor;
+          if (!vendCod) { result = { ok: false, razon: "no_encontrado" }; break; }
+          const [vend, cons] = await Promise.all([
+            sb.get("vendedores", vendCod),
+            sb.query("consignacion", "vendedor", "==", vendCod),
+          ]);
+          // Vendedor no existe
+          if (!vend) { result = { ok: false, razon: "no_encontrado" }; break; }
+          // Catálogo no activado
+          if (!vend.catalogoActivo) { result = { ok: false, razon: "no_activo" }; break; }
+          // Validar 30 días desde último corte
+          if (vend.fechaCorte) {
+            const diasDesdeCorte = (Date.now() - new Date(vend.fechaCorte).getTime()) / (1000 * 60 * 60 * 24);
+            if (diasDesdeCorte > 30) { result = { ok: false, razon: "vencido" }; break; }
+          }
+          // Solo items activos con stock disponible
+          const items = cons
+            .filter(c => c.estado === "activo" && (parseInt(c.cantidad||0) - parseInt(c.vendido||0)) > 0)
+            .map(c => ({
+              codigo:    c.codigo,
+              nombre:    c.nombre_base || c.nombre,
+              precio:    c.precio,
+              foto:      c.foto || "",
+              categoria: c.categoria || "",
+            }));
+          result = {
+            ok: true,
+            vendedor: { nombre: vend.nombre, telefono: vend.telefono },
+            items,
+          };
+          break;
+        }
+
         // ══ PEDIDOS TIENDA ════════════════════════════════════════
         case "GUARDAR_PEDIDO": {
           const pedidoId = d.numeroPedido || `PED_${Date.now()}`;
@@ -551,11 +586,18 @@ export default {
 
         case "VERIFICAR_TOKEN": {
           const vend = await sb.get("vendedores", d.vendedor);
-          if (!vend) { result = { ok: false }; break; }
-          result = {
-            ok: String(vend.tokenInventario) === String(d.token),
-            vendedor: vend
-          };
+          if (!vend) { result = { ok: false, razon: "no_encontrado" }; break; }
+          if (String(vend.tokenInventario) !== String(d.token)) {
+            result = { ok: false, razon: "token_invalido" }; break;
+          }
+          // Validar 30 días desde último corte
+          if (vend.fechaCorte) {
+            const diasDesdeCorte = (Date.now() - new Date(vend.fechaCorte).getTime()) / (1000 * 60 * 60 * 24);
+            if (diasDesdeCorte > 30) {
+              result = { ok: false, razon: "vencido" }; break;
+            }
+          }
+          result = { ok: true, vendedor: vend };
           break;
         }
 
