@@ -1,17 +1,14 @@
 // ═══════════════════════════════════════════════════════════════════
-//  VEREX API — Cloudflare Worker con Firebase Firestore
-//  Proyecto: verex-sistema
+//  VEREX API — Cloudflare Worker con Supabase
 //
-//  SECRETS que debes configurar en Cloudflare (Settings → Variables → Secrets):
-//    FIREBASE_SA_EMAIL    → client_email del Service Account
-//    FIREBASE_SA_KEY      → private_key del Service Account (incluye -----BEGIN...-----)
-//    SECRET_PASS          → contraseña del admin (la que usas hoy como _sessionPass)
+//  SECRETS en Cloudflare (Settings → Variables → Secrets):
+//    SUPABASE_URL         → URL del proyecto (ej: https://xxx.supabase.co)
+//    SUPABASE_SERVICE_KEY → service_role key (Settings → API en Supabase)
+//    SECRET_PASS          → contraseña del admin
+//    SECRET_KEY           → clave legacy de vendedores
+//    IMAGEKIT_PRIVATE_KEY → clave privada de ImageKit
 // ═══════════════════════════════════════════════════════════════════
 
-const PROJECT  = "verex-sistema";
-const FS_BASE  = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`;
-
-// ── CORS ──────────────────────────────────────────────────────────
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -19,20 +16,19 @@ const CORS = {
   "Content-Type":                 "application/json"
 };
 
-// ── ENTRADA ───────────────────────────────────────────────────────
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response("", { headers: CORS });
 
+    const sb = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+
     // ── GET: catálogo público ──────────────────────────────────────
     if (request.method === "GET") {
       try {
-        const token = await getFirestoreToken(env.FIREBASE_SA_EMAIL, env.FIREBASE_SA_KEY);
-        const fs    = new Firestore(token, FS_BASE);
         const [prods, cups, cfgDoc] = await Promise.all([
-          fs.getAll("stock"),
-          fs.getAll("cupones"),
-          fs.get("config", "settings"),
+          sb.getAll("stock"),
+          sb.getAll("cupones"),
+          sb.get("config", "settings"),
         ]);
         return json({
           productos: prods.filter(p => p.estado !== "inactivo"),
@@ -47,22 +43,16 @@ export default {
     try {
       const d = await request.json();
 
-      // Autenticar admin (acciones que modifican datos)
-      // Acepta _pass (admin panel) o key (inventario-sellers legacy)
       const esAdmin = (d._pass && d._pass === env.SECRET_PASS) ||
                       (d.key   && d.key   === env.SECRET_KEY);
 
-      // Obtener token de Firestore
-      const token = await getFirestoreToken(env.FIREBASE_SA_EMAIL, env.FIREBASE_SA_KEY);
-
-      const fs = new Firestore(token, FS_BASE);
       let result;
 
       switch (d.accion) {
 
         // ══ STOCK ════════════════════════════════════════════════
         case "STOCK_GET_ALL": {
-          const docs = await fs.getAll("stock");
+          const docs = await sb.getAll("stock");
           result = { ok: true, stock: docs };
           break;
         }
@@ -71,7 +61,7 @@ export default {
           if (!esAdmin) return forbidden();
           const items = Array.isArray(d.items) ? d.items : [d];
           for (const item of items) {
-            await fs.set("stock", item.codigo, item);
+            await sb.set("stock", item.codigo, item);
           }
           result = { ok: true };
           break;
@@ -79,7 +69,7 @@ export default {
 
         case "STOCK_ELIMINAR": {
           if (!esAdmin) return forbidden();
-          await fs.delete("stock", d.codigo);
+          await sb.delete("stock", d.codigo);
           result = { ok: true };
           break;
         }
@@ -87,9 +77,9 @@ export default {
         case "STOCK_ACTUALIZAR_CANTIDADES": {
           if (!esAdmin) return forbidden();
           for (const item of (d.items || [])) {
-            const doc = await fs.get("stock", item.codigo);
+            const doc = await sb.get("stock", item.codigo);
             if (doc) {
-              await fs.update("stock", item.codigo, {
+              await sb.update("stock", item.codigo, {
                 stock_bodega:       item.stock_bodega       ?? doc.stock_bodega,
                 stock_tienda:       item.stock_tienda       ?? doc.stock_tienda,
                 stock_consignacion: item.stock_consignacion ?? doc.stock_consignacion,
@@ -103,28 +93,28 @@ export default {
         // ══ VENDEDORES ═══════════════════════════════════════════
         case "GET_VENDEDORES": {
           if (!esAdmin) return forbidden();
-          const docs = await fs.getAll("vendedores");
+          const docs = await sb.getAll("vendedores");
           result = { ok: true, vendedores: docs };
           break;
         }
 
         case "GUARDAR_VENDEDOR": {
           if (!esAdmin) return forbidden();
-          await fs.set("vendedores", d.vendedor.codigo, d.vendedor);
+          await sb.set("vendedores", d.vendedor.codigo, d.vendedor);
           result = { ok: true };
           break;
         }
 
         case "ELIMINAR_VENDEDOR": {
           if (!esAdmin) return forbidden();
-          await fs.delete("vendedores", d.codigo);
+          await sb.delete("vendedores", d.codigo);
           result = { ok: true };
           break;
         }
 
         case "GUARDAR_TOKEN": {
           if (!esAdmin) return forbidden();
-          await fs.update("vendedores", d.vendedor, { tokenInventario: d.token });
+          await sb.update("vendedores", d.vendedor, { tokenInventario: d.token });
           result = { ok: true };
           break;
         }
@@ -132,9 +122,9 @@ export default {
         // ══ CONSIGNACION ══════════════════════════════════════════
         case "GET_CONSIGNACION": {
           const [cons, vends, stock] = await Promise.all([
-            fs.getAll("consignacion"),
-            fs.getAll("vendedores"),
-            fs.getAll("stock"),
+            sb.getAll("consignacion"),
+            sb.getAll("vendedores"),
+            sb.getAll("stock"),
           ]);
           result = { ok: true, consignacion: cons, vendedores: vends, stock, productos: stock };
           break;
@@ -143,10 +133,9 @@ export default {
         case "REGISTRAR_ENTREGA": {
           if (!esAdmin) return forbidden();
           const items = d.items || [];
-          // Guardar cada item de consignacion
           for (const item of items) {
             const id = item.id || `CONS_${Date.now()}_${item.codigo}`;
-            await fs.set("consignacion", id, {
+            await sb.set("consignacion", id, {
               id, vendedor: d.vendedor, codigo: item.codigo,
               nombre: item.nombre, codigoBase: item.codigoBase || item.codigo,
               talla: item.talla || "", nombre_base: item.nombre_base || item.nombre,
@@ -154,10 +143,9 @@ export default {
               cantidad: item.cantidad || 1, vendido: 0,
               foto: item.foto || "", fecha: new Date().toISOString(), estado: "activo"
             });
-            // Descontar stock bodega
-            const s = await fs.get("stock", item.codigo);
+            const s = await sb.get("stock", item.codigo);
             if (s) {
-              await fs.update("stock", item.codigo, {
+              await sb.update("stock", item.codigo, {
                 stock_bodega:       Math.max(0, (parseInt(s.stock_bodega)||0) - (item.cantidad||1)),
                 stock_consignacion: (parseInt(s.stock_consignacion)||0) + (item.cantidad||1)
               });
@@ -168,15 +156,13 @@ export default {
         }
 
         case "REGISTRAR_VENTA": {
-          // Vendedor registra venta desde su link
-          const cons = await fs.get("consignacion", d.id);
+          const cons = await sb.get("consignacion", d.id);
           if (!cons) { result = { ok: false, error: "Item no encontrado" }; break; }
           const nuevoVendido = (parseInt(cons.vendido)||0) + (parseInt(d.cantidad)||1);
-          await fs.update("consignacion", d.id, { vendido: nuevoVendido });
-          // Actualizar stock_vendido
-          const s = await fs.get("stock", cons.codigo);
+          await sb.update("consignacion", d.id, { vendido: nuevoVendido });
+          const s = await sb.get("stock", cons.codigo);
           if (s) {
-            await fs.update("stock", cons.codigo, {
+            await sb.update("stock", cons.codigo, {
               stock_vendido: (parseInt(s.stock_vendido)||0) + (parseInt(d.cantidad)||1)
             });
           }
@@ -188,25 +174,22 @@ export default {
           if (!esAdmin) return forbidden();
           const items = d.items || [];
           const devId = `DEV_${Date.now()}`;
-          // Guardar registro de devolución
-          await fs.set("devoluciones", devId, {
+          await sb.set("devoluciones", devId, {
             id: devId, vendedor: d.vendedor,
             fecha: new Date().toISOString(), items: JSON.stringify(items)
           });
-          // Actualizar consignacion + stock
           for (const item of items) {
-            const cons = await fs.get("consignacion", item.id);
+            const cons = await sb.get("consignacion", item.id);
             if (cons) {
               const nuevaCant = Math.max(0, (parseInt(cons.cantidad)||0) - (item.cantidad||1));
-              await fs.update("consignacion", item.id, {
+              await sb.update("consignacion", item.id, {
                 cantidad: nuevaCant,
                 estado: nuevaCant <= parseInt(cons.vendido||0) ? "devuelto" : "activo"
               });
             }
-            // Devolver al stock bodega
-            const s = await fs.get("stock", item.codigo);
+            const s = await sb.get("stock", item.codigo);
             if (s) {
-              await fs.update("stock", item.codigo, {
+              await sb.update("stock", item.codigo, {
                 stock_bodega:       (parseInt(s.stock_bodega)||0) + (item.cantidad||1),
                 stock_consignacion: Math.max(0, (parseInt(s.stock_consignacion)||0) - (item.cantidad||1))
               });
@@ -218,7 +201,7 @@ export default {
 
         case "ELIMINAR_ITEM_CONSIGNACION": {
           if (!esAdmin) return forbidden();
-          await fs.delete("consignacion", d.id);
+          await sb.delete("consignacion", d.id);
           result = { ok: true };
           break;
         }
@@ -226,16 +209,14 @@ export default {
         // ══ CORTES ════════════════════════════════════════════════
         case "CERRAR_CORTE": {
           if (!esAdmin) return forbidden();
-          // Marcar devueltos
           for (const id of (d.devueltos || [])) {
-            await fs.update("consignacion", id, { estado: "devuelto" });
+            await sb.update("consignacion", id, { estado: "devuelto" });
           }
-          // Resetear vendido a 0 en los activos del vendedor
-          const allCons = await fs.query("consignacion", "vendedor", "==", d.vendedor);
+          const allCons = await sb.query("consignacion", "vendedor", "==", d.vendedor);
           for (const c of allCons.filter(c => c.estado === "activo")) {
-            await fs.update("consignacion", c.id, { vendido: 0 });
+            await sb.update("consignacion", c.id, { vendido: 0 });
           }
-          await fs.update("vendedores", d.vendedor, {
+          await sb.update("vendedores", d.vendedor, {
             totalVendido: 0,
             fechaCorte: new Date().toISOString()
           });
@@ -246,7 +227,7 @@ export default {
         case "GUARDAR_CORTE_HISTORIAL": {
           if (!esAdmin) return forbidden();
           const corteId = String(d.id);
-          await fs.set("cortesHistorial", corteId, {
+          await sb.set("cortes_historial", corteId, {
             id: corteId, vendedor: d.vendedor, fecha: d.fecha,
             totalVendido: d.totalVendido, comisionPct: d.comisionPct,
             gananciaVendedor: d.gananciaVendedor, aPagarVerex: d.aPagarVerex
@@ -256,7 +237,7 @@ export default {
         }
 
         case "GET_HISTORIAL_CORTES": {
-          const cortes = await fs.query("cortesHistorial", "vendedor", "==", d.vendedor);
+          const cortes = await sb.query("cortes_historial", "vendedor", "==", d.vendedor);
           result = { ok: true, cortes };
           break;
         }
@@ -265,7 +246,7 @@ export default {
         case "REGISTRAR_VENTA_DIRECTA": {
           if (!esAdmin) return forbidden();
           const vdId = d.id || `VD_${Date.now()}`;
-          await fs.set("ventas_directas", vdId, {
+          await sb.set("ventas_directas", vdId, {
             id: vdId, fecha: d.fecha || new Date().toISOString(),
             cliente: d.cliente || "", telefono: d.telefono || "",
             items: JSON.stringify(d.items || []),
@@ -278,11 +259,10 @@ export default {
             nota: d.nota || "",
             estado: d.estado || "pagado"
           });
-          // Descontar stock
           for (const item of (d.items || [])) {
-            const s = await fs.get("stock", item.codigo);
+            const s = await sb.get("stock", item.codigo);
             if (s) {
-              await fs.update("stock", item.codigo, {
+              await sb.update("stock", item.codigo, {
                 stock_bodega: Math.max(0, (parseInt(s.stock_bodega)||0) - (item.cantidad||1))
               });
             }
@@ -293,7 +273,7 @@ export default {
 
         case "GET_VENTAS_DIRECTAS": {
           if (!esAdmin) return forbidden();
-          let ventas = await fs.getAll("ventas_directas");
+          let ventas = await sb.getAll("ventas_directas");
           if (d.estado) ventas = ventas.filter(v => v.estado === d.estado);
           ventas.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
           result = { ok: true, ventas };
@@ -303,14 +283,14 @@ export default {
         case "REGISTRAR_ABONO": {
           if (!esAdmin) return forbidden();
           const abonoId = `AB_${Date.now()}`;
-          await fs.set("abonos", abonoId, {
+          await sb.set("abonos", abonoId, {
             id: abonoId, ventaId: d.ventaId,
             fecha: new Date().toISOString(), monto: d.monto || 0
           });
-          const vd = await fs.get("ventas_directas", d.ventaId);
+          const vd = await sb.get("ventas_directas", d.ventaId);
           if (vd) {
             const nuevoSaldo = Math.max(0, (parseFloat(vd.saldoPendiente)||0) - (d.monto||0));
-            await fs.update("ventas_directas", d.ventaId, {
+            await sb.update("ventas_directas", d.ventaId, {
               saldoPendiente: nuevoSaldo,
               estado: nuevoSaldo <= 0 ? "pagado" : "credito"
             });
@@ -321,20 +301,19 @@ export default {
 
         case "GET_ABONOS_VENTA": {
           if (!esAdmin) return forbidden();
-          const abonos = await fs.query("abonos", "ventaId", "==", d.ventaId);
+          const abonos = await sb.query("abonos", "ventaId", "==", d.ventaId);
           result = { ok: true, abonos };
           break;
         }
 
         case "REGISTRAR_VENTA_VENDEDOR": {
-          // Alias desde inventario-sellers
-          const consV = await fs.get("consignacion", d.id);
+          const consV = await sb.get("consignacion", d.id);
           if (!consV) { result = { ok: false, error: "Item no encontrado" }; break; }
           const nuevoVendidoV = (parseInt(consV.vendido)||0) + (parseInt(d.cantidad)||1);
-          await fs.update("consignacion", d.id, { vendido: nuevoVendidoV });
-          const sV = await fs.get("stock", consV.codigo);
+          await sb.update("consignacion", d.id, { vendido: nuevoVendidoV });
+          const sV = await sb.get("stock", consV.codigo);
           if (sV) {
-            await fs.update("stock", consV.codigo, {
+            await sb.update("stock", consV.codigo, {
               stock_vendido: (parseInt(sV.stock_vendido)||0) + (parseInt(d.cantidad)||1)
             });
           }
@@ -343,14 +322,14 @@ export default {
         }
 
         case "GET_VENTAS_VENDEDOR": {
-          const ventasV = await fs.query("consignacion", "vendedor", "==", d.vendedor);
+          const ventasV = await sb.query("consignacion", "vendedor", "==", d.vendedor);
           result = { ok: true, ventas: ventasV.filter(v => parseInt(v.vendido) > 0) };
           break;
         }
 
         case "SOLICITAR_CORRECCION_VENTA": {
           const solId = `SOL_${Date.now()}`;
-          await fs.set("solicitudes_correccion", solId, {
+          await sb.set("solicitudes_correccion", solId, {
             id: solId, ventaId: d.ventaId || "",
             vendedor: d.vendedor || "", motivo: d.motivo || "",
             codigo: d.codigo || "", estado: "pendiente",
@@ -361,7 +340,7 @@ export default {
         }
 
         case "GET_DEVOLUCIONES_VENDEDOR": {
-          const devs = await fs.query("devoluciones", "vendedor", "==", d.vendedor);
+          const devs = await sb.query("devoluciones", "vendedor", "==", d.vendedor);
           result = { ok: true, devoluciones: devs };
           break;
         }
@@ -369,21 +348,21 @@ export default {
         // ══ PEDIDOS TIENDA ════════════════════════════════════════
         case "GUARDAR_PEDIDO": {
           const pedidoId = d.numeroPedido || `PED_${Date.now()}`;
-          await fs.set("pedidos", pedidoId, { ...d, id: pedidoId });
+          await sb.set("pedidos", pedidoId, { ...d, id: pedidoId });
           result = { ok: true, numeroPedido: pedidoId };
           break;
         }
 
         case "GET_PEDIDOS": {
           if (!esAdmin) return forbidden();
-          const pedidos = await fs.getAll("pedidos");
+          const pedidos = await sb.getAll("pedidos");
           result = { ok: true, pedidos };
           break;
         }
 
         case "ACTUALIZAR_ESTADO_PEDIDO": {
           if (!esAdmin) return forbidden();
-          await fs.update("pedidos", d.numeroPedido, { estado: d.estado });
+          await sb.update("pedidos", d.numeroPedido, { estado: d.estado });
           result = { ok: true };
           break;
         }
@@ -391,22 +370,22 @@ export default {
         // ══ CLIENTES ══════════════════════════════════════════════
         case "GET_CLIENTES": {
           if (!esAdmin) return forbidden();
-          const clientes = await fs.getAll("clientes");
+          const clientes = await sb.getAll("clientes");
           result = { ok: true, clientes };
           break;
         }
 
         case "GUARDAR_CLIENTE": {
-          await fs.set("clientes", d.codigo || `CLI_${Date.now()}`, d);
+          await sb.set("clientes", d.codigo || `CLI_${Date.now()}`, d);
           result = { ok: true };
           break;
         }
 
         // ══ CUPONES ═══════════════════════════════════════════════
         case "USAR_CUPON": {
-          const cup = await fs.get("cupones", d.codigo);
+          const cup = await sb.get("cupones", d.codigo);
           if (!cup) { result = { ok: false, error: "Cupón no encontrado" }; break; }
-          await fs.update("cupones", d.codigo, {
+          await sb.update("cupones", d.codigo, {
             usosActuales: (parseInt(cup.usosActuales)||0) + 1
           });
           result = { ok: true };
@@ -415,14 +394,14 @@ export default {
 
         // ══ CONFIG ════════════════════════════════════════════════
         case "GET_CONFIG": {
-          const cfg = await fs.get("config", "settings");
+          const cfg = await sb.get("config", "settings");
           result = { ok: true, config: cfg || {} };
           break;
         }
 
         case "GUARDAR_CONFIG": {
           if (!esAdmin) return forbidden();
-          await fs.update("config", "settings", d.config || {});
+          await sb.update("config", "settings", d.config || {});
           result = { ok: true };
           break;
         }
@@ -430,7 +409,7 @@ export default {
         // ══ GENERAR CÓDIGO ════════════════════════════════════════
         case "GENERAR_CODIGO": {
           const prefijo = String(d.categoria || "GEN").toUpperCase().slice(0, 2);
-          const allStock = await fs.getAll("stock");
+          const allStock = await sb.getAll("stock");
           let maxNum = 0;
           allStock.forEach(s => {
             const base = String(s.codigoBase || "");
@@ -446,9 +425,9 @@ export default {
         // ══ CATÁLOGO / TIENDA PÚBLICA ════════════════════════════
         case "GET_CATALOGO": {
           const [prods, cups, cfgDoc] = await Promise.all([
-            fs.getAll("stock"),
-            fs.getAll("cupones"),
-            fs.get("config", "settings"),
+            sb.getAll("stock"),
+            sb.getAll("cupones"),
+            sb.get("config", "settings"),
           ]);
           result = {
             ok: true,
@@ -460,33 +439,30 @@ export default {
         }
 
         case "NUEVO_PEDIDO": {
-          // Generar número de pedido #10DDMM-001
-          const now    = new Date();
-          const dd     = String(now.getDate()).padStart(2, "0");
-          const mm     = String(now.getMonth() + 1).padStart(2, "0");
-          const prefijo = `#10${dd}${mm}`;
-          const todosLosPedidos = await fs.getAll("pedidos");
-          const hoyStr = now.toISOString().slice(0, 10);
-          const correl = todosLosPedidos.filter(p => (p.fecha || "").slice(0, 10) === hoyStr).length + 1;
+          const now      = new Date();
+          const dd       = String(now.getDate()).padStart(2, "0");
+          const mm       = String(now.getMonth() + 1).padStart(2, "0");
+          const prefijo  = `#10${dd}${mm}`;
+          const todosLosPedidos = await sb.getAll("pedidos");
+          const hoyStr   = now.toISOString().slice(0, 10);
+          const correl   = todosLosPedidos.filter(p => (p.fecha || "").slice(0, 10) === hoyStr).length + 1;
           const numeroPedido = `${prefijo}-${String(correl).padStart(3, "0")}`;
-          // Crear o actualizar cliente
-          const clientes = await fs.getAll("clientes");
+          const clientes = await sb.getAll("clientes");
           const cliExist = clientes.find(c => String(c.telefono) === String(d.telefono));
           let codigoCliente = "";
           if (cliExist) {
             codigoCliente = cliExist.codigo;
-            await fs.update("clientes", codigoCliente, { totalPedidos: (parseInt(cliExist.totalPedidos)||0) + 1 });
+            await sb.update("clientes", codigoCliente, { totalPedidos: (parseInt(cliExist.totalPedidos)||0) + 1 });
           } else {
             codigoCliente = `CVX-${String(clientes.length + 1).padStart(3, "0")}`;
-            await fs.set("clientes", codigoCliente, {
+            await sb.set("clientes", codigoCliente, {
               codigo: codigoCliente, nombre: d.cliente, telefono: d.telefono,
               municipio: d.municipio || "", direccion: d.direccion || "",
               departamento: d.departamento || "", totalPedidos: 1,
               fechaRegistro: new Date().toISOString()
             });
           }
-          // Guardar pedido
-          await fs.set("pedidos", numeroPedido, {
+          await sb.set("pedidos", numeroPedido, {
             id: numeroPedido, numeroPedido, fecha: new Date().toISOString(),
             cliente: d.cliente, telefono: d.telefono, municipio: d.municipio || "",
             departamento: d.departamento || "", direccion: d.direccion || "",
@@ -501,7 +477,7 @@ export default {
         }
 
         case "BUSCAR_CLIENTE": {
-          const cliAll = await fs.getAll("clientes");
+          const cliAll = await sb.getAll("clientes");
           const cli = cliAll.find(c =>
             String(c.codigo) === String(d.codigo) ||
             String(c.telefono) === String(d.codigo)
@@ -511,7 +487,7 @@ export default {
         }
 
         case "VERIFICAR_TOKEN": {
-          const vend = await fs.get("vendedores", d.vendedor);
+          const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false }; break; }
           result = {
             ok: String(vend.tokenInventario) === String(d.token),
@@ -524,11 +500,11 @@ export default {
         case "GET_TIENDA": {
           if (!esAdmin) return forbidden();
           const [prods, peds, cups, clis, cfgDoc] = await Promise.all([
-            fs.getAll("stock"),
-            fs.getAll("pedidos"),
-            fs.getAll("cupones"),
-            fs.getAll("clientes"),
-            fs.get("config", "settings"),
+            sb.getAll("stock"),
+            sb.getAll("pedidos"),
+            sb.getAll("cupones"),
+            sb.getAll("clientes"),
+            sb.get("config", "settings"),
           ]);
           result = {
             ok: true,
@@ -544,22 +520,22 @@ export default {
         case "CREAR_PRODUCTO": {
           if (!esAdmin) return forbidden();
           const prodId = d.codigo || `PROD_${Date.now()}`;
-          await fs.set("stock", prodId, {
-            codigo:            prodId,
-            codigoBase:        prodId,
-            nombre:            d.nombre || "",
-            precio:            parseFloat(d.precio) || 0,
-            foto:              d.img || "",
-            descripcion:       d.caracteristicas || "",
-            descripcionTienda: d.caracteristicas || "",
-            categoria:         d.categoria || "",
-            talla:             "",
-            stock_bodega:      parseInt(d.cantidad) || 0,
-            stock_tienda:      0,
-            stock_consignacion:0,
-            stock_vendido:     0,
-            estado:            "activo",
-            fechaRegistro:     new Date().toISOString()
+          await sb.set("stock", prodId, {
+            codigo:             prodId,
+            codigoBase:         prodId,
+            nombre:             d.nombre || "",
+            precio:             parseFloat(d.precio) || 0,
+            foto:               d.img || "",
+            descripcion:        d.caracteristicas || "",
+            descripcionTienda:  d.caracteristicas || "",
+            categoria:          d.categoria || "",
+            talla:              "",
+            stock_bodega:       parseInt(d.cantidad) || 0,
+            stock_tienda:       0,
+            stock_consignacion: 0,
+            stock_vendido:      0,
+            estado:             "activo",
+            fechaRegistro:      new Date().toISOString()
           });
           result = { ok: true };
           break;
@@ -567,14 +543,14 @@ export default {
 
         case "ELIMINAR_PEDIDO": {
           if (!esAdmin) return forbidden();
-          await fs.delete("pedidos", d.numeroPedido);
+          await sb.delete("pedidos", d.numeroPedido);
           result = { ok: true };
           break;
         }
 
         // ══ ALIAS ════════════════════════════════════════════════
         case "GET_STOCK": {
-          const stock = await fs.getAll("stock");
+          const stock = await sb.getAll("stock");
           result = { ok: true, stock };
           break;
         }
@@ -583,10 +559,10 @@ export default {
         case "STOCK_ASIGNAR_TIENDA": {
           if (!esAdmin) return forbidden();
           for (const codigo of (d.codigos || [])) {
-            const s = await fs.get("stock", codigo);
+            const s = await sb.get("stock", codigo);
             if (s) {
               const cant = d.cantidad || 1;
-              await fs.update("stock", codigo, {
+              await sb.update("stock", codigo, {
                 stock_bodega: Math.max(0, (parseInt(s.stock_bodega)||0) - cant),
                 stock_tienda: (parseInt(s.stock_tienda)||0) + cant
               });
@@ -599,10 +575,10 @@ export default {
         case "STOCK_ASIGNAR_VENDEDOR": {
           if (!esAdmin) return forbidden();
           for (const codigo of (d.codigos || [])) {
-            const s = await fs.get("stock", codigo);
+            const s = await sb.get("stock", codigo);
             if (s) {
               const cant = d.cantidad || 1;
-              await fs.update("stock", codigo, {
+              await sb.update("stock", codigo, {
                 stock_bodega:       Math.max(0, (parseInt(s.stock_bodega)||0) - cant),
                 stock_consignacion: (parseInt(s.stock_consignacion)||0) + cant
               });
@@ -615,21 +591,23 @@ export default {
         case "STOCK_DEVOLVER_BODEGA": {
           if (!esAdmin) return forbidden();
           for (const codigo of (d.codigos || [])) {
-            const s = await fs.get("stock", codigo);
+            const s = await sb.get("stock", codigo);
             if (s) {
               const cant   = d.cantidad || 1;
               const origen = d.origen || "tienda";
               const updates = { stock_bodega: (parseInt(s.stock_bodega)||0) + cant };
-              if (origen === "tienda")        updates.stock_tienda        = Math.max(0, (parseInt(s.stock_tienda)||0) - cant);
-              else if (origen === "consignacion") updates.stock_consignacion = Math.max(0, (parseInt(s.stock_consignacion)||0) - cant);
-              await fs.update("stock", codigo, updates);
+              if (origen === "tienda")
+                updates.stock_tienda        = Math.max(0, (parseInt(s.stock_tienda)||0) - cant);
+              else if (origen === "consignacion")
+                updates.stock_consignacion  = Math.max(0, (parseInt(s.stock_consignacion)||0) - cant);
+              await sb.update("stock", codigo, updates);
             }
           }
           result = { ok: true };
           break;
         }
 
-        // ══ PRODUCTOS (stock items) ═══════════════════════════════
+        // ══ PRODUCTOS ════════════════════════════════════════════
         case "EDITAR_PRODUCTO": {
           if (!esAdmin) return forbidden();
           const upd = {};
@@ -638,14 +616,14 @@ export default {
           if (d.img         !== undefined) upd.foto              = d.img;
           if (d.descripcion !== undefined) upd.descripcionTienda = d.descripcion;
           if (d.destacado   !== undefined) upd.destacado         = d.destacado;
-          await fs.update("stock", d.codigo, upd);
+          await sb.update("stock", d.codigo, upd);
           result = { ok: true };
           break;
         }
 
         case "ELIMINAR_PRODUCTO": {
           if (!esAdmin) return forbidden();
-          await fs.update("stock", d.codigo, { estado: "inactivo" });
+          await sb.update("stock", d.codigo, { estado: "inactivo" });
           result = { ok: true };
           break;
         }
@@ -654,7 +632,7 @@ export default {
         case "REGISTRAR_ENTREGA_PENDIENTE": {
           if (!esAdmin) return forbidden();
           const entId = d.id || `ENT_${Date.now()}`;
-          await fs.set("entregas", entId, {
+          await sb.set("entregas", entId, {
             id: entId, vendedor: d.vendedor || "",
             fecha: new Date().toISOString(),
             items: JSON.stringify(d.items || []),
@@ -667,27 +645,30 @@ export default {
         }
 
         case "GET_ENTREGAS_PENDIENTES": {
-          const ents = await fs.query("entregas", "vendedor", "==", d.vendedor);
-          const entsFilt = ents.filter(e => e.estado === "pendiente");
-          result = { ok: true, entregas: entsFilt };
+          const ents = await sb.query("entregas", "vendedor", "==", d.vendedor);
+          result = { ok: true, entregas: ents.filter(e => e.estado === "pendiente") };
           break;
         }
 
         case "GET_ENTREGAS_CONFIRMADAS": {
           if (!esAdmin) return forbidden();
           let allEnts;
-          try { allEnts = await fs.getAll("entregas"); } catch(_) { allEnts = []; }
+          try { allEnts = await sb.getAll("entregas"); } catch(_) { allEnts = []; }
           result = { ok: true, entregas: allEnts.filter(e => e.estado === "confirmado") };
           break;
         }
 
         case "CONFIRMAR_ENTREGA_RECIBO": {
-          const entDoc = await fs.get("entregas", d.id);
+          const entDoc = await sb.get("entregas", d.id);
           if (!entDoc) { result = { ok: false, error: "Entrega no encontrada" }; break; }
           const esperado  = String(entDoc.codigoRecibo || "").toUpperCase();
           const ingresado = String(d.codigoRecibo || "").toUpperCase();
-          if (esperado && esperado !== ingresado) { result = { ok: false, error: "Código de recibo incorrecto" }; break; }
-          await fs.update("entregas", d.id, { estado: "confirmado", fechaConfirmacion: new Date().toISOString() });
+          if (esperado && esperado !== ingresado) {
+            result = { ok: false, error: "Código de recibo incorrecto" }; break;
+          }
+          await sb.update("entregas", d.id, {
+            estado: "confirmado", fechaConfirmacion: new Date().toISOString()
+          });
           result = { ok: true };
           break;
         }
@@ -696,7 +677,7 @@ export default {
         case "GET_SOLICITUDES_CORRECCION": {
           if (!esAdmin) return forbidden();
           let sols;
-          try { sols = await fs.query("solicitudes_correccion", "estado", "==", "pendiente"); }
+          try { sols = await sb.query("solicitudes_correccion", "estado", "==", "pendiente"); }
           catch(_) { sols = []; }
           result = { ok: true, solicitudes: sols };
           break;
@@ -704,14 +685,14 @@ export default {
 
         case "APROBAR_CORRECCION_VENTA": {
           if (!esAdmin) return forbidden();
-          await fs.update("solicitudes_correccion", String(d.id), { estado: "aprobado" });
+          await sb.update("solicitudes_correccion", String(d.id), { estado: "aprobado" });
           result = { ok: true };
           break;
         }
 
         case "RECHAZAR_CORRECCION_VENTA": {
           if (!esAdmin) return forbidden();
-          await fs.update("solicitudes_correccion", String(d.id), { estado: "rechazado" });
+          await sb.update("solicitudes_correccion", String(d.id), { estado: "rechazado" });
           result = { ok: true };
           break;
         }
@@ -719,14 +700,14 @@ export default {
         // ══ CONFIG / PASS ═════════════════════════════════════════
         case "ACTUALIZAR_PASS_HASH": {
           if (!esAdmin) return forbidden();
-          await fs.update("config", "settings", { passHash: d.nuevoHash });
+          await sb.update("config", "settings", { passHash: d.nuevoHash });
           result = { ok: true };
           break;
         }
 
         case "ACTUALIZAR_CONFIG": {
           if (!esAdmin) return forbidden();
-          await fs.update("config", "settings", d.config || {});
+          await sb.update("config", "settings", d.config || {});
           result = { ok: true };
           break;
         }
@@ -734,7 +715,7 @@ export default {
         // ══ CUPONES ═══════════════════════════════════════════════
         case "CREAR_CUPON": {
           if (!esAdmin) return forbidden();
-          await fs.set("cupones", d.codigo, {
+          await sb.set("cupones", d.codigo, {
             codigo: d.codigo, tipo: d.tipo || "porcentaje_total",
             descuento: parseFloat(d.descuento) || 0, categorias: d.categorias || "",
             montoMinimo: parseFloat(d.montoMinimo) || 0, limiteUsos: parseInt(d.limiteUsos) || 0,
@@ -746,19 +727,19 @@ export default {
 
         case "TOGGLE_CUPON": {
           if (!esAdmin) return forbidden();
-          await fs.update("cupones", d.codigo, { activo: !!d.activo });
+          await sb.update("cupones", d.codigo, { activo: !!d.activo });
           result = { ok: true };
           break;
         }
 
         case "ELIMINAR_CUPON": {
           if (!esAdmin) return forbidden();
-          await fs.delete("cupones", d.codigo);
+          await sb.delete("cupones", d.codigo);
           result = { ok: true };
           break;
         }
 
-        // ══ IMAGEN / FOTO (servicios externos no disponibles) ════
+        // ══ IMAGEN / FOTO ═════════════════════════════════════════
         case "SUBIR_FOTO": {
           if (!esAdmin) return forbidden();
           const ikKey = env.IMAGEKIT_PRIVATE_KEY;
@@ -767,9 +748,9 @@ export default {
           const ext        = (d.imagen || "").startsWith("data:image/png") ? "png" : "jpg";
           const fileName   = (d.nombre || ("foto_" + Date.now())) + "." + ext;
           const form       = new FormData();
-          form.append("file",     d.imagen);   // base64 con o sin prefijo data:
-          form.append("fileName", fileName);
-          form.append("folder",   "/consignacion");
+          form.append("file",              d.imagen);
+          form.append("fileName",          fileName);
+          form.append("folder",            "/consignacion");
           form.append("useUniqueFileName", "true");
           const ikRes  = await fetch("https://upload.imagekit.io/api/v1/files/upload", {
             method: "POST",
@@ -778,11 +759,10 @@ export default {
           });
           const ikData = await ikRes.json();
           if (ikData.url) {
-            // Agregar transformaciones ImageKit: WebP + calidad 85 + nitidez automática
-            const urlOptimizada = ikData.url + "?tr=f-webp,q-85,e-sharpen";
+            const urlOptimizada = ikData.url + "?tr=w-600,q-85,f-webp,e-sharpen,e-contrast";
             result = { ok: true, url: urlOptimizada };
           } else {
-            result = { ok: false, error: ikData.message || "Error subiendo foto a ImageKit" };
+            result = { ok: false, error: ikData.message || "Error subiendo foto" };
           }
           break;
         }
@@ -793,12 +773,7 @@ export default {
           try {
             const base64 = (d.imagen || "").replace(/^data:image\/[^;]+;base64,/, "");
             if (!base64) { result = { ok: false, error: "No se recibió imagen" }; break; }
-
-            // Workers AI necesita los bytes como array, no image_url
-            const imageBytes = Array.from(
-              Uint8Array.from(atob(base64), c => c.charCodeAt(0))
-            );
-
+            const imageBytes = Array.from(Uint8Array.from(atob(base64), c => c.charCodeAt(0)));
             const material = d.material || "Plata 925";
             const prompt =
               `You are a professional jewelry analyst. Examine this jewelry photo VERY carefully and respond ONLY with a valid JSON object — no extra text, no markdown.\n\n` +
@@ -812,16 +787,12 @@ export default {
               `Categories: AN=anillo(ring) PU=pulsera(bracelet) CO=collar(necklace) AR=aretes(earrings) DJ=dije(pendant/charm) CJ=conjunto(set)\n\n` +
               `Respond ONLY with this JSON (name and description in SPANISH):\n` +
               `{"nombre":"descriptive Spanish name max 5 words e.g. Anillo ola bicolor esmaltado","categoria":"AN","descripcion":"brief Spanish description max 8 words"}`;
-
             const aiRes = await env.AI.run("@cf/llava-hf/llava-1.5-7b-hf", {
-              image:      imageBytes,
-              prompt,
-              max_tokens: 200
+              image: imageBytes, prompt, max_tokens: 200
             });
-
             const texto = (aiRes.description || aiRes.response || "").trim();
             const match = texto.match(/\{[\s\S]*?\}/);
-            if (!match) { result = { ok: false, error: "IA: " + texto.slice(0,100) }; break; }
+            if (!match) { result = { ok: false, error: "IA: " + texto.slice(0, 100) }; break; }
             const parsed = JSON.parse(match[0]);
             result = { ok: true, resultado: {
               nombre:      parsed.nombre      || "",
@@ -847,184 +818,93 @@ export default {
   }
 };
 
-// ── CLASE FIRESTORE ───────────────────────────────────────────────
-class Firestore {
-  constructor(token, base) {
-    this.token = token;
-    this.base  = base;
+// ── CLASE SUPABASE ────────────────────────────────────────────────
+//
+//  Estructura de cada tabla en Supabase:
+//    id   TEXT PRIMARY KEY   — el mismo "doc ID" que se usaba en Firestore
+//    data JSONB              — todos los campos del documento
+//
+//  Función PostgreSQL requerida (ver SQL de setup):
+//    update_doc(p_table, p_id, p_patch) — merge parcial de JSONB
+// ─────────────────────────────────────────────────────────────────
+class Supabase {
+  constructor(url, key) {
+    this.url = (url || "").replace(/\/$/, "");
+    this.key = key || "";
   }
 
-  headers() {
-    return { "Authorization": `Bearer ${this.token}`, "Content-Type": "application/json" };
+  _headers(prefer = null) {
+    const h = {
+      "apikey":        this.key,
+      "Authorization": `Bearer ${this.key}`,
+      "Content-Type":  "application/json"
+    };
+    if (prefer) h["Prefer"] = prefer;
+    return h;
   }
 
-  // Leer un documento por ID
-  async get(col, id) {
-    const res = await fetch(`${this.base}/${col}/${encodeURIComponent(id)}`, { headers: this.headers() });
-    if (res.status === 404) return null;
-    const data = await res.json();
-    return data.fields ? fieldsToObj(data.fields) : null;
+  // Leer un documento por id
+  async get(table, id) {
+    const res  = await fetch(
+      `${this.url}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}&select=id,data&limit=1`,
+      { headers: this._headers() }
+    );
+    const rows = await res.json();
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    return { id: rows[0].id, ...rows[0].data };
   }
 
-  // Crear/sobreescribir documento
-  async set(col, id, obj) {
-    const url = `${this.base}/${col}/${encodeURIComponent(id)}`;
-    await fetch(url, {
-      method:  "PATCH",
-      headers: this.headers(),
-      body:    JSON.stringify({ fields: objToFields(obj) })
+  // Obtener todos los documentos de una tabla
+  async getAll(table) {
+    const res  = await fetch(
+      `${this.url}/rest/v1/${table}?select=id,data&limit=10000`,
+      { headers: this._headers() }
+    );
+    const rows = await res.json();
+    if (!Array.isArray(rows)) return [];
+    return rows.map(r => ({ id: r.id, ...r.data }));
+  }
+
+  // Crear/sobreescribir documento (upsert completo)
+  async set(table, id, obj) {
+    const { id: _id, ...data } = obj;
+    await fetch(`${this.url}/rest/v1/${table}`, {
+      method:  "POST",
+      headers: this._headers("resolution=merge-duplicates"),
+      body:    JSON.stringify({ id, data })
     });
   }
 
-  // Actualizar campos específicos
-  async update(col, id, fields) {
-    const keys    = Object.keys(fields);
-    const mask    = keys.map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join("&");
-    const url     = `${this.base}/${col}/${encodeURIComponent(id)}?${mask}`;
-    await fetch(url, {
-      method:  "PATCH",
-      headers: this.headers(),
-      body:    JSON.stringify({ fields: objToFields(fields) })
+  // Actualizar campos específicos (merge parcial vía RPC)
+  async update(table, id, fields) {
+    await fetch(`${this.url}/rest/v1/rpc/update_doc`, {
+      method:  "POST",
+      headers: this._headers(),
+      body:    JSON.stringify({ p_table: table, p_id: String(id), p_patch: fields })
     });
   }
 
   // Eliminar documento
-  async delete(col, id) {
-    await fetch(`${this.base}/${col}/${encodeURIComponent(id)}`, {
-      method: "DELETE", headers: this.headers()
-    });
+  async delete(table, id) {
+    await fetch(
+      `${this.url}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`,
+      { method: "DELETE", headers: this._headers() }
+    );
   }
 
-  // Obtener todos los documentos de una colección
-  async getAll(col) {
-    const res  = await fetch(`${this.base}/${col}`, { headers: this.headers() });
-    const data = await res.json();
-    return (data.documents || []).map(doc => fieldsToObj(doc.fields));
-  }
-
-  // Query simple (un campo == valor)
-  async query(col, campo, op, valor) {
-    const body = {
-      structuredQuery: {
-        from:  [{ collectionId: col }],
-        where: {
-          fieldFilter: {
-            field: { fieldPath: campo },
-            op:    op === "==" ? "EQUAL" : op,
-            value: toFirestoreValue(valor)
-          }
-        }
-      }
-    };
-    const url  = `${this.base}:runQuery`;
-    const res  = await fetch(url, {
-      method:  "POST",
-      headers: this.headers(),
-      body:    JSON.stringify(body)
-    });
-    const data = await res.json();
-    return (Array.isArray(data) ? data : [])
-      .filter(r => r.document)
-      .map(r => ({ ...fieldsToObj(r.document.fields), id: r.document.name.split("/").pop() }));
+  // Query con filtro sobre campo JSONB (campo == valor)
+  async query(table, campo, _op, valor) {
+    const res  = await fetch(
+      `${this.url}/rest/v1/${table}?select=id,data&data->>${encodeURIComponent(campo)}=eq.${encodeURIComponent(valor)}`,
+      { headers: this._headers() }
+    );
+    const rows = await res.json();
+    if (!Array.isArray(rows)) return [];
+    return rows.map(r => ({ id: r.id, ...r.data }));
   }
 }
 
-// ── CONVERSIÓN FIRESTORE ↔ JS ─────────────────────────────────────
-function objToFields(obj) {
-  const fields = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (k && v !== undefined) fields[k] = toFirestoreValue(v);
-  }
-  return fields;
-}
-
-function toFirestoreValue(v) {
-  if (v === null || v === undefined) return { nullValue: null };
-  if (typeof v === "boolean")        return { booleanValue: v };
-  if (typeof v === "number") {
-    return Number.isInteger(v)
-      ? { integerValue: String(v) }
-      : { doubleValue: v };
-  }
-  if (typeof v === "object")         return { stringValue: JSON.stringify(v) };
-  // String que parece número entero
-  if (!isNaN(v) && v.trim() !== "" && Number.isInteger(parseFloat(v)) && !v.includes("."))
-    return { integerValue: v.trim() };
-  if (!isNaN(v) && v.trim() !== "")
-    return { doubleValue: parseFloat(v) };
-  return { stringValue: String(v) };
-}
-
-function fieldsToObj(fields) {
-  if (!fields) return {};
-  const obj = {};
-  for (const [k, v] of Object.entries(fields)) {
-    if      ("stringValue"    in v) obj[k] = v.stringValue;
-    else if ("integerValue"   in v) obj[k] = parseInt(v.integerValue);
-    else if ("doubleValue"    in v) obj[k] = v.doubleValue;
-    else if ("booleanValue"   in v) obj[k] = v.booleanValue;
-    else if ("timestampValue" in v) obj[k] = v.timestampValue;
-    else if ("nullValue"      in v) obj[k] = null;
-    else                            obj[k] = JSON.stringify(v);
-  }
-  return obj;
-}
-
-// ── AUTH: Service Account → Access Token ──────────────────────────
-async function getFirestoreToken(saEmail, saKey) {
-  const now     = Math.floor(Date.now() / 1000);
-  const payload = {
-    iss: saEmail,
-    sub: saEmail,
-    aud: "https://oauth2.googleapis.com/token",
-    iat: now,
-    exp: now + 3600,
-    scope: "https://www.googleapis.com/auth/datastore"
-  };
-
-  const header  = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-  const body    = b64url(JSON.stringify(payload));
-  const signing = `${header}.${body}`;
-
-  // Importar clave privada PEM (maneja comillas, \n literales y newlines reales)
-  let pem = saKey.trim();
-  pem = pem.replace(/^["']|["']$/g, "");   // quitar comillas envolventes
-  pem = pem.replace(/\\n/g, "\n");          // \n literal → salto de línea
-  const pemBody = pem
-    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
-    .replace(/-----END PRIVATE KEY-----/g, "")
-    .replace(/\s+/g, "");                   // quitar todo espacio/newline
-  const keyBytes  = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
-  const cryptoKey = await crypto.subtle.importKey(
-    "pkcs8", keyBytes.buffer,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false, ["sign"]
-  );
-
-  const sig = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5", cryptoKey,
-    new TextEncoder().encode(signing)
-  );
-  const jwt = `${signing}.${b64url(sig)}`;
-
-  const res  = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    body:   `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
-    headers: { "Content-Type": "application/x-www-form-urlencoded" }
-  });
-  const data = await res.json();
-  if (!data.access_token) throw new Error("No se pudo obtener token Firebase: " + JSON.stringify(data));
-  return data.access_token;
-}
-
-function b64url(data) {
-  const str = typeof data === "string"
-    ? data
-    : String.fromCharCode(...new Uint8Array(data));
-  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-}
-
-// ── HELPERS HTTP ───────────────────────────────────────────────────
+// ── HELPERS HTTP ──────────────────────────────────────────────────
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: CORS });
 }
