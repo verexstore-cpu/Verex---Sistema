@@ -877,27 +877,28 @@ export default {
             const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
 
             const promptGemini =
-              `Eres un experto catalogador de joyería latinoamericana. Analiza esta foto y responde ÚNICAMENTE con un JSON válido, sin texto adicional antes ni después.\n\n` +
-              `MATERIAL (ya definido por el admin, NO lo detectes tú): ${material}\n\n` +
-              `PASO 1 — Identifica el TIPO de joya mirando la imagen:\n` +
-              `AN = anillo (aro pequeño para dedo)\n` +
-              `PU = pulsera (para la muñeca, con cuentas, eslabones o charms)\n` +
-              `CO = collar (cadena larga para el cuello sin dije)\n` +
-              `CD = collar con dije (cadena + colgante decorativo)\n` +
-              `AR = aretes (vienen en PAR, tienen gancho o palillo para la oreja)\n` +
-              `DJ = dije (colgante decorativo suelto, sin cadena)\n` +
-              `CJ = conjunto (varias piezas juntas, ej: pulsera+aretes)\n` +
-              `TB = tobillera (cadena fina para tobillo)\n` +
-              `RS = rosario (cuentas religiosas con cruz o medalla)\n` +
-              `CA = cadena sola (sin dije ni decoración)\n\n` +
-              `PASO 2 — Describe lo que VES: forma/motivo (corazón, estrella, elefante, mariposa, cruz, flor, etc.), piedras (zirconia, cristal, ópalo, rubí, perla, o sin piedras), acabado (brillante, esmaltado, bicolor, enchapado).\n\n` +
-              `REGLAS IMPORTANTES:\n` +
-              `- El campo "nombre" DEBE incluir: [tipo de joya] + [motivo/diseño] + [material: ${material}]\n` +
-              `- El campo "descripcion" DEBE mencionar: tipo, diseño, piedras/acabado Y el material ${material}\n` +
-              `- El campo "descripcion_tienda" es una frase elegante de marketing que incluye el material ${material}\n` +
-              `- Todo en ESPAÑOL\n\n` +
+              `Eres un experto catalogador de joyería fina latinoamericana. Analiza esta foto detalladamente y responde ÚNICAMENTE con JSON válido, sin texto antes ni después.\n\n` +
+              `MATERIAL CONFIRMADO (no lo detectes, úsalo tal cual): ${material}\n\n` +
+              `PASO 1 — TIPO de joya (elige según lo que VES):\n` +
+              `AN=anillo PU=pulsera CO=collar CD=collar+dije AR=aretes DJ=dije CJ=conjunto TB=tobillera RS=rosario CA=cadena\n\n` +
+              `PASO 2 — Describe con MÁXIMO DETALLE lo que ves:\n` +
+              `• Forma/motivo ESPECÍFICO: no digas "abstracto" — di exactamente qué ves: corazón, lazo, mariposa, hoja, luna, estrella, serpiente, infinito, flor, cruz, ángel, elefante, llave, corona, gota, ola, espiral, geométrico, etc.\n` +
+              `• Piedras: zirconia blanca, zirconia roja, zirconia azul, cristal, ópalo, perla, rubí, esmeralda, amatista, o sin piedras\n` +
+              `• Acabado: pulido brillante, mate, esmaltado (color), enchapado oro, enchapado oro rosa, bicolor plata-oro, texturizado, filigrana\n` +
+              `• Cantidad si aplica: solitario, trío, pavé, etc.\n\n` +
+              `REGLAS PARA EL NOMBRE:\n` +
+              `- Formato: [tipo] + [motivo ESPECÍFICO] + [detalle piedra/color si hay] + [${material}]\n` +
+              `- NUNCA uses palabras vagas como: abstracto, decorativo, elegante, bonito, diseño\n` +
+              `- SÍ usa términos específicos: corazón, lazo, mariposa, luna creciente, estrella, etc.\n` +
+              `- Máximo 6 palabras\n\n` +
+              `REGLAS PARA DESCRIPCION:\n` +
+              `- Menciona el tipo, motivo exacto, piedras/acabado y material ${material}\n` +
+              `- Máximo 15 palabras, en español\n\n` +
+              `REGLAS PARA DESCRIPCION_TIENDA:\n` +
+              `- Frase elegante de marketing, incluye material y diseño específico\n` +
+              `- Máximo 20 palabras\n\n` +
               `Responde SOLO con este JSON:\n` +
-              `{"categoria":"XX","nombre":"[tipo] [diseño] [${material}] máx 6 palabras","descripcion":"[tipo] de ${material} con [diseño y detalles], máx 12 palabras","descripcion_tienda":"frase elegante de marketing con material incluido, máx 18 palabras"}`;
+              `{"categoria":"XX","nombre":"[tipo] [motivo específico] [${material}]","descripcion":"texto específico en español","descripcion_tienda":"frase elegante de marketing"}`;
 
             // ── Usar Groq (gratis, llama-3.2-11b-vision) ─────────────────
             const groqKey = env.GROQ_KEY;
