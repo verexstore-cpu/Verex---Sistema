@@ -868,28 +868,40 @@ class Supabase {
   // Crear/sobreescribir documento (upsert completo)
   async set(table, id, obj) {
     const { id: _id, ...data } = obj;
-    await fetch(`${this.url}/rest/v1/${table}`, {
+    const res = await fetch(`${this.url}/rest/v1/${table}`, {
       method:  "POST",
       headers: this._headers("resolution=merge-duplicates"),
       body:    JSON.stringify({ id, data })
     });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`SB set ${table}: ${res.status} ${txt}`);
+    }
   }
 
   // Actualizar campos específicos (merge parcial vía RPC)
   async update(table, id, fields) {
-    await fetch(`${this.url}/rest/v1/rpc/update_doc`, {
+    const res = await fetch(`${this.url}/rest/v1/rpc/update_doc`, {
       method:  "POST",
       headers: this._headers(),
       body:    JSON.stringify({ p_table: table, p_id: String(id), p_patch: fields })
     });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`SB update ${table}/${id}: ${res.status} ${txt}`);
+    }
   }
 
   // Eliminar documento
   async delete(table, id) {
-    await fetch(
+    const res = await fetch(
       `${this.url}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`,
       { method: "DELETE", headers: this._headers() }
     );
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`SB delete ${table}/${id}: ${res.status} ${txt}`);
+    }
   }
 
   // Query con filtro sobre campo JSONB (campo == valor)
