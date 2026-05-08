@@ -844,36 +844,39 @@ export default {
 
             const imageBytes = Array.from(Uint8Array.from(atob(base64), c => c.charCodeAt(0)));
 
-            // Identifica primero el tipo de joya antes de pedir el JSON
             const promptTipo =
-              `Look at this jewelry photo carefully. What type of jewelry is it?\n` +
-              `Answer with EXACTLY one of these codes based on what you see:\n` +
-              `AN = ring (worn on finger, small circular band)\n` +
-              `PU = bracelet (worn on wrist, wider, has beads or links)\n` +
-              `CO = necklace (long chain worn around neck)\n` +
-              `AR = earrings (come in pairs, have ear hook/stud)\n` +
-              `DJ = pendant/charm (decorative piece, no chain)\n` +
-              `CJ = set (multiple jewelry pieces together)\n` +
-              `TB = anklet (thin chain for ankle)\n` +
-              `RS = rosary (religious beads with cross)\n` +
-              `CD = necklace with pendant\n` +
-              `CA = plain chain\n\n` +
+              `Analiza esta foto de joyería y responde ÚNICAMENTE con un objeto JSON válido. Sin texto adicional antes ni después del JSON.\n\n` +
+              `PASO 1 — Identifica el TIPO de joya mirando la imagen:\n` +
+              `AN = anillo (se lleva en el dedo, aro circular pequeño)\n` +
+              `PU = pulsera (se lleva en la muñeca, tiene cuentas, eslabones o charms)\n` +
+              `CO = collar (cadena larga para el cuello, sin dije visible)\n` +
+              `CD = collar con dije (cadena + colgante decorativo)\n` +
+              `AR = aretes (vienen EN PAR, tienen gancho o palillo para la oreja)\n` +
+              `DJ = dije (pieza decorativa suelta, sin cadena)\n` +
+              `CJ = conjunto (varias piezas juntas: ej. pulsera+aretes)\n` +
+              `TB = tobillera (cadena fina para el tobillo)\n` +
+              `RS = rosario (cuentas religiosas con cruz o medalla)\n` +
+              `CA = cadena sola (sin dije ni deco)\n\n` +
+              `PASO 2 — Describe detalles: forma/motivo (corazón, estrella, cruz, mariposa, elefante, flor, etc.), piedras (zirconia, cristal, perla, ópalo, o sin piedras), acabado (brillante, mate, esmaltado, enchapado oro, bicolor).\n\n` +
               `Material: ${material}\n\n` +
-              `Now describe what you see: the shape/motif (heart, star, cross, butterfly, snake, flower, etc.), stones (zirconia, crystal, pearl, opal, or none), and finish (shiny, matte, enamel, gold-plated, rose gold, bicolor).\n\n` +
-              `Respond ONLY with valid JSON — no text before or after:\n` +
-              `{"categoria":"??","nombre":"[Spanish category word] [design] [detail] max 5 words","descripcion":"Spanish description max 12 words","descripcion_tienda":"Elegant Spanish marketing sentence max 18 words"}\n\n` +
-              `CRITICAL: categoria must match what you actually see in the image. If it looks like a bracelet with beads and a charm, use PU. If it has two matching pieces for ears, use AR. Do NOT default to AN unless it is clearly a ring.`;
+              `Responde SOLO con este JSON (texto en ESPAÑOL, máximo 60 tokens en total):\n` +
+              `{"categoria":"XX","nombre":"[tipo] [motivo] [detalle]","descripcion":"descripción breve en español"}`;
 
             const aiRes = await env.AI.run("@cf/llava-hf/llava-1.5-7b-hf", {
-              image: imageBytes, prompt: promptTipo, max_tokens: 300
+              image: imageBytes, prompt: promptTipo, max_tokens: 150
             });
 
             const texto = (aiRes.description || aiRes.response || "").trim();
-            const match = texto.match(/\{[\s\S]*?\}/);
-            if (!match) { result = { ok: false, error: "IA no devolvió JSON: " + texto.slice(0, 120) }; break; }
+            // Extraer el primer JSON completo (con { ... })
+            const match = texto.match(/\{[^{}]*\}/);
+            if (!match) { result = { ok: false, error: "IA no devolvió JSON: " + texto.slice(0, 150) }; break; }
             let parsed;
             try { parsed = JSON.parse(match[0]); }
-            catch(pe) { result = { ok: false, error: "JSON inválido: " + match[0].slice(0, 100) }; break; }
+            catch(pe) {
+              // Intentar reparar JSON truncado añadiendo cierre
+              try { parsed = JSON.parse(match[0] + '"}'); }
+              catch(_) { result = { ok: false, error: "JSON inválido: " + match[0].slice(0, 120) }; break; }
+            }
 
             result = { ok: true, resultado: {
               nombre:            parsed.nombre            || "",
