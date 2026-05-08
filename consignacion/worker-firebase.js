@@ -740,11 +740,16 @@ export default {
             const j = Math.floor(Math.random() * (i + 1));
             [mezclados[i], mezclados[j]] = [mezclados[j], mezclados[i]];
           }
-          const enCatalogo  = new Set(mezclados.slice(0, cant).map(p => p.codigo));
-          // Actualizar todos en paralelo
-          await Promise.all(activos.map(p =>
-            sb.update("stock", p.codigo, { enCatalogo: enCatalogo.has(p.codigo) })
-          ));
+          const enCatalogoSet = new Set(mezclados.slice(0, cant).map(p => p.codigo));
+          // Actualizar en lotes de 50 para no saturar con 1000+ productos
+          const BATCH = 50;
+          for (let i = 0; i < activos.length; i += BATCH) {
+            await Promise.all(
+              activos.slice(i, i + BATCH).map(p =>
+                sb.update("stock", p.codigo, { enCatalogo: enCatalogoSet.has(p.codigo) })
+              )
+            );
+          }
           // Guardar fecha de rotación en config
           const cfg = (await sb.get("config", "settings")) || {};
           if (!cfg.rotacion) cfg.rotacion = {};
