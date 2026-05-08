@@ -61,9 +61,44 @@ export default {
           if (!esAdmin) return forbidden();
           const items = Array.isArray(d.items) ? d.items : [d];
           for (const item of items) {
-            await sb.set("stock", item.codigo, item);
+            const qty = parseInt(item.cantidad) || 1;
+            const doc = {
+              ...item,
+              stock_bodega:       item.stock_bodega       !== undefined ? parseInt(item.stock_bodega)       : qty,
+              stock_tienda:       item.stock_tienda        !== undefined ? parseInt(item.stock_tienda)        : 0,
+              stock_consignacion: item.stock_consignacion !== undefined ? parseInt(item.stock_consignacion) : 0,
+              stock_reservado:    item.stock_reservado     !== undefined ? parseInt(item.stock_reservado)     : 0,
+              stock_vendido:      item.stock_vendido       !== undefined ? parseInt(item.stock_vendido)       : 0,
+              stock_total:        item.stock_total         !== undefined ? parseInt(item.stock_total)         : qty,
+              estado:             item.estado || "bodega",
+            };
+            await sb.set("stock", item.codigo, doc);
           }
           result = { ok: true };
+          break;
+        }
+
+        // Reparar productos existentes sin campos de stock
+        case "STOCK_REPARAR_CAMPOS": {
+          if (!esAdmin) return forbidden();
+          const todos = await sb.getAll("stock");
+          let reparados = 0;
+          for (const p of todos) {
+            if (p.stock_bodega === undefined || p.stock_bodega === null) {
+              const qty = parseInt(p.cantidad) || 1;
+              await sb.update("stock", p.id || p.codigo, {
+                stock_bodega:       qty,
+                stock_tienda:       0,
+                stock_consignacion: 0,
+                stock_reservado:    0,
+                stock_vendido:      0,
+                stock_total:        qty,
+                estado:             p.estado || "bodega",
+              });
+              reparados++;
+            }
+          }
+          result = { ok: true, reparados, total: todos.length };
           break;
         }
 
