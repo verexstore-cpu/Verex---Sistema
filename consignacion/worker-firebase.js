@@ -873,36 +873,38 @@ export default {
               `Responde SOLO con este JSON (en ESPAÑOL):\n` +
               `{"categoria":"XX","nombre":"[tipo en español] [motivo] [detalle] máx 5 palabras","descripcion":"descripción en español máx 12 palabras","descripcion_tienda":"frase elegante para tienda online máx 18 palabras"}`;
 
-            // ── Usar Gemini Flash (gratis, excelente en visión) ──────────
-            const geminiKey = env.GEMINI_KEY;
-            if (!geminiKey) { result = { ok: false, error: "GEMINI_KEY no configurada en Cloudflare" }; break; }
+            // ── Usar Groq (gratis, llama-3.2-11b-vision) ─────────────────
+            const groqKey = env.GROQ_KEY;
+            if (!groqKey) { result = { ok: false, error: "GROQ_KEY no configurada en Cloudflare" }; break; }
 
-            const geminiRes = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${geminiKey}`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  contents: [{
-                    role: "user",
-                    parts: [
-                      { inlineData: { mimeType: mimeType, data: base64 } },
-                      { text: promptGemini }
-                    ]
-                  }],
-                  generationConfig: { maxOutputTokens: 400, temperature: 0.1 }
-                })
-              }
-            );
+            const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${groqKey}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                model: "llama-3.2-11b-vision-preview",
+                messages: [{
+                  role: "user",
+                  content: [
+                    { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } },
+                    { type: "text", text: promptGemini }
+                  ]
+                }],
+                max_tokens: 400,
+                temperature: 0.1
+              })
+            });
 
-            if (!geminiRes.ok) {
-              const errTxt = await geminiRes.text();
-              result = { ok: false, error: "Gemini error " + geminiRes.status + ": " + errTxt.slice(0, 150) };
+            if (!groqRes.ok) {
+              const errTxt = await groqRes.text();
+              result = { ok: false, error: "Groq error " + groqRes.status + ": " + errTxt.slice(0, 150) };
               break;
             }
 
-            const geminiData = await geminiRes.json();
-            const texto = (geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "").trim();
+            const groqData = await groqRes.json();
+            const texto = (groqData.choices?.[0]?.message?.content || "").trim();
             const match = texto.match(/\{[\s\S]*?\}/);
             if (!match) { result = { ok: false, error: "Gemini no devolvió JSON: " + texto.slice(0, 150) }; break; }
             let parsed;
