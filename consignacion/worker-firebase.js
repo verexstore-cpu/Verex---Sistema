@@ -283,9 +283,16 @@ export default {
           if (!esAdmin) return forbidden();
           const corteId = String(d.id);
           await sb.set("cortes_historial", corteId, {
-            id: corteId, vendedor: d.vendedor, fecha: d.fecha,
-            totalVendido: d.totalVendido, comisionPct: d.comisionPct,
-            gananciaVendedor: d.gananciaVendedor, aPagarVerex: d.aPagarVerex
+            id: corteId,
+            vendedor:          d.vendedor,
+            vendedorNombre:    d.vendedorNombre    || "",
+            vendedorTelefono:  d.vendedorTelefono  || "",
+            fecha:             d.fecha || new Date().toISOString(),
+            totalVendido:      d.totalVendido,
+            comisionPct:       d.comisionPct,
+            gananciaVendedor:  d.gananciaVendedor,
+            aPagarVerex:       d.aPagarVerex,
+            items:             JSON.stringify(d.items || []),
           });
           result = { ok: true };
           break;
