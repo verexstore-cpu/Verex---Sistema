@@ -840,31 +840,56 @@ export default {
           try {
             const base64 = (d.imagen || "").replace(/^data:image\/[^;]+;base64,/, "");
             if (!base64) { result = { ok: false, error: "No se recibió imagen" }; break; }
-            const imageBytes = Array.from(Uint8Array.from(atob(base64), c => c.charCodeAt(0)));
             const material = d.material || "Plata 925";
-            const prompt =
-              `You are a professional jewelry analyst. Examine this jewelry photo VERY carefully and respond ONLY with a valid JSON object — no extra text, no markdown.\n\n` +
-              `Analyze these details precisely:\n` +
-              `1. TYPE: Is it a ring, bracelet, necklace, earrings, pendant/charm, or set?\n` +
-              `2. SHAPE/DESIGN: heart, flower, cross, bow, star, wave, snake, geometric, plain/smooth, infinity, butterfly, etc.\n` +
-              `3. STONES: zirconia, emerald, ruby, pearl, crystal, opal, or no stones?\n` +
-              `4. COLORS/FINISH: shiny, matte, colorful enamel, multicolor, gold-plated, rose gold, bicolor?\n` +
-              `5. SPECIAL DETAILS: engravings, texture, pattern, filigree, etc.\n\n` +
-              `Material provided: ${material}\n\n` +
-              `Categories: AN=anillo(ring) PU=pulsera(bracelet) CO=collar(necklace) AR=aretes(earrings) DJ=dije(pendant/charm) CJ=conjunto(set)\n\n` +
-              `Respond ONLY with this JSON (name and description in SPANISH):\n` +
-              `{"nombre":"descriptive Spanish name max 5 words e.g. Anillo ola bicolor esmaltado","categoria":"AN","descripcion":"brief Spanish description max 8 words"}`;
-            const aiRes = await env.AI.run("@cf/llava-hf/llava-1.5-7b-hf", {
-              image: imageBytes, prompt, max_tokens: 200
+
+            const systemPrompt =
+              `You are an expert jewelry product cataloger for a Latin American jewelry store. ` +
+              `Your job is to look at a jewelry photo and output ONLY a JSON object — no markdown, no explanation, no extra text.\n\n` +
+              `STEP 1 — Identify the jewelry TYPE by looking at the image carefully:\n` +
+              `- RING: worn on finger, circular shape, small\n` +
+              `- BRACELET/PULSERA: worn on wrist, larger circular or linked chain\n` +
+              `- NECKLACE/COLLAR: long chain or piece worn around neck\n` +
+              `- EARRINGS/ARETES: come in PAIRS, have a hook/stud back, worn on ears\n` +
+              `- PENDANT/DIJE: decorative charm/pendant, NO chain, standalone piece\n` +
+              `- SET/CONJUNTO: multiple pieces together (e.g., ring+earrings, necklace+bracelet)\n` +
+              `- ANKLET/TOBILLERA: thin chain/bracelet for ankle\n` +
+              `- ROSARY/ROSARIO: religious beaded necklace with cross or medal\n\n` +
+              `STEP 2 — Identify design details:\n` +
+              `- Shape/motif: heart, star, cross, flower, butterfly, infinity, snake, geometric, wave, moon, sun, etc.\n` +
+              `- Stones: zirconia, crystal, opal, pearl, ruby, emerald, or "sin piedras"\n` +
+              `- Finish: brillante, mate, esmaltado, enchapado oro, enchapado oro rosa, bicolor\n\n` +
+              `Material: ${material}\n\n` +
+              `Categories: AN=Anillo PU=Pulsera CO=Collar AR=Aretes DJ=Dije CJ=Conjunto TB=Tobillera RS=Rosario CD=Cadena con dije CA=Cadena\n\n` +
+              `Output ONLY this JSON with Spanish text:\n` +
+              `{"nombre":"[CATEGORY WORD] [design] [material] [stones/finish] — max 6 words","categoria":"[CODE]","descripcion":"Short 1-sentence Spanish description, max 15 words","descripcion_tienda":"Elegant 1-sentence Spanish marketing description for online store, max 20 words"}\n\n` +
+              `IMPORTANT: The "nombre" field MUST start with the correct Spanish category word matching the jewelry type you see.\n` +
+              `Examples of correct nombres: "Pulsera corazón zirconia plata", "Collar mariposa esmaltado", "Aretes luna estrella", "Dije cruz zirconia", "Tobillera cadena fina", NOT always "Anillo"`;
+
+            const aiRes = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64}` } },
+                    { type: "text",      text: systemPrompt }
+                  ]
+                }
+              ],
+              max_tokens: 400
             });
-            const texto = (aiRes.description || aiRes.response || "").trim();
+
+            const texto = (aiRes.response || "").trim();
             const match = texto.match(/\{[\s\S]*?\}/);
-            if (!match) { result = { ok: false, error: "IA: " + texto.slice(0, 100) }; break; }
-            const parsed = JSON.parse(match[0]);
+            if (!match) { result = { ok: false, error: "IA no devolvió JSON: " + texto.slice(0, 120) }; break; }
+            let parsed;
+            try { parsed = JSON.parse(match[0]); }
+            catch(pe) { result = { ok: false, error: "JSON inválido: " + match[0].slice(0, 100) }; break; }
+
             result = { ok: true, resultado: {
-              nombre:      parsed.nombre      || "",
-              categoria:   parsed.categoria   || "",
-              descripcion: parsed.descripcion || "",
+              nombre:            parsed.nombre            || "",
+              categoria:         parsed.categoria         || "",
+              descripcion:       parsed.descripcion       || "",
+              descripcion_tienda: parsed.descripcion_tienda || parsed.descripcion || "",
               material
             }};
           } catch(eIA) {
