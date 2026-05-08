@@ -740,6 +740,38 @@ export default {
         }
 
         // ══ IMAGEN / FOTO ═════════════════════════════════════════
+        case "ELIMINAR_FOTO": {
+          if (!esAdmin) return forbidden();
+          const ikKey = env.IMAGEKIT_PRIVATE_KEY;
+          if (!ikKey) { result = { ok: false, error: "ImageKit no configurado" }; break; }
+          try {
+            const urlFoto  = (d.url || "").split("?")[0];
+            const pathMatch = urlFoto.match(/ik\.imagekit\.io\/[^/]+(.+)/);
+            if (!pathMatch) { result = { ok: false, error: "URL de ImageKit inválida" }; break; }
+            const filePath = pathMatch[1]; // ej: /consignacion/foto_abc.jpg
+            const parts    = filePath.split("/");
+            const name     = parts[parts.length - 1];
+            const folder   = parts.slice(0, -1).join("/") || "/";
+            const auth     = "Basic " + btoa(ikKey + ":");
+            // Buscar fileId por nombre + carpeta
+            const listRes  = await fetch(
+              `https://api.imagekit.io/v1/files?name=${encodeURIComponent(name)}&path=${encodeURIComponent(folder)}&limit=1`,
+              { headers: { "Authorization": auth } }
+            );
+            const files = await listRes.json();
+            if (!Array.isArray(files) || files.length === 0) {
+              result = { ok: false, error: "Archivo no encontrado en ImageKit" }; break;
+            }
+            await fetch(`https://api.imagekit.io/v1/files/${files[0].fileId}`, {
+              method: "DELETE", headers: { "Authorization": auth }
+            });
+            result = { ok: true };
+          } catch(eIK) {
+            result = { ok: false, error: "Error ImageKit: " + eIK.message };
+          }
+          break;
+        }
+
         case "SUBIR_FOTO": {
           if (!esAdmin) return forbidden();
           const ikKey = env.IMAGEKIT_PRIVATE_KEY;
