@@ -460,7 +460,54 @@ export default {
 
         case "ACTUALIZAR_ESTADO_PEDIDO": {
           if (!esAdmin) return forbidden();
+
+          // Cargar pedido actual para verificar si ya se actualizó el stock
+          const pedidoActual = await sb.get("pedidos", d.numeroPedido);
+          if (!pedidoActual) { result = { ok: false, error: "Pedido no encontrado" }; break; }
+
+          // Guardar nuevo estado
           await sb.update("pedidos", d.numeroPedido, { estado: d.estado });
+
+          // ── Descontar stock al marcar como Entregado (solo una vez) ──
+          if (d.estado === "Entregado" && !pedidoActual.stockActualizado) {
+            let items = [];
+            try {
+              items = typeof pedidoActual.items === "string"
+                ? JSON.parse(pedidoActual.items)
+                : (pedidoActual.items || []);
+            } catch(_) {}
+
+            for (const item of items) {
+              if (!item.codigo) continue;
+              const prod = await sb.get("stock", item.codigo);
+              if (!prod) continue;
+
+              const upd = {
+                stock_bodega:  Math.max(0, (parseInt(prod.stock_bodega)  || 0) - 1),
+                stock_vendido: (parseInt(prod.stock_vendido) || 0) + 1,
+              };
+
+              // Anillos: descontar talla específica del JSON de caracteristicas
+              const talla = item.tallaElegida;
+              if (talla && talla !== "—" && prod.caracteristicas) {
+                try {
+                  const chars = typeof prod.caracteristicas === "string"
+                    ? JSON.parse(prod.caracteristicas)
+                    : prod.caracteristicas;
+                  if (chars[talla] !== undefined) {
+                    chars[talla] = Math.max(0, (parseInt(chars[talla]) || 0) - 1);
+                    upd.caracteristicas = JSON.stringify(chars);
+                  }
+                } catch(_) {}
+              }
+
+              await sb.update("stock", item.codigo, upd);
+            }
+
+            // Marcar pedido para no descontar stock dos veces
+            await sb.update("pedidos", d.numeroPedido, { stockActualizado: true });
+          }
+
           result = { ok: true };
           break;
         }
