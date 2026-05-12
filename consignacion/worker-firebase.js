@@ -764,12 +764,14 @@ export default {
         case "EDITAR_PRODUCTO": {
           if (!esAdmin) return forbidden();
           const upd = {};
-          if (d.nombre      !== undefined) upd.nombre            = d.nombre;
-          if (d.precio      !== undefined) upd.precio            = Math.round((parseFloat(d.precio) || 0) * 100) / 100;
-          if (d.img         !== undefined) upd.foto              = d.img;
-          if (d.descripcion !== undefined) upd.descripcionTienda = d.descripcion;
-          if (d.destacado   !== undefined) upd.destacado         = d.destacado;
-          if (d.enCatalogo  !== undefined) upd.enCatalogo        = Boolean(d.enCatalogo);
+          if (d.nombre        !== undefined) upd.nombre            = d.nombre;
+          if (d.precio        !== undefined) upd.precio            = Math.round((parseFloat(d.precio) || 0) * 100) / 100;
+          if (d.img           !== undefined) upd.foto              = d.img;
+          if (d.descripcion   !== undefined) upd.descripcionTienda = d.descripcion;
+          if (d.destacado     !== undefined) upd.destacado         = d.destacado;
+          if (d.enCatalogo    !== undefined) upd.enCatalogo        = Boolean(d.enCatalogo);
+          if (d.stock_bodega  !== undefined) upd.stock_bodega      = Math.max(0, parseInt(d.stock_bodega) || 0);
+          if (d.caracteristicas !== undefined) upd.caracteristicas = d.caracteristicas;
           await sb.update("stock", d.codigo, upd);
           result = { ok: true };
           break;
