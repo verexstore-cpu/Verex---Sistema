@@ -43,14 +43,15 @@ export default {
     try {
       const d = await request.json();
 
-      const esAdmin = (d._pass && d._pass === env.SECRET_PASS) ||
-                      (d.key   && d.key   === env.SECRET_KEY);
-
       // ── Verificación de contraseña (endpoint público de login) ───
       if (d.accion === "VERIFICAR_PASS") {
-        const ok = !!(d._pass && d._pass === env.SECRET_PASS);
+        const ok = await verificarPassword(d._pass, env, sb);
         return json({ ok });
       }
+
+      // esAdmin: acepta SECRET_PASS (env var) O el hash guardado en Supabase
+      const esAdmin = (await verificarPassword(d._pass, env, sb)) ||
+                      (d.key && d.key === env.SECRET_KEY);
 
       let result;
 
@@ -1246,6 +1247,28 @@ class Supabase {
     if (!Array.isArray(rows)) return [];
     return rows.map(r => ({ id: r.id, ...r.data }));
   }
+}
+
+// ── AUTENTICACIÓN ────────────────────────────────────────────────
+async function hashStr(str) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Verifica la contraseña: primero contra SECRET_PASS (env var),
+// si no coincide intenta con el hash guardado en Supabase
+// (permite cambiar contraseña sin editar el env var de Cloudflare).
+async function verificarPassword(pass, env, sb) {
+  if (!pass) return false;
+  if (pass === env.SECRET_PASS) return true;
+  try {
+    const cfg = await sb.get("config", "settings");
+    if (cfg && cfg.passHash) {
+      const hash = await hashStr(pass);
+      return hash === cfg.passHash;
+    }
+  } catch(_) {}
+  return false;
 }
 
 // ── HELPERS HTTP ──────────────────────────────────────────────────
