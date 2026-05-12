@@ -942,6 +942,41 @@ export default {
           break;
         }
 
+        case "ELIMINAR_FONDO": {
+          if (!esAdmin) return forbidden();
+          const hfKey = env.HF_TOKEN;
+          if (!hfKey) { result = { ok: false, error: "HF_TOKEN no configurado en secrets" }; break; }
+          try {
+            // Convertir base64 a binario
+            const base64 = (d.imagen || "").replace(/^data:image\/\w+;base64,/, "");
+            const binary = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+            // Llamar a Hugging Face RMBG-1.4
+            const hfRes = await fetch(
+              "https://api-inference.huggingface.co/models/briaai/RMBG-1.4",
+              {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${hfKey}`,
+                  "Content-Type": "application/octet-stream"
+                },
+                body: binary
+              }
+            );
+            if (!hfRes.ok) {
+              const err = await hfRes.text();
+              result = { ok: false, error: `HF error ${hfRes.status}: ${err}` };
+              break;
+            }
+            // Convertir respuesta PNG a base64
+            const pngBuffer = await hfRes.arrayBuffer();
+            const pngBase64 = btoa(String.fromCharCode(...new Uint8Array(pngBuffer)));
+            result = { ok: true, imagen: "data:image/png;base64," + pngBase64 };
+          } catch(e) {
+            result = { ok: false, error: e.message };
+          }
+          break;
+        }
+
         case "GEMINI_TEST": {
           if (!esAdmin) return forbidden();
           const gKey = env.GEMINI_KEY;
