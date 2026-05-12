@@ -46,6 +46,12 @@ export default {
       const esAdmin = (d._pass && d._pass === env.SECRET_PASS) ||
                       (d.key   && d.key   === env.SECRET_KEY);
 
+      // ── Verificación de contraseña (endpoint público de login) ───
+      if (d.accion === "VERIFICAR_PASS") {
+        const ok = !!(d._pass && d._pass === env.SECRET_PASS);
+        return json({ ok });
+      }
+
       let result;
 
       switch (d.accion) {
