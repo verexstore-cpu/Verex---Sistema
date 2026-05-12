@@ -630,7 +630,7 @@ export default {
             codigoBase:         prodId,
             nombre:             d.nombre || "",
             precio:             Math.round((parseFloat(d.precio) || 0) * 100) / 100,
-            foto:               d.img || "",
+            foto:               d.img || d.foto || "",
             descripcion:        d.caracteristicas || "",
             descripcionTienda:  d.caracteristicas || "",
             categoria:          d.categoria || "",
@@ -639,6 +639,7 @@ export default {
             stock_tienda:       0,
             stock_consignacion: 0,
             stock_vendido:      0,
+            enCatalogo:         d.enCatalogo === true || d.enCatalogo === "true" || false,
             estado:             "activo",
             fechaRegistro:      new Date().toISOString()
           });
