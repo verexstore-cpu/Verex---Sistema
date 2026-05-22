@@ -595,19 +595,9 @@ async function loadPdf(file) {
     // Calcular largo óptimo basado en proporciones reales del PDF
     const optimalLength = Math.round(62 * (pCanvas.height / pCanvas.width));
 
-    // Rotar la imagen 90° directamente en canvas (para impresión sin CSS)
-    const rotCanvas = document.createElement('canvas');
-    rotCanvas.width  = pCanvas.height;  // alto original → nuevo ancho
-    rotCanvas.height = pCanvas.width;   // ancho original → nuevo alto
-    const rotCtx = rotCanvas.getContext('2d');
-    rotCtx.translate(rotCanvas.width / 2, rotCanvas.height / 2);
-    rotCtx.rotate(Math.PI / 2);
-    rotCtx.drawImage(pCanvas, -pCanvas.width / 2, -pCanvas.height / 2);
-    const rotDataUrl = rotCanvas.toDataURL('image/jpeg', 0.95);
-
-    // Preview: recortar bordes blancos (solo visual)
+    // Recortar bordes blancos para preview e impresión
     const { dataUrl } = autoCrop(pCanvas);
-    pdfPages.push({ dataUrl, rotDataUrl, optimalLength });
+    pdfPages.push({ dataUrl, optimalLength });
 
     const thumb = document.createElement('div');
     thumb.className = 'page-thumb' + (i === 1 ? ' selected' : '');
@@ -639,38 +629,34 @@ function setFit(mode) {
 }
 function renderPdfPreview() {
   if (!pdfPages.length) return;
-  // Mostrar rotado 90° para reflejar la orientación horizontal real
+  // Orientación retrato: 62mm × 90mm → preview proporcional
   document.getElementById('preview-guia').innerHTML = `
-    <div style="position:relative;width:318px;height:220px;overflow:hidden;">
+    <div style="display:flex;justify-content:center;align-items:center;width:100%;padding:8px 0;">
       <img src="${pdfPages[selectedPage].dataUrl}"
-        style="position:absolute;top:50%;left:50%;
-               width:220px;height:318px;
-               object-fit:fill;
-               transform:translate(-50%,-50%) rotate(90deg);">
+        style="width:186px;height:270px;object-fit:fill;border:1px solid #ddd;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.15);">
     </div>`;
 }
 
 async function imprimirPdf() {
   if (!pdfPages.length) return;
-  const LARGO = 90, ANCHO = 62; // tamaño estándar rollo 62mm
-  // Imagen ya rotada 90° en el canvas — no necesita CSS transform
-  const src = pdfPages[selectedPage].rotDataUrl;
+  const ANCHO = 62, LARGO = 90; // rollo 62mm, corte 90mm — retrato
+  const src = pdfPages[selectedPage].dataUrl; // original sin rotar
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
-@page { size: ${LARGO}mm ${ANCHO}mm; margin: 0; }
+@page { size: ${ANCHO}mm ${LARGO}mm portrait; margin: 0; }
 * { margin: 0; padding: 0; }
-body { width: ${LARGO}mm; height: ${ANCHO}mm; background: white; }
+body { width: ${ANCHO}mm; height: ${LARGO}mm; background: white; overflow: hidden; }
 img {
   display: block;
-  width: ${LARGO}mm;
-  height: ${ANCHO}mm;
-  object-fit: contain;
+  width: ${ANCHO}mm;
+  height: ${LARGO}mm;
+  object-fit: fill;
   background: white;
 }
 </style></head><body>
 <img src="${src}">
 </body></html>`;
-  await imprimir(html, LARGO, ANCHO);
+  await imprimir(html, ANCHO, LARGO);
 }
 
 // ─── SUBTABS RECIBO ───
