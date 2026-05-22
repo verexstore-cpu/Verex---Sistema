@@ -595,9 +595,20 @@ async function loadPdf(file) {
     // Calcular largo óptimo basado en proporciones reales del PDF
     const optimalLength = Math.round(62 * (pCanvas.height / pCanvas.width));
 
-    // Recortar bordes blancos para preview e impresión
+    // Recortar bordes blancos
     const { dataUrl } = autoCrop(pCanvas);
-    pdfPages.push({ dataUrl, optimalLength });
+
+    // Rotar 90° en canvas para impresión horizontal (sin depender de CSS)
+    const rotCanvas = document.createElement('canvas');
+    rotCanvas.width  = pCanvas.height;
+    rotCanvas.height = pCanvas.width;
+    const rotCtx = rotCanvas.getContext('2d');
+    rotCtx.translate(rotCanvas.width / 2, rotCanvas.height / 2);
+    rotCtx.rotate(Math.PI / 2);
+    rotCtx.drawImage(pCanvas, -pCanvas.width / 2, -pCanvas.height / 2);
+    const rotDataUrl = rotCanvas.toDataURL('image/jpeg', 0.95);
+
+    pdfPages.push({ dataUrl, rotDataUrl, optimalLength });
 
     const thumb = document.createElement('div');
     thumb.className = 'page-thumb' + (i === 1 ? ' selected' : '');
@@ -629,18 +640,19 @@ function setFit(mode) {
 }
 function renderPdfPreview() {
   if (!pdfPages.length) return;
-  // Orientación retrato: 62mm × 90mm → preview proporcional
+  // Preview horizontal: imagen rotada 90° — proporcional a 90mm × 62mm
   document.getElementById('preview-guia').innerHTML = `
-    <div style="display:flex;justify-content:center;align-items:center;width:100%;padding:8px 0;">
-      <img src="${pdfPages[selectedPage].dataUrl}"
-        style="width:186px;height:270px;object-fit:fill;border:1px solid #ddd;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.15);">
+    <div style="display:flex;justify-content:center;align-items:center;width:100%;padding:12px 0;">
+      <img src="${pdfPages[selectedPage].rotDataUrl}"
+        style="width:270px;height:186px;object-fit:fill;border:1px solid #ddd;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.15);">
     </div>`;
 }
 
 async function imprimirPdf() {
   if (!pdfPages.length) return;
-  const ANCHO = 62, LARGO = 90; // rollo 62mm, corte 90mm — retrato
-  const src = pdfPages[selectedPage].dataUrl; // original sin rotar
+  const ANCHO = 62, LARGO = 90; // rollo 62mm, corte 90mm
+  // rotDataUrl: imagen ya girada 90° → se imprime horizontal en la etiqueta
+  const src = pdfPages[selectedPage].rotDataUrl;
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
 @page { size: ${ANCHO}mm ${LARGO}mm portrait; margin: 0; }
