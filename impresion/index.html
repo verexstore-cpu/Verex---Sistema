@@ -259,16 +259,12 @@
             <div class="fit-btn active" onclick="setFit('cover')" id="fit-cover">Llenar</div>
             <div class="fit-btn" onclick="setFit('stretch')" id="fit-stretch">Estirar</div>
           </div>
-          <div style="display:flex;align-items:center;gap:10px;margin-top:12px;">
-            <label style="margin:0;white-space:nowrap">Largo de corte:</label>
-            <input type="number" id="guia-largo" value="79" min="50" max="300" step="1"
-              style="width:80px;" oninput="renderPdfPreview()">
-            <span style="font-size:13px;color:#888">mm</span>
-            <button onclick="autoLargo()" style="flex:1;padding:7px;background:#f0f2f5;border:1.5px solid #ddd;border-radius:8px;font-size:12px;cursor:pointer;font-weight:600;">⚡ Auto</button>
+          <div style="margin-top:10px;padding:8px 12px;background:#f0f2f5;border-radius:8px;font-size:12px;color:#666;">
+            📐 Tamaño estándar: <strong style="color:#1a1a2e;">62 × 90 mm</strong>
           </div>
         </div>
         <button class="btn-print" id="btn-print-pdf" onclick="imprimirPdf()" disabled>
-          🖨️ Imprimir Guía (62×79mm)
+          🖨️ Imprimir Guía (62×90mm)
         </button>
       </div>
 
@@ -285,7 +281,7 @@
         <input type="text" id="g-dest-tel" placeholder="Teléfono" oninput="renderGuia()" style="margin-top:6px">
         <label>Mensajería</label>
         <input type="text" id="g-mensajeria" placeholder="Servientrega, Coordinadora..." oninput="renderGuia()">
-        <button class="btn-print" onclick="imprimirGuia()">🖨️ Imprimir Guía (62×79mm)</button>
+        <button class="btn-print" onclick="imprimirGuia()">🖨️ Imprimir Guía (62×90mm)</button>
       </div>
     </div>
 
@@ -294,7 +290,7 @@
       <div class="preview-area" id="preview-guia">
         <span style="color:#bbb;font-size:13px">Sube un PDF para previsualizar</span>
       </div>
-      <p class="hint">* 62×79mm · Horizontal · Cobertura total</p>
+      <p class="hint">* 62×90mm · Horizontal · Tamaño estándar rollo</p>
     </div>
   </div>
 
@@ -665,25 +661,25 @@ function renderPdfPreview() {
 
 async function imprimirPdf() {
   if (!pdfPages.length) return;
-  const largo = parseFloat(document.getElementById('guia-largo').value) || 100;
+  const LARGO = 90, ANCHO = 62; // tamaño estándar rollo 62mm
   // Imagen ya rotada 90° en el canvas — no necesita CSS transform
   const src = pdfPages[selectedPage].rotDataUrl;
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
-@page { size: ${largo}mm 62mm; margin: 0; }
+@page { size: ${LARGO}mm ${ANCHO}mm; margin: 0; }
 * { margin: 0; padding: 0; }
-body { width: ${largo}mm; height: 62mm; background: white; }
+body { width: ${LARGO}mm; height: ${ANCHO}mm; background: white; }
 img {
   display: block;
-  width: ${largo}mm;
-  height: 62mm;
+  width: ${LARGO}mm;
+  height: ${ANCHO}mm;
   object-fit: contain;
   background: white;
 }
 </style></head><body>
 <img src="${src}">
 </body></html>`;
-  await imprimir(html, largo, 62);
+  await imprimir(html, LARGO, ANCHO);
 }
 
 // ─── SUBTABS RECIBO ───
@@ -833,9 +829,9 @@ async function imprimirGuia() {
   const bars = Array.from({length:38},(_,i)=>`<div style="background:#000;width:${i%3===0?'1':'2'}px;height:100%;"></div>`).join('');
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
-@page{size:62mm 89.8mm portrait;margin:0;}
+@page{size:62mm 90mm portrait;margin:0;}
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;}
-body{width:62mm;height:89.8mm;padding:3mm;}
+body{width:62mm;height:90mm;padding:3mm;}
 .h{display:flex;justify-content:space-between;border-bottom:2px solid #e63946;padding-bottom:2mm;margin-bottom:2mm;}
 .logo{font-size:15pt;font-weight:900;color:#e63946;letter-spacing:1pt;}
 .ped{font-size:6pt;color:#555;text-align:right;}
@@ -852,7 +848,7 @@ body{width:62mm;height:89.8mm;padding:3mm;}
 <div class="to"><span class="tag rd">PARA</span><div class="name">${dn}</div><div class="addr">${dd.replace(/\n/g,'<br>')}${dt?'<br>Tel: '+dt:''}</div></div>
 <div class="bc"><div class="bars">${bars}</div>${ped}</div>
 </body></html>`;
-  await imprimir(html, 62, 89.8);
+  await imprimir(html, 62, 90);
 }
 
 // ─── JOYERÍA ───
