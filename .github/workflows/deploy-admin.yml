@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - '_admin-repo/**'
+  workflow_dispatch:   # permite lanzarlo manualmente desde GitHub o API
 
 # Permisos necesarios para publicar en GitHub Pages
 permissions:
