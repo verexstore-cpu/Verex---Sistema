@@ -423,7 +423,7 @@ function autoCrop(canvas) {
         { right = Math.min(w-1, x + 4); break rgt; }
 
   const cw = right - left, ch = bottom - top;
-  if (cw < 10 || ch < 10) return canvas.toDataURL('image/jpeg', 0.95); // fallback
+  if (cw < 10 || ch < 10) return { dataUrl: canvas.toDataURL('image/jpeg', 0.95), w, h, canvas };
 
   const pad = 12; // píxeles de margen extra para no cortar bordes
   const safeL = Math.max(0, left - pad);
@@ -431,12 +431,40 @@ function autoCrop(canvas) {
   const safeR = Math.min(w - 1, right + pad);
   const safeB = Math.min(h - 1, bottom + pad);
   const cw2 = safeR - safeL, ch2 = safeB - safeT;
-  if (cw2 < 10 || ch2 < 10) return { dataUrl: canvas.toDataURL('image/jpeg', 0.95), w, h };
+  if (cw2 < 10 || ch2 < 10) return { dataUrl: canvas.toDataURL('image/jpeg', 0.95), w, h, canvas };
 
   const out = document.createElement('canvas');
   out.width = cw2; out.height = ch2;
   out.getContext('2d').drawImage(canvas, safeL, safeT, cw2, ch2, 0, 0, cw2, ch2);
-  return { dataUrl: out.toDataURL('image/jpeg', 0.95), w: cw2, h: ch2 };
+  return { dataUrl: out.toDataURL('image/jpeg', 0.95), w: cw2, h: ch2, canvas: out };
+}
+
+// ─── CORTAR PIE DE PÁGINA DEL PDF ───
+// Busca el último gran espacio en blanco (>= minGapPx filas vacías) en la mitad
+// inferior del canvas y recorta ahí, eliminando el pie del PDF original.
+function cropAtLastGap(canvas, minGapPx = 40) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const d = ctx.getImageData(0, 0, w, h).data;
+  const thr = 240;
+  let gapStart = -1, gapLen = 0, lastGapStart = -1;
+  const startY = Math.round(h * 0.45);
+  for (let y = startY; y < h; y++) {
+    let white = true;
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (d[i] < thr || d[i+1] < thr || d[i+2] < thr) { white = false; break; }
+    }
+    if (white) { if (gapStart === -1) gapStart = y; gapLen++; }
+    else { if (gapLen >= minGapPx) lastGapStart = gapStart; gapStart = -1; gapLen = 0; }
+  }
+  if (gapLen >= minGapPx) lastGapStart = gapStart;
+  // Si no hay gap claro o el corte sería demasiado alto, devolver original
+  if (lastGapStart === -1 || lastGapStart < h * 0.35) return canvas;
+  const cut = document.createElement('canvas');
+  cut.width = w; cut.height = lastGapStart;
+  cut.getContext('2d').drawImage(canvas, 0, 0, w, lastGapStart, 0, 0, w, lastGapStart);
+  return cut;
 }
 
 // ─── IMPRESORA ───
@@ -714,10 +742,11 @@ async function loadPdfRecibo(file) {
     pCanvas.width = pVp.width; pCanvas.height = pVp.height;
     await page.render({ canvasContext: pCanvas.getContext('2d'), viewport: pVp }).promise;
 
-    // Recortar bordes blancos
-    const { dataUrl } = autoCrop(pCanvas);
-    const fullDataUrl = pCanvas.toDataURL('image/jpeg', 0.95);
-    reciboPages.push({ dataUrl, fullDataUrl });
+    // Recortar bordes blancos + eliminar pie de página del PDF
+    const { canvas: croppedCanvas } = autoCrop(pCanvas);
+    const noFooterCanvas = cropAtLastGap(croppedCanvas || pCanvas);
+    const dataUrl = noFooterCanvas.toDataURL('image/jpeg', 0.95);
+    reciboPages.push({ dataUrl });
 
     const thumb = document.createElement('div');
     thumb.className = 'page-thumb' + (i === 1 ? ' selected' : '');
@@ -765,8 +794,8 @@ async function imprimirPdfRecibo() {
 body { width: 62mm; background: white; padding: 3mm 1.5mm 4mm; font-family: 'Courier New', monospace; }
 img { display: block; width: 100%; height: auto; }
 hr { border: none; border-top: 1px dashed #aaa; margin: 4mm 0; }
-.gr { font-size: 15pt; font-weight: 900; text-align: center; line-height: 1.4; letter-spacing: 0.5pt; }
-.tagline { font-size: 10pt; font-weight: 700; text-align: center; margin-top: 2mm; line-height: 1.4; font-style: italic; }
+.gr { font-size: 11pt; font-weight: 900; text-align: center; line-height: 1.4; letter-spacing: 0.5pt; }
+.tagline { font-size: 8.5pt; font-weight: 700; text-align: center; margin-top: 2mm; line-height: 1.4; font-style: italic; }
 </style></head><body>
 <img src="${src}">
 <hr>
