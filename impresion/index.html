@@ -902,7 +902,7 @@ async function imprimirRecibo() {
 <style>
 @page{size:62mm auto portrait;margin:0;}
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Courier New',monospace;font-size:9pt;}
-body{width:62mm;padding:4mm 3mm;}
+body{width:62mm;padding:7mm 3mm 4mm;}
 .c{text-align:center;margin-bottom:3mm;}
 .t{font-size:14pt;font-weight:900;letter-spacing:2pt;}
 .s{font-size:8.5pt;color:#555;}
@@ -915,7 +915,7 @@ td{vertical-align:top;padding:1.5pt 0;}td:last-child{white-space:nowrap;text-ali
 td:nth-child(2){text-align:center;color:#555;}
 .tot{display:flex;justify-content:space-between;font-size:12pt;font-weight:900;margin:2mm 0 1mm;}
 .pg{font-size:9pt;color:#555;text-align:center;margin-top:1.5mm;}
-.gr{font-size:11pt;font-weight:700;text-align:center;margin-top:4mm;letter-spacing:0.5pt;}
+.gr{font-size:15pt;font-weight:900;text-align:center;margin-top:5mm;line-height:1.4;letter-spacing:0.5pt;}
 </style></head><body>
 <div class="c"><div class="t">${neg}</div><div class="s">${fecha} · ${hora}</div></div>
 <hr>
@@ -926,7 +926,7 @@ td:nth-child(2){text-align:center;color:#555;}
 </table>
 <hr class="sol"><div class="tot"><span>TOTAL</span><span>${fp(total)}</span></div>
 <div class="pg">Pago: ${pago}</div>${nota?`<div class="pg">${nota}</div>`:''}
-<hr><div class="gr">¡Gracias por tu compra!</div>
+<hr><div class="gr">¡GRACIAS POR<br>TU COMPRA!</div>
 </body></html>`;
   await imprimir(html, 62, 0); // 0 = altura automática
 }
