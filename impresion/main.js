@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const os = require('os')
+const http = require('http')
 const { exec } = require('child_process')
 
 let mainWindow
@@ -24,8 +25,69 @@ function createWindow() {
   mainWindow.setMenuBarVisibility(false)
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  createWindow()
+  startPrintServer()
+})
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
+
+// ── Servidor HTTP local para recibir PDFs desde el admin ──────────────────
+// Escucha en localhost:7891 — solo accesible desde esta misma PC
+function startPrintServer() {
+  const server = http.createServer((req, res) => {
+    // Cabeceras CORS para que el admin (web) pueda hacer fetch a localhost
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+
+    if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return }
+
+    // GET /ping — el admin comprueba si la app está abierta
+    if (req.method === 'GET' && req.url === '/ping') {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ok: true, app: 'VEREX Impresión' }))
+      return
+    }
+
+    // POST /print-recibo — recibe PDF térmico 62mm desde el admin
+    // POST /print-guia   — recibe Nota de Pedido desde el admin
+    if (req.method === 'POST' && (req.url === '/print-recibo' || req.url === '/print-guia')) {
+      const chunks = []
+      req.on('data', c => chunks.push(c))
+      req.on('end', () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString())
+          const canal = req.url === '/print-guia' ? 'load-pdf-guia' : 'load-pdf-recibo'
+          if (mainWindow) {
+            if (mainWindow.isMinimized()) mainWindow.restore()
+            mainWindow.focus()
+            mainWindow.webContents.send(canal, {
+              pdfBase64: body.pdfBase64,
+              nombre: body.nombre || '',
+            })
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: true }))
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: false, error: e.message }))
+        }
+      })
+      return
+    }
+
+    res.writeHead(404); res.end()
+  })
+
+  server.listen(7891, '127.0.0.1', () => {
+    console.log('VEREX Print Server → http://127.0.0.1:7891')
+  })
+
+  server.on('error', (e) => {
+    // Puerto ocupado: no es crítico, la app sigue funcionando normal
+    console.warn('Print server error:', e.message)
+  })
+}
 
 // ── Obtener impresoras via PowerShell (detecta online y offline) ──
 function getPrintersPowerShell() {

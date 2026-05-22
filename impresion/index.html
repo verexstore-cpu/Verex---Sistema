@@ -971,6 +971,26 @@ td:nth-child(2){text-align:center;color:#555;}
   await imprimir(html, 62, 0); // 0 = altura automática
 }
 
+// ─── RECIBIR PDFs DESDE EL ADMIN (localhost:7891) ───
+function base64ToFile(b64, nombre, tipo = 'application/pdf') {
+  const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
+  return new File([bytes], nombre || 'documento.pdf', { type: tipo })
+}
+
+window.electronAPI.onLoadPdfRecibo(async ({ pdfBase64, nombre }) => {
+  setTab(2)          // pestaña Recibo Térmico
+  setSubtabR(1)      // sub-pestaña PDF
+  await loadPdfRecibo(base64ToFile(pdfBase64, nombre || 'recibo.pdf'))
+  toast('🖨️ Recibo cargado desde el admin — listo para imprimir')
+})
+
+window.electronAPI.onLoadPdfGuia(async ({ pdfBase64, nombre }) => {
+  setTab(0)          // pestaña Guía de Envío
+  setSubtab(0)       // sub-pestaña PDF
+  await loadPdf(base64ToFile(pdfBase64, nombre || 'guia.pdf'))
+  toast('📦 Guía cargada desde el admin — listo para imprimir')
+})
+
 // ─── INIT ───
 loadPrinters();
 renderJoya();
