@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VEREX – Impresión</title>
+<script src="./node_modules/pdfjs-dist/build/pdf.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; min-height: 100vh; }
+
+  header {
+    background: #1a1a2e; color: white;
+    padding: 14px 28px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .logo { font-size: 20px; font-weight: 700; letter-spacing: 2px; color: #e63946; }
+  header .sub { font-size: 13px; opacity: .55; }
+
+  .printer-selector {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .printer-selector label { font-size: 12px; opacity: .6; white-space: nowrap; }
+  .printer-selector select {
+    background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2);
+    color: white; border-radius: 7px; padding: 6px 10px;
+    font-size: 13px; font-family: inherit; cursor: pointer;
+    max-width: 220px;
+  }
+  .printer-selector select option { background: #1a1a2e; }
+  .printer-dot { width: 8px; height: 8px; border-radius: 50%; background: #aaa; flex-shrink: 0; transition: background .3s; }
+  .printer-dot.ok { background: #4caf50; }
+  .printer-dot.warn { background: #ff9800; }
+  .btn-reload {
+    background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2);
+    color: white; border-radius: 7px; padding: 6px 10px;
+    font-size: 13px; cursor: pointer; transition: background .2s;
+    white-space: nowrap;
+  }
+  .btn-reload:hover { background: rgba(255,255,255,.2); }
+  .btn-reload.spinning { animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .printer-status { font-size: 11px; opacity: .5; white-space: nowrap; }
+
+  .tabs {
+    display: flex; background: #fff;
+    border-bottom: 2px solid #e0e0e0;
+    padding: 0 28px; gap: 4px;
+  }
+  .tab {
+    padding: 13px 20px; cursor: pointer; font-size: 14px; font-weight: 600;
+    color: #666; border-bottom: 3px solid transparent; margin-bottom: -2px;
+    transition: all .2s; white-space: nowrap;
+  }
+  .tab:hover { color: #1a1a2e; }
+  .tab.active { color: #e63946; border-bottom-color: #e63946; }
+
+  .container { max-width: 980px; margin: 28px auto; padding: 0 22px; }
+  .panel { display: none; }
+  .panel.active { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+
+  .card {
+    background: white; border-radius: 12px; padding: 26px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+  }
+  .card h2 { font-size: 14px; color: #999; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 18px; }
+
+  .subtabs {
+    display: flex; margin-bottom: 18px;
+    border: 1.5px solid #e0e0e0; border-radius: 8px; overflow: hidden;
+  }
+  .subtab {
+    flex: 1; padding: 9px 0; text-align: center;
+    font-size: 13px; font-weight: 600; color: #888; cursor: pointer;
+    background: #fafafa; transition: all .2s;
+    border-right: 1.5px solid #e0e0e0;
+  }
+  .subtab:last-child { border-right: none; }
+  .subtab.active { background: #1a1a2e; color: white; }
+  .subpanel { display: none; }
+  .subpanel.active { display: block; }
+
+  label { display: block; font-size: 13px; font-weight: 600; color: #444; margin-bottom: 5px; margin-top: 13px; }
+  label:first-of-type { margin-top: 0; }
+  input, textarea, select {
+    width: 100%; padding: 9px 12px;
+    border: 1.5px solid #ddd; border-radius: 8px;
+    font-size: 14px; font-family: inherit;
+    transition: border-color .2s; background: #fafafa;
+  }
+  input:focus, textarea:focus, select:focus {
+    outline: none; border-color: #e63946; background: white;
+  }
+  textarea { resize: vertical; min-height: 60px; }
+
+  .btn-print {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; margin-top: 18px; padding: 12px;
+    background: #e63946; color: white; border: none;
+    border-radius: 10px; font-size: 15px; font-weight: 700;
+    cursor: pointer; letter-spacing: .5px;
+    transition: background .2s, transform .1s;
+  }
+  .btn-print:hover { background: #c1121f; }
+  .btn-print:active { transform: scale(.98); }
+  .btn-print:disabled { background: #ccc; cursor: not-allowed; transform: none; }
+
+  /* toast */
+  #toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #1a1a2e; color: white; padding: 10px 22px;
+    border-radius: 8px; font-size: 14px; font-weight: 600;
+    transition: transform .3s ease; z-index: 999; pointer-events: none;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  #toast.error { background: #e63946; }
+
+  /* PREVIEW */
+  .preview-card { display: flex; flex-direction: column; }
+  .preview-card h2 { margin-bottom: 12px; }
+  .preview-area {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    background: #f5f5f5; border-radius: 10px; border: 2px dashed #ddd;
+    min-height: 220px; padding: 18px; overflow: hidden;
+  }
+  .hint { font-size: 11px; color: #aaa; margin-top: 6px; font-style: italic; }
+
+  /* DROP ZONE */
+  .drop-zone {
+    border: 2.5px dashed #d0d0d0; border-radius: 12px;
+    padding: 32px 20px; text-align: center; cursor: pointer;
+    transition: all .2s; background: #fafafa; position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: #e63946; background: #fff5f6; }
+  .drop-zone input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer;
+    width: 100%; height: 100%; border: none; background: none;
+  }
+  .drop-zone .icon { font-size: 32px; display: block; margin-bottom: 8px; }
+  .drop-zone .lbl { font-size: 14px; font-weight: 600; color: #555; }
+  .drop-zone .sub2 { font-size: 12px; color: #aaa; margin-top: 4px; }
+
+  /* PAGES */
+  .pages-scroll { display: flex; gap: 10px; overflow-x: auto; padding: 8px 0; margin-top: 12px; scrollbar-width: thin; }
+  .page-thumb { flex-shrink: 0; border: 3px solid transparent; border-radius: 6px; cursor: pointer; transition: border-color .2s; position: relative; overflow: hidden; }
+  .page-thumb canvas { display: block; border-radius: 3px; }
+  .page-thumb.selected { border-color: #e63946; }
+  .page-thumb .page-num { position: absolute; bottom: 0; left: 0; right: 0; text-align: center; font-size: 10px; font-weight: 700; background: rgba(0,0,0,.5); color: white; padding: 2px 0; }
+
+  /* FIT */
+  .fit-options { display: flex; gap: 8px; margin-top: 12px; }
+  .fit-btn {
+    flex: 1; padding: 7px 4px; border: 1.5px solid #ddd; border-radius: 8px;
+    font-size: 11px; font-weight: 600; color: #555; cursor: pointer;
+    background: #fafafa; text-align: center; transition: all .2s;
+  }
+  .fit-btn.active { border-color: #e63946; color: #e63946; background: #fff5f6; }
+
+  .pdf-img { max-width: 100%; max-height: 100%; border-radius: 6px; box-shadow: 2px 2px 10px rgba(0,0,0,.15); display: block; object-fit: contain; }
+
+  /* ETIQUETAS PREVIEW */
+  .label-guia {
+    width: 220px; height: 318px; background: white; border: 1px solid #ccc;
+    padding: 9px; font-size: 10px; display: flex; flex-direction: column; gap: 5px;
+    box-shadow: 2px 2px 8px rgba(0,0,0,.15);
+  }
+  .guia-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #e63946; padding-bottom: 5px; }
+  .guia-logo { font-size: 16px; font-weight: 900; color: #e63946; letter-spacing: 2px; }
+  .guia-ped { font-size: 8px; color: #666; text-align: right; }
+  .guia-ped strong { font-size: 12px; color: #1a1a2e; display: block; }
+  .g-tag { font-size: 7px; font-weight: 700; color: #fff; padding: 2px 5px; border-radius: 3px; display: inline-block; margin-bottom: 2px; }
+  .g-dark { background: #1a1a2e; } .g-red { background: #e63946; }
+  .g-name { font-size: 10px; font-weight: 700; } .g-sub { font-size: 8px; color: #555; }
+  .g-barcode { margin-top: auto; text-align: center; border-top: 1px solid #eee; padding-top: 5px; font-size: 7px; color: #888; }
+  .g-bars { display: flex; justify-content: center; gap: 1px; height: 22px; margin-bottom: 2px; }
+  .g-bar { background: #1a1a2e; width: 2px; height: 100%; }
+  .g-bar.t { width: 1px; }
+
+  .label-joya { width: 192px; height: 60px; background: white; border: 1px solid #ccc; padding: 5px 8px; display: flex; align-items: center; justify-content: space-between; box-shadow: 2px 2px 8px rgba(0,0,0,.15); }
+  .j-nombre { font-size: 10px; font-weight: 700; max-width: 110px; line-height: 1.2; }
+  .j-sku { font-size: 7px; color: #888; }
+  .j-precio { font-size: 14px; font-weight: 900; white-space: nowrap; }
+
+  .label-recibo { width: 220px; background: white; border: 1px solid #ccc; padding: 10px 9px; font-size: 10px; line-height: 1.5; box-shadow: 2px 2px 8px rgba(0,0,0,.15); }
+  .r-center { text-align: center; }
+  .r-titulo { font-size: 15px; font-weight: 900; letter-spacing: 2px; }
+  .r-sub { font-size: 8px; color: #666; }
+  .r-hr { border: none; border-top: 1px dashed #ccc; margin: 5px 0; }
+  .r-hr-s { border: none; border-top: 1px solid #999; margin: 5px 0; }
+  .r-item { display: flex; justify-content: space-between; font-size: 10px; margin: 2px 0; }
+  .r-item .rn { flex: 1; } .r-item .rc { width: 26px; text-align: center; color: #666; } .r-item .rp { width: 52px; text-align: right; font-weight: 600; }
+  .r-total { display: flex; justify-content: space-between; font-size: 12px; font-weight: 900; margin-top: 3px; }
+  .r-pago { font-size: 8px; color: #555; text-align: center; margin-top: 3px; }
+  .r-gracias { font-size: 9px; font-weight: 700; text-align: center; margin-top: 7px; }
+
+  /* ITEMS RECIBO */
+  .item-row { display: grid; grid-template-columns: 1fr 56px 76px 26px; gap: 6px; align-items: center; margin-bottom: 7px; }
+  .item-row input { margin: 0; }
+  .item-header { display: grid; grid-template-columns: 1fr 56px 76px 26px; gap: 6px; margin-bottom: 3px; }
+  .item-header span { font-size: 11px; font-weight: 700; color: #999; text-transform: uppercase; }
+  .btn-add { background: none; border: 1.5px dashed #ccc; border-radius: 8px; padding: 7px; color: #999; cursor: pointer; font-size: 13px; width: 100%; transition: all .2s; }
+  .btn-add:hover { border-color: #e63946; color: #e63946; background: #fff0f1; }
+  .btn-del { background: none; border: none; color: #ccc; cursor: pointer; font-size: 16px; padding: 0; line-height: 1; transition: color .2s; }
+  .btn-del:hover { color: #e63946; }
+  .total-line { display: flex; justify-content: space-between; align-items: center; padding: 9px 0 0; border-top: 2px solid #1a1a2e; margin-top: 5px; font-size: 15px; font-weight: 900; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <span class="logo">VEREX</span>
+    <span class="sub">Sistema de Impresión · QL-810W</span>
+  </div>
+  <div class="printer-selector">
+    <div class="printer-dot" id="printer-dot"></div>
+    <label for="printer-select">Impresora:</label>
+    <select id="printer-select" onchange="savePrinter()">
+      <option value="">Buscando...</option>
+    </select>
+    <span class="printer-status" id="printer-status"></span>
+    <button class="btn-reload" id="btn-reload" onclick="loadPrinters()" title="Recargar impresoras">↻</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="setTab(0)">📦 Guía de Envío</div>
+  <div class="tab" onclick="setTab(1)">💎 Etiqueta Joyería</div>
+  <div class="tab" onclick="setTab(2)">🧾 Recibo Térmico</div>
+</div>
+
+<div class="container">
+
+  <!-- PANEL 1: GUÍA -->
+  <div class="panel active" id="panel-0">
+    <div class="card">
+      <h2>Guía de Envío</h2>
+      <div class="subtabs">
+        <div class="subtab active" onclick="setSubtab(0)">📄 Subir PDF</div>
+        <div class="subtab" onclick="setSubtab(1)">✏️ Manual</div>
+      </div>
+
+      <!-- PDF -->
+      <div class="subpanel active" id="subpanel-0">
+        <div class="drop-zone" id="drop-zone"
+          ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+          <input type="file" accept=".pdf,application/pdf" onchange="onFileSelected(event)">
+          <span class="icon">📋</span>
+          <div class="lbl">Arrastra el PDF de la guía aquí</div>
+          <div class="sub2">o haz clic para seleccionar</div>
+        </div>
+        <div id="pages-container" style="display:none">
+          <label style="margin-top:14px">Páginas — selecciona la que quieres imprimir</label>
+          <div class="pages-scroll" id="pages-scroll"></div>
+          <label style="margin-top:12px">Ajuste de imagen</label>
+          <div class="fit-options">
+            <div class="fit-btn" onclick="setFit('contain')" id="fit-contain">Ajustar</div>
+            <div class="fit-btn active" onclick="setFit('cover')" id="fit-cover">Llenar</div>
+            <div class="fit-btn" onclick="setFit('stretch')" id="fit-stretch">Estirar</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:12px;">
+            <label style="margin:0;white-space:nowrap">Largo de corte:</label>
+            <input type="number" id="guia-largo" value="79" min="50" max="300" step="1"
+              style="width:80px;" oninput="renderPdfPreview()">
+            <span style="font-size:13px;color:#888">mm</span>
+            <button onclick="autoLargo()" style="flex:1;padding:7px;background:#f0f2f5;border:1.5px solid #ddd;border-radius:8px;font-size:12px;cursor:pointer;font-weight:600;">⚡ Auto</button>
+          </div>
+        </div>
+        <button class="btn-print" id="btn-print-pdf" onclick="imprimirPdf()" disabled>
+          🖨️ Imprimir Guía (62×79mm)
+        </button>
+      </div>
+
+      <!-- MANUAL -->
+      <div class="subpanel" id="subpanel-1">
+        <label>N° de Pedido</label>
+        <input type="text" id="g-pedido" placeholder="VRX-2026-0041" oninput="renderGuia()">
+        <label>Remitente</label>
+        <input type="text" id="g-rem-nombre" placeholder="VEREX Store" oninput="renderGuia()">
+        <textarea id="g-rem-dir" placeholder="Dirección, Ciudad" oninput="renderGuia()" style="min-height:46px"></textarea>
+        <label>Destinatario</label>
+        <input type="text" id="g-dest-nombre" placeholder="Nombre del cliente" oninput="renderGuia()">
+        <textarea id="g-dest-dir" placeholder="Dirección completa" oninput="renderGuia()" style="min-height:52px"></textarea>
+        <input type="text" id="g-dest-tel" placeholder="Teléfono" oninput="renderGuia()" style="margin-top:6px">
+        <label>Mensajería</label>
+        <input type="text" id="g-mensajeria" placeholder="Servientrega, Coordinadora..." oninput="renderGuia()">
+        <button class="btn-print" onclick="imprimirGuia()">🖨️ Imprimir Guía (62×79mm)</button>
+      </div>
+    </div>
+
+    <div class="card preview-card">
+      <h2>Vista previa</h2>
+      <div class="preview-area" id="preview-guia">
+        <span style="color:#bbb;font-size:13px">Sube un PDF para previsualizar</span>
+      </div>
+      <p class="hint">* 62×79mm · Horizontal · Cobertura total</p>
+    </div>
+  </div>
+
+  <!-- PANEL 2: JOYERÍA -->
+  <div class="panel" id="panel-1">
+    <div class="card">
+      <h2>Etiqueta Joyería</h2>
+      <label>Nombre del producto</label>
+      <input type="text" id="j-nombre" placeholder="Pulsera Oro 18K" oninput="renderJoya()">
+      <label>SKU / Código</label>
+      <input type="text" id="j-sku" placeholder="PUL-001" oninput="renderJoya()">
+      <label>Precio</label>
+      <input type="text" id="j-precio" placeholder="$85.000" oninput="renderJoya()">
+      <label>Cantidad de etiquetas</label>
+      <input type="number" id="j-cantidad" value="1" min="1" max="100">
+      <button class="btn-print" onclick="imprimirJoya()">🖨️ Imprimir Etiqueta (54×17mm)</button>
+    </div>
+    <div class="card preview-card">
+      <h2>Vista previa</h2>
+      <div class="preview-area" id="preview-joya"></div>
+      <p class="hint">* 54×17mm · Horizontal · Monocromo</p>
+    </div>
+  </div>
+
+  <!-- PANEL 3: RECIBO -->
+  <div class="panel" id="panel-2">
+    <div class="card">
+      <h2>Recibo Térmico</h2>
+
+      <div class="subtabs">
+        <div class="subtab active" onclick="setSubtabR(0)">✏️ Manual</div>
+        <div class="subtab" onclick="setSubtabR(1)">📄 Subir PDF</div>
+      </div>
+
+      <!-- MANUAL -->
+      <div class="subpanel active" id="subpanel-r0">
+      <label>Nombre del negocio</label>
+      <input type="text" id="r-negocio" value="VEREX Store" oninput="renderRecibo()">
+      <label>Productos</label>
+      <div class="item-header">
+        <span>Producto</span><span>Cant.</span><span>Precio</span><span></span>
+      </div>
+      <div id="items-recibo"></div>
+      <button class="btn-add" onclick="addItem()">+ Agregar producto</button>
+      <div class="total-line"><span>TOTAL</span><span id="total-display">$0</span></div>
+      <label style="margin-top:14px">Forma de pago</label>
+      <select id="r-pago" onchange="renderRecibo()">
+        <option>Efectivo</option>
+        <option>Transferencia</option>
+        <option>Tarjeta débito</option>
+        <option>Tarjeta crédito</option>
+        <option>Nequi / Daviplata</option>
+      </select>
+      <label>Nota (opcional)</label>
+      <input type="text" id="r-nota" placeholder="Gracias por su compra" oninput="renderRecibo()">
+      <button class="btn-print" onclick="imprimirRecibo()" style="margin-top:18px">🖨️ Imprimir Recibo (62mm)</button>
+      </div><!-- fin subpanel-r0 -->
+
+      <!-- PDF -->
+      <div class="subpanel" id="subpanel-r1">
+        <div class="drop-zone" id="drop-zone-r"
+          ondragover="onDragOver2(event)" ondragleave="onDragLeave2(event)" ondrop="onDrop2(event)">
+          <input type="file" accept=".pdf,application/pdf" onchange="onFileSelectedR(event)">
+          <span class="icon">🧾</span>
+          <div class="lbl">Arrastra el PDF del recibo aquí</div>
+          <div class="sub2">o haz clic para seleccionar</div>
+        </div>
+
+        <div id="pages-container-r" style="display:none">
+          <label style="margin-top:14px">Páginas — selecciona la que quieres imprimir</label>
+          <div class="pages-scroll" id="pages-scroll-r"></div>
+        </div>
+
+        <button class="btn-print" id="btn-print-pdf-r" onclick="imprimirPdfRecibo()" disabled style="margin-top:18px">
+          🖨️ Imprimir Recibo PDF (62mm)
+        </button>
+      </div><!-- fin subpanel-r1 -->
+
+    </div>
+    <div class="card preview-card">
+      <h2>Vista previa</h2>
+      <div class="preview-area" id="preview-recibo"></div>
+      <p class="hint" id="recibo-hint">* 62mm × automático · Vertical · Monocromo</p>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+// PDF.js worker local
+pdfjsLib.GlobalWorkerOptions.workerSrc = './node_modules/pdfjs-dist/build/pdf.worker.min.js';
+
+// ─── AUTO-RECORTE DE BORDES BLANCOS ───
+function autoCrop(canvas) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const d = ctx.getImageData(0, 0, w, h).data;
+  const threshold = 240; // píxeles más oscuros que este valor = contenido
+
+  let top = 0, bottom = h - 1, left = 0, right = w - 1;
+
+  // Borde superior
+  top: for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++)
+      if (d[(y*w+x)*4] < threshold || d[(y*w+x)*4+1] < threshold || d[(y*w+x)*4+2] < threshold)
+        { top = Math.max(0, y - 4); break top; }
+
+  // Borde inferior
+  bot: for (let y = h-1; y >= top; y--)
+    for (let x = 0; x < w; x++)
+      if (d[(y*w+x)*4] < threshold || d[(y*w+x)*4+1] < threshold || d[(y*w+x)*4+2] < threshold)
+        { bottom = Math.min(h-1, y + 4); break bot; }
+
+  // Borde izquierdo
+  lft: for (let x = 0; x < w; x++)
+    for (let y = top; y <= bottom; y++)
+      if (d[(y*w+x)*4] < threshold || d[(y*w+x)*4+1] < threshold || d[(y*w+x)*4+2] < threshold)
+        { left = Math.max(0, x - 4); break lft; }
+
+  // Borde derecho
+  rgt: for (let x = w-1; x >= left; x--)
+    for (let y = top; y <= bottom; y++)
+      if (d[(y*w+x)*4] < threshold || d[(y*w+x)*4+1] < threshold || d[(y*w+x)*4+2] < threshold)
+        { right = Math.min(w-1, x + 4); break rgt; }
+
+  const cw = right - left, ch = bottom - top;
+  if (cw < 10 || ch < 10) return canvas.toDataURL('image/jpeg', 0.95); // fallback
+
+  const pad = 12; // píxeles de margen extra para no cortar bordes
+  const safeL = Math.max(0, left - pad);
+  const safeT = Math.max(0, top - pad);
+  const safeR = Math.min(w - 1, right + pad);
+  const safeB = Math.min(h - 1, bottom + pad);
+  const cw2 = safeR - safeL, ch2 = safeB - safeT;
+  if (cw2 < 10 || ch2 < 10) return { dataUrl: canvas.toDataURL('image/jpeg', 0.95), w, h };
+
+  const out = document.createElement('canvas');
+  out.width = cw2; out.height = ch2;
+  out.getContext('2d').drawImage(canvas, safeL, safeT, cw2, ch2, 0, 0, cw2, ch2);
+  return { dataUrl: out.toDataURL('image/jpeg', 0.95), w: cw2, h: ch2 };
+}
+
+// ─── IMPRESORA ───
+let printerName = localStorage.getItem('verex-printer') || '';
+
+async function loadPrinters() {
+  const btn = document.getElementById('btn-reload');
+  const dot = document.getElementById('printer-dot');
+  const status = document.getElementById('printer-status');
+  const sel = document.getElementById('printer-select');
+
+  btn.classList.add('spinning');
+  status.textContent = 'Buscando...';
+  dot.className = 'printer-dot';
+
+  try {
+    const list = await window.electronAPI.getPrinters();
+
+    if (!list || list.length === 0) {
+      sel.innerHTML = '<option value="">— Sin impresoras detectadas —</option>';
+      dot.className = 'printer-dot';
+      status.textContent = 'No se encontraron impresoras';
+      btn.classList.remove('spinning');
+      return;
+    }
+
+    sel.innerHTML = list.map(p => {
+      const label = `${p.name}${p.status === 'Offline' ? ' (Offline)' : ''}`;
+      return `<option value="${p.name}" ${p.name === printerName ? 'selected' : ''}>${label}</option>`;
+    }).join('');
+
+    // Auto-seleccionar: primero la guardada, luego Brother, luego la primera
+    if (!printerName || !list.find(p => p.name === printerName)) {
+      const brother = list.find(p => p.name.toLowerCase().includes('brother'));
+      const first = brother || list[0];
+      printerName = first.name;
+      sel.value = printerName;
+      localStorage.setItem('verex-printer', printerName);
+    }
+
+    const selected = list.find(p => p.name === printerName);
+    const isOffline = selected?.status === 'Offline';
+    dot.className = 'printer-dot ' + (isOffline ? 'warn' : 'ok');
+    status.textContent = isOffline ? '⚠ Offline' : `${list.length} encontrada${list.length > 1 ? 's' : ''}`;
+
+  } catch(e) {
+    sel.innerHTML = '<option value="">— Error al buscar —</option>';
+    status.textContent = 'Error: ' + e.message;
+    dot.className = 'printer-dot';
+  }
+
+  btn.classList.remove('spinning');
+}
+
+function savePrinter() {
+  printerName = document.getElementById('printer-select').value;
+  localStorage.setItem('verex-printer', printerName);
+}
+
+// ─── TOAST ───
+function toast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show' + (isError ? ' error' : '');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.className = '', 3000);
+}
+
+// ─── IMPRIMIR VIA ELECTRON ───
+async function imprimir(html, widthMm, heightMm) {
+  toast('Enviando a impresora...');
+  const result = await window.electronAPI.imprimir(html, widthMm, heightMm, printerName);
+  if (result.success) toast('✅ Impreso correctamente');
+  else toast('❌ Error: ' + (result.error || 'desconocido'), true);
+}
+
+// ─── TABS ───
+function setTab(n) {
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === n));
+  document.querySelectorAll('.panel').forEach((p, i) => p.classList.toggle('active', i === n));
+}
+function setSubtab(n) {
+  document.querySelectorAll('.subtab').forEach((t, i) => t.classList.toggle('active', i === n));
+  document.querySelectorAll('.subpanel').forEach((p, i) => p.classList.toggle('active', i === n));
+  if (n === 1) renderGuia();
+  else if (pdfPages.length) renderPdfPreview();
+  else document.getElementById('preview-guia').innerHTML = '<span style="color:#bbb;font-size:13px">Sube un PDF para previsualizar</span>';
+}
+
+// ─── PDF ───
+let pdfPages = [], selectedPage = 0, fitMode = 'cover';
+
+function onDragOver(e) { e.preventDefault(); document.getElementById('drop-zone').classList.add('drag-over'); }
+function onDragLeave() { document.getElementById('drop-zone').classList.remove('drag-over'); }
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f?.type === 'application/pdf') loadPdf(f);
+}
+function onFileSelected(e) { if (e.target.files[0]) loadPdf(e.target.files[0]); }
+
+async function loadPdf(file) {
+  pdfPages = []; selectedPage = 0;
+  document.getElementById('pages-scroll').innerHTML = '<span style="color:#aaa;font-size:12px;padding:8px">Cargando...</span>';
+  document.getElementById('pages-container').style.display = 'block';
+  document.getElementById('btn-print-pdf').disabled = true;
+
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const scroll = document.getElementById('pages-scroll');
+  scroll.innerHTML = '';
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const vp0 = page.getViewport({ scale: 1 });
+
+    // Miniatura
+    const tScale = 90 / vp0.height;
+    const tVp = page.getViewport({ scale: tScale });
+    const tCanvas = document.createElement('canvas');
+    tCanvas.width = tVp.width; tCanvas.height = tVp.height;
+    await page.render({ canvasContext: tCanvas.getContext('2d'), viewport: tVp }).promise;
+
+    // Alta resolución (300 DPI equivalente)
+    const pScale = 732 / vp0.width;
+    const pVp = page.getViewport({ scale: pScale });
+    const pCanvas = document.createElement('canvas');
+    pCanvas.width = pVp.width; pCanvas.height = pVp.height;
+    await page.render({ canvasContext: pCanvas.getContext('2d'), viewport: pVp }).promise;
+
+    // Calcular largo óptimo basado en proporciones reales del PDF
+    const optimalLength = Math.round(62 * (pCanvas.height / pCanvas.width));
+
+    // Rotar la imagen 90° directamente en canvas (para impresión sin CSS)
+    const rotCanvas = document.createElement('canvas');
+    rotCanvas.width  = pCanvas.height;  // alto original → nuevo ancho
+    rotCanvas.height = pCanvas.width;   // ancho original → nuevo alto
+    const rotCtx = rotCanvas.getContext('2d');
+    rotCtx.translate(rotCanvas.width / 2, rotCanvas.height / 2);
+    rotCtx.rotate(Math.PI / 2);
+    rotCtx.drawImage(pCanvas, -pCanvas.width / 2, -pCanvas.height / 2);
+    const rotDataUrl = rotCanvas.toDataURL('image/jpeg', 0.95);
+
+    // Preview: recortar bordes blancos (solo visual)
+    const { dataUrl } = autoCrop(pCanvas);
+    pdfPages.push({ dataUrl, rotDataUrl, optimalLength });
+
+    const thumb = document.createElement('div');
+    thumb.className = 'page-thumb' + (i === 1 ? ' selected' : '');
+    thumb.id = `thumb-${i - 1}`;
+    thumb.onclick = () => selectPage(i - 1);
+    const tc = tCanvas.cloneNode(true);
+    const ctx2 = tc.getContext('2d');
+    ctx2.drawImage(tCanvas, 0, 0);
+    thumb.appendChild(tc);
+    const num = document.createElement('div');
+    num.className = 'page-num'; num.textContent = i;
+    thumb.appendChild(num);
+    scroll.appendChild(thumb);
+  }
+
+  document.getElementById('btn-print-pdf').disabled = false;
+  autoLargo();
+  renderPdfPreview();
+}
+
+function selectPage(idx) {
+  selectedPage = idx;
+  document.querySelectorAll('.page-thumb').forEach((t, i) => t.classList.toggle('selected', i === idx));
+  autoLargo();
+  renderPdfPreview();
+}
+
+function autoLargo() {
+  if (!pdfPages.length) return;
+  const p = pdfPages[selectedPage];
+  document.getElementById('guia-largo').value = p.optimalLength || 100;
+  renderPdfPreview();
+}
+function setFit(mode) {
+  fitMode = mode;
+  ['contain','cover','stretch'].forEach(m => document.getElementById('fit-'+m).classList.toggle('active', m === mode));
+  renderPdfPreview();
+}
+function renderPdfPreview() {
+  if (!pdfPages.length) return;
+  // Mostrar rotado 90° para reflejar la orientación horizontal real
+  document.getElementById('preview-guia').innerHTML = `
+    <div style="position:relative;width:318px;height:220px;overflow:hidden;">
+      <img src="${pdfPages[selectedPage].dataUrl}"
+        style="position:absolute;top:50%;left:50%;
+               width:220px;height:318px;
+               object-fit:fill;
+               transform:translate(-50%,-50%) rotate(90deg);">
+    </div>`;
+}
+
+async function imprimirPdf() {
+  if (!pdfPages.length) return;
+  const largo = parseFloat(document.getElementById('guia-largo').value) || 100;
+  // Imagen ya rotada 90° en el canvas — no necesita CSS transform
+  const src = pdfPages[selectedPage].rotDataUrl;
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+@page { size: ${largo}mm 62mm; margin: 0; }
+* { margin: 0; padding: 0; }
+body { width: ${largo}mm; height: 62mm; background: white; }
+img {
+  display: block;
+  width: ${largo}mm;
+  height: 62mm;
+  object-fit: contain;
+  background: white;
+}
+</style></head><body>
+<img src="${src}">
+</body></html>`;
+  await imprimir(html, largo, 62);
+}
+
+// ─── SUBTABS RECIBO ───
+function setSubtabR(n) {
+  document.querySelectorAll('#panel-2 .subtab').forEach((t, i) => t.classList.toggle('active', i === n));
+  document.querySelectorAll('#panel-2 .subpanel').forEach((p, i) => p.classList.toggle('active', i === n));
+  if (n === 0) {
+    renderRecibo();
+    document.getElementById('recibo-hint').textContent = '* 62mm × automático · Vertical · Monocromo';
+  } else {
+    if (reciboPages.length) renderReciboPdfPreview();
+    else document.getElementById('preview-recibo').innerHTML = '<span style="color:#bbb;font-size:13px">Sube un PDF para previsualizar</span>';
+    document.getElementById('recibo-hint').textContent = '* 62mm × automático · Vertical';
+  }
+}
+
+// ─── PDF RECIBO ───
+let reciboPages = [], reciboSelectedPage = 0;
+
+function onDragOver2(e) { e.preventDefault(); document.getElementById('drop-zone-r').classList.add('drag-over'); }
+function onDragLeave2() { document.getElementById('drop-zone-r').classList.remove('drag-over'); }
+function onDrop2(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone-r').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f?.type === 'application/pdf') loadPdfRecibo(f);
+}
+function onFileSelectedR(e) { if (e.target.files[0]) loadPdfRecibo(e.target.files[0]); }
+
+async function loadPdfRecibo(file) {
+  reciboPages = []; reciboSelectedPage = 0;
+  document.getElementById('pages-scroll-r').innerHTML = '<span style="color:#aaa;font-size:12px;padding:8px">Cargando...</span>';
+  document.getElementById('pages-container-r').style.display = 'block';
+  document.getElementById('btn-print-pdf-r').disabled = true;
+
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const scroll = document.getElementById('pages-scroll-r');
+  scroll.innerHTML = '';
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const vp0 = page.getViewport({ scale: 1 });
+
+    // Miniatura
+    const tScale = 90 / vp0.height;
+    const tVp = page.getViewport({ scale: tScale });
+    const tCanvas = document.createElement('canvas');
+    tCanvas.width = tVp.width; tCanvas.height = tVp.height;
+    await page.render({ canvasContext: tCanvas.getContext('2d'), viewport: tVp }).promise;
+
+    // Alta resolución para 62mm a 300dpi
+    const pScale = 732 / vp0.width;
+    const pVp = page.getViewport({ scale: pScale });
+    const pCanvas = document.createElement('canvas');
+    pCanvas.width = pVp.width; pCanvas.height = pVp.height;
+    await page.render({ canvasContext: pCanvas.getContext('2d'), viewport: pVp }).promise;
+
+    // Recortar bordes blancos
+    const { dataUrl } = autoCrop(pCanvas);
+    const fullDataUrl = pCanvas.toDataURL('image/jpeg', 0.95);
+    reciboPages.push({ dataUrl, fullDataUrl });
+
+    const thumb = document.createElement('div');
+    thumb.className = 'page-thumb' + (i === 1 ? ' selected' : '');
+    thumb.id = `thumb-r-${i-1}`;
+    thumb.onclick = () => selectPageR(i - 1);
+    const tc = document.createElement('canvas');
+    tc.width = tCanvas.width; tc.height = tCanvas.height;
+    tc.getContext('2d').drawImage(tCanvas, 0, 0);
+    thumb.appendChild(tc);
+    const num = document.createElement('div');
+    num.className = 'page-num'; num.textContent = i;
+    thumb.appendChild(num);
+    scroll.appendChild(thumb);
+  }
+
+  document.getElementById('btn-print-pdf-r').disabled = false;
+  renderReciboPdfPreview();
+}
+
+function selectPageR(idx) {
+  reciboSelectedPage = idx;
+  document.querySelectorAll('#pages-scroll-r .page-thumb').forEach((t, i) => t.classList.toggle('selected', i === idx));
+  renderReciboPdfPreview();
+}
+
+function renderReciboPdfPreview() {
+  if (!reciboPages.length) return;
+  document.getElementById('preview-recibo').innerHTML =
+    `<img class="pdf-img" src="${reciboPages[reciboSelectedPage].dataUrl}"
+      style="max-width:200px;max-height:340px;object-fit:contain;">`;
+}
+
+async function imprimirPdfRecibo() {
+  if (!reciboPages.length) return;
+  const src = reciboPages[reciboSelectedPage].dataUrl; // recortado — sin espacio en blanco
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+@page { size: 62mm auto portrait; margin: 0; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { width: 62mm; background: white; padding: 0 1.5mm; }
+img { display: block; width: 100%; height: auto; }
+</style></head><body>
+<img src="${src}">
+</body></html>`;
+  await imprimir(html, 62, 0);
+}
+
+// ─── GUÍA MANUAL ───
+function renderGuia() {
+  const ped  = v('g-pedido') || 'VRX-0000';
+  const rn   = v('g-rem-nombre') || 'VEREX Store';
+  const rd   = v('g-rem-dir') || '';
+  const dn   = v('g-dest-nombre') || 'Destinatario';
+  const dd   = v('g-dest-dir') || '';
+  const dt   = v('g-dest-tel') || '';
+  const men  = v('g-mensajeria') || '';
+  const bars = Array.from({length:38},(_,i)=>`<div class="g-bar${i%3===0?' t':''}"></div>`).join('');
+  document.getElementById('preview-guia').innerHTML = `
+    <div class="label-guia">
+      <div class="guia-header">
+        <div class="guia-logo">VEREX</div>
+        <div class="guia-ped">PEDIDO<strong>${ped}</strong>${men?`<span style="font-size:7px;color:#e63946;">${men}</span>`:''}</div>
+      </div>
+      <div><span class="g-tag g-dark">DE</span><div class="g-name">${rn}</div><div class="g-sub">${rd.replace(/\n/g,'<br>')}</div></div>
+      <div><span class="g-tag g-red">PARA</span><div class="g-name">${dn}</div><div class="g-sub">${dd.replace(/\n/g,'<br>')}${dt?'<br>📞 '+dt:''}</div></div>
+      <div class="g-barcode"><div class="g-bars">${bars}</div>${ped}</div>
+    </div>`;
+}
+
+async function imprimirGuia() {
+  const ped = v('g-pedido')||'VRX-0000', rn=v('g-rem-nombre')||'VEREX Store', rd=v('g-rem-dir')||'';
+  const dn=v('g-dest-nombre')||'', dd=v('g-dest-dir')||'', dt=v('g-dest-tel')||'', men=v('g-mensajeria')||'';
+  const bars = Array.from({length:38},(_,i)=>`<div style="background:#000;width:${i%3===0?'1':'2'}px;height:100%;"></div>`).join('');
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+@page{size:62mm 89.8mm portrait;margin:0;}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;}
+body{width:62mm;height:89.8mm;padding:3mm;}
+.h{display:flex;justify-content:space-between;border-bottom:2px solid #e63946;padding-bottom:2mm;margin-bottom:2mm;}
+.logo{font-size:15pt;font-weight:900;color:#e63946;letter-spacing:1pt;}
+.ped{font-size:6pt;color:#555;text-align:right;}
+.ped strong{font-size:9pt;color:#000;display:block;}
+.tag{font-size:6pt;font-weight:700;color:#fff;padding:1pt 3pt;border-radius:2pt;display:inline-block;margin-bottom:1.5mm;}
+.dk{background:#1a1a2e;}.rd{background:#e63946;}
+.name{font-size:9pt;font-weight:700;}.addr{font-size:7pt;color:#444;line-height:1.4;}
+.to{margin-top:2mm;}
+.bc{margin-top:auto;border-top:1px solid #ddd;padding-top:2mm;text-align:center;font-size:6pt;color:#666;}
+.bars{display:flex;justify-content:center;gap:1px;height:7mm;margin-bottom:1mm;}
+</style></head><body>
+<div class="h"><div class="logo">VEREX</div><div class="ped">PEDIDO<strong>${ped}</strong>${men?`<br><span style="color:#e63946">${men}</span>`:''}</div></div>
+<div><span class="tag dk">DE</span><div class="name">${rn}</div><div class="addr">${rd.replace(/\n/g,'<br>')}</div></div>
+<div class="to"><span class="tag rd">PARA</span><div class="name">${dn}</div><div class="addr">${dd.replace(/\n/g,'<br>')}${dt?'<br>Tel: '+dt:''}</div></div>
+<div class="bc"><div class="bars">${bars}</div>${ped}</div>
+</body></html>`;
+  await imprimir(html, 62, 89.8);
+}
+
+// ─── JOYERÍA ───
+function renderJoya() {
+  const nom = v('j-nombre')||'Nombre producto', sku=v('j-sku')||'', pre=v('j-precio')||'$0';
+  document.getElementById('preview-joya').innerHTML = `
+    <div class="label-joya">
+      <div><div class="j-nombre">${nom}</div>${sku?`<div class="j-sku">${sku}</div>`:''}</div>
+      <div class="j-precio">${pre}</div>
+    </div>`;
+}
+
+async function imprimirJoya() {
+  const nom=v('j-nombre')||'Producto', sku=v('j-sku')||'', pre=v('j-precio')||'$0';
+  const cant = parseInt(document.getElementById('j-cantidad').value)||1;
+  let etiquetas = '';
+  for (let i=0; i<cant; i++) {
+    etiquetas += `<div class="e"><div class="n">${nom}${sku?'<br><span class="s">'+sku+'</span>':''}</div><div class="p">${pre}</div></div>`;
+  }
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+@page{size:54mm 17mm landscape;margin:0;}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;}
+.e{width:54mm;height:17mm;display:flex;align-items:center;justify-content:space-between;padding:2mm 3mm;page-break-after:always;}
+.n{font-size:8pt;font-weight:700;line-height:1.3;max-width:32mm;}
+.s{font-size:6pt;color:#666;font-weight:400;}
+.p{font-size:10pt;font-weight:900;white-space:nowrap;}
+</style></head><body>${etiquetas}</body></html>`;
+  await imprimir(html, 54, 17);
+}
+
+// ─── RECIBO ───
+let items = [{nombre:'',cant:1,precio:''}];
+
+function addItem() { items.push({nombre:'',cant:1,precio:''}); renderItemsForm(); renderRecibo(); }
+function removeItem(i) { if(items.length===1)return; items.splice(i,1); renderItemsForm(); renderRecibo(); }
+function updateItem(i,f,val) { items[i][f]=val; calcTotal(); renderRecibo(); }
+function calcTotal() {
+  let t=0; items.forEach(it=>{ const p=parseFloat(it.precio.replace(/[^0-9.]/g,''))||0; t+=p*(parseFloat(it.cant)||0); });
+  document.getElementById('total-display').textContent = fp(t); return t;
+}
+function fp(n) { return '$'+Math.round(n).toLocaleString('es-CO'); }
+function v(id) { return document.getElementById(id)?.value||''; }
+
+function renderItemsForm() {
+  document.getElementById('items-recibo').innerHTML = items.map((it,i)=>`
+    <div class="item-row">
+      <input type="text" placeholder="Producto" value="${it.nombre}" oninput="updateItem(${i},'nombre',this.value)">
+      <input type="number" placeholder="1" value="${it.cant}" min="1" oninput="updateItem(${i},'cant',this.value)">
+      <input type="text" placeholder="$0" value="${it.precio}" oninput="updateItem(${i},'precio',this.value)">
+      <button class="btn-del" onclick="removeItem(${i})">×</button>
+    </div>`).join('');
+}
+function renderRecibo() {
+  const neg=v('r-negocio')||'VEREX Store', pago=v('r-pago')||'Efectivo', nota=v('r-nota')||'';
+  const ahora=new Date();
+  const fecha=ahora.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'});
+  const hora=ahora.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+  let total=0;
+  const iHtml=items.map(it=>{
+    const p=parseFloat(it.precio.replace(/[^0-9.]/g,''))||0, c=parseFloat(it.cant)||0; total+=p*c;
+    if(!it.nombre)return '';
+    return `<div class="r-item"><span class="rn">${it.nombre}</span><span class="rc">×${c}</span><span class="rp">${fp(p*c)}</span></div>`;
+  }).join('');
+  document.getElementById('preview-recibo').innerHTML = `
+    <div class="label-recibo">
+      <div class="r-center"><div class="r-titulo">${neg}</div><div class="r-sub">${fecha} · ${hora}</div></div>
+      <hr class="r-hr">${iHtml||'<div style="color:#aaa;font-size:9px;text-align:center">Sin productos</div>'}
+      <hr class="r-hr-s">
+      <div class="r-total"><span>TOTAL</span><span>${fp(total)}</span></div>
+      <div class="r-pago">Pago: ${pago}</div>${nota?`<div class="r-pago">${nota}</div>`:''}
+      <hr class="r-hr"><div class="r-gracias">¡Gracias por tu compra!</div>
+    </div>`;
+}
+
+async function imprimirRecibo() {
+  const neg=v('r-negocio')||'VEREX Store', pago=v('r-pago')||'Efectivo', nota=v('r-nota')||'';
+  const ahora=new Date();
+  const fecha=ahora.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'});
+  const hora=ahora.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+  let total=0;
+  const iHtml=items.filter(it=>it.nombre).map(it=>{
+    const p=parseFloat(it.precio.replace(/[^0-9.]/g,''))||0,c=parseFloat(it.cant)||0; total+=p*c;
+    return `<tr><td style="padding:1pt 0">${it.nombre}</td><td style="text-align:center;color:#666">×${c}</td><td style="text-align:right;font-weight:700">${fp(p*c)}</td></tr>`;
+  }).join('');
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+@page{size:62mm auto portrait;margin:0;}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Courier New',monospace;font-size:9pt;}
+body{width:62mm;padding:4mm 3mm;}
+.c{text-align:center;margin-bottom:3mm;}
+.t{font-size:14pt;font-weight:900;letter-spacing:2pt;}
+.s{font-size:8.5pt;color:#555;}
+hr{border:none;border-top:1px dashed #999;margin:3mm 0;}
+hr.sol{border-top:1px solid #333;}
+table{width:100%;border-collapse:collapse;}
+th{font-size:8pt;font-weight:700;color:#444;text-align:left;padding-bottom:2pt;}
+th:nth-child(2){text-align:center;}th:last-child{text-align:right;}
+td{vertical-align:top;padding:1.5pt 0;}td:last-child{white-space:nowrap;text-align:right;font-weight:700;}
+td:nth-child(2){text-align:center;color:#555;}
+.tot{display:flex;justify-content:space-between;font-size:12pt;font-weight:900;margin:2mm 0 1mm;}
+.pg{font-size:9pt;color:#555;text-align:center;margin-top:1.5mm;}
+.gr{font-size:11pt;font-weight:700;text-align:center;margin-top:4mm;letter-spacing:0.5pt;}
+</style></head><body>
+<div class="c"><div class="t">${neg}</div><div class="s">${fecha} · ${hora}</div></div>
+<hr>
+<table>
+<colgroup><col style="width:auto"><col style="width:16pt"><col style="width:38pt"></colgroup>
+<thead><tr><th>Producto</th><th>Cant</th><th style="text-align:right">Precio</th></tr></thead>
+<tbody>${iHtml}</tbody>
+</table>
+<hr class="sol"><div class="tot"><span>TOTAL</span><span>${fp(total)}</span></div>
+<div class="pg">Pago: ${pago}</div>${nota?`<div class="pg">${nota}</div>`:''}
+<hr><div class="gr">¡Gracias por tu compra!</div>
+</body></html>`;
+  await imprimir(html, 62, 0); // 0 = altura automática
+}
+
+// ─── INIT ───
+loadPrinters();
+renderJoya();
+renderItemsForm();
+renderRecibo();
+</script>
+</body>
+</html>
