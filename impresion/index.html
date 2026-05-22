@@ -624,21 +624,12 @@ async function loadPdf(file) {
   }
 
   document.getElementById('btn-print-pdf').disabled = false;
-  autoLargo();
   renderPdfPreview();
 }
 
 function selectPage(idx) {
   selectedPage = idx;
   document.querySelectorAll('.page-thumb').forEach((t, i) => t.classList.toggle('selected', i === idx));
-  autoLargo();
-  renderPdfPreview();
-}
-
-function autoLargo() {
-  if (!pdfPages.length) return;
-  const p = pdfPages[selectedPage];
-  document.getElementById('guia-largo').value = p.optimalLength || 100;
   renderPdfPreview();
 }
 function setFit(mode) {
