@@ -745,9 +745,14 @@ function selectPageR(idx) {
 
 function renderReciboPdfPreview() {
   if (!reciboPages.length) return;
-  document.getElementById('preview-recibo').innerHTML =
-    `<img class="pdf-img" src="${reciboPages[reciboSelectedPage].dataUrl}"
-      style="max-width:200px;max-height:340px;object-fit:contain;">`;
+  document.getElementById('preview-recibo').innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:0;max-width:200px;">
+      <img class="pdf-img" src="${reciboPages[reciboSelectedPage].dataUrl}"
+        style="width:200px;height:auto;object-fit:contain;">
+      <div style="width:200px;border-top:1px dashed #aaa;margin:6px 0;"></div>
+      <div style="font-family:'Courier New',monospace;font-size:11px;font-weight:900;text-align:center;line-height:1.5;">¡GRACIAS POR<br>TU COMPRA!</div>
+      <div style="font-family:'Courier New',monospace;font-size:8px;font-weight:700;text-align:center;margin-top:3px;font-style:italic;line-height:1.4;">El mundo es mejor<br>cuando brillas TU ✨</div>
+    </div>`;
 }
 
 async function imprimirPdfRecibo() {
@@ -757,10 +762,16 @@ async function imprimirPdfRecibo() {
 <style>
 @page { size: 62mm auto portrait; margin: 0; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { width: 62mm; background: white; padding: 0 1.5mm; }
+body { width: 62mm; background: white; padding: 3mm 1.5mm 4mm; font-family: 'Courier New', monospace; }
 img { display: block; width: 100%; height: auto; }
+hr { border: none; border-top: 1px dashed #aaa; margin: 4mm 0; }
+.gr { font-size: 15pt; font-weight: 900; text-align: center; line-height: 1.4; letter-spacing: 0.5pt; }
+.tagline { font-size: 10pt; font-weight: 700; text-align: center; margin-top: 2mm; line-height: 1.4; font-style: italic; }
 </style></head><body>
 <img src="${src}">
+<hr>
+<div class="gr">¡GRACIAS POR<br>TU COMPRA!</div>
+<div class="tagline">El mundo es mejor<br>cuando brillas TU ✨</div>
 </body></html>`;
   await imprimir(html, 62, 0);
 }
