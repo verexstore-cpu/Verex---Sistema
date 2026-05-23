@@ -8,34 +8,34 @@
 <style>
   /* ─── VARIABLES ─── */
   :root {
-    --gold:       #c9a840;
-    --gold-light: #e8d06a;
-    --gold-grad:  linear-gradient(135deg, #a07820 0%, #e8d06a 45%, #b8952a 100%);
-    --silver:     #b8c2cc;
-    --silver-dim: #5a6270;
-    --black-deep: #07070e;
-    --black-mid:  #0d0d17;
-    --card:       #10101a;
-    --card-bd:    #1c1c2c;
-    --input-bg:   #0a0a15;
-    --input-bd:   #22223a;
-    --text:       #dde0ea;
-    --text-dim:   #606878;
+    --gold:        #c9a840;
+    --gold-light:  #e8d06a;
+    --gold-grad:   linear-gradient(135deg, #a07820 0%, #e8d06a 45%, #b8952a 100%);
+    --silver-text: #b8c2cc;   /* plata para texto sobre negro (header/tabs) */
+    --silver-dim:  #7a8490;   /* plata apagada sobre negro */
+    --bg:          #dde0e8;   /* fondo plateado suave */
+    --card:        #f0f2f6;   /* tarjeta */
+    --card-bd:     #c8ccd6;   /* borde tarjeta */
+    --input-bg:    #e6e9f0;   /* fondo inputs */
+    --input-bd:    #bcc0cc;   /* borde inputs */
+    --text:        #1a1c26;   /* texto principal oscuro */
+    --text-dim:    #6a7080;   /* texto secundario */
+    --btn-dark:    #0e0e18;   /* fondo botones negro */
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
     font-family: 'Segoe UI', sans-serif;
-    background: var(--black-deep);
+    background: var(--bg);
     color: var(--text);
     min-height: 100vh;
   }
 
-  /* ─── HEADER ─── */
+  /* ─── HEADER (negro — contraste sobre fondo plateado) ─── */
   header {
     background: #0a0a14;
-    border-bottom: 1px solid var(--card-bd);
+    border-bottom: 2px solid #1e1e2c;
     padding: 14px 28px;
     display: flex; align-items: center; justify-content: space-between;
   }
@@ -46,35 +46,36 @@
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-clip: text;
   }
-  .header-divider { width: 1px; height: 22px; background: var(--card-bd); }
+  .header-divider { width: 1px; height: 22px; background: #2e2e3e; }
   header .sub { font-size: 12px; color: var(--silver-dim); letter-spacing: .3px; }
 
   /* ─── PRINTER SELECTOR ─── */
   .printer-selector { display: flex; align-items: center; gap: 8px; }
   .printer-selector label { font-size: 12px; color: var(--silver-dim); white-space: nowrap; }
   .printer-selector select {
-    background: var(--input-bg); border: 1px solid var(--input-bd);
-    color: var(--silver); border-radius: 7px; padding: 6px 10px;
+    background: #161622; border: 1px solid #2a2a3a;
+    color: var(--silver-text); border-radius: 7px; padding: 6px 10px;
     font-size: 13px; font-family: inherit; cursor: pointer; max-width: 220px;
   }
-  .printer-selector select option { background: #0d0d17; }
-  .printer-dot { width: 8px; height: 8px; border-radius: 50%; background: #333; flex-shrink: 0; transition: background .3s; }
+  .printer-selector select option { background: #0e0e18; }
+  .printer-dot { width: 8px; height: 8px; border-radius: 50%; background: #444; flex-shrink: 0; transition: background .3s; }
   .printer-dot.ok   { background: #4caf50; box-shadow: 0 0 6px rgba(76,175,80,.5); }
   .printer-dot.warn { background: #ff9800; box-shadow: 0 0 6px rgba(255,152,0,.5); }
+  /* Botón recargar — negro con plata */
   .btn-reload {
-    background: var(--input-bg); border: 1px solid var(--input-bd);
-    color: var(--silver-dim); border-radius: 7px; padding: 6px 10px;
+    background: var(--btn-dark); border: 1px solid rgba(184,194,204,.25);
+    color: var(--silver-text); border-radius: 7px; padding: 6px 10px;
     font-size: 13px; cursor: pointer; transition: all .2s; white-space: nowrap;
   }
-  .btn-reload:hover { border-color: var(--gold); color: var(--gold); }
+  .btn-reload:hover { border-color: var(--silver-text); color: #dde4ea; }
   .btn-reload.spinning { animation: spin .7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .printer-status { font-size: 11px; color: var(--silver-dim); white-space: nowrap; }
 
-  /* ─── TABS ─── */
+  /* ─── TABS (fondo negro — contraste) ─── */
   .tabs {
-    display: flex; background: #0a0a14;
-    border-bottom: 1px solid var(--card-bd);
+    display: flex; background: #0d0d18;
+    border-bottom: 1px solid #1e1e2c;
     padding: 0 28px; gap: 2px;
   }
   .tab {
@@ -82,7 +83,7 @@
     color: var(--silver-dim); border-bottom: 2px solid transparent; margin-bottom: -1px;
     transition: all .2s; white-space: nowrap; letter-spacing: .3px;
   }
-  .tab:hover { color: var(--silver); }
+  .tab:hover { color: var(--silver-text); }
   .tab.active { color: var(--gold); border-bottom-color: var(--gold); }
 
   /* ─── LAYOUT ─── */
@@ -90,11 +91,11 @@
   .panel { display: none; }
   .panel.active { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
 
-  /* ─── CARDS ─── */
+  /* ─── CARDS (plateado claro) ─── */
   .card {
     background: var(--card); border-radius: 14px; padding: 26px;
     border: 1px solid var(--card-bd);
-    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+    box-shadow: 0 4px 18px rgba(0,0,0,.12);
   }
   .card h2 {
     font-size: 10px; letter-spacing: 2.5px; text-transform: uppercase;
@@ -113,19 +114,23 @@
   }
   .subtab {
     flex: 1; padding: 9px 0; text-align: center;
-    font-size: 13px; font-weight: 600; color: var(--silver-dim); cursor: pointer;
+    font-size: 13px; font-weight: 600; color: var(--text-dim); cursor: pointer;
     background: var(--input-bg); transition: all .2s;
     border-right: 1px solid var(--card-bd);
   }
   .subtab:last-child { border-right: none; }
-  .subtab.active { background: var(--gold-grad); color: #080808; font-weight: 700; }
+  /* Subtab activa — negro con dorado */
+  .subtab.active {
+    background: var(--btn-dark); color: var(--gold);
+    font-weight: 700; border-color: transparent;
+  }
   .subpanel { display: none; }
   .subpanel.active { display: block; }
 
   /* ─── FORM ELEMENTS ─── */
   label {
     display: block; font-size: 11px; font-weight: 700;
-    color: var(--silver-dim); margin-bottom: 5px; margin-top: 14px;
+    color: var(--text-dim); margin-bottom: 5px; margin-top: 14px;
     text-transform: uppercase; letter-spacing: .8px;
   }
   label:first-of-type { margin-top: 0; }
@@ -136,107 +141,118 @@
     background: var(--input-bg); color: var(--text);
     transition: border-color .2s, box-shadow .2s;
   }
-  input::placeholder, textarea::placeholder { color: #2a2a40; }
+  input::placeholder, textarea::placeholder { color: #a0a8b4; }
   input:focus, textarea:focus, select:focus {
     outline: none; border-color: var(--gold);
-    box-shadow: 0 0 0 3px rgba(201,168,64,.12);
+    box-shadow: 0 0 0 3px rgba(201,168,64,.15);
   }
   textarea { resize: vertical; min-height: 60px; }
-  select option { background: #0d0d17; }
+  select option { background: #f0f2f6; color: #1a1c26; }
 
-  /* ─── PRINT BUTTON ─── */
+  /* ─── BOTÓN IMPRIMIR — negro con dorado ─── */
   .btn-print {
     display: flex; align-items: center; justify-content: center; gap: 8px;
     width: 100%; margin-top: 18px; padding: 13px;
-    background: var(--gold-grad); color: #080808; border: none;
-    border-radius: 10px; font-size: 14px; font-weight: 800;
+    background: var(--btn-dark); color: var(--gold);
+    border: 1px solid rgba(201,168,64,.45); border-radius: 10px;
+    font-size: 14px; font-weight: 800; font-family: inherit;
     cursor: pointer; letter-spacing: .8px; text-transform: uppercase;
-    transition: opacity .2s, transform .1s;
-    box-shadow: 0 4px 16px rgba(201,168,64,.3);
+    transition: all .2s;
+    box-shadow: 0 4px 16px rgba(0,0,0,.2);
   }
-  .btn-print:hover { opacity: .88; }
+  .btn-print:hover {
+    border-color: var(--gold);
+    box-shadow: 0 4px 20px rgba(0,0,0,.28), 0 0 12px rgba(201,168,64,.2);
+    color: var(--gold-light);
+  }
   .btn-print:active { transform: scale(.98); }
   .btn-print:disabled {
-    background: #16161e; color: #2a2a40; border: 1px solid #1e1e2e;
+    background: #d0d3da; color: #a0a8b0; border-color: #bcc0c8;
     cursor: not-allowed; transform: none; box-shadow: none;
   }
 
   /* ─── TOAST ─── */
   #toast {
     position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
-    background: #0e0e1a; color: var(--silver); padding: 11px 24px;
+    background: #0e0e1a; color: var(--silver-text); padding: 11px 24px;
     border-radius: 10px; font-size: 14px; font-weight: 600;
     border: 1px solid var(--gold);
-    box-shadow: 0 4px 20px rgba(201,168,64,.2);
+    box-shadow: 0 4px 20px rgba(0,0,0,.35);
     transition: transform .3s ease; z-index: 999; pointer-events: none;
   }
   #toast.show { transform: translateX(-50%) translateY(0); }
-  #toast.error { border-color: #c0392b; color: #ff7070; box-shadow: 0 4px 20px rgba(192,57,43,.2); }
+  #toast.error { border-color: #c0392b; color: #ff8080; }
 
-  /* ─── PREVIEW ─── */
+  /* ─── PREVIEW (fondo oscuro — contraste con plata) ─── */
   .preview-card { display: flex; flex-direction: column; }
   .preview-card h2 { margin-bottom: 12px; }
   .preview-area {
     flex: 1; display: flex; align-items: center; justify-content: center;
-    background: #06060d; border-radius: 12px;
-    border: 1px dashed #1a1a2a;
+    background: #0e0e18; border-radius: 12px;
+    border: 1px solid #1e1e2c;
     min-height: 220px; padding: 18px; overflow: hidden;
   }
-  .hint { font-size: 11px; color: var(--silver-dim); margin-top: 7px; font-style: italic; }
+  .hint { font-size: 11px; color: var(--text-dim); margin-top: 7px; font-style: italic; }
 
   /* ─── DROP ZONE ─── */
   .drop-zone {
-    border: 1.5px dashed #1e1e30; border-radius: 12px;
+    border: 1.5px dashed var(--input-bd); border-radius: 12px;
     padding: 30px 20px; text-align: center; cursor: pointer;
-    transition: all .25s; background: #0a0a16; position: relative;
+    transition: all .25s; background: var(--input-bg); position: relative;
   }
   .drop-zone:hover, .drop-zone.drag-over {
     border-color: var(--gold);
-    background: #0e0e1c;
-    box-shadow: 0 0 16px rgba(201,168,64,.12);
+    background: #e0e3ec;
+    box-shadow: 0 0 14px rgba(201,168,64,.15);
   }
   .drop-zone input[type="file"] {
     position: absolute; inset: 0; opacity: 0; cursor: pointer;
     width: 100%; height: 100%; border: none; background: none;
   }
   .drop-zone .icon { font-size: 30px; display: block; margin-bottom: 8px; }
-  .drop-zone .lbl { font-size: 14px; font-weight: 600; color: var(--silver); }
-  .drop-zone .sub2 { font-size: 12px; color: var(--silver-dim); margin-top: 4px; }
+  .drop-zone .lbl { font-size: 14px; font-weight: 600; color: var(--text); }
+  .drop-zone .sub2 { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
 
   /* ─── PAGES SCROLL ─── */
   .pages-scroll {
     display: flex; gap: 10px; overflow-x: auto; padding: 8px 0;
     margin-top: 12px; scrollbar-width: thin;
-    scrollbar-color: var(--gold) #111120;
+    scrollbar-color: var(--gold) var(--input-bg);
   }
   .page-thumb {
-    flex-shrink: 0; border: 2px solid #1e1e2e; border-radius: 6px;
+    flex-shrink: 0; border: 2px solid var(--card-bd); border-radius: 6px;
     cursor: pointer; transition: all .2s; position: relative; overflow: hidden;
   }
   .page-thumb canvas { display: block; border-radius: 4px; }
-  .page-thumb.selected { border-color: var(--gold); box-shadow: 0 0 10px rgba(201,168,64,.35); }
+  .page-thumb.selected { border-color: var(--gold); box-shadow: 0 0 10px rgba(201,168,64,.3); }
   .page-thumb .page-num {
     position: absolute; bottom: 0; left: 0; right: 0;
     text-align: center; font-size: 10px; font-weight: 700;
-    background: rgba(0,0,0,.75); color: var(--gold); padding: 2px 0;
+    background: rgba(0,0,0,.7); color: var(--gold); padding: 2px 0;
   }
 
-  /* ─── FIT OPTIONS ─── */
+  /* ─── FIT OPTIONS — negro con plata ─── */
   .fit-options { display: flex; gap: 8px; margin-top: 12px; }
   .fit-btn {
-    flex: 1; padding: 7px 4px; border: 1px solid #1e1e2e; border-radius: 8px;
-    font-size: 11px; font-weight: 600; color: var(--silver-dim); cursor: pointer;
-    background: var(--input-bg); text-align: center; transition: all .2s;
+    flex: 1; padding: 7px 4px; border-radius: 8px; text-align: center;
+    font-size: 11px; font-weight: 600; cursor: pointer; transition: all .2s; font-family: inherit;
+    background: var(--btn-dark); color: var(--silver-text);
+    border: 1px solid rgba(184,194,204,.2);
   }
-  .fit-btn.active { border-color: var(--gold); color: var(--gold); background: rgba(201,168,64,.07); }
+  .fit-btn:hover { border-color: rgba(184,194,204,.5); color: #dde4ea; }
+  .fit-btn.active {
+    border-color: var(--gold); color: var(--gold);
+    background: var(--btn-dark);
+    box-shadow: 0 0 8px rgba(201,168,64,.15);
+  }
 
-  .pdf-img { max-width:100%; max-height:100%; border-radius:6px; box-shadow:0 4px 20px rgba(0,0,0,.5); display:block; object-fit:contain; }
+  .pdf-img { max-width:100%; max-height:100%; border-radius:6px; box-shadow:0 4px 20px rgba(0,0,0,.3); display:block; object-fit:contain; }
 
   /* ─── ETIQUETAS PREVIEW ─── */
   .label-guia {
-    width:220px; height:318px; background:white; border:1px solid #aaa;
+    width:220px; height:318px; background:white; border:1px solid #bbb;
     padding:9px; font-size:10px; display:flex; flex-direction:column; gap:5px;
-    box-shadow:0 6px 24px rgba(0,0,0,.6);
+    box-shadow:0 4px 18px rgba(0,0,0,.2);
   }
   .guia-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #c9a840; padding-bottom:5px; }
   .guia-logo { font-size:16px; font-weight:900; color:#c9a840; letter-spacing:2px; }
@@ -250,12 +266,12 @@
   .g-bar { background:#1a1a2e; width:2px; height:100%; }
   .g-bar.t { width:1px; }
 
-  .label-joya { width:192px; height:60px; background:white; border:1px solid #aaa; padding:5px 8px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 6px 24px rgba(0,0,0,.6); }
+  .label-joya { width:192px; height:60px; background:white; border:1px solid #bbb; padding:5px 8px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 4px 18px rgba(0,0,0,.2); }
   .j-nombre { font-size:10px; font-weight:700; max-width:110px; line-height:1.2; }
   .j-sku { font-size:7px; color:#888; }
   .j-precio { font-size:14px; font-weight:900; white-space:nowrap; }
 
-  .label-recibo { width:220px; background:white; border:1px solid #aaa; padding:10px 9px; font-size:10px; line-height:1.5; box-shadow:0 6px 24px rgba(0,0,0,.6); }
+  .label-recibo { width:220px; background:white; border:1px solid #bbb; padding:10px 9px; font-size:10px; line-height:1.5; box-shadow:0 4px 18px rgba(0,0,0,.2); }
   .r-center { text-align:center; }
   .r-titulo { font-size:15px; font-weight:900; letter-spacing:2px; }
   .r-sub { font-size:8px; color:#666; }
@@ -271,19 +287,21 @@
   .item-row { display:grid; grid-template-columns:1fr 56px 76px 26px; gap:6px; align-items:center; margin-bottom:7px; }
   .item-row input { margin:0; }
   .item-header { display:grid; grid-template-columns:1fr 56px 76px 26px; gap:6px; margin-bottom:3px; }
-  .item-header span { font-size:11px; font-weight:700; color:var(--silver-dim); text-transform:uppercase; }
+  .item-header span { font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; }
+  /* Botón agregar — negro con plata */
   .btn-add {
-    background:none; border:1px dashed #1e1e2e; border-radius:8px;
-    padding:7px; color:var(--silver-dim); cursor:pointer; font-size:13px;
-    width:100%; transition:all .2s; font-family:inherit;
+    background: var(--btn-dark); border: 1px dashed rgba(184,194,204,.35);
+    border-radius: 8px; padding: 8px; color: var(--silver-text);
+    cursor: pointer; font-size: 13px; font-family: inherit;
+    width: 100%; transition: all .2s;
   }
-  .btn-add:hover { border-color:var(--gold); color:var(--gold); background:rgba(201,168,64,.05); }
-  .btn-del { background:none; border:none; color:#303040; cursor:pointer; font-size:16px; padding:0; line-height:1; transition:color .2s; }
+  .btn-add:hover { border-color: var(--silver-text); color: #dde4ea; }
+  .btn-del { background:none; border:none; color:#b0b8c4; cursor:pointer; font-size:16px; padding:0; line-height:1; transition:color .2s; }
   .btn-del:hover { color:#e05050; }
   .total-line {
     display:flex; justify-content:space-between; align-items:center;
     padding:10px 0 0; border-top:1px solid var(--gold); margin-top:6px;
-    font-size:16px; font-weight:900; color:var(--gold);
+    font-size:16px; font-weight:900; color: var(--gold);
   }
 </style>
 </head>
@@ -341,8 +359,8 @@
             <div class="fit-btn active" onclick="setFit('cover')" id="fit-cover">Llenar</div>
             <div class="fit-btn" onclick="setFit('stretch')" id="fit-stretch">Estirar</div>
           </div>
-          <div style="margin-top:10px;padding:8px 12px;background:#0a0a15;border:1px solid #1e1e2e;border-left:3px solid #c9a840;border-radius:8px;font-size:12px;color:#5a6270;">
-            📐 Tamaño estándar: <strong style="color:#c9a840;">62 × 90 mm</strong>
+          <div style="margin-top:10px;padding:8px 12px;background:#e0e3ec;border:1px solid #c8ccd6;border-left:3px solid #c9a840;border-radius:8px;font-size:12px;color:#6a7080;">
+            📐 Tamaño estándar: <strong style="color:#a07820;">62 × 90 mm</strong>
           </div>
         </div>
         <button class="btn-print" id="btn-print-pdf" onclick="imprimirPdf()" disabled>
@@ -370,7 +388,7 @@
     <div class="card preview-card">
       <h2>Vista previa</h2>
       <div class="preview-area" id="preview-guia">
-        <span style="color:#2a2a40;font-size:13px">Sube un PDF para previsualizar</span>
+        <span style="color:#5a6270;font-size:13px">Sube un PDF para previsualizar</span>
       </div>
       <p class="hint">* 62×90mm · Horizontal · Tamaño estándar rollo</p>
     </div>
@@ -455,7 +473,7 @@
     <div class="card preview-card">
       <h2>Vista previa</h2>
       <div class="preview-area" id="preview-recibo">
-        <span style="color:#2a2a40;font-size:13px">Vista previa aquí</span>
+        <span style="color:#5a6270;font-size:13px">Vista previa aquí</span>
       </div>
       <p class="hint" id="recibo-hint">* 62mm × automático · Vertical · Monocromo</p>
     </div>
@@ -631,7 +649,7 @@ function setSubtab(n) {
   document.querySelectorAll('.subpanel').forEach((p, i) => p.classList.toggle('active', i === n));
   if (n === 1) renderGuia();
   else if (pdfPages.length) renderPdfPreview();
-  else document.getElementById('preview-guia').innerHTML = '<span style="color:#2a2a40;font-size:13px">Sube un PDF para previsualizar</span>';
+  else document.getElementById('preview-guia').innerHTML = '<span style="color:#5a6270;font-size:13px">Sube un PDF para previsualizar</span>';
 }
 
 // ─── PDF ───
@@ -649,7 +667,7 @@ function onFileSelected(e) { if (e.target.files[0]) loadPdf(e.target.files[0]); 
 
 async function loadPdf(file) {
   pdfPages = []; selectedPage = 0;
-  document.getElementById('pages-scroll').innerHTML = '<span style="color:#c9a840;font-size:12px;padding:8px;opacity:.7">Cargando...</span>';
+  document.getElementById('pages-scroll').innerHTML = '<span style="color:#a07820;font-size:12px;padding:8px;opacity:.8">Cargando...</span>';
   document.getElementById('pages-container').style.display = 'block';
   document.getElementById('btn-print-pdf').disabled = true;
 
@@ -728,7 +746,7 @@ function renderPdfPreview() {
   document.getElementById('preview-guia').innerHTML = `
     <div style="display:flex;justify-content:center;align-items:center;width:100%;padding:12px 0;">
       <img src="${pdfPages[selectedPage].rotDataUrl}"
-        style="width:270px;height:186px;object-fit:fill;border:1px solid #1e1e2e;border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,.6);">
+        style="width:270px;height:186px;object-fit:fill;border:1px solid #c8ccd6;border-radius:6px;box-shadow:0 4px 18px rgba(0,0,0,.18);">
     </div>`;
 }
 
@@ -764,7 +782,7 @@ function setSubtabR(n) {
     document.getElementById('recibo-hint').textContent = '* 62mm × automático · Vertical · Monocromo';
   } else {
     if (reciboPages.length) renderReciboPdfPreview();
-    else document.getElementById('preview-recibo').innerHTML = '<span style="color:#2a2a40;font-size:13px">Sube un PDF para previsualizar</span>';
+    else document.getElementById('preview-recibo').innerHTML = '<span style="color:#5a6270;font-size:13px">Sube un PDF para previsualizar</span>';
     document.getElementById('recibo-hint').textContent = '* 62mm × automático · Vertical';
   }
 }
@@ -784,7 +802,7 @@ function onFileSelectedR(e) { if (e.target.files[0]) loadPdfRecibo(e.target.file
 
 async function loadPdfRecibo(file) {
   reciboPages = []; reciboSelectedPage = 0;
-  document.getElementById('pages-scroll-r').innerHTML = '<span style="color:#c9a840;font-size:12px;padding:8px;opacity:.7">Cargando...</span>';
+  document.getElementById('pages-scroll-r').innerHTML = '<span style="color:#a07820;font-size:12px;padding:8px;opacity:.8">Cargando...</span>';
   document.getElementById('pages-container-r').style.display = 'block';
   document.getElementById('btn-print-pdf-r').disabled = true;
 
