@@ -491,11 +491,11 @@ public class BrotherRaw {
         // Init + raster mode
         o.AddRange(new byte[]{0x1B,0x40,0x1B,0x69,0x61,0x01});
         // Print info: valid_flag=0x80 — SOLO bit recover, SIN bits de validacion RFID
-        // Con 0x80 el firmware NO compara width/length/type contra el chip RFID → sin luz roja
-        // Especificamos las dimensiones reales DK-1204: width=54mm, length=17mm, type=die-cut(0x0B)
-        // El printer activa los 638 dots correctos (54mm) y usa el sensor fisico de gap para cortar a 17mm
+        // type=0x0A (CONTINUA) — en modo continuo 0x0C corta exactamente al fin del raster (17mm)
+        //   con type=0x0B (die-cut) el firmware avanzaba al die-cut del RFID (90mm) en vez de 17mm
+        // width=54mm, length=17mm → printer activa 638 dots correctos y sabe el largo de cada label
         var np=BitConverter.GetBytes((short)pages);
-        o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0B,54,17, np[0],np[1],0,0,0,0});
+        o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0A,54,17, np[0],np[1],0,0,0,0});
         // Mode: auto-cut ON (die-cut)
         o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
         // Cut every 1 label
