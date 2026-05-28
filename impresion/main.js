@@ -113,7 +113,7 @@ function runPs1(script, timeout = 15000) {
       { timeout }, (err, stdout, stderr) => {
         fs.unlink(ps1, () => {})
         const detail = [stdout, stderr].map(s => (s||'').trim()).filter(Boolean).join(' | ')
-        resolve({ ok: !err, error: err ? (detail || err.message) : null })
+        resolve({ ok: !err, out: (stdout||'').trim(), error: err ? (detail || err.message) : null })
       })
   })
 }
@@ -167,11 +167,12 @@ exit 0
 `
 }
 
-// ── DK-1204 BYPASS: construye DEVMODE híbrido para base DK-1201 con rollo DK-1204 ──
-// Estrategia: leer DEVMODE actual → tiene código privado del chip RFID (ej. DK-1201).
-// Modificar SOLO los campos estándar de papel a 54×17mm SIN tocar dmDriverExtra.
-// Resultado: código privado coincide con RFID → validación pasa → imprime al tamaño correcto.
-// También funciona si el cartucho es el DK-1204 original (su código también coincide).
+// ── DK-1204 BYPASS: captura el DEVMODE exacto tal como el usuario lo configuró ──
+// El usuario abre Preferencias → selecciona 54×17mm (DK-1204) → cierra → hace clic en 💾.
+// En ese momento DocumentProperties devuelve el DEVMODE con el código DK-1204 que el
+// usuario eligió manualmente. Lo guardamos SIN ninguna modificación.
+// Con GDI directo (CreateDC con ese DEVMODE), el driver imprime en 54×17mm y
+// la validación RFID ocurre solo en el pipeline de Windows/Chromium, no en GDI directo.
 function buildDK1204BypassScript(printerName, outputFile) {
   const pn = printerName.replace(/'/g, "''")
   const of = outputFile.replace(/\\/g, '\\\\').replace(/'/g, "''")
@@ -179,49 +180,43 @@ function buildDK1204BypassScript(printerName, outputFile) {
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
-public class WinPrintBypass {
+public class WinPrintCapture {
     [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)]
     public static extern bool OpenPrinter(string n, out IntPtr h, IntPtr d);
     [DllImport("winspool.drv",SetLastError=true)]
     public static extern bool ClosePrinter(IntPtr h);
     [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)]
     public static extern int DocumentProperties(IntPtr hWnd,IntPtr hPrinter,string dev,IntPtr dmOut,IntPtr dmIn,int fMode);
-    [DllImport("winspool.drv",SetLastError=true)]
-    public static extern bool SetPrinter(IntPtr h,int level,IntPtr pPrinter,int cmd);
+    [DllImport("kernel32.dll")] public static extern int GetLastError();
 }
 "@ -Language CSharp
 $name = '${pn}'
 $m    = [Runtime.InteropServices.Marshal]
 $hP   = [IntPtr]::Zero
-if (-not [WinPrintBypass]::OpenPrinter($name,[ref]$hP,[IntPtr]::Zero)) { exit 1 }
+if (-not [WinPrintCapture]::OpenPrinter($name,[ref]$hP,[IntPtr]::Zero)) {
+    Write-Error "OpenPrinter fallo Win32=$([WinPrintCapture]::GetLastError()) impresora='$name'"
+    exit 1
+}
 try {
-    $sz = [WinPrintBypass]::DocumentProperties([IntPtr]::Zero,$hP,$name,[IntPtr]::Zero,[IntPtr]::Zero,0)
-    if ($sz -le 0) { exit 1 }
+    $sz = [WinPrintCapture]::DocumentProperties([IntPtr]::Zero,$hP,$name,[IntPtr]::Zero,[IntPtr]::Zero,0)
+    if ($sz -le 0) { Write-Error "DocumentProperties tamaño fallo"; exit 1 }
     $dm = $m::AllocHGlobal($sz)
     try {
-        if ([WinPrintBypass]::DocumentProperties([IntPtr]::Zero,$hP,$name,$dm,[IntPtr]::Zero,2) -le 0) { exit 1 }
-        # Modificar SOLO campos estándar de papel — dmDriverExtra (código RFID) intacto
-        $m::WriteInt32($dm,72,($m::ReadInt32($dm,72) -bor 14)) # dmFields |= DM_PAPERSIZE|DM_PAPERLENGTH|DM_PAPERWIDTH
-        $m::WriteInt16($dm,78,256)   # dmPaperSize = DMPAPER_USER
-        $m::WriteInt16($dm,80,170)   # dmPaperLength = 17mm (en décimas)
-        $m::WriteInt16($dm,82,540)   # dmPaperWidth  = 54mm (en décimas)
-        # Guardar bytes a archivo de perfil
+        if ([WinPrintCapture]::DocumentProperties([IntPtr]::Zero,$hP,$name,$dm,[IntPtr]::Zero,2) -le 0) {
+            Write-Error "DocumentProperties lectura fallo"; exit 1
+        }
+        # Leer y loguear campos estándar para diagnóstico
+        $paperSize = $m::ReadInt16($dm,78)
+        $paperLen  = $m::ReadInt16($dm,80)
+        $paperWid  = $m::ReadInt16($dm,82)
+        Write-Output "DEVMODE capturado: sz=$sz dmPaperSize=$paperSize dmPaperLength=$paperLen dmPaperWidth=$paperWid"
+        # Guardar bytes SIN modificación — exactamente como el driver los tiene ahora
         $bytes = New-Object byte[] $sz
         $m::Copy($dm, $bytes, 0, $sz)
         [System.IO.File]::WriteAllBytes('${of}', $bytes)
-        # Aplicar inmediatamente: SetPrinter nivel 9 (per-user)
-        $pi = $m::AllocHGlobal($m::SizeOf([IntPtr]))
-        try {
-            $m::WriteIntPtr($pi, $dm)
-            [WinPrintBypass]::SetPrinter($hP,9,$pi,0)
-        } finally { $m::FreeHGlobal($pi) }
-        # Escribir también directo al registro HKCU como respaldo
-        $regPath = 'HKCU:\\Printers\\DevModePerUser'
-        if (Test-Path $regPath) {
-            Set-ItemProperty -Path $regPath -Name '${pn}' -Value $bytes -Type Binary -ErrorAction SilentlyContinue
-        }
+        Write-Output "Perfil guardado en ${of}"
     } finally { $m::FreeHGlobal($dm) }
-} finally { [WinPrintBypass]::ClosePrinter($hP) }
+} finally { [WinPrintCapture]::ClosePrinter($hP) }
 exit 0
 `
 }
@@ -272,8 +267,9 @@ ipcMain.handle('roll-profile-exists', (_, rollType) => {
 })
 
 // save-roll-profile:
-//   dk1204 → BYPASS: lee DEVMODE actual (código RFID intacto) + cambia dimensiones a 54×17mm
-//            Funciona tanto con cartucho DK-1201 base + rollo DK-1204 como con DK-1204 original
+//   dk1204 → Captura el DEVMODE actual SIN modificarlo.
+//            IMPORTANTE: el usuario debe primero abrir Preferencias → seleccionar 54×17mm DK-1204
+//            → cerrar → luego hacer clic en 💾. Así guardamos el DEVMODE con código DK-1204.
 //   62mm   → no necesita guardar (se construye automático)
 ipcMain.handle('save-roll-profile', (_, { rollType, printerName }) => {
   if (rollType !== 'dk1204') return { ok: true }
@@ -500,7 +496,7 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
           fs.writeFileSync(tmpPng, pngBuf)
           const r = await runPs1(buildGdiPrintScript(printerName || '', tmpPng, profileFile, PC), 30000)
           fs.unlink(tmpPng, () => {})
-          resolve({ success: r.ok, error: r.ok ? null : r.error, debug: r.ok ? r.error : null })
+          resolve({ success: r.ok, error: r.ok ? null : r.error, debug: r.out })
         } catch (e) {
           win.close(); fs.unlink(tmpFile, () => {})
           resolve({ success: false, error: e.message })

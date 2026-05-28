@@ -1315,7 +1315,8 @@ async function saveRollProfile() {
     updateRollUI(rollToSave)
     document.getElementById(`roll-btn-${rollToSave === '62mm' ? '62mm' : 'dk1204'}`).classList.remove('warn')
     refreshSaveBtn()
-    toast(`✅ Perfil "${label}" guardado — listo para usar`)
+    const info = result.out ? (' · ' + result.out.split('\n')[0]) : ''
+    toast(`✅ Perfil "${label}" guardado${info}`)
   } else {
     toast('❌ Error al guardar: ' + (result.error || 'desconocido'), true)
   }
