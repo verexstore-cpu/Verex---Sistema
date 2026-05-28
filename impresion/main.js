@@ -92,6 +92,40 @@ function startPrintServer() {
   })
 }
 
+// ── Perfiles de rollo (guardados con printui.dll) ──────────────────────────
+function rollProfilesDir() {
+  const dir = path.join(app.getPath('userData'), 'roll-profiles')
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+ipcMain.handle('roll-profile-exists', (_, rollType) => {
+  const file = path.join(rollProfilesDir(), `${rollType}.bin`)
+  return { exists: fs.existsSync(file) }
+})
+
+ipcMain.handle('save-roll-profile', (_, { rollType, printerName }) => {
+  const file = path.join(rollProfilesDir(), `${rollType}.bin`)
+  return new Promise(resolve => {
+    exec(`rundll32 printui.dll,PrintUIEntry /Ss /n "${printerName}" /a "${file}" /q`,
+      { timeout: 8000 }, err => resolve({ ok: !err, error: err?.message || null }))
+  })
+})
+
+ipcMain.handle('load-roll-profile', (_, { rollType, printerName }) => {
+  const file = path.join(rollProfilesDir(), `${rollType}.bin`)
+  if (!fs.existsSync(file)) return { ok: false, notSetup: true }
+  return new Promise(resolve => {
+    exec(`rundll32 printui.dll,PrintUIEntry /Sr /n "${printerName}" /a "${file}" /q`,
+      { timeout: 8000 }, err => resolve({ ok: !err, error: err?.message || null }))
+  })
+})
+
+ipcMain.handle('open-printer-props', (_, printerName) => {
+  exec(`rundll32 printui.dll,PrintUIEntry /e /n "${printerName}"`)
+  return { ok: true }
+})
+
 // ── Obtener impresoras via PowerShell (detecta online y offline) ──
 function getPrintersPowerShell() {
   return new Promise((resolve) => {

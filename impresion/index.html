@@ -303,6 +303,28 @@
     padding:10px 0 0; border-top:1px solid var(--gold); margin-top:6px;
     font-size:16px; font-weight:900; color: var(--gold);
   }
+
+  /* ─── SELECTOR DE ROLLO ─── */
+  .roll-selector { display:flex; align-items:center; gap:7px; }
+  .roll-label { font-size:11px; color:var(--silver-dim); white-space:nowrap; }
+  .roll-btns {
+    display:flex; border:1px solid #2a2a3a; border-radius:8px; overflow:hidden;
+  }
+  .roll-btn {
+    padding:6px 13px; font-size:12px; font-weight:700; font-family:inherit;
+    background:#161622; color:var(--silver-dim); border:none; border-right:1px solid #2a2a3a;
+    cursor:pointer; transition:all .2s; white-space:nowrap;
+  }
+  .roll-btn:last-child { border-right:none; }
+  .roll-btn:hover { color:var(--silver-text); }
+  .roll-btn.active { background:var(--btn-dark); color:var(--gold); }
+  .roll-btn.warn { color:#e09040; }   /* perfil no guardado aún */
+  .roll-save-btn {
+    background:var(--btn-dark); border:1px solid rgba(184,194,204,.2);
+    color:var(--silver-dim); border-radius:7px; padding:5px 9px;
+    font-size:14px; cursor:pointer; transition:all .2s; line-height:1;
+  }
+  .roll-save-btn:hover { border-color:var(--gold); color:var(--gold); }
 </style>
 </head>
 <body>
@@ -313,14 +335,25 @@
     <div class="header-divider"></div>
     <span class="sub">Sistema de Impresión · QL-810W</span>
   </div>
-  <div class="printer-selector">
-    <div class="printer-dot" id="printer-dot"></div>
-    <label for="printer-select">Impresora:</label>
-    <select id="printer-select" onchange="savePrinter()">
-      <option value="">Buscando...</option>
-    </select>
-    <span class="printer-status" id="printer-status"></span>
-    <button class="btn-reload" id="btn-reload" onclick="loadPrinters()" title="Recargar impresoras">↻</button>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div class="printer-selector">
+      <div class="printer-dot" id="printer-dot"></div>
+      <label for="printer-select">Impresora:</label>
+      <select id="printer-select" onchange="savePrinter()">
+        <option value="">Buscando...</option>
+      </select>
+      <span class="printer-status" id="printer-status"></span>
+      <button class="btn-reload" id="btn-reload" onclick="loadPrinters()" title="Recargar impresoras">↻</button>
+    </div>
+    <div class="header-divider"></div>
+    <div class="roll-selector">
+      <span class="roll-label">Rollo:</span>
+      <div class="roll-btns">
+        <button class="roll-btn" id="roll-btn-62mm"   onclick="setRoll('62mm')"   title="62mm continuo — guías y recibos">📏 62mm</button>
+        <button class="roll-btn" id="roll-btn-dk1204" onclick="setRoll('dk1204')" title="DK-1204 (54×17mm) — etiquetas joyería">💎 DK-1204</button>
+      </div>
+      <button class="roll-save-btn" id="roll-save-btn" onclick="saveRollProfile()" title="Guardar configuración actual del driver como perfil de este rollo">💾</button>
+    </div>
   </div>
 </header>
 
@@ -1215,8 +1248,83 @@ window.electronAPI.onLoadPdfEtiqueta(async ({ pdfBase64, nombre }) => {
   toast('💎 Etiquetas cargadas desde consignación — listo para imprimir')
 })
 
+// ─── SELECTOR DE ROLLO ───
+let currentRoll = localStorage.getItem('verex-roll') || '62mm'
+let pendingRoll  = null   // rol en espera de ser guardado (primer uso)
+
+async function initRollSelector() {
+  const [r62, rDK] = await Promise.all([
+    window.electronAPI.rollProfileExists('62mm'),
+    window.electronAPI.rollProfileExists('dk1204'),
+  ])
+  document.getElementById('roll-btn-62mm').classList.toggle('warn', !r62.exists)
+  document.getElementById('roll-btn-dk1204').classList.toggle('warn', !rDK.exists)
+  updateRollUI(currentRoll)
+
+  // Actualizar tooltip del botón guardar
+  refreshSaveBtn()
+}
+
+function updateRollUI(type) {
+  document.getElementById('roll-btn-62mm').classList.toggle('active', type === '62mm')
+  document.getElementById('roll-btn-dk1204').classList.toggle('active', type === 'dk1204')
+}
+
+function refreshSaveBtn() {
+  const roll = pendingRoll || currentRoll
+  const label = roll === '62mm' ? '62mm continuo' : 'DK-1204 (54×17mm)'
+  document.getElementById('roll-save-btn').title =
+    `Guardar config actual del driver como perfil "${label}"`
+}
+
+async function setRoll(type) {
+  const result = await window.electronAPI.loadRollProfile(type, printerName)
+
+  if (result.notSetup) {
+    // Primera vez: abrir preferencias para que el usuario configure el rollo
+    pendingRoll = type
+    refreshSaveBtn()
+    const label = type === '62mm' ? '62mm continuo (DK-2205/DK-2251)' : 'DK-1204 (54×17mm)'
+    toast(`⚙️ Configura el driver para "${label}" → luego click 💾 Guardar perfil`, true)
+    await window.electronAPI.openPrinterProps(printerName)
+    return
+  }
+
+  if (result.ok) {
+    pendingRoll = null
+    currentRoll = type
+    localStorage.setItem('verex-roll', type)
+    updateRollUI(type)
+    document.getElementById(`roll-btn-${type === '62mm' ? '62mm' : 'dk1204'}`).classList.remove('warn')
+    refreshSaveBtn()
+    toast(type === '62mm' ? '📏 Rollo 62mm activado' : '💎 Rollo DK-1204 activado')
+  } else {
+    toast('❌ Error al cambiar rollo: ' + (result.error || 'desconocido'), true)
+  }
+}
+
+async function saveRollProfile() {
+  const rollToSave = pendingRoll || currentRoll
+  toast('💾 Guardando perfil...')
+  const result = await window.electronAPI.saveRollProfile(rollToSave, printerName)
+
+  if (result.ok) {
+    const label = rollToSave === '62mm' ? '62mm continuo' : 'DK-1204'
+    pendingRoll = null
+    currentRoll = rollToSave
+    localStorage.setItem('verex-roll', rollToSave)
+    updateRollUI(rollToSave)
+    document.getElementById(`roll-btn-${rollToSave === '62mm' ? '62mm' : 'dk1204'}`).classList.remove('warn')
+    refreshSaveBtn()
+    toast(`✅ Perfil "${label}" guardado — listo para usar`)
+  } else {
+    toast('❌ Error al guardar: ' + (result.error || 'desconocido'), true)
+  }
+}
+
 // ─── INIT ───
 loadPrinters();
+initRollSelector();
 renderJoya();
 renderItemsForm();
 renderRecibo();
