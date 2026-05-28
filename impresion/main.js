@@ -179,31 +179,67 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
     win.loadFile(tmpFile)
 
     win.webContents.once('did-finish-load', async () => {
-      // widthMm === 0 → usar DEVMODE del driver tal cual (etiquetas DK)
-      // widthMm  >  0 → forzar tamaño de página (guías, recibos)
-      const usePrinterDefault = (widthMm === 0)
+      // widthMm === 0 → etiquetas DK: renderizar a PDF y usar Shell.Application
+      //                  para imprimir. Esto respeta el DEVMODE del driver Brother
+      //                  (tipo de medio correcto → sin error de rollo).
+      // widthMm  >  0 → guías / recibos: webContents.print() normal con pageSize.
+      if (widthMm === 0) {
+        try {
+          const pdfData = await win.webContents.printToPDF({
+            pageSize: { width: 54000, height: 17000 }, // 54mm × 17mm en micrones
+            printBackground: true,
+            margins: { marginType: 'none' },
+          })
+          win.close()
+          fs.unlink(tmpFile, () => {})
 
+          const tmpPdf = path.join(os.tmpdir(), `verex-etiq-${Date.now()}.pdf`)
+          const ps1    = path.join(os.tmpdir(), `verex-ps-${Date.now()}.ps1`)
+          fs.writeFileSync(tmpPdf, pdfData)
+
+          // Script PowerShell: imprime el PDF a través del visor por defecto
+          // (Edge / Adobe), que sí respeta las preferencias del driver Brother.
+          const script = [
+            `$file    = '${tmpPdf.replace(/\\/g, '\\\\').replace(/'/g, "''")}'`,
+            `$printer = '${(printerName || '').replace(/'/g, "''")}'`,
+            `$shell   = New-Object -ComObject Shell.Application`,
+            `$item    = $shell.Namespace(0).ParseName($file)`,
+            `if ($item) { $item.InvokeVerbEx('PrintTo', $printer) }`,
+            `Start-Sleep -Seconds 20`,
+            `Remove-Item -Path $file    -ErrorAction SilentlyContinue`,
+            `Remove-Item -Path '${ps1.replace(/\\/g, '\\\\').replace(/'/g, "''")}' -ErrorAction SilentlyContinue`,
+          ].join('\r\n')
+          fs.writeFileSync(ps1, script, 'utf8')
+
+          exec(`powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "${ps1}"`,
+            { timeout: 35000 },
+            (err) => resolve({ success: !err, error: err?.message || null })
+          )
+        } catch (e) {
+          win.close()
+          fs.unlink(tmpFile, () => {})
+          resolve({ success: false, error: e.message })
+        }
+        return
+      }
+
+      // ── Guías / Recibos: webContents.print() con pageSize ──
       let finalHeightMm = heightMm
-      if (!usePrinterDefault && heightMm === 0) {
-        // Altura automática solo cuando estamos forzando pageSize (recibos)
+      if (heightMm === 0) {
         const px = await win.webContents.executeJavaScript('document.body.scrollHeight')
         finalHeightMm = Math.ceil((px / 96) * 25.4) + 6
       }
 
-      const printOpts = {
+      win.webContents.print({
         silent: true,
         printBackground: true,
         deviceName: printerName || '',
-        margins: { marginType: 'none' },
-      }
-      if (!usePrinterDefault) {
-        printOpts.pageSize = {
+        pageSize: {
           width: Math.round(widthMm * 1000),
           height: Math.round(finalHeightMm * 1000),
-        }
-      }
-
-      win.webContents.print(printOpts, (success, errorType) => {
+        },
+        margins: { marginType: 'none' },
+      }, (success, errorType) => {
         win.close()
         fs.unlink(tmpFile, () => {})
         resolve({ success, error: errorType || null })
