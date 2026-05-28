@@ -92,32 +92,84 @@ function startPrintServer() {
   })
 }
 
-// ── Perfiles de rollo (guardados con printui.dll) ──────────────────────────
-function rollProfilesDir() {
-  const dir = path.join(app.getPath('userData'), 'roll-profiles')
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-  return dir
+// ── Selector de rollo: modifica el DEVMODE del driver via Spooler API ───────
+// Dimensiones en décimas de mm (formato DEVMODE: 54mm = 540, 17mm = 170)
+const ROLL_DIMS = {
+  '62mm':   { w: 620, l: 900  },  // 62mm ancho × 90mm largo (guías)
+  'dk1204': { w: 540, l: 170  },  // 54mm ancho × 17mm largo (DK-1204)
 }
 
-ipcMain.handle('roll-profile-exists', (_, rollType) => {
-  const file = path.join(rollProfilesDir(), `${rollType}.bin`)
-  return { exists: fs.existsSync(file) }
-})
+function buildDevModeScript(printerName, widthTenths, lengthTenths) {
+  const pn = printerName.replace(/'/g, "''")
+  return `
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class WinPrint {
+    [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)]
+    public static extern bool OpenPrinter(string n, out IntPtr h, IntPtr d);
+    [DllImport("winspool.drv",SetLastError=true)]
+    public static extern bool ClosePrinter(IntPtr h);
+    [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)]
+    public static extern int DocumentProperties(IntPtr hWnd,IntPtr hPrinter,string dev,IntPtr dmOut,IntPtr dmIn,int fMode);
+    [DllImport("winspool.drv",SetLastError=true)]
+    public static extern bool SetPrinter(IntPtr h,int level,IntPtr pPrinter,int cmd);
+}
+"@ -Language CSharp
 
-ipcMain.handle('save-roll-profile', (_, { rollType, printerName }) => {
-  const file = path.join(rollProfilesDir(), `${rollType}.bin`)
-  return new Promise(resolve => {
-    exec(`rundll32 printui.dll,PrintUIEntry /Ss /n "${printerName}" /a "${file}" /q`,
-      { timeout: 8000 }, err => resolve({ ok: !err, error: err?.message || null }))
-  })
-})
+$name = '${pn}'
+$w    = ${widthTenths}
+$l    = ${lengthTenths}
+$m    = [Runtime.InteropServices.Marshal]
+$hP   = [IntPtr]::Zero
+
+if (-not [WinPrint]::OpenPrinter($name,[ref]$hP,[IntPtr]::Zero)) { exit 1 }
+try {
+    $sz = [WinPrint]::DocumentProperties([IntPtr]::Zero,$hP,$name,[IntPtr]::Zero,[IntPtr]::Zero,0)
+    if ($sz -le 0) { exit 1 }
+    $dm = $m::AllocHGlobal($sz)
+    try {
+        # Leer DEVMODE actual
+        if ([WinPrint]::DocumentProperties([IntPtr]::Zero,$hP,$name,$dm,[IntPtr]::Zero,2) -le 0) { exit 1 }
+        # Modificar campos de papel (offsets DEVMODEW Unicode):
+        # +72 dmFields, +78 dmPaperSize, +80 dmPaperLength, +82 dmPaperWidth
+        $m::WriteInt32($dm,72,($m::ReadInt32($dm,72) -bor 14))  # 14 = DM_PAPERSIZE|DM_PAPERLENGTH|DM_PAPERWIDTH
+        $m::WriteInt16($dm,78,256)          # DMPAPER_USER
+        $m::WriteInt16($dm,80,[short]$l)    # dmPaperLength
+        $m::WriteInt16($dm,82,[short]$w)    # dmPaperWidth
+        # Dejar que el driver rellene sus datos privados (dmDriverExtra)
+        $dm2 = $m::AllocHGlobal($sz)
+        try {
+            if ([WinPrint]::DocumentProperties([IntPtr]::Zero,$hP,$name,$dm2,$dm,10) -le 0) { exit 1 }
+            # Guardar como default de usuario (nivel 9)
+            $pi = $m::AllocHGlobal($m::SizeOf([IntPtr]))
+            try {
+                $m::WriteIntPtr($pi,$dm2)
+                if (-not [WinPrint]::SetPrinter($hP,9,$pi,0)) { exit 1 }
+            } finally { $m::FreeHGlobal($pi) }
+        } finally { $m::FreeHGlobal($dm2) }
+    } finally { $m::FreeHGlobal($dm) }
+} finally { [WinPrint]::ClosePrinter($hP) }
+exit 0
+`
+}
+
+// No necesita "perfil guardado" — las dimensiones son fijas por tipo de rollo
+ipcMain.handle('roll-profile-exists', () => ({ exists: true }))
+ipcMain.handle('save-roll-profile',   () => ({ ok: true }))
 
 ipcMain.handle('load-roll-profile', (_, { rollType, printerName }) => {
-  const file = path.join(rollProfilesDir(), `${rollType}.bin`)
-  if (!fs.existsSync(file)) return { ok: false, notSetup: true }
+  const dims = ROLL_DIMS[rollType]
+  if (!dims) return { ok: false, error: 'Tipo de rollo desconocido' }
+  const script = buildDevModeScript(printerName, dims.w, dims.l)
+  const ps1 = path.join(os.tmpdir(), `verex-devmode-${Date.now()}.ps1`)
+  fs.writeFileSync(ps1, script, 'utf8')
   return new Promise(resolve => {
-    exec(`rundll32 printui.dll,PrintUIEntry /Sr /n "${printerName}" /a "${file}" /q`,
-      { timeout: 8000 }, err => resolve({ ok: !err, error: err?.message || null }))
+    exec(`powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "${ps1}"`,
+      { timeout: 15000 }, (err, stdout, stderr) => {
+        fs.unlink(ps1, () => {})
+        resolve({ ok: !err, error: err?.message || stderr || null })
+      })
   })
 })
 
@@ -179,47 +231,22 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
     win.loadFile(tmpFile)
 
     win.webContents.once('did-finish-load', async () => {
-      // widthMm === 0 → etiquetas DK: renderizar a PDF y usar Shell.Application
-      //                  para imprimir. Esto respeta el DEVMODE del driver Brother
-      //                  (tipo de medio correcto → sin error de rollo).
-      // widthMm  >  0 → guías / recibos: webContents.print() normal con pageSize.
+      // widthMm === 0 → etiquetas DK-1204: webContents.print() SIN pageSize.
+      //   El DEVMODE del driver ya fue configurado correctamente por load-roll-profile
+      //   (via Spooler API), así que el driver Brother valida el rollo físico contra
+      //   su propio DEVMODE → sin error de tipo de rollo.
+      // widthMm  >  0 → guías / recibos: webContents.print() con pageSize explícito.
       if (widthMm === 0) {
-        try {
-          const pdfData = await win.webContents.printToPDF({
-            pageSize: { width: 54000, height: 17000 }, // 54mm × 17mm en micrones
-            printBackground: true,
-            margins: { marginType: 'none' },
-          })
+        win.webContents.print({
+          silent: true,
+          printBackground: true,
+          deviceName: printerName || '',
+          margins: { marginType: 'none' },
+        }, (success, errorType) => {
           win.close()
           fs.unlink(tmpFile, () => {})
-
-          const tmpPdf = path.join(os.tmpdir(), `verex-etiq-${Date.now()}.pdf`)
-          const ps1    = path.join(os.tmpdir(), `verex-ps-${Date.now()}.ps1`)
-          fs.writeFileSync(tmpPdf, pdfData)
-
-          // Script PowerShell: imprime el PDF a través del visor por defecto
-          // (Edge / Adobe), que sí respeta las preferencias del driver Brother.
-          const script = [
-            `$file    = '${tmpPdf.replace(/\\/g, '\\\\').replace(/'/g, "''")}'`,
-            `$printer = '${(printerName || '').replace(/'/g, "''")}'`,
-            `$shell   = New-Object -ComObject Shell.Application`,
-            `$item    = $shell.Namespace(0).ParseName($file)`,
-            `if ($item) { $item.InvokeVerbEx('PrintTo', $printer) }`,
-            `Start-Sleep -Seconds 20`,
-            `Remove-Item -Path $file    -ErrorAction SilentlyContinue`,
-            `Remove-Item -Path '${ps1.replace(/\\/g, '\\\\').replace(/'/g, "''")}' -ErrorAction SilentlyContinue`,
-          ].join('\r\n')
-          fs.writeFileSync(ps1, script, 'utf8')
-
-          exec(`powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "${ps1}"`,
-            { timeout: 35000 },
-            (err) => resolve({ success: !err, error: err?.message || null })
-          )
-        } catch (e) {
-          win.close()
-          fs.unlink(tmpFile, () => {})
-          resolve({ success: false, error: e.message })
-        }
+          resolve({ success, error: errorType || null })
+        })
         return
       }
 
