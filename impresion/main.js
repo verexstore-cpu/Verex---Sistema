@@ -122,7 +122,7 @@ ipcMain.handle('load-roll-profile', (_, { rollType, printerName }) => {
 })
 
 ipcMain.handle('open-printer-props', (_, printerName) => {
-  exec(`rundll32 printui.dll,PrintUIEntry /e /n "${printerName}"`)
+  exec(`rundll32 printui.dll,PrintUIEntry /p /n "${printerName}"`)
   return { ok: true }
 })
 
@@ -179,22 +179,31 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
     win.loadFile(tmpFile)
 
     win.webContents.once('did-finish-load', async () => {
+      // widthMm === 0 → usar DEVMODE del driver tal cual (etiquetas DK)
+      // widthMm  >  0 → forzar tamaño de página (guías, recibos)
+      const usePrinterDefault = (widthMm === 0)
+
       let finalHeightMm = heightMm
-      if (heightMm === 0) {
+      if (!usePrinterDefault && heightMm === 0) {
+        // Altura automática solo cuando estamos forzando pageSize (recibos)
         const px = await win.webContents.executeJavaScript('document.body.scrollHeight')
         finalHeightMm = Math.ceil((px / 96) * 25.4) + 6
       }
 
-      win.webContents.print({
+      const printOpts = {
         silent: true,
         printBackground: true,
         deviceName: printerName || '',
-        pageSize: {
+        margins: { marginType: 'none' },
+      }
+      if (!usePrinterDefault) {
+        printOpts.pageSize = {
           width: Math.round(widthMm * 1000),
           height: Math.round(finalHeightMm * 1000),
-        },
-        margins: { marginType: 'none' },
-      }, (success, errorType) => {
+        }
+      }
+
+      win.webContents.print(printOpts, (success, errorType) => {
         win.close()
         fs.unlink(tmpFile, () => {})
         resolve({ success, error: errorType || null })

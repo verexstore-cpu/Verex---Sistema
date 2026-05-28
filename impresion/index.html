@@ -1033,14 +1033,14 @@ async function imprimirJoya() {
   }
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
-@page{size:54mm 17mm landscape;margin:0;}
+@page{size:54mm 17mm;margin:0;}
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;}
 .e{width:54mm;height:17mm;display:flex;align-items:center;justify-content:space-between;padding:2mm 3mm;page-break-after:always;}
 .n{font-size:8pt;font-weight:700;line-height:1.3;max-width:32mm;}
 .s{font-size:6pt;color:#666;font-weight:400;}
 .p{font-size:10pt;font-weight:900;white-space:nowrap;}
 </style></head><body>${etiquetas}</body></html>`;
-  await imprimir(html, 54, 17);
+  await imprimir(html, 0, 0); // widthMm=0 → usa el DEVMODE del driver (DK-1204)
 }
 
 // ─── RECIBO ───
@@ -1213,12 +1213,12 @@ async function imprimirTodasEtiquetas() {
   const etqs = etiqPages.map(p => `<div class="e"><img src="${p.dataUrl}"></div>`).join('');
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
-@page { size: 54mm 17mm landscape; margin: 0; }
+@page { size: 54mm 17mm; margin: 0; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 .e { width: 54mm; height: 17mm; overflow: hidden; page-break-after: always; }
 .e img { width: 54mm; height: 17mm; display: block; object-fit: fill; }
 </style></head><body>${etqs}</body></html>`;
-  await imprimir(html, 54, 17);
+  await imprimir(html, 0, 0); // widthMm=0 → usa el DEVMODE del driver (DK-1204)
 }
 
 // ─── RECIBIR PDFs DESDE EL ADMIN (localhost:7891) ───
