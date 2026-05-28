@@ -486,9 +486,16 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
           return
         }
         try {
-          // Con offscreen:true, capturePage() renderiza correctamente sin ventana visible
+          // Eliminar scrollbars y forzar dimensiones exactas antes de capturar
+          await win.webContents.insertCSS(
+            'html,body{overflow:hidden!important;margin:0!important;padding:0!important;' +
+            'width:54mm!important;height:' + (17 * PC) + 'mm!important;}'
+          )
           await new Promise(r => setTimeout(r, 400))
-          const img = await win.webContents.capturePage()
+          // Capturar exactamente el área de la etiqueta (sin scrollbars)
+          const img = await win.webContents.capturePage({
+            x: 0, y: 0, width: LW, height: LH * PC,
+          })
           clearTimeout(guard)
           win.close(); fs.unlink(tmpFile, () => {})
           if (!img || img.isEmpty()) {
