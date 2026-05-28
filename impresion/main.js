@@ -483,7 +483,7 @@ public class BrotherRaw {
             for(int page=0;page<pages;page++) {
                 o.AddRange(new byte[]{0x1B,0x40});
                 o.AddRange(new byte[]{0x1B,0x69,0x61,0x01});
-                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0B,54,17, 1,0,0,0,0,0});
+                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0A,54,17, 1,0,0,0,0,0});
                 o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
                 o.AddRange(new byte[]{0x1B,0x69,0x41,0x01});
                 o.AddRange(new byte[]{0x1B,0x69,0x4B,0x08});
@@ -509,7 +509,7 @@ public class BrotherRaw {
                         o.AddRange(cmp);
                     }
                 }
-                o.Add(0x0C);  // die-cut: avanza al hueco siguiente por sensor optico
+                o.Add(0x1A);  // continuo: corta exactamente al terminar los 201 dots (17mm)
             }
         }
         return o.ToArray();
