@@ -49,15 +49,18 @@ function startPrintServer() {
       return
     }
 
-    // POST /print-recibo — recibe PDF térmico 62mm desde el admin
-    // POST /print-guia   — recibe Nota de Pedido desde el admin
-    if (req.method === 'POST' && (req.url === '/print-recibo' || req.url === '/print-guia')) {
+    // POST /print-recibo   — recibe PDF térmico 62mm desde el admin
+    // POST /print-guia     — recibe Nota de Pedido desde el admin
+    // POST /print-etiqueta — recibe PDF de etiquetas DK-1204 desde consignación
+    if (req.method === 'POST' && (req.url === '/print-recibo' || req.url === '/print-guia' || req.url === '/print-etiqueta')) {
       const chunks = []
       req.on('data', c => chunks.push(c))
       req.on('end', () => {
         try {
           const body = JSON.parse(Buffer.concat(chunks).toString())
-          const canal = req.url === '/print-guia' ? 'load-pdf-guia' : 'load-pdf-recibo'
+          let canal = 'load-pdf-recibo'
+          if (req.url === '/print-guia')     canal = 'load-pdf-guia'
+          if (req.url === '/print-etiqueta') canal = 'load-pdf-etiqueta'
           if (mainWindow) {
             if (mainWindow.isMinimized()) mainWindow.restore()
             mainWindow.focus()

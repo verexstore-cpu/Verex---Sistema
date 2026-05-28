@@ -398,20 +398,51 @@
   <div class="panel" id="panel-1">
     <div class="card">
       <h2>Etiqueta Joyería</h2>
-      <label>Nombre del producto</label>
-      <input type="text" id="j-nombre" placeholder="Pulsera Oro 18K" oninput="renderJoya()">
-      <label>SKU / Código</label>
-      <input type="text" id="j-sku" placeholder="PUL-001" oninput="renderJoya()">
-      <label>Precio</label>
-      <input type="text" id="j-precio" placeholder="$85.000" oninput="renderJoya()">
-      <label>Cantidad de etiquetas</label>
-      <input type="number" id="j-cantidad" value="1" min="1" max="100">
-      <button class="btn-print" onclick="imprimirJoya()">🖨️ Imprimir Etiqueta (54×17mm)</button>
+      <div class="subtabs">
+        <div class="subtab active" onclick="setSubtabJ(0)">✏️ Manual</div>
+        <div class="subtab" onclick="setSubtabJ(1)">📄 Subir PDF</div>
+      </div>
+
+      <!-- MANUAL -->
+      <div class="subpanel active" id="subpanel-j0">
+        <label>Nombre del producto</label>
+        <input type="text" id="j-nombre" placeholder="Pulsera Oro 18K" oninput="renderJoya()">
+        <label>SKU / Código</label>
+        <input type="text" id="j-sku" placeholder="PUL-001" oninput="renderJoya()">
+        <label>Precio</label>
+        <input type="text" id="j-precio" placeholder="$85.000" oninput="renderJoya()">
+        <label>Cantidad de etiquetas</label>
+        <input type="number" id="j-cantidad" value="1" min="1" max="100">
+        <button class="btn-print" onclick="imprimirJoya()">🖨️ Imprimir Etiqueta (54×17mm)</button>
+      </div>
+
+      <!-- PDF ETIQUETAS -->
+      <div class="subpanel" id="subpanel-j1">
+        <div class="drop-zone" id="drop-zone-e"
+          ondragover="onDragOver3(event)" ondragleave="onDragLeave3(event)" ondrop="onDrop3(event)">
+          <input type="file" accept=".pdf,application/pdf" onchange="onFileSelectedE(event)">
+          <span class="icon">💎</span>
+          <div class="lbl">Arrastra el PDF de etiquetas aquí</div>
+          <div class="sub2">o haz clic para seleccionar</div>
+        </div>
+
+        <div id="pages-container-e" style="display:none">
+          <label style="margin-top:14px">Etiquetas — toca para previsualizar</label>
+          <div class="pages-scroll" id="pages-scroll-e"></div>
+          <div style="margin-top:10px;padding:8px 12px;background:#e0e3ec;border:1px solid #c8ccd6;border-left:3px solid #c9a840;border-radius:8px;font-size:12px;color:#6a7080;">
+            💎 Tamaño: <strong style="color:#a07820;">54 × 17 mm</strong> · DK-1204
+          </div>
+        </div>
+
+        <button class="btn-print" id="btn-print-etiq" onclick="imprimirTodasEtiquetas()" disabled>
+          🖨️ Imprimir todas las etiquetas
+        </button>
+      </div>
     </div>
     <div class="card preview-card">
       <h2>Vista previa</h2>
       <div class="preview-area" id="preview-joya"></div>
-      <p class="hint">* 54×17mm · Horizontal · Monocromo</p>
+      <p class="hint" id="joya-hint">* 54×17mm · Horizontal · Monocromo</p>
     </div>
   </div>
 
@@ -645,11 +676,19 @@ function setTab(n) {
   document.querySelectorAll('.panel').forEach((p, i) => p.classList.toggle('active', i === n));
 }
 function setSubtab(n) {
-  document.querySelectorAll('.subtab').forEach((t, i) => t.classList.toggle('active', i === n));
-  document.querySelectorAll('.subpanel').forEach((p, i) => p.classList.toggle('active', i === n));
+  document.querySelectorAll('#panel-0 .subtab').forEach((t, i) => t.classList.toggle('active', i === n));
+  document.querySelectorAll('#panel-0 .subpanel').forEach((p, i) => p.classList.toggle('active', i === n));
   if (n === 1) renderGuia();
   else if (pdfPages.length) renderPdfPreview();
   else document.getElementById('preview-guia').innerHTML = '<span style="color:#5a6270;font-size:13px">Sube un PDF para previsualizar</span>';
+}
+function setSubtabJ(n) {
+  document.querySelectorAll('#panel-1 .subtab').forEach((t, i) => t.classList.toggle('active', i === n));
+  document.querySelectorAll('#panel-1 .subpanel').forEach((p, i) => p.classList.toggle('active', i === n));
+  document.getElementById('joya-hint').textContent = n === 0 ? '* 54×17mm · Horizontal · Monocromo' : '* 54×17mm · DK-1204';
+  if (n === 0) renderJoya();
+  else if (etiqPages.length) renderEtiquetaPreview();
+  else document.getElementById('preview-joya').innerHTML = '<span style="color:#5a6270;font-size:13px">Carga un PDF para previsualizar</span>';
 }
 
 // ─── PDF ───
@@ -1058,6 +1097,97 @@ td:nth-child(2){text-align:center;color:#555;}
   await imprimir(html, 62, 0); // 0 = altura automática
 }
 
+// ─── PDF ETIQUETAS DK-1204 ───
+let etiqPages = [];
+
+function onDragOver3(e) { e.preventDefault(); document.getElementById('drop-zone-e').classList.add('drag-over'); }
+function onDragLeave3() { document.getElementById('drop-zone-e').classList.remove('drag-over'); }
+function onDrop3(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone-e').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f?.type === 'application/pdf') loadPdfEtiqueta(f);
+}
+function onFileSelectedE(e) { if (e.target.files[0]) loadPdfEtiqueta(e.target.files[0]); }
+
+async function loadPdfEtiqueta(file) {
+  etiqPages = [];
+  document.getElementById('pages-scroll-e').innerHTML = '<span style="color:#a07820;font-size:12px;padding:8px;opacity:.8">Cargando...</span>';
+  document.getElementById('pages-container-e').style.display = 'block';
+  document.getElementById('btn-print-etiq').disabled = true;
+
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const scroll = document.getElementById('pages-scroll-e');
+  scroll.innerHTML = '';
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const vp0 = page.getViewport({ scale: 1 });
+
+    // Miniatura ~54px de ancho
+    const tScale = 54 / vp0.width;
+    const tVp = page.getViewport({ scale: tScale });
+    const tCanvas = document.createElement('canvas');
+    tCanvas.width = tVp.width; tCanvas.height = tVp.height;
+    await page.render({ canvasContext: tCanvas.getContext('2d'), viewport: tVp }).promise;
+
+    // Alta resolución: 54mm a ~300dpi → ≈638px de ancho
+    const pScale = 638 / vp0.width;
+    const pVp = page.getViewport({ scale: pScale });
+    const pCanvas = document.createElement('canvas');
+    pCanvas.width = pVp.width; pCanvas.height = pVp.height;
+    await page.render({ canvasContext: pCanvas.getContext('2d'), viewport: pVp }).promise;
+    const dataUrl = pCanvas.toDataURL('image/jpeg', 0.95);
+    etiqPages.push({ dataUrl });
+
+    const thumb = document.createElement('div');
+    thumb.className = 'page-thumb' + (i === 1 ? ' selected' : '');
+    thumb.id = `thumb-e-${i-1}`;
+    thumb.onclick = () => {
+      document.querySelectorAll('#pages-scroll-e .page-thumb').forEach((t, j) => t.classList.toggle('selected', j === i-1));
+      renderEtiquetaPreview(i-1);
+    };
+    const tc = document.createElement('canvas');
+    tc.width = tCanvas.width; tc.height = tCanvas.height;
+    tc.getContext('2d').drawImage(tCanvas, 0, 0);
+    thumb.appendChild(tc);
+    const num = document.createElement('div');
+    num.className = 'page-num'; num.textContent = i;
+    thumb.appendChild(num);
+    scroll.appendChild(thumb);
+  }
+
+  const n = etiqPages.length;
+  document.getElementById('btn-print-etiq').textContent = `🖨️ Imprimir todas (${n} etiqueta${n !== 1 ? 's' : ''})`;
+  document.getElementById('btn-print-etiq').disabled = false;
+  renderEtiquetaPreview(0);
+}
+
+function renderEtiquetaPreview(idx = 0) {
+  if (!etiqPages.length) return;
+  const src = etiqPages[idx] ? etiqPages[idx].dataUrl : etiqPages[0].dataUrl;
+  document.getElementById('preview-joya').innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+      <div style="font-size:11px;color:#a07820;font-weight:700;">Etiqueta ${idx+1} de ${etiqPages.length}</div>
+      <img src="${src}" style="width:216px;height:68px;object-fit:fill;border:1px solid #c8ccd6;border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,.2);">
+      <div style="font-size:11px;color:#6a7080;">54mm × 17mm · DK-1204</div>
+    </div>`;
+}
+
+async function imprimirTodasEtiquetas() {
+  if (!etiqPages.length) return;
+  const etqs = etiqPages.map(p => `<div class="e"><img src="${p.dataUrl}"></div>`).join('');
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+@page { size: 54mm 17mm landscape; margin: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+.e { width: 54mm; height: 17mm; overflow: hidden; page-break-after: always; }
+.e img { width: 54mm; height: 17mm; display: block; object-fit: fill; }
+</style></head><body>${etqs}</body></html>`;
+  await imprimir(html, 54, 17);
+}
+
 // ─── RECIBIR PDFs DESDE EL ADMIN (localhost:7891) ───
 function base64ToFile(b64, nombre, tipo = 'application/pdf') {
   const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
@@ -1076,6 +1206,13 @@ window.electronAPI.onLoadPdfGuia(async ({ pdfBase64, nombre }) => {
   setSubtab(0)       // sub-pestaña PDF
   await loadPdf(base64ToFile(pdfBase64, nombre || 'guia.pdf'))
   toast('📦 Guía cargada desde el admin — listo para imprimir')
+})
+
+window.electronAPI.onLoadPdfEtiqueta(async ({ pdfBase64, nombre }) => {
+  setTab(1)          // pestaña Etiqueta Joyería
+  setSubtabJ(1)      // sub-pestaña PDF
+  await loadPdfEtiqueta(base64ToFile(pdfBase64, nombre || 'etiquetas.pdf'))
+  toast('💎 Etiquetas cargadas desde consignación — listo para imprimir')
 })
 
 // ─── INIT ───
