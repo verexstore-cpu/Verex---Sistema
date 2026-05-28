@@ -602,11 +602,81 @@ exit 0
 `
 }
 
+// ── Guías/Recibos 62mm: GDI via driver Brother QL ────────────────────────────
+// Configura el DEVMODE (tamaño de papel) e imprime el PNG con PrintDocument.
+// El driver sabe exactamente el formato RAW que espera la QL-810W — no hay
+// que adivinar el protocolo raster. Solo para guías y recibos (62mm).
+function buildGdiPrintScript(printerName, pngFile, widthTenths, heightTenths) {
+  const pn  = printerName.replace(/'/g, "''")
+  const png = pngFile.replace(/\\/g, '\\\\').replace(/'/g, "''")
+  return `
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+using System.Drawing;
+using System.Drawing.Printing;
+using System.Drawing.Drawing2D;
+public class GdiHelper {
+    [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)]
+    static extern bool OpenPrinter(string n,out IntPtr h,IntPtr d);
+    [DllImport("winspool.drv",SetLastError=true)]
+    static extern bool ClosePrinter(IntPtr h);
+    [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)]
+    static extern int DocumentProperties(IntPtr hw,IntPtr hp,string dev,IntPtr dmOut,IntPtr dmIn,int fMode);
+    [DllImport("winspool.drv",SetLastError=true)]
+    static extern bool SetPrinter(IntPtr h,int level,IntPtr p,int cmd);
+    public static void SetDevMode(string name,int wT,int hT) {
+        var M=System.Runtime.InteropServices.Marshal;
+        IntPtr hP=IntPtr.Zero;
+        if(!OpenPrinter(name,out hP,IntPtr.Zero)) { Console.Error.WriteLine("OpenPrinter fallo"); return; }
+        try {
+            int sz=DocumentProperties(IntPtr.Zero,hP,name,IntPtr.Zero,IntPtr.Zero,0);
+            if(sz<=0) { Console.Error.WriteLine("DocumentProperties fallo sz="+sz); return; }
+            IntPtr dm=M.AllocHGlobal(sz);
+            try {
+                if(DocumentProperties(IntPtr.Zero,hP,name,dm,IntPtr.Zero,2)<=0) { Console.Error.WriteLine("DP lectura fallo"); return; }
+                M.WriteInt32(dm,72,M.ReadInt32(dm,72)|14);
+                M.WriteInt16(dm,78,256);
+                M.WriteInt16(dm,80,(short)hT);
+                M.WriteInt16(dm,82,(short)wT);
+                IntPtr dm2=M.AllocHGlobal(sz);
+                try {
+                    if(DocumentProperties(IntPtr.Zero,hP,name,dm2,dm,10)>0) {
+                        IntPtr pi=M.AllocHGlobal(IntPtr.Size);
+                        try{M.WriteIntPtr(pi,dm2);SetPrinter(hP,9,pi,0);}
+                        finally{M.FreeHGlobal(pi);}
+                    }
+                } finally{M.FreeHGlobal(dm2);}
+            } finally{M.FreeHGlobal(dm);}
+        } finally{ClosePrinter(hP);}
+    }
+    public static void Print(string name,string pngPath) {
+        var pd=new PrintDocument();
+        pd.PrinterSettings.PrinterName=name;
+        pd.DefaultPageSettings.Margins=new Margins(0,0,0,0);
+        using(var img=Image.FromFile(pngPath)) {
+            pd.PrintPage+=(s,e)=>{
+                e.Graphics.InterpolationMode=InterpolationMode.HighQualityBicubic;
+                e.Graphics.DrawImage(img,e.PageBounds);
+                e.HasMorePages=false;
+            };
+            pd.Print();
+        }
+    }
+}
+"@ -Language CSharp -ReferencedAssemblies "System.Drawing"
+$name='${pn}'; $png='${png}'; $wT=${widthTenths}; $hT=${heightTenths}
+Write-Output "GDI-PRINT name='$name' wT=$wT hT=$hT"
+[GdiHelper]::SetDevMode($name,$wT,$hT)
+Start-Sleep -Milliseconds 500
+[GdiHelper]::Print($name,$png)
+Write-Output "GDI-PRINT OK"
+`
+}
+
 // ── Imprimir sin diálogo ──
-// TODOS los módulos usan RAW raster via TCP (bypasa driver + spooler Windows):
-//   widthMm=0          → Etiquetas 54mm×17mm (DK-2251)  → printW=638, printH=201
-//   widthMm=62, h>0    → Guía de Envío 62mm×90mm        → printW=720, printH=1063
-//   widthMm=62, h=0    → Recibo Térmico 62mm×auto       → printW=720, printH=auto
+//   widthMm=0   → Etiquetas 54mm×17mm  → RAW TCP directo (bypasa driver)
+//   widthMm=62  → Guía/Recibo 62mm     → GDI driver Brother QL (confiable)
 ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printerName, pageCount }) => {
   const PC = Math.max(1, parseInt(pageCount) || 1)
 
@@ -665,14 +735,13 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
 
     win.webContents.once('did-finish-load', async () => {
 
-      // ── RAW raster TCP: etiquetas + guías + recibos ───────────────────────
+      // ── Impresión: etiquetas (RAW TCP) + guías/recibos (GDI driver) ─────────
       if (isLabel || is62mm) {
         try {
-          let captureW, captureH, printW, printH
-          const headDots = 720
+          let captureW, captureH
 
           if (isLabel) {
-            // ── Etiquetas DK-2251: 54mm×17mm ──
+            // ── Etiquetas DK-2251: 54mm×17mm — RAW TCP ──
             await win.webContents.insertCSS(
               'html,body{overflow:hidden!important;margin:0!important;padding:0!important;' +
               'width:54mm!important;height:' + (17 * PC) + 'mm!important;}'
@@ -680,11 +749,9 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
             await new Promise(r => setTimeout(r, 800))
             captureW = LWS
             captureH = LHS * PC
-            printW   = 638
-            printH   = 201
 
           } else if (heightMm > 0) {
-            // ── Guía de Envío: 62mm × altura fija (90mm) ──
+            // ── Guía de Envío: 62mm × 90mm — GDI driver ──
             await win.webContents.insertCSS(
               'html,body{overflow:hidden!important;margin:0!important;padding:0!important;' +
               'width:62mm!important;height:' + heightMm + 'mm!important;}'
@@ -692,21 +759,17 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
             await new Promise(r => setTimeout(r, 1000))
             captureW = GWS
             captureH = Math.round(heightMm * 96 / 25.4) * GSCALE
-            printW   = 696   // ancho imprimible real QL-810W 62mm = 696 dots (58.9mm), no 720
-            printH   = Math.round(heightMm * 300 / 25.4)  // 90mm → 1063 dots
 
           } else {
-            // ── Recibo Térmico: 62mm × altura automática ──
+            // ── Recibo Térmico: 62mm × altura automática — GDI driver ──
             await win.webContents.insertCSS(
               'html,body{overflow:hidden!important;margin:0!important;padding:0!important;' +
               'width:62mm!important;}'
             )
             await new Promise(r => setTimeout(r, 1000))
             const cssPx = await win.webContents.executeJavaScript('document.body.scrollHeight')
+            captureH = Math.max(cssPx, 100) * GSCALE
             captureW = GWS
-            captureH = Math.max(cssPx, 1) * GSCALE
-            printW   = 696   // ancho imprimible real QL-810W 62mm = 696 dots (58.9mm), no 720
-            printH   = Math.max(Math.round(cssPx * 300 / 96), 100)  // mínimo 100 dots
           }
 
           const img = await win.webContents.capturePage({ x: 0, y: 0, width: captureW, height: captureH })
@@ -724,11 +787,27 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
           const tmpPng = path.join(os.tmpdir(), `verex-lbl-${Date.now()}.png`)
           fs.writeFileSync(tmpPng, pngBuf)
 
-          const cfg = loadConfig()
-          const r = await runPs1(
-            buildRawPrintScript(printerName || '', tmpPng, PC, cfg.printerIp || null, printW, printH, headDots),
-            35000
-          )
+          let r
+          if (isLabel) {
+            // Etiquetas: RAW TCP directo (bypasa driver — probado funcionando)
+            const cfg = loadConfig()
+            r = await runPs1(
+              buildRawPrintScript(printerName || '', tmpPng, PC, cfg.printerIp || null, 638, 201, 720),
+              35000
+            )
+          } else {
+            // Guías/Recibos: GDI via driver Brother QL
+            // El driver sabe exactamente el formato RAW que necesita la QL-810W
+            const wT = 620  // 62mm × 10 = 620 décimas de mm
+            const hT = heightMm > 0
+              ? Math.round(heightMm * 10)                                    // guía: 90mm→900
+              : Math.max(Math.round((captureH / GSCALE) * 25.4 / 96 * 10), 300) // recibo: auto, min 30mm
+            r = await runPs1(
+              buildGdiPrintScript(printerName || '', tmpPng, wT, hT),
+              35000
+            )
+          }
+
           fs.unlink(tmpPng, () => {})
           done({ success: r.ok, error: r.ok ? null : r.error, debug: r.out })
 
