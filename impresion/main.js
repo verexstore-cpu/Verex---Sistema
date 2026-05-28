@@ -112,7 +112,8 @@ function runPs1(script, timeout = 15000) {
     exec(`powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "${ps1}"`,
       { timeout }, (err, stdout, stderr) => {
         fs.unlink(ps1, () => {})
-        resolve({ ok: !err, error: err?.message || (stderr || '').trim() || null })
+        const detail = [stdout, stderr].map(s => (s||'').trim()).filter(Boolean).join(' | ')
+        resolve({ ok: !err, error: err ? (detail || err.message) : null })
       })
   })
 }
@@ -363,7 +364,7 @@ public class GdiLabel {
         public int fwType;
     }
     [DllImport("gdi32.dll",CharSet=CharSet.Unicode)]
-    public static extern IntPtr CreateDC(IntPtr drv,string dev,IntPtr port,IntPtr dm);
+    public static extern IntPtr CreateDC(string drv,string dev,string port,IntPtr dm);
     [DllImport("gdi32.dll")] public static extern bool DeleteDC(IntPtr h);
     [DllImport("gdi32.dll")] public static extern int StartDoc(IntPtr h,ref DOCINFO d);
     [DllImport("gdi32.dll")] public static extern int EndDoc(IntPtr h);
@@ -376,17 +377,23 @@ public class GdiLabel {
     [DllImport("gdi32.dll")] public static extern IntPtr CreateCompatibleDC(IntPtr h);
     [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr h);
     [DllImport("gdi32.dll")] public static extern IntPtr SelectObject(IntPtr h,IntPtr o);
+    [DllImport("kernel32.dll")] public static extern int GetLastError();
 }
 "@ -Language CSharp -ReferencedAssemblies "System.Drawing"
 $m       = [Runtime.InteropServices.Marshal]
 $SRCCOPY = 0x00CC0020
 $pages   = ${pageCount}
+Write-Output "GDI-PRINT impresora='${pn}' paginas=$pages"
 $bytes   = [IO.File]::ReadAllBytes('${dmf}')
 $dmPtr   = $m::AllocHGlobal($bytes.Length)
 $m::Copy($bytes,0,$dmPtr,$bytes.Length)
 try {
-    $hDC = [GdiLabel]::CreateDC([IntPtr]::Zero,'${pn}',[IntPtr]::Zero,$dmPtr)
-    if ($hDC -eq [IntPtr]::Zero) { exit 1 }
+    $hDC = [GdiLabel]::CreateDC('WINSPOOL','${pn}',$null,$dmPtr)
+    if ($hDC -eq [IntPtr]::Zero) {
+        $err = [GdiLabel]::GetLastError()
+        Write-Error "CreateDC fallo. Impresora='${pn}' Error=$err"
+        exit 1
+    }
     try {
         $dpiX   = [GdiLabel]::GetDeviceCaps($hDC,88)
         $dpiY   = [GdiLabel]::GetDeviceCaps($hDC,90)
