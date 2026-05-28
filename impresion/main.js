@@ -478,7 +478,6 @@ public class BrotherRaw {
         // valid_flag=0x80 → sin validacion RFID | type=0x0A → continuo → 0x1A corta a 17mm
         int leftPad=(headDots-printW)/2, rowBytes=headDots/8;
         var o=new List<byte>();
-        o.AddRange(new byte[200]); // Brother QL reset: 200 bytes nulos limpian estado anterior
         using(var src=new Bitmap(pngPath)) {
             int sliceH=src.Height/pages;
             for(int page=0;page<pages;page++) {
