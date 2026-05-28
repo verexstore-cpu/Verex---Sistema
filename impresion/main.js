@@ -268,7 +268,8 @@ ipcMain.handle('load-roll-profile', (_, { rollType, printerName }) => {
 })
 
 ipcMain.handle('open-printer-props', (_, printerName) => {
-  exec(`rundll32 printui.dll,PrintUIEntry /p /n "${printerName}"`)
+  // /e abre directamente Preferencias de impresión (donde se elige el tipo de papel/rollo)
+  exec(`rundll32 printui.dll,PrintUIEntry /e /n "${printerName}"`)
   return { ok: true }
 })
 
