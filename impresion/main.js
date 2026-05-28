@@ -442,6 +442,37 @@ $pages = ${pageCount}
 Write-Output "RAW-PRINT impresora='${pn}' paginas=$pages"
 $rawData = [BrotherRaw]::MakeRaster('${png}',$pages,638,201,720)
 Write-Output "Raster generado: $($rawData.Length) bytes"
+
+# ── Intento 1: TCP directo al puerto 9100 (bypasea TODO: driver, port monitor, RFID) ──
+$ip = $null
+try {
+    $printer = Get-WmiObject Win32_Printer | Where-Object { $_.Name -eq '${pn}' }
+    if ($printer) {
+        $port = Get-WmiObject Win32_TCPIPPrinterPort | Where-Object { $_.Name -eq $printer.PortName }
+        if ($port -and $port.HostAddress) { $ip = $port.HostAddress }
+    }
+} catch {}
+
+if ($ip) {
+    Write-Output "TCP directo a $ip`:9100"
+    try {
+        $tcp = New-Object System.Net.Sockets.TcpClient
+        $tcp.Connect($ip, 9100)
+        $stream = $tcp.GetStream()
+        $stream.Write($rawData, 0, $rawData.Length)
+        $stream.Flush()
+        Start-Sleep -Milliseconds 3000
+        $tcp.Close()
+        Write-Output "TCP OK enviados=$($rawData.Length) bytes"
+        exit 0
+    } catch {
+        Write-Output "TCP fallo: $_ — intentando WritePrinter..."
+    }
+} else {
+    Write-Output "No se encontro IP TCP — usando WritePrinter RAW"
+}
+
+# ── Intento 2: WritePrinter RAW ──
 $hP = [IntPtr]::Zero
 if (-not [BrotherRaw]::OpenPrinter('${pn}',[ref]$hP,[IntPtr]::Zero)) {
     Write-Error "OpenPrinter fallo Win32=$([BrotherRaw]::GetLastError())"
