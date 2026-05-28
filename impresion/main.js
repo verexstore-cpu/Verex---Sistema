@@ -432,10 +432,9 @@ ipcMain.handle('get-printers', async () => {
 })
 
 // ── Brother QL RAW print — bypasa driver Y firmware RFID ─────────────────────
-// Envía datos raster nativos Brother QL directamente via WritePrinter(RAW).
-// valid_flag = 0x8C: width+length válidos, media_type NO válido → impresora
-// NO verifica RFID. El trabajo nunca pasa por el driver de Brother.
-// pageCount: etiquetas apiladas verticalmente en el PNG de entrada.
+// Ruta 1 (WiFi): TCP directo port 9100  → sin driver, sin RFID
+// Ruta 2 (USB) : CreateFile "\\.\USBxxx" → sin spooler, sin driver, sin RFID
+// Nunca usa WritePrinter/spooler (ese camino bloquea por RFID DK-1201).
 function buildRawPrintScript(printerName, pngFile, pageCount, forcedIp = null) {
   const pn  = printerName.replace(/'/g, "''")
   const png = pngFile.replace(/\\/g, '\\\\').replace(/'/g, "''")
@@ -448,26 +447,15 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 public class BrotherRaw {
-    [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]
-    public struct DOC_INFO_1 {
-        [MarshalAs(UnmanagedType.LPWStr)] public string pDocName;
-        public IntPtr pOutputFile;
-        [MarshalAs(UnmanagedType.LPWStr)] public string pDatatype;
-    }
-    [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)]
-    public static extern bool OpenPrinter(string n,out IntPtr h,IntPtr d);
-    [DllImport("winspool.drv",SetLastError=true)]
-    public static extern bool ClosePrinter(IntPtr h);
-    [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)]
-    public static extern int StartDocPrinter(IntPtr h,int level,ref DOC_INFO_1 di);
-    [DllImport("winspool.drv",SetLastError=true)]
-    public static extern bool EndDocPrinter(IntPtr h);
-    [DllImport("winspool.drv",SetLastError=true)]
-    public static extern bool StartPagePrinter(IntPtr h);
-    [DllImport("winspool.drv",SetLastError=true)]
-    public static extern bool EndPagePrinter(IntPtr h);
-    [DllImport("winspool.drv",SetLastError=true)]
-    public static extern bool WritePrinter(IntPtr h,IntPtr pBuf,int cbBuf,out int written);
+    // USB directo — bypasa spooler y driver completamente
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    public static extern IntPtr CreateFile(string lpFileName, uint dwDesiredAccess, uint dwShareMode,
+        IntPtr lpSec, uint dwCreationDisposition, uint dwFlagsAndAttributes, IntPtr hTemplate);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool WriteFile(IntPtr hFile, byte[] lpBuffer, uint nBytes,
+        out uint lpWritten, IntPtr lpOverlapped);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool CloseHandle(IntPtr hFile);
     [DllImport("kernel32.dll")] public static extern int GetLastError();
 
     static byte[] PackBits(byte[] input) {
@@ -486,32 +474,20 @@ public class BrotherRaw {
     }
 
     public static byte[] MakeRaster(string pngPath,int pages,int printW,int printH,int headDots) {
-        // ── ESTRATEGIA: mini-job completo por etiqueta ──────────────────────────────
-        // Cada etiqueta lleva su propio init + config + raster + 0x1A.
-        // Esto garantiza que 0x1A corta INMEDIATAMENTE al fin del raster (17mm)
-        // sin importar el RFID DK-1201 (90mm): en modo continuo el firmware ignora
-        // el chip RFID y corta segun los datos recibidos.
-        // ─────────────────────────────────────────────────────────────────────────────
+        // Mini-job completo por etiqueta: init + config + raster + 0x1A
+        // valid_flag=0x80 → sin validacion RFID | type=0x0A → continuo → 0x1A corta a 17mm
         int leftPad=(headDots-printW)/2, rowBytes=headDots/8;
         var o=new List<byte>();
         using(var src=new Bitmap(pngPath)) {
             int sliceH=src.Height/pages;
             for(int page=0;page<pages;page++) {
-                // ── 1. Secuencia de inicio para este label ──
-                o.AddRange(new byte[]{0x1B,0x40});                   // reset impresora
-                o.AddRange(new byte[]{0x1B,0x69,0x61,0x01});         // modo raster
-                // Print info:
-                //   valid_flag=0x80  → sin validacion RFID (no luz roja)
-                //   type=0x0A        → cinta continua (0x1A corta al fin del raster)
-                //   width=54mm       → activa los 638 dots correctos del cabezal
-                //   length=17mm      → define el largo de la etiqueta
-                //   pages=1          → un label por mini-job
+                o.AddRange(new byte[]{0x1B,0x40});
+                o.AddRange(new byte[]{0x1B,0x69,0x61,0x01});
                 o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0A,54,17, 1,0,0,0,0,0});
-                o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});         // auto-cut ON
-                o.AddRange(new byte[]{0x1B,0x69,0x41,0x01});         // cortar cada 1 label
-                o.AddRange(new byte[]{0x1B,0x69,0x4B,0x08});         // expanded: cut-at-end
-                o.AddRange(new byte[]{0x1B,0x69,0x64,0x00,0x00});    // margen = 0 dots
-                // ── 2. Datos raster de este label ──
+                o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
+                o.AddRange(new byte[]{0x1B,0x69,0x41,0x01});
+                o.AddRange(new byte[]{0x1B,0x69,0x4B,0x08});
+                o.AddRange(new byte[]{0x1B,0x69,0x64,0x00,0x00});
                 var rect=new Rectangle(0,page*sliceH,src.Width,sliceH);
                 using(var slice=src.Clone(rect,PixelFormat.Format32bppArgb))
                 using(var rsz=new Bitmap(printW,printH)) {
@@ -523,7 +499,6 @@ public class BrotherRaw {
                         var row=new byte[rowBytes];
                         for(int x=0;x<printW;x++) {
                             var c=rsz.GetPixel(x,y);
-                            // Umbral 160: captura texto anti-aliased que quedaria blanco con 128
                             if(c.R*0.299+c.G*0.587+c.B*0.114<160) {
                                 int pos=leftPad+x;
                                 if(pos>=0&&pos<headDots) row[pos/8]|=(byte)(0x80>>(pos%8));
@@ -534,9 +509,6 @@ public class BrotherRaw {
                         o.AddRange(cmp);
                     }
                 }
-                // ── 3. Cortar esta etiqueta ──
-                // 0x1A en modo continuo: imprime y corta al terminar los 201 dots (17mm)
-                // No usa la posicion de die-cut del RFID → corte exacto a 17mm
                 o.Add(0x1A);
             }
         }
@@ -544,32 +516,30 @@ public class BrotherRaw {
     }
 }
 "@ -Language CSharp -ReferencedAssemblies "System.Drawing"
-$m = [Runtime.InteropServices.Marshal]
+
 $pages = ${pageCount}
 Write-Output "RAW-PRINT impresora='${pn}' paginas=$pages"
 $rawData = [BrotherRaw]::MakeRaster('${png}',$pages,638,201,720)
 Write-Output "Raster: $($rawData.Length) bytes"
 
+$sentOK = $false
+
+# ── Ruta 1: TCP directo port 9100 (WiFi) ────────────────────────────────────
 ${forcedIp
-    ? `# IP configurada manualmente en VEREX
-$ip = '${forcedIp.replace(/'/g, "''")}'
+    ? `$ip = '${forcedIp.replace(/'/g, "''")}'
 Write-Output "IP configurada: $ip"`
-    : `# Auto-detectar IP de impresora via WMI (para TCP directo port 9100)
-$ip = $null
+    : `$ip = $null
 $wmiPrinter = Get-WmiObject Win32_Printer -Filter "Name='${pn}'" -ErrorAction SilentlyContinue
 if ($wmiPrinter) {
-    $pn2 = $wmiPrinter.PortName
-    $wmiPort = Get-WmiObject Win32_TCPIPPrinterPort -Filter "Name='$pn2'" -ErrorAction SilentlyContinue
+    $portName2 = $wmiPrinter.PortName
+    $wmiPort = Get-WmiObject Win32_TCPIPPrinterPort -Filter "Name='$portName2'" -ErrorAction SilentlyContinue
     if ($wmiPort) { $ip = $wmiPort.HostAddress }
 }
 Write-Output "IP detectada: $ip"`
 }
 
-$sentOK = $false
-
-# Intento 1: TCP directo port 9100 — bypasea driver y RFID completamente
 if ($ip) {
-    Write-Output ("TCP: " + $ip + ":9100")
+    Write-Output "TCP $ip:9100"
     try {
         $tcp = New-Object System.Net.Sockets.TcpClient
         $tcp.Connect($ip, 9100)
@@ -585,34 +555,44 @@ if ($ip) {
     }
 }
 
-# Intento 2: WritePrinter RAW (si no hay TCP)
+# ── Ruta 2: USB directo via CreateFile (bypasa spooler y driver) ─────────────
 if (-not $sentOK) {
-    Write-Output "WritePrinter RAW"
-    $hP = [IntPtr]::Zero
-    [BrotherRaw]::OpenPrinter('${pn}',[ref]$hP,[IntPtr]::Zero) | Out-Null
-    if ($hP -eq [IntPtr]::Zero) {
-        Write-Error "OpenPrinter fallo"
+    $wmiP = Get-WmiObject Win32_Printer -Filter "Name='${pn}'" -ErrorAction SilentlyContinue
+    $usbPort = if ($wmiP) { $wmiP.PortName } else { $null }
+    Write-Output "Puerto USB: $usbPort"
+
+    if ($usbPort -and $usbPort -like 'USB*') {
+        $devPath = "\\\\.\\" + $usbPort
+        Write-Output "USB CreateFile: $devPath"
+        $GENERIC_WRITE  = [uint32]0x40000000
+        $FILE_SHARE_READ = [uint32]0x00000001
+        $OPEN_EXISTING   = [uint32]3
+        $FILE_ATTR_NORMAL = [uint32]0x80
+        $h = [BrotherRaw]::CreateFile($devPath, $GENERIC_WRITE, $FILE_SHARE_READ,
+                [IntPtr]::Zero, $OPEN_EXISTING, $FILE_ATTR_NORMAL, [IntPtr]::Zero)
+        $INVALID = [IntPtr](-1)
+        if ($h -eq $INVALID -or $h -eq [IntPtr]::Zero) {
+            $err = [BrotherRaw]::GetLastError()
+            Write-Error "CreateFile fallo en $devPath Win32=$err"
+            exit 1
+        }
+        try {
+            $written = [uint32]0
+            $ok = [BrotherRaw]::WriteFile($h, $rawData, [uint32]$rawData.Length, [ref]$written, [IntPtr]::Zero)
+            if ($ok) {
+                Write-Output "USB OK written=$written"
+                $sentOK = $true
+            } else {
+                $err = [BrotherRaw]::GetLastError()
+                Write-Error "WriteFile fallo Win32=$err"
+                exit 1
+            }
+        } finally {
+            [BrotherRaw]::CloseHandle($h) | Out-Null
+        }
+    } else {
+        Write-Error "Sin IP WiFi ni puerto USB disponible. Conecta la impresora o configura la IP en VEREX."
         exit 1
-    }
-    try {
-        $di = New-Object BrotherRaw+DOC_INFO_1
-        $di.pDocName = 'VEREX RAW'
-        $di.pOutputFile = [IntPtr]::Zero
-        $di.pDatatype = 'RAW'
-        $j = [BrotherRaw]::StartDocPrinter($hP,1,[ref]$di)
-        Write-Output "StartDocPrinter=$j"
-        if ($j -le 0) { Write-Error "StartDocPrinter fallo"; exit 1 }
-        [BrotherRaw]::StartPagePrinter($hP) | Out-Null
-        $buf = $m::AllocHGlobal($rawData.Length)
-        $m::Copy($rawData,0,$buf,$rawData.Length)
-        $wr = 0
-        [BrotherRaw]::WritePrinter($hP,$buf,$rawData.Length,[ref]$wr) | Out-Null
-        Write-Output "WritePrinter written=$wr"
-        $m::FreeHGlobal($buf)
-        [BrotherRaw]::EndPagePrinter($hP) | Out-Null
-        [BrotherRaw]::EndDocPrinter($hP) | Out-Null
-    } finally {
-        [BrotherRaw]::ClosePrinter($hP) | Out-Null
     }
 }
 exit 0
