@@ -237,10 +237,14 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
       //   su propio DEVMODE → sin error de tipo de rollo.
       // widthMm  >  0 → guías / recibos: webContents.print() con pageSize explícito.
       if (widthMm === 0) {
+        // Etiquetas DK-1204: 54mm × 17mm en micrones.
+        // El DEVMODE fue corregido por load-roll-profile → el driver Brother
+        // valida su media type code (DK-1204) contra el rollo físico → match.
         win.webContents.print({
           silent: true,
           printBackground: true,
           deviceName: printerName || '',
+          pageSize: { width: 54000, height: 17000 },
           margins: { marginType: 'none' },
         }, (success, errorType) => {
           win.close()
