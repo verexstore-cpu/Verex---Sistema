@@ -441,67 +441,68 @@ $m = [Runtime.InteropServices.Marshal]
 $pages = ${pageCount}
 Write-Output "RAW-PRINT impresora='${pn}' paginas=$pages"
 $rawData = [BrotherRaw]::MakeRaster('${png}',$pages,638,201,720)
-Write-Output "Raster generado: $($rawData.Length) bytes"
+Write-Output "Raster: $($rawData.Length) bytes"
 
-# ── Intento 1: TCP directo al puerto 9100 (bypasea TODO: driver, port monitor, RFID) ──
+# Auto-detectar IP de impresora via WMI (para TCP directo port 9100)
 $ip = $null
-try {
-    $printer = Get-WmiObject Win32_Printer | Where-Object { $_.Name -eq '${pn}' }
-    if ($printer) {
-        $port = Get-WmiObject Win32_TCPIPPrinterPort | Where-Object { $_.Name -eq $printer.PortName }
-        if ($port -and $port.HostAddress) { $ip = $port.HostAddress }
-    }
-} catch {}
+$wmiPrinter = Get-WmiObject Win32_Printer -Filter "Name='${pn}'" -ErrorAction SilentlyContinue
+if ($wmiPrinter) {
+    $pn2 = $wmiPrinter.PortName
+    $wmiPort = Get-WmiObject Win32_TCPIPPrinterPort -Filter "Name='$pn2'" -ErrorAction SilentlyContinue
+    if ($wmiPort) { $ip = $wmiPort.HostAddress }
+}
+Write-Output "IP detectada: $ip"
 
+$sentOK = $false
+
+# Intento 1: TCP directo port 9100 — bypasea driver y RFID completamente
 if ($ip) {
-    Write-Output ("TCP directo a " + $ip + ":9100")
+    Write-Output ("TCP: " + $ip + ":9100")
     try {
         $tcp = New-Object System.Net.Sockets.TcpClient
         $tcp.Connect($ip, 9100)
-        $stream = $tcp.GetStream()
-        $stream.Write($rawData, 0, $rawData.Length)
-        $stream.Flush()
-        Start-Sleep -Milliseconds 3000
+        $ns = $tcp.GetStream()
+        $ns.Write($rawData, 0, $rawData.Length)
+        $ns.Flush()
+        Start-Sleep -Milliseconds 2000
         $tcp.Close()
-        Write-Output "TCP OK enviados=$($rawData.Length) bytes"
-        exit 0
+        Write-Output "TCP OK"
+        $sentOK = $true
     } catch {
-        Write-Output "TCP fallo: $_ — intentando WritePrinter..."
+        Write-Output "TCP fallo: $_"
     }
-} else {
-    Write-Output "No se encontro IP TCP — usando WritePrinter RAW"
 }
 
-# ── Intento 2: WritePrinter RAW ──
-$hP = [IntPtr]::Zero
-if (-not [BrotherRaw]::OpenPrinter('${pn}',[ref]$hP,[IntPtr]::Zero)) {
-    Write-Error "OpenPrinter fallo Win32=$([BrotherRaw]::GetLastError())"
-    exit 1
-}
-Write-Output "OpenPrinter OK"
-try {
-    $di = New-Object BrotherRaw+DOC_INFO_1
-    $di.pDocName  = 'VEREX RAW'
-    $di.pOutputFile = [IntPtr]::Zero
-    $di.pDatatype = 'RAW'
-    $jobId = [BrotherRaw]::StartDocPrinter($hP,1,[ref]$di)
-    Write-Output "StartDocPrinter jobId=$jobId"
-    if ($jobId -le 0) {
-        Write-Error "StartDocPrinter fallo Win32=$([BrotherRaw]::GetLastError())"
+# Intento 2: WritePrinter RAW (si no hay TCP)
+if (-not $sentOK) {
+    Write-Output "WritePrinter RAW"
+    $hP = [IntPtr]::Zero
+    [BrotherRaw]::OpenPrinter('${pn}',[ref]$hP,[IntPtr]::Zero) | Out-Null
+    if ($hP -eq [IntPtr]::Zero) {
+        Write-Error "OpenPrinter fallo"
         exit 1
     }
     try {
+        $di = New-Object BrotherRaw+DOC_INFO_1
+        $di.pDocName = 'VEREX RAW'
+        $di.pOutputFile = [IntPtr]::Zero
+        $di.pDatatype = 'RAW'
+        $j = [BrotherRaw]::StartDocPrinter($hP,1,[ref]$di)
+        Write-Output "StartDocPrinter=$j"
+        if ($j -le 0) { Write-Error "StartDocPrinter fallo"; exit 1 }
         [BrotherRaw]::StartPagePrinter($hP) | Out-Null
         $buf = $m::AllocHGlobal($rawData.Length)
-        try {
-            $m::Copy($rawData,0,$buf,$rawData.Length)
-            $written = 0
-            $ok = [BrotherRaw]::WritePrinter($hP,$buf,$rawData.Length,[ref]$written)
-            Write-Output "WritePrinter ok=$ok written=$written total=$($rawData.Length)"
-        } finally { $m::FreeHGlobal($buf) }
+        $m::Copy($rawData,0,$buf,$rawData.Length)
+        $wr = 0
+        [BrotherRaw]::WritePrinter($hP,$buf,$rawData.Length,[ref]$wr) | Out-Null
+        Write-Output "WritePrinter written=$wr"
+        $m::FreeHGlobal($buf)
         [BrotherRaw]::EndPagePrinter($hP) | Out-Null
-    } finally { [BrotherRaw]::EndDocPrinter($hP) | Out-Null }
-} finally { [BrotherRaw]::ClosePrinter($hP) | Out-Null }
+        [BrotherRaw]::EndDocPrinter($hP) | Out-Null
+    } finally {
+        [BrotherRaw]::ClosePrinter($hP) | Out-Null
+    }
+}
 exit 0
 `
 }
