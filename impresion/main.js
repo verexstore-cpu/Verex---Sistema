@@ -391,22 +391,31 @@ try {
     $hDC = [GdiLabel]::CreateDC('WINSPOOL','${pn}',$null,$dmPtr)
     if ($hDC -eq [IntPtr]::Zero) {
         $err = [GdiLabel]::GetLastError()
-        Write-Error "CreateDC fallo. Impresora='${pn}' Error=$err"
+        Write-Error "CreateDC fallo. Impresora='${pn}' Win32Error=$err"
         exit 1
     }
+    Write-Output "CreateDC OK hDC=$hDC"
     try {
         $dpiX   = [GdiLabel]::GetDeviceCaps($hDC,88)
         $dpiY   = [GdiLabel]::GetDeviceCaps($hDC,90)
         $printW = [int](54.0/25.4*$dpiX)
         $printH = [int](17.0/25.4*$dpiY)
+        Write-Output "DPI=$dpiX x $dpiY  printArea=$printW x $printH px"
         $full   = New-Object System.Drawing.Bitmap('${png}')
+        Write-Output "PNG cargado: $($full.Width)x$($full.Height) px"
         $sliceH = [int]($full.Height / $pages)
         $di = New-Object GdiLabel+DOCINFO
         $di.cbSize       = $m::SizeOf([GdiLabel+DOCINFO])
         $di.lpszDocName  = 'VEREX Etiqueta'
         $di.lpszOutput   = [IntPtr]::Zero
         $di.lpszDatatype = [IntPtr]::Zero
-        if ([GdiLabel]::StartDoc($hDC,[ref]$di) -le 0) { $full.Dispose(); exit 1 }
+        $docId = [GdiLabel]::StartDoc($hDC,[ref]$di)
+        Write-Output "StartDoc=$docId"
+        if ($docId -le 0) {
+            $err = [GdiLabel]::GetLastError()
+            Write-Error "StartDoc fallo Win32Error=$err"
+            $full.Dispose(); exit 1
+        }
         try {
             for ($i=0; $i -lt $pages; $i++) {
                 $rect  = New-Object System.Drawing.Rectangle(0,($i*$sliceH),$full.Width,$sliceH)
@@ -415,15 +424,19 @@ try {
                     $hBmp = $slice.GetHbitmap()
                     $mDC  = [GdiLabel]::CreateCompatibleDC($hDC)
                     $old  = [GdiLabel]::SelectObject($mDC,$hBmp)
-                    [GdiLabel]::StartPage($hDC) | Out-Null
-                    [GdiLabel]::StretchBlt($hDC,0,0,$printW,$printH,$mDC,0,0,$slice.Width,$slice.Height,$SRCCOPY) | Out-Null
-                    [GdiLabel]::EndPage($hDC) | Out-Null
+                    $sp   = [GdiLabel]::StartPage($hDC)
+                    $blt  = [GdiLabel]::StretchBlt($hDC,0,0,$printW,$printH,$mDC,0,0,$slice.Width,$slice.Height,$SRCCOPY)
+                    $ep   = [GdiLabel]::EndPage($hDC)
+                    Write-Output "Pagina $($i+1): StartPage=$sp StretchBlt=$blt EndPage=$ep"
                     [GdiLabel]::SelectObject($mDC,$old) | Out-Null
                     [GdiLabel]::DeleteObject($hBmp) | Out-Null
                     [GdiLabel]::DeleteDC($mDC) | Out-Null
                 } finally { $slice.Dispose() }
             }
-        } finally { [GdiLabel]::EndDoc($hDC) | Out-Null }
+        } finally {
+            $ed = [GdiLabel]::EndDoc($hDC)
+            Write-Output "EndDoc=$ed"
+        }
         $full.Dispose()
     } finally { [GdiLabel]::DeleteDC($hDC) | Out-Null }
 } finally { $m::FreeHGlobal($dmPtr) }
@@ -465,16 +478,23 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
           return
         }
         try {
+          // Esperar a que el renderer pinte el contenido (did-finish-load no garantiza paint)
+          await new Promise(r => setTimeout(r, 300))
           const img = await win.webContents.capturePage()
           win.close(); fs.unlink(tmpFile, () => {})
           if (!img || img.isEmpty()) {
             resolve({ success: false, error: 'Error capturando imagen del label' }); return
           }
+          const pngBuf = img.toPNG()
+          // Guardar PNG de debug en escritorio para verificar contenido visualmente
+          const dbgPng = path.join(app.getPath('desktop'), 'verex-debug-label.png')
+          fs.writeFileSync(dbgPng, pngBuf)
           const tmpPng = path.join(os.tmpdir(), `verex-lbl-${Date.now()}.png`)
-          fs.writeFileSync(tmpPng, img.toPNG())
+          fs.writeFileSync(tmpPng, pngBuf)
           const r = await runPs1(buildGdiPrintScript(printerName || '', tmpPng, profileFile, PC), 30000)
           fs.unlink(tmpPng, () => {})
-          resolve({ success: r.ok, error: r.error })
+          // Incluir stdout en el mensaje de éxito para diagnóstico
+          resolve({ success: r.ok, error: r.ok ? null : r.error, debug: r.ok ? r.error : null })
         } catch (e) {
           win.close(); fs.unlink(tmpFile, () => {})
           resolve({ success: false, error: e.message })

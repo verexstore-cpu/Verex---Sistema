@@ -699,7 +699,7 @@ function toast(msg, isError = false) {
 async function imprimir(html, widthMm, heightMm, pageCount = 1) {
   toast('Enviando a impresora...');
   const result = await window.electronAPI.imprimir(html, widthMm, heightMm, printerName, pageCount);
-  if (result.success) toast('✅ Impreso correctamente');
+  if (result.success) toast('✅ Impreso · ' + (result.debug || 'OK'));
   else toast('❌ Error: ' + (result.error || 'desconocido'), true);
 }
 
