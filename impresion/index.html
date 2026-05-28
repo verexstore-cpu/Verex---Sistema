@@ -325,6 +325,105 @@
     font-size:14px; cursor:pointer; transition:all .2s; line-height:1;
   }
   .roll-save-btn:hover { border-color:var(--gold); color:var(--gold); }
+
+  /* ─── MODAL WIFI ─── */
+  .wifi-overlay {
+    display: none; position: fixed; inset: 0; z-index: 1000;
+    background: rgba(0,0,0,.65); align-items: center; justify-content: center;
+  }
+  .wifi-overlay.open { display: flex; }
+  .wifi-modal {
+    background: #0e0e1a; border: 1px solid var(--gold); border-radius: 16px;
+    padding: 28px; width: 460px; max-width: 95vw; max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 8px 40px rgba(0,0,0,.5);
+  }
+  .wifi-modal h3 {
+    color: var(--gold); font-size: 13px; font-weight: 800;
+    letter-spacing: 2px; text-transform: uppercase; margin-bottom: 18px;
+  }
+  .wifi-instructions {
+    background: #141428; border-radius: 10px; padding: 14px; margin-bottom: 18px;
+    border-left: 3px solid var(--gold);
+  }
+  .wifi-instructions .wi-title {
+    font-size: 11px; font-weight: 700; color: var(--silver-text);
+    text-transform: uppercase; letter-spacing: .8px; margin-bottom: 8px;
+  }
+  .wifi-instructions ol { font-size: 12px; color: var(--silver-dim); padding-left: 18px; line-height: 2; }
+  .wifi-instructions ol li strong { color: var(--silver-text); }
+  .wifi-field-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .wifi-field-row input {
+    flex: 1; background: #161622; border: 1px solid #2a2a3a;
+    color: var(--silver-text); border-radius: 8px; padding: 9px 12px; font-size: 14px;
+  }
+  .wifi-field-row input:focus { outline: none; border-color: var(--gold); }
+  .wifi-scan-btn {
+    background: #161622; border: 1px solid rgba(184,194,204,.2);
+    color: var(--silver-text); border-radius: 8px; padding: 9px 13px;
+    font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    transition: all .2s;
+  }
+  .wifi-scan-btn:hover { border-color: rgba(184,194,204,.5); }
+  .wifi-candidates {
+    display: none; background: #141428; border-radius: 8px;
+    padding: 10px; margin-bottom: 10px;
+  }
+  .wifi-candidates.visible { display: block; }
+  .wifi-candidate {
+    padding: 8px 10px; border-radius: 6px; font-size: 13px;
+    color: var(--silver-text); cursor: pointer; display: flex;
+    align-items: center; gap: 8px; transition: background .15s;
+  }
+  .wifi-candidate:hover { background: #1e1e30; }
+  .wifi-candidate .badge {
+    font-size: 10px; background: rgba(201,168,64,.2); color: var(--gold);
+    padding: 2px 7px; border-radius: 4px; font-weight: 700;
+  }
+  .wifi-status {
+    font-size: 12px; color: var(--silver-dim); margin-bottom: 14px;
+    min-height: 16px; padding: 0 2px;
+  }
+  .wifi-status.ok  { color: #4caf50; }
+  .wifi-status.err { color: #ff6b6b; }
+  .wifi-btn-row { display: flex; gap: 8px; }
+  .wifi-btn {
+    flex: 1; padding: 10px 8px; border-radius: 8px;
+    font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer; transition: all .2s;
+  }
+  .wifi-btn.secondary {
+    background: #161622; border: 1px solid #2a2a3a; color: var(--silver-text);
+  }
+  .wifi-btn.secondary:hover { border-color: rgba(184,194,204,.5); }
+  .wifi-btn.primary {
+    background: var(--btn-dark); border: 1px solid rgba(201,168,64,.45); color: var(--gold);
+  }
+  .wifi-btn.primary:hover { border-color: var(--gold); box-shadow: 0 0 10px rgba(201,168,64,.2); }
+  .wifi-btn.close-btn {
+    flex: 0; background: #161622; border: 1px solid #2a2a3a;
+    color: var(--silver-dim); padding: 10px 14px;
+  }
+  .wifi-saved-bar {
+    margin-top: 14px; padding: 10px 14px; border-radius: 8px;
+    background: #141428; border: 1px solid #2a2a3a;
+    font-size: 12px; color: var(--silver-dim);
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .wifi-saved-bar span { flex: 1; }
+  .wifi-clear-btn {
+    background: none; border: none; color: #ff6b6b; cursor: pointer;
+    font-size: 12px; padding: 0; font-family: inherit;
+  }
+  .wifi-clear-btn:hover { color: #ff3333; }
+  /* Botón WiFi en header */
+  .btn-wifi {
+    background: var(--btn-dark); border: 1px solid rgba(184,194,204,.2);
+    color: var(--silver-dim); border-radius: 7px; padding: 6px 10px;
+    font-size: 15px; cursor: pointer; transition: all .2s; line-height: 1;
+    position: relative;
+  }
+  .btn-wifi:hover { border-color: var(--silver-text); color: var(--silver-text); }
+  .btn-wifi.connected { color: #4caf50; border-color: rgba(76,175,80,.4); }
+  .btn-wifi.connected:hover { border-color: #4caf50; }
 </style>
 </head>
 <body>
@@ -354,8 +453,49 @@
       </div>
       <button class="roll-save-btn" id="roll-save-btn" onclick="saveRollProfile()" title="Guardar configuración actual del driver como perfil de este rollo">💾</button>
     </div>
+    <div class="header-divider"></div>
+    <button class="btn-wifi" id="btn-wifi" onclick="openWifiModal()" title="Configurar WiFi de la impresora">📶</button>
   </div>
 </header>
+
+<!-- ─── MODAL WIFI ─── -->
+<div class="wifi-overlay" id="wifi-overlay" onclick="if(event.target===this)closeWifiModal()">
+  <div class="wifi-modal">
+    <h3>📶 Configurar WiFi · QL-810W</h3>
+
+    <div class="wifi-instructions">
+      <div class="wi-title">Cómo conectar la impresora al WiFi (WPS)</div>
+      <ol>
+        <li>Enciende la impresora y espera que esté lista.</li>
+        <li>Mantén presionado el <strong>botón WiFi</strong> de la QL-810W por ~2 seg.<br>
+            <span style="font-size:11px;color:#555;padding-left:2px;">El LED WiFi parpadeará en azul.</span></li>
+        <li>Presiona el <strong>botón WPS de tu router</strong> en los próximos 2 minutos.</li>
+        <li>Cuando el LED WiFi quede <strong>fijo azul</strong> → ¡conectada a la red!</li>
+        <li>Haz clic en <strong style="color:var(--gold)">Auto-detectar</strong> abajo.</li>
+      </ol>
+    </div>
+
+    <label style="display:block;font-size:11px;font-weight:700;color:var(--silver-dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px;">IP de la impresora</label>
+    <div class="wifi-field-row">
+      <input type="text" id="wifi-ip-input" placeholder="192.168.1.xxx" oninput="wifiStatusClear()">
+      <button class="wifi-scan-btn" id="btn-wifi-scan" onclick="wifiScan()">🔍 Auto-detectar</button>
+    </div>
+
+    <div class="wifi-candidates" id="wifi-candidates"></div>
+    <div class="wifi-status" id="wifi-status"></div>
+
+    <div class="wifi-btn-row">
+      <button class="wifi-btn secondary" onclick="wifiTest()">🔌 Probar conexión</button>
+      <button class="wifi-btn primary" onclick="wifiSave()">💾 Guardar IP</button>
+      <button class="wifi-btn close-btn" onclick="closeWifiModal()">✕</button>
+    </div>
+
+    <div class="wifi-saved-bar" id="wifi-saved-bar" style="display:none">
+      <span id="wifi-saved-text"></span>
+      <button class="wifi-clear-btn" onclick="wifiClear()">✕ Borrar</button>
+    </div>
+  </div>
+</div>
 
 <div class="tabs">
   <div class="tab active" onclick="setTab(0)">📦 Guía de Envío</div>
@@ -1322,12 +1462,129 @@ async function saveRollProfile() {
   }
 }
 
+// ─── WIFI MODAL ───
+let wifiSavedIp = null
+
+async function openWifiModal() {
+  document.getElementById('wifi-overlay').classList.add('open')
+  document.getElementById('wifi-status').textContent = ''
+  document.getElementById('wifi-status').className = 'wifi-status'
+  document.getElementById('wifi-candidates').classList.remove('visible')
+  // Cargar IP guardada
+  const cfg = await window.electronAPI.getWifiConfig()
+  wifiSavedIp = cfg.ip || null
+  refreshWifiSavedBar()
+  if (wifiSavedIp) document.getElementById('wifi-ip-input').value = wifiSavedIp
+}
+
+function closeWifiModal() {
+  document.getElementById('wifi-overlay').classList.remove('open')
+}
+
+function refreshWifiSavedBar() {
+  const bar = document.getElementById('wifi-saved-bar')
+  const btn = document.getElementById('btn-wifi')
+  if (wifiSavedIp) {
+    document.getElementById('wifi-saved-text').innerHTML =
+      `✅ IP activa: <strong style="color:var(--silver-text)">${wifiSavedIp}</strong> · Impresión via TCP directo`
+    bar.style.display = 'flex'
+    btn.classList.add('connected')
+    btn.title = `WiFi configurado: ${wifiSavedIp}`
+  } else {
+    bar.style.display = 'none'
+    btn.classList.remove('connected')
+    btn.title = 'Configurar WiFi de la impresora'
+  }
+}
+
+function wifiStatusClear() {
+  document.getElementById('wifi-status').textContent = ''
+  document.getElementById('wifi-status').className = 'wifi-status'
+}
+
+function wifiSetStatus(msg, type = '') {
+  const el = document.getElementById('wifi-status')
+  el.textContent = msg
+  el.className = 'wifi-status ' + type
+}
+
+async function wifiScan() {
+  const btn = document.getElementById('btn-wifi-scan')
+  btn.textContent = '⏳ Escaneando...'
+  btn.disabled = true
+  wifiSetStatus('Buscando impresoras en la red... (puede tardar ~20 seg)')
+  document.getElementById('wifi-candidates').classList.remove('visible')
+
+  try {
+    const result = await window.electronAPI.scanWifiPrinters()
+    if (result.ips && result.ips.length > 0) {
+      const container = document.getElementById('wifi-candidates')
+      container.innerHTML = `<div style="font-size:11px;color:var(--silver-dim);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Dispositivos con puerto 9100 abierto:</div>` +
+        result.ips.map(ip => `
+          <div class="wifi-candidate" onclick="selectWifiCandidate('${ip}')">
+            <span>🖨️ ${ip}</span>
+            <span class="badge">Puerto 9100</span>
+          </div>`).join('')
+      container.classList.add('visible')
+      wifiSetStatus(`✅ ${result.ips.length} dispositivo(s) encontrado(s) — haz clic para seleccionar.`, 'ok')
+    } else {
+      wifiSetStatus('⚠ No se encontraron dispositivos con puerto 9100. Verifica que la impresora esté encendida y en WiFi.', 'err')
+    }
+  } catch (e) {
+    wifiSetStatus('❌ Error al escanear: ' + e.message, 'err')
+  }
+
+  btn.textContent = '🔍 Auto-detectar'
+  btn.disabled = false
+}
+
+function selectWifiCandidate(ip) {
+  document.getElementById('wifi-ip-input').value = ip
+  wifiSetStatus(`IP seleccionada: ${ip} — haz clic en "Probar conexión" para verificar.`)
+  document.getElementById('wifi-candidates').classList.remove('visible')
+}
+
+async function wifiTest() {
+  const ip = document.getElementById('wifi-ip-input').value.trim()
+  if (!ip) { wifiSetStatus('Ingresa o detecta una IP primero.', 'err'); return }
+  wifiSetStatus('🔌 Probando conexión a ' + ip + ':9100...')
+  const result = await window.electronAPI.testWifiConfig(ip)
+  if (result.ok) {
+    wifiSetStatus('✅ Conexión exitosa — la impresora responde en el puerto 9100.', 'ok')
+  } else {
+    wifiSetStatus('❌ Sin respuesta: ' + (result.error || 'error desconocido'), 'err')
+  }
+}
+
+async function wifiSave() {
+  const ip = document.getElementById('wifi-ip-input').value.trim()
+  if (!ip) { wifiSetStatus('Ingresa una IP antes de guardar.', 'err'); return }
+  await window.electronAPI.saveWifiConfig(ip)
+  wifiSavedIp = ip
+  refreshWifiSavedBar()
+  wifiSetStatus(`✅ IP ${ip} guardada. Las etiquetas ahora se enviarán por TCP directo.`, 'ok')
+  toast('📶 WiFi configurado: ' + ip)
+}
+
+async function wifiClear() {
+  await window.electronAPI.saveWifiConfig(null)
+  wifiSavedIp = null
+  refreshWifiSavedBar()
+  document.getElementById('wifi-ip-input').value = ''
+  wifiSetStatus('IP borrada. Se usará detección automática por USB.', '')
+}
+
 // ─── INIT ───
 loadPrinters();
 initRollSelector();
 renderJoya();
 renderItemsForm();
 renderRecibo();
+// Cargar estado WiFi al arrancar
+window.electronAPI.getWifiConfig().then(cfg => {
+  wifiSavedIp = cfg.ip || null
+  refreshWifiSavedBar()
+})
 </script>
 </body>
 </html>

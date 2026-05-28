@@ -3,6 +3,7 @@ const path = require('path')
 const fs = require('fs')
 const os = require('os')
 const http = require('http')
+const net = require('net')
 const { exec } = require('child_process')
 
 let mainWindow
@@ -103,6 +104,102 @@ function startPrintServer() {
 function getProfilePath(rollType) {
   return path.join(app.getPath('userData'), `verex-roll-${rollType}.devmode`)
 }
+
+// ── Config JSON (WiFi IP, etc.) ───────────────────────────────────────────────
+function getConfigPath() {
+  return path.join(app.getPath('userData'), 'verex-config.json')
+}
+function loadConfig() {
+  try { return JSON.parse(fs.readFileSync(getConfigPath(), 'utf8')) } catch { return {} }
+}
+function saveConfig(obj) {
+  const updated = { ...loadConfig(), ...obj }
+  fs.writeFileSync(getConfigPath(), JSON.stringify(updated, null, 2), 'utf8')
+}
+
+// ── WiFi IPC handlers ─────────────────────────────────────────────────────────
+ipcMain.handle('get-wifi-config', () => {
+  const cfg = loadConfig()
+  return { ip: cfg.printerIp || null }
+})
+
+ipcMain.handle('save-wifi-config', (_, { ip }) => {
+  saveConfig({ printerIp: ip ? ip.trim() : null })
+  return { ok: true }
+})
+
+ipcMain.handle('test-wifi-config', (_, { ip }) => {
+  return new Promise(resolve => {
+    const socket = net.createConnection({ host: ip, port: 9100, timeout: 3000 })
+    socket.on('connect', () => { socket.destroy(); resolve({ ok: true }) })
+    socket.on('timeout', () => { socket.destroy(); resolve({ ok: false, error: 'Sin respuesta (timeout)' }) })
+    socket.on('error', (e) => { resolve({ ok: false, error: e.message }) })
+  })
+})
+
+ipcMain.handle('scan-wifi-printers', async () => {
+  // Escanea dispositivos del ARP cache + subnet propia buscando puerto 9100
+  const script = `
+Add-Type -TypeDefinition @"
+using System;
+using System.Net.Sockets;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+public class NetScan {
+    public static List<string> Scan(string[] ips, int port, int ms) {
+        var found = new List<string>();
+        var tasks = new List<Task<string>>();
+        foreach (var ip in ips) {
+            var ipCopy = ip;
+            tasks.Add(Task.Run(() => {
+                try {
+                    using (var c = new TcpClient()) {
+                        if (c.ConnectAsync(ipCopy, port).Wait(ms)) return ipCopy;
+                    }
+                } catch {}
+                return null;
+            }));
+        }
+        Task.WaitAll(tasks.ToArray());
+        foreach (var t in tasks) { if (t.Result != null) found.Add(t.Result); }
+        return found;
+    }
+}
+"@ -Language CSharp
+
+$candidates = [System.Collections.Generic.HashSet[string]]::new()
+
+# 1. ARP cache
+$arpLines = arp -a
+foreach ($line in $arpLines) {
+    if ($line -match '\s+(\d+\.\d+\.\d+\.\d+)\s+') {
+        $ip = $matches[1]
+        if (-not ($ip -like '224.*' -or $ip -like '239.*' -or $ip -eq '255.255.255.255' -or $ip -like '169.254.*')) {
+            [void]$candidates.Add($ip)
+        }
+    }
+}
+
+# 2. Subnet propia (primeros 254 hosts)
+$localIps = [System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) |
+    Where-Object { $_.AddressFamily -eq 'InterNetwork' }
+foreach ($localIp in $localIps) {
+    $parts = $localIp.ToString().Split('.')
+    if ($parts.Length -eq 4) {
+        $base = "$($parts[0]).$($parts[1]).$($parts[2])."
+        1..254 | ForEach-Object { [void]$candidates.Add($base + $_) }
+    }
+}
+
+$ips = @($candidates)
+if ($ips.Count -eq 0) { Write-Output ""; exit 0 }
+$found = [NetScan]::Scan($ips, 9100, 500)
+if ($found.Count -gt 0) { $found -join ',' } else { Write-Output "" }
+`
+  const r = await runPs1(script, 45000)
+  const ips = (r.ok && r.out) ? r.out.split(',').map(s => s.trim()).filter(Boolean) : []
+  return { ok: r.ok, ips, error: r.error }
+})
 
 // Ejecuta un script PowerShell en archivo temporal y devuelve { ok, error }
 function runPs1(script, timeout = 15000) {
@@ -339,7 +436,7 @@ ipcMain.handle('get-printers', async () => {
 // valid_flag = 0x8C: width+length válidos, media_type NO válido → impresora
 // NO verifica RFID. El trabajo nunca pasa por el driver de Brother.
 // pageCount: etiquetas apiladas verticalmente en el PNG de entrada.
-function buildRawPrintScript(printerName, pngFile, pageCount) {
+function buildRawPrintScript(printerName, pngFile, pageCount, forcedIp = null) {
   const pn  = printerName.replace(/'/g, "''")
   const png = pngFile.replace(/\\/g, '\\\\').replace(/'/g, "''")
   return `
@@ -443,7 +540,11 @@ Write-Output "RAW-PRINT impresora='${pn}' paginas=$pages"
 $rawData = [BrotherRaw]::MakeRaster('${png}',$pages,638,201,720)
 Write-Output "Raster: $($rawData.Length) bytes"
 
-# Auto-detectar IP de impresora via WMI (para TCP directo port 9100)
+${forcedIp
+    ? `# IP configurada manualmente en VEREX
+$ip = '${forcedIp.replace(/'/g, "''")}'
+Write-Output "IP configurada: $ip"`
+    : `# Auto-detectar IP de impresora via WMI (para TCP directo port 9100)
 $ip = $null
 $wmiPrinter = Get-WmiObject Win32_Printer -Filter "Name='${pn}'" -ErrorAction SilentlyContinue
 if ($wmiPrinter) {
@@ -451,7 +552,8 @@ if ($wmiPrinter) {
     $wmiPort = Get-WmiObject Win32_TCPIPPrinterPort -Filter "Name='$pn2'" -ErrorAction SilentlyContinue
     if ($wmiPort) { $ip = $wmiPort.HostAddress }
 }
-Write-Output "IP detectada: $ip"
+Write-Output "IP detectada: $ip"`
+}
 
 $sentOK = $false
 
@@ -564,7 +666,8 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
           fs.writeFileSync(path.join(app.getPath('desktop'), 'verex-debug-label.png'), pngBuf)
           const tmpPng = path.join(os.tmpdir(), `verex-lbl-${Date.now()}.png`)
           fs.writeFileSync(tmpPng, pngBuf)
-          const r = await runPs1(buildRawPrintScript(printerName || '', tmpPng, PC), 35000)
+          const cfg = loadConfig()
+          const r = await runPs1(buildRawPrintScript(printerName || '', tmpPng, PC, cfg.printerIp || null), 35000)
           fs.unlink(tmpPng, () => {})
           done({ success: r.ok, error: r.ok ? null : r.error, debug: r.out })
         } catch (e) {

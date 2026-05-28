@@ -13,4 +13,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onLoadPdfRecibo:   (cb) => ipcRenderer.on('load-pdf-recibo',   (_, data) => cb(data)),
   onLoadPdfGuia:     (cb) => ipcRenderer.on('load-pdf-guia',     (_, data) => cb(data)),
   onLoadPdfEtiqueta: (cb) => ipcRenderer.on('load-pdf-etiqueta', (_, data) => cb(data)),
+  // WiFi / TCP directo
+  getWifiConfig:     ()       => ipcRenderer.invoke('get-wifi-config'),
+  saveWifiConfig:    (ip)     => ipcRenderer.invoke('save-wifi-config', { ip }),
+  testWifiConfig:    (ip)     => ipcRenderer.invoke('test-wifi-config', { ip }),
+  scanWifiPrinters:  ()       => ipcRenderer.invoke('scan-wifi-printers'),
 })
