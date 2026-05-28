@@ -483,7 +483,9 @@ public class BrotherRaw {
             for(int page=0;page<pages;page++) {
                 o.AddRange(new byte[]{0x1B,0x40});
                 o.AddRange(new byte[]{0x1B,0x69,0x61,0x01});
-                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0A,54,17, 1,0,0,0,0,0});
+                // valid_flag=0x86: bit7=recuperar(sin luz roja) + bit2=usar ancho del cmd(54mm) + bit1=usar tipo del cmd(continuo)
+                // Con 0x80 solo el printer ignoraba ancho/tipo y usaba el RFID (29mm die-cut) → contenido cortado + mal corte
+                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x86,0x0A,54, 0, 1,0,0,0,0,0});
                 o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
                 o.AddRange(new byte[]{0x1B,0x69,0x41,0x01});
                 o.AddRange(new byte[]{0x1B,0x69,0x4B,0x08});
