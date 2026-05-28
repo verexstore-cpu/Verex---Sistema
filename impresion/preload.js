@@ -2,8 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getPrinters:    () => ipcRenderer.invoke('get-printers'),
-  imprimir: (html, widthMm, heightMm, printerName) =>
-    ipcRenderer.invoke('print-content', { html, widthMm, heightMm, printerName }),
+  imprimir: (html, widthMm, heightMm, printerName, pageCount) =>
+    ipcRenderer.invoke('print-content', { html, widthMm, heightMm, printerName, pageCount }),
   // Perfiles de rollo
   rollProfileExists: (rollType)                    => ipcRenderer.invoke('roll-profile-exists', rollType),
   saveRollProfile:   (rollType, printerName)       => ipcRenderer.invoke('save-roll-profile', { rollType, printerName }),

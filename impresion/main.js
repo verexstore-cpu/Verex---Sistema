@@ -337,43 +337,141 @@ ipcMain.handle('get-printers', async () => {
   }
 })
 
+// ── GDI print directo para DK-1204 ───────────────────────────────────────────
+// Bypasa completamente el pipeline de Electron/Chromium.
+// CreateDC recibe nuestro DEVMODE directamente → el driver valida el código RFID
+// del DEVMODE contra el cartucho físico → match → imprime a 54×17mm.
+// El contenido proviene de una captura PNG del HTML renderizado.
+// pageCount: número de etiquetas (slices verticales iguales en la imagen).
+function buildGdiPrintScript(printerName, pngFile, devModeFile, pageCount) {
+  const pn  = printerName.replace(/'/g, "''")
+  const png = pngFile.replace(/\\/g, '\\\\').replace(/'/g, "''")
+  const dmf = devModeFile.replace(/\\/g, '\\\\').replace(/'/g, "''")
+  return `
+Add-Type -TypeDefinition @"
+using System;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
+public class GdiLabel {
+    [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]
+    public struct DOCINFO {
+        public int cbSize;
+        [MarshalAs(UnmanagedType.LPWStr)] public string lpszDocName;
+        public IntPtr lpszOutput;
+        public IntPtr lpszDatatype;
+        public int fwType;
+    }
+    [DllImport("gdi32.dll",CharSet=CharSet.Unicode)]
+    public static extern IntPtr CreateDC(IntPtr drv,string dev,IntPtr port,IntPtr dm);
+    [DllImport("gdi32.dll")] public static extern bool DeleteDC(IntPtr h);
+    [DllImport("gdi32.dll")] public static extern int StartDoc(IntPtr h,ref DOCINFO d);
+    [DllImport("gdi32.dll")] public static extern int EndDoc(IntPtr h);
+    [DllImport("gdi32.dll")] public static extern int StartPage(IntPtr h);
+    [DllImport("gdi32.dll")] public static extern int EndPage(IntPtr h);
+    [DllImport("gdi32.dll")] public static extern int GetDeviceCaps(IntPtr h,int c);
+    [DllImport("gdi32.dll")] public static extern bool StretchBlt(
+        IntPtr hdcDest,int xDest,int yDest,int wDest,int hDest,
+        IntPtr hdcSrc, int xSrc, int ySrc, int wSrc, int hSrc, int rop);
+    [DllImport("gdi32.dll")] public static extern IntPtr CreateCompatibleDC(IntPtr h);
+    [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr h);
+    [DllImport("gdi32.dll")] public static extern IntPtr SelectObject(IntPtr h,IntPtr o);
+}
+"@ -Language CSharp -ReferencedAssemblies "System.Drawing"
+$m       = [Runtime.InteropServices.Marshal]
+$SRCCOPY = 0x00CC0020
+$pages   = ${pageCount}
+$bytes   = [IO.File]::ReadAllBytes('${dmf}')
+$dmPtr   = $m::AllocHGlobal($bytes.Length)
+$m::Copy($bytes,0,$dmPtr,$bytes.Length)
+try {
+    $hDC = [GdiLabel]::CreateDC([IntPtr]::Zero,'${pn}',[IntPtr]::Zero,$dmPtr)
+    if ($hDC -eq [IntPtr]::Zero) { exit 1 }
+    try {
+        $dpiX   = [GdiLabel]::GetDeviceCaps($hDC,88)
+        $dpiY   = [GdiLabel]::GetDeviceCaps($hDC,90)
+        $printW = [int](54.0/25.4*$dpiX)
+        $printH = [int](17.0/25.4*$dpiY)
+        $full   = New-Object System.Drawing.Bitmap('${png}')
+        $sliceH = [int]($full.Height / $pages)
+        $di = New-Object GdiLabel+DOCINFO
+        $di.cbSize       = $m::SizeOf([GdiLabel+DOCINFO])
+        $di.lpszDocName  = 'VEREX Etiqueta'
+        $di.lpszOutput   = [IntPtr]::Zero
+        $di.lpszDatatype = [IntPtr]::Zero
+        if ([GdiLabel]::StartDoc($hDC,[ref]$di) -le 0) { $full.Dispose(); exit 1 }
+        try {
+            for ($i=0; $i -lt $pages; $i++) {
+                $rect  = New-Object System.Drawing.Rectangle(0,($i*$sliceH),$full.Width,$sliceH)
+                $slice = $full.Clone($rect,[System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+                try {
+                    $hBmp = $slice.GetHbitmap()
+                    $mDC  = [GdiLabel]::CreateCompatibleDC($hDC)
+                    $old  = [GdiLabel]::SelectObject($mDC,$hBmp)
+                    [GdiLabel]::StartPage($hDC) | Out-Null
+                    [GdiLabel]::StretchBlt($hDC,0,0,$printW,$printH,$mDC,0,0,$slice.Width,$slice.Height,$SRCCOPY) | Out-Null
+                    [GdiLabel]::EndPage($hDC) | Out-Null
+                    [GdiLabel]::SelectObject($mDC,$old) | Out-Null
+                    [GdiLabel]::DeleteObject($hBmp) | Out-Null
+                    [GdiLabel]::DeleteDC($mDC) | Out-Null
+                } finally { $slice.Dispose() }
+            }
+        } finally { [GdiLabel]::EndDoc($hDC) | Out-Null }
+        $full.Dispose()
+    } finally { [GdiLabel]::DeleteDC($hDC) | Out-Null }
+} finally { $m::FreeHGlobal($dmPtr) }
+exit 0
+`
+}
+
 // ── Imprimir sin diálogo ──
-ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printerName }) => {
+// pageCount: número de etiquetas DK-1204 en el HTML (slices verticales iguales)
+ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printerName, pageCount }) => {
+  const PC = Math.max(1, parseInt(pageCount) || 1)
+
+  // Dimensiones de ventana: para DK-1204 exactamente 1 label por fila (204×64px @ 96dpi)
+  const LW = Math.ceil(54 * 96 / 25.4)   // 204px
+  const LH = Math.ceil(17 * 96 / 25.4)   // 64px
+  const winW = widthMm === 0 ? LW  : 1100
+  const winH = widthMm === 0 ? LH * PC : 750
+
   return new Promise((resolve) => {
     const tmpFile = path.join(os.tmpdir(), `verex-${Date.now()}.html`)
     fs.writeFileSync(tmpFile, html, 'utf8')
 
     const win = new BrowserWindow({
       show: false,
+      width: winW,
+      height: winH,
       webPreferences: { nodeIntegration: false, contextIsolation: true },
     })
 
     win.loadFile(tmpFile)
 
     win.webContents.once('did-finish-load', async () => {
-      // widthMm === 0 → etiquetas DK-1204: webContents.print() SIN pageSize.
-      //   El DEVMODE del driver ya fue configurado correctamente por load-roll-profile
-      //   (via Spooler API), así que el driver Brother valida el rollo físico contra
-      //   su propio DEVMODE → sin error de tipo de rollo.
-      // widthMm  >  0 → guías / recibos: webContents.print() con pageSize explícito.
+      // ── DK-1204: GDI directo (bypasa Electron print pipeline) ──
       if (widthMm === 0) {
-        // Etiquetas DK-1204: NO especificar pageSize — usar el DEVMODE almacenado tal cual.
-        // El DEVMODE bypass tiene el código RFID del cartucho (ej. DK-1201) intacto
-        // + dimensiones 54×17mm en campos estándar.
-        // Si Electron sobreescribiera el DEVMODE con pageSize, DocumentProperties
-        // actualizaría el código privado al DK-1204 → mismatch con RFID DK-1201 → error.
-        // Sin pageSize, Electron usa el DEVMODE almacenado sin modificarlo → validación pasa.
-        // El tamaño del contenido lo controla @page { size: 54mm 17mm; } en el HTML.
-        win.webContents.print({
-          silent: true,
-          printBackground: true,
-          deviceName: printerName || '',
-          margins: { marginType: 'none' },
-        }, (success, errorType) => {
-          win.close()
-          fs.unlink(tmpFile, () => {})
-          resolve({ success, error: errorType || null })
-        })
+        const profileFile = getProfilePath('dk1204')
+        if (!fs.existsSync(profileFile)) {
+          win.close(); fs.unlink(tmpFile, () => {})
+          resolve({ success: false, error: 'Perfil DK-1204 no encontrado. Haz clic en 💎 DK-1204 → cierra las prefs → haz clic en 💾' })
+          return
+        }
+        try {
+          const img = await win.webContents.capturePage()
+          win.close(); fs.unlink(tmpFile, () => {})
+          if (!img || img.isEmpty()) {
+            resolve({ success: false, error: 'Error capturando imagen del label' }); return
+          }
+          const tmpPng = path.join(os.tmpdir(), `verex-lbl-${Date.now()}.png`)
+          fs.writeFileSync(tmpPng, img.toPNG())
+          const r = await runPs1(buildGdiPrintScript(printerName || '', tmpPng, profileFile, PC), 30000)
+          fs.unlink(tmpPng, () => {})
+          resolve({ success: r.ok, error: r.error })
+        } catch (e) {
+          win.close(); fs.unlink(tmpFile, () => {})
+          resolve({ success: false, error: e.message })
+        }
         return
       }
 
@@ -383,7 +481,6 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
         const px = await win.webContents.executeJavaScript('document.body.scrollHeight')
         finalHeightMm = Math.ceil((px / 96) * 25.4) + 6
       }
-
       win.webContents.print({
         silent: true,
         printBackground: true,
@@ -394,8 +491,7 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
         },
         margins: { marginType: 'none' },
       }, (success, errorType) => {
-        win.close()
-        fs.unlink(tmpFile, () => {})
+        win.close(); fs.unlink(tmpFile, () => {})
         resolve({ success, error: errorType || null })
       })
     })

@@ -696,9 +696,9 @@ function toast(msg, isError = false) {
 }
 
 // ─── IMPRIMIR VIA ELECTRON ───
-async function imprimir(html, widthMm, heightMm) {
+async function imprimir(html, widthMm, heightMm, pageCount = 1) {
   toast('Enviando a impresora...');
-  const result = await window.electronAPI.imprimir(html, widthMm, heightMm, printerName);
+  const result = await window.electronAPI.imprimir(html, widthMm, heightMm, printerName, pageCount);
   if (result.success) toast('✅ Impreso correctamente');
   else toast('❌ Error: ' + (result.error || 'desconocido'), true);
 }
@@ -1040,7 +1040,7 @@ async function imprimirJoya() {
 .s{font-size:6pt;color:#666;font-weight:400;}
 .p{font-size:10pt;font-weight:900;white-space:nowrap;}
 </style></head><body>${etiquetas}</body></html>`;
-  await imprimir(html, 0, 0); // widthMm=0 → usa el DEVMODE del driver (DK-1204)
+  await imprimir(html, 0, 0, cant); // widthMm=0 → GDI directo con DEVMODE DK-1204
 }
 
 // ─── RECIBO ───
@@ -1218,7 +1218,7 @@ async function imprimirTodasEtiquetas() {
 .e { width: 54mm; height: 17mm; overflow: hidden; page-break-after: always; }
 .e img { width: 54mm; height: 17mm; display: block; object-fit: fill; }
 </style></head><body>${etqs}</body></html>`;
-  await imprimir(html, 0, 0); // widthMm=0 → usa el DEVMODE del driver (DK-1204)
+  await imprimir(html, 0, 0, etiqPages.length); // widthMm=0 → GDI directo con DEVMODE DK-1204
 }
 
 // ─── RECIBIR PDFs DESDE EL ADMIN (localhost:7891) ───
