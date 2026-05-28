@@ -334,108 +334,143 @@ ipcMain.handle('get-printers', async () => {
   }
 })
 
-// ── GDI print directo para DK-1204 ───────────────────────────────────────────
-// Bypasa completamente el pipeline de Electron/Chromium.
-// CreateDC recibe nuestro DEVMODE directamente → el driver valida el código RFID
-// del DEVMODE contra el cartucho físico → match → imprime a 54×17mm.
-// El contenido proviene de una captura PNG del HTML renderizado.
-// pageCount: número de etiquetas (slices verticales iguales en la imagen).
-function buildGdiPrintScript(printerName, pngFile, devModeFile, pageCount) {
+// ── Brother QL RAW print — bypasa driver Y firmware RFID ─────────────────────
+// Envía datos raster nativos Brother QL directamente via WritePrinter(RAW).
+// valid_flag = 0x8C: width+length válidos, media_type NO válido → impresora
+// NO verifica RFID. El trabajo nunca pasa por el driver de Brother.
+// pageCount: etiquetas apiladas verticalmente en el PNG de entrada.
+function buildRawPrintScript(printerName, pngFile, pageCount) {
   const pn  = printerName.replace(/'/g, "''")
   const png = pngFile.replace(/\\/g, '\\\\').replace(/'/g, "''")
-  const dmf = devModeFile.replace(/\\/g, '\\\\').replace(/'/g, "''")
   return `
 Add-Type -TypeDefinition @"
 using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
-public class GdiLabel {
+public class BrotherRaw {
     [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]
-    public struct DOCINFO {
-        public int cbSize;
-        [MarshalAs(UnmanagedType.LPWStr)] public string lpszDocName;
-        public IntPtr lpszOutput;
-        public IntPtr lpszDatatype;
-        public int fwType;
+    public struct DOC_INFO_1 {
+        [MarshalAs(UnmanagedType.LPWStr)] public string pDocName;
+        public IntPtr pOutputFile;
+        [MarshalAs(UnmanagedType.LPWStr)] public string pDatatype;
     }
-    [DllImport("gdi32.dll",CharSet=CharSet.Unicode)]
-    public static extern IntPtr CreateDC(string drv,string dev,string port,IntPtr dm);
-    [DllImport("gdi32.dll")] public static extern bool DeleteDC(IntPtr h);
-    [DllImport("gdi32.dll")] public static extern int StartDoc(IntPtr h,ref DOCINFO d);
-    [DllImport("gdi32.dll")] public static extern int EndDoc(IntPtr h);
-    [DllImport("gdi32.dll")] public static extern int StartPage(IntPtr h);
-    [DllImport("gdi32.dll")] public static extern int EndPage(IntPtr h);
-    [DllImport("gdi32.dll")] public static extern int GetDeviceCaps(IntPtr h,int c);
-    [DllImport("gdi32.dll")] public static extern bool StretchBlt(
-        IntPtr hdcDest,int xDest,int yDest,int wDest,int hDest,
-        IntPtr hdcSrc, int xSrc, int ySrc, int wSrc, int hSrc, int rop);
-    [DllImport("gdi32.dll")] public static extern IntPtr CreateCompatibleDC(IntPtr h);
-    [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr h);
-    [DllImport("gdi32.dll")] public static extern IntPtr SelectObject(IntPtr h,IntPtr o);
+    [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)]
+    public static extern bool OpenPrinter(string n,out IntPtr h,IntPtr d);
+    [DllImport("winspool.drv",SetLastError=true)]
+    public static extern bool ClosePrinter(IntPtr h);
+    [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)]
+    public static extern int StartDocPrinter(IntPtr h,int level,ref DOC_INFO_1 di);
+    [DllImport("winspool.drv",SetLastError=true)]
+    public static extern bool EndDocPrinter(IntPtr h);
+    [DllImport("winspool.drv",SetLastError=true)]
+    public static extern bool StartPagePrinter(IntPtr h);
+    [DllImport("winspool.drv",SetLastError=true)]
+    public static extern bool EndPagePrinter(IntPtr h);
+    [DllImport("winspool.drv",SetLastError=true)]
+    public static extern bool WritePrinter(IntPtr h,IntPtr pBuf,int cbBuf,out int written);
     [DllImport("kernel32.dll")] public static extern int GetLastError();
+
+    static byte[] PackBits(byte[] input) {
+        var o = new List<byte>(); int i = 0;
+        while (i < input.Length) {
+            if (i+1 < input.Length && input[i] == input[i+1]) {
+                int j=i; while (j<input.Length && j-i<128 && input[j]==input[i]) j++;
+                o.Add((byte)(-(j-i-1)&0xFF)); o.Add(input[i]); i=j;
+            } else {
+                int j=i+1;
+                while (j<input.Length && j-i<128 && !(j+1<input.Length && input[j]==input[j+1])) j++;
+                o.Add((byte)(j-i-1)); for(int k=i;k<j;k++) o.Add(input[k]); i=j;
+            }
+        }
+        return o.ToArray();
+    }
+
+    public static byte[] MakeRaster(string pngPath,int pages,int printW,int printH,int headDots) {
+        int leftPad=(headDots-printW)/2, rowBytes=headDots/8;
+        var o=new List<byte>();
+        // Init + raster mode
+        o.AddRange(new byte[]{0x1B,0x40,0x1B,0x69,0x61,0x01});
+        // Print info: valid_flag=0x8C (width+length OK, media_type NOT set → no RFID check)
+        var np=BitConverter.GetBytes((short)pages);
+        o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x8C,0x0B,54,17, np[0],np[1],0,0,0,0});
+        // Mode: auto-cut ON (die-cut)
+        o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
+        // Cut every 1 label
+        o.AddRange(new byte[]{0x1B,0x69,0x41,0x01});
+        // Expanded mode: cut at end
+        o.AddRange(new byte[]{0x1B,0x69,0x4B,0x08});
+        // Margins = 0
+        o.AddRange(new byte[]{0x1B,0x69,0x64,0x00,0x00});
+
+        using(var src=new Bitmap(pngPath)) {
+            int sliceH=src.Height/pages;
+            for(int page=0;page<pages;page++) {
+                var rect=new Rectangle(0,page*sliceH,src.Width,sliceH);
+                using(var slice=src.Clone(rect,PixelFormat.Format32bppArgb))
+                using(var rsz=new Bitmap(printW,printH)) {
+                    using(var g=Graphics.FromImage(rsz)) {
+                        g.InterpolationMode=InterpolationMode.HighQualityBicubic;
+                        g.DrawImage(slice,0,0,printW,printH);
+                    }
+                    for(int y=0;y<printH;y++) {
+                        var row=new byte[rowBytes];
+                        for(int x=0;x<printW;x++) {
+                            var c=rsz.GetPixel(x,y);
+                            if(c.R*0.299+c.G*0.587+c.B*0.114<128) {
+                                int pos=leftPad+x;
+                                if(pos>=0&&pos<headDots) row[pos/8]|=(byte)(0x80>>(pos%8));
+                            }
+                        }
+                        var cmp=PackBits(row);
+                        o.Add(0x67); o.Add(0x00); o.Add((byte)cmp.Length);
+                        o.AddRange(cmp);
+                    }
+                }
+                o.Add(0x0C); // print + cut
+            }
+        }
+        o.Add(0x1A); // end
+        return o.ToArray();
+    }
 }
 "@ -Language CSharp -ReferencedAssemblies "System.Drawing"
-$m       = [Runtime.InteropServices.Marshal]
-$SRCCOPY = 0x00CC0020
-$pages   = ${pageCount}
-Write-Output "GDI-PRINT impresora='${pn}' paginas=$pages"
-$bytes   = [IO.File]::ReadAllBytes('${dmf}')
-$dmPtr   = $m::AllocHGlobal($bytes.Length)
-$m::Copy($bytes,0,$dmPtr,$bytes.Length)
+$m = [Runtime.InteropServices.Marshal]
+$pages = ${pageCount}
+Write-Output "RAW-PRINT impresora='${pn}' paginas=$pages"
+$rawData = [BrotherRaw]::MakeRaster('${png}',$pages,638,201,720)
+Write-Output "Raster generado: $($rawData.Length) bytes"
+$hP = [IntPtr]::Zero
+if (-not [BrotherRaw]::OpenPrinter('${pn}',[ref]$hP,[IntPtr]::Zero)) {
+    Write-Error "OpenPrinter fallo Win32=$([BrotherRaw]::GetLastError())"
+    exit 1
+}
+Write-Output "OpenPrinter OK"
 try {
-    $hDC = [GdiLabel]::CreateDC('WINSPOOL','${pn}',$null,$dmPtr)
-    if ($hDC -eq [IntPtr]::Zero) {
-        $err = [GdiLabel]::GetLastError()
-        Write-Error "CreateDC fallo. Impresora='${pn}' Win32Error=$err"
+    $di = New-Object BrotherRaw+DOC_INFO_1
+    $di.pDocName  = 'VEREX RAW'
+    $di.pOutputFile = [IntPtr]::Zero
+    $di.pDatatype = 'RAW'
+    $jobId = [BrotherRaw]::StartDocPrinter($hP,1,[ref]$di)
+    Write-Output "StartDocPrinter jobId=$jobId"
+    if ($jobId -le 0) {
+        Write-Error "StartDocPrinter fallo Win32=$([BrotherRaw]::GetLastError())"
         exit 1
     }
-    Write-Output "CreateDC OK hDC=$hDC"
     try {
-        $dpiX   = [GdiLabel]::GetDeviceCaps($hDC,88)
-        $dpiY   = [GdiLabel]::GetDeviceCaps($hDC,90)
-        $printW = [int](54.0/25.4*$dpiX)
-        $printH = [int](17.0/25.4*$dpiY)
-        Write-Output "DPI=$dpiX x $dpiY  printArea=$printW x $printH px"
-        $full   = New-Object System.Drawing.Bitmap('${png}')
-        Write-Output "PNG cargado: $($full.Width)x$($full.Height) px"
-        $sliceH = [int]($full.Height / $pages)
-        $di = New-Object GdiLabel+DOCINFO
-        $di.cbSize       = $m::SizeOf([GdiLabel+DOCINFO])
-        $di.lpszDocName  = 'VEREX Etiqueta'
-        $di.lpszOutput   = [IntPtr]::Zero
-        $di.lpszDatatype = [IntPtr]::Zero
-        $docId = [GdiLabel]::StartDoc($hDC,[ref]$di)
-        Write-Output "StartDoc=$docId"
-        if ($docId -le 0) {
-            $err = [GdiLabel]::GetLastError()
-            Write-Error "StartDoc fallo Win32Error=$err"
-            $full.Dispose(); exit 1
-        }
+        [BrotherRaw]::StartPagePrinter($hP) | Out-Null
+        $buf = $m::AllocHGlobal($rawData.Length)
         try {
-            for ($i=0; $i -lt $pages; $i++) {
-                $rect  = New-Object System.Drawing.Rectangle(0,($i*$sliceH),$full.Width,$sliceH)
-                $slice = $full.Clone($rect,[System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-                try {
-                    $hBmp = $slice.GetHbitmap()
-                    $mDC  = [GdiLabel]::CreateCompatibleDC($hDC)
-                    $old  = [GdiLabel]::SelectObject($mDC,$hBmp)
-                    $sp   = [GdiLabel]::StartPage($hDC)
-                    $blt  = [GdiLabel]::StretchBlt($hDC,0,0,$printW,$printH,$mDC,0,0,$slice.Width,$slice.Height,$SRCCOPY)
-                    $ep   = [GdiLabel]::EndPage($hDC)
-                    Write-Output "Pagina $($i+1): StartPage=$sp StretchBlt=$blt EndPage=$ep"
-                    [GdiLabel]::SelectObject($mDC,$old) | Out-Null
-                    [GdiLabel]::DeleteObject($hBmp) | Out-Null
-                    [GdiLabel]::DeleteDC($mDC) | Out-Null
-                } finally { $slice.Dispose() }
-            }
-        } finally {
-            $ed = [GdiLabel]::EndDoc($hDC)
-            Write-Output "EndDoc=$ed"
-        }
-        $full.Dispose()
-    } finally { [GdiLabel]::DeleteDC($hDC) | Out-Null }
-} finally { $m::FreeHGlobal($dmPtr) }
+            $m::Copy($rawData,0,$buf,$rawData.Length)
+            $written = 0
+            $ok = [BrotherRaw]::WritePrinter($hP,$buf,$rawData.Length,[ref]$written)
+            Write-Output "WritePrinter ok=$ok written=$written total=$($rawData.Length)"
+        } finally { $m::FreeHGlobal($buf) }
+        [BrotherRaw]::EndPagePrinter($hP) | Out-Null
+    } finally { [BrotherRaw]::EndDocPrinter($hP) | Out-Null }
+} finally { [BrotherRaw]::ClosePrinter($hP) | Out-Null }
 exit 0
 `
 }
@@ -476,15 +511,8 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
     win.loadFile(tmpFile)
 
     win.webContents.once('did-finish-load', async () => {
-      // ── DK-1204: GDI directo (bypasa Electron print pipeline) ──
+      // ── DK-1204: RAW Brother QL raster (bypasa driver + RFID firmware) ──
       if (widthMm === 0) {
-        const profileFile = getProfilePath('dk1204')
-        if (!fs.existsSync(profileFile)) {
-          clearTimeout(guard)
-          win.close(); fs.unlink(tmpFile, () => {})
-          done({ success: false, error: 'Perfil DK-1204 no encontrado. Haz clic en 💎 DK-1204 → configura 54×17mm en Prefs → OK → haz clic en 💾' })
-          return
-        }
         try {
           // Eliminar scrollbars y forzar dimensiones exactas antes de capturar
           await win.webContents.insertCSS(
@@ -492,7 +520,6 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
             'width:54mm!important;height:' + (17 * PC) + 'mm!important;}'
           )
           await new Promise(r => setTimeout(r, 400))
-          // Capturar exactamente el área de la etiqueta (sin scrollbars)
           const img = await win.webContents.capturePage({
             x: 0, y: 0, width: LW, height: LH * PC,
           })
@@ -502,11 +529,10 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
             done({ success: false, error: 'Captura vacía — intenta de nuevo' }); return
           }
           const pngBuf = img.toPNG()
-          // PNG de debug en escritorio para verificar contenido
           fs.writeFileSync(path.join(app.getPath('desktop'), 'verex-debug-label.png'), pngBuf)
           const tmpPng = path.join(os.tmpdir(), `verex-lbl-${Date.now()}.png`)
           fs.writeFileSync(tmpPng, pngBuf)
-          const r = await runPs1(buildGdiPrintScript(printerName || '', tmpPng, profileFile, PC), 30000)
+          const r = await runPs1(buildRawPrintScript(printerName || '', tmpPng, PC), 35000)
           fs.unlink(tmpPng, () => {})
           done({ success: r.ok, error: r.ok ? null : r.error, debug: r.out })
         } catch (e) {
