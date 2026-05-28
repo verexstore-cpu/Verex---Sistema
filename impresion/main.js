@@ -445,21 +445,32 @@ exit 0
 ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printerName, pageCount }) => {
   const PC = Math.max(1, parseInt(pageCount) || 1)
 
-  // Dimensiones de ventana: para DK-1204 exactamente 1 label por fila (204×64px @ 96dpi)
-  const LW = Math.ceil(54 * 96 / 25.4)   // 204px
-  const LH = Math.ceil(17 * 96 / 25.4)   // 64px
+  // Dimensiones de ventana para DK-1204: offscreen rendering a 2× para mejor calidad
+  // offscreen:true garantiza render real aunque la ventana esté oculta
+  const LW = Math.round(54 * 96 / 25.4)   // 204px (54mm @ 96dpi)
+  const LH = Math.round(17 * 96 / 25.4)   // 64px  (17mm @ 96dpi)
   const winW = widthMm === 0 ? LW  : 1100
   const winH = widthMm === 0 ? LH * PC : 750
 
   return new Promise((resolve) => {
+    let settled = false
+    const done = (val) => { if (!settled) { settled = true; resolve(val) } }
+    // Timeout de seguridad: nunca dejar la UI colgada
+    const guard = setTimeout(() => done({ success: false, error: 'Tiempo agotado — revisa la impresora' }), 50000)
+
     const tmpFile = path.join(os.tmpdir(), `verex-${Date.now()}.html`)
     fs.writeFileSync(tmpFile, html, 'utf8')
 
+    const offscreen = widthMm === 0  // solo DK-1204 necesita offscreen
     const win = new BrowserWindow({
       show: false,
       width: winW,
       height: winH,
-      webPreferences: { nodeIntegration: false, contextIsolation: true },
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        offscreen,           // render real aunque window esté oculta
+      },
     })
 
     win.loadFile(tmpFile)
@@ -469,37 +480,33 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
       if (widthMm === 0) {
         const profileFile = getProfilePath('dk1204')
         if (!fs.existsSync(profileFile)) {
+          clearTimeout(guard)
           win.close(); fs.unlink(tmpFile, () => {})
-          resolve({ success: false, error: 'Perfil DK-1204 no encontrado. Haz clic en 💎 DK-1204 → cierra las prefs → haz clic en 💾' })
+          done({ success: false, error: 'Perfil DK-1204 no encontrado. Haz clic en 💎 DK-1204 → configura 54×17mm en Prefs → OK → haz clic en 💾' })
           return
         }
         try {
-          // CDP: forzar viewport exacto y capturar a 4× (alta resolución para impresión)
-          // Esto funciona aunque la ventana esté oculta — capturePage() no funciona en hidden
-          const LW_CSS = Math.round(54 * 96 / 25.4)  // 204 CSS-px
-          const LH_CSS = Math.round(17 * 96 / 25.4)  // 64  CSS-px
-          const DSCALE = 4  // deviceScaleFactor: produce 816×256 px por etiqueta
-          const dbg = win.webContents.debugger
-          dbg.attach('1.3')
-          await dbg.sendCommand('Emulation.setDeviceMetricsOverride', {
-            width: LW_CSS, height: LH_CSS * PC,
-            deviceScaleFactor: DSCALE, mobile: false,
-          })
-          await new Promise(r => setTimeout(r, 400))  // esperar reflow tras resize
-          const ss = await dbg.sendCommand('Page.captureScreenshot', { format: 'png' })
-          dbg.detach()
+          // Con offscreen:true, capturePage() renderiza correctamente sin ventana visible
+          await new Promise(r => setTimeout(r, 400))
+          const img = await win.webContents.capturePage()
+          clearTimeout(guard)
           win.close(); fs.unlink(tmpFile, () => {})
-          const pngBuf = Buffer.from(ss.data, 'base64')
-          // PNG de debug en escritorio
+          if (!img || img.isEmpty()) {
+            done({ success: false, error: 'Captura vacía — intenta de nuevo' }); return
+          }
+          const pngBuf = img.toPNG()
+          // PNG de debug en escritorio para verificar contenido
           fs.writeFileSync(path.join(app.getPath('desktop'), 'verex-debug-label.png'), pngBuf)
           const tmpPng = path.join(os.tmpdir(), `verex-lbl-${Date.now()}.png`)
           fs.writeFileSync(tmpPng, pngBuf)
           const r = await runPs1(buildGdiPrintScript(printerName || '', tmpPng, profileFile, PC), 30000)
           fs.unlink(tmpPng, () => {})
-          resolve({ success: r.ok, error: r.ok ? null : r.error, debug: r.out })
+          done({ success: r.ok, error: r.ok ? null : r.error, debug: r.out })
         } catch (e) {
-          win.close(); fs.unlink(tmpFile, () => {})
-          resolve({ success: false, error: e.message })
+          clearTimeout(guard)
+          try { win.close() } catch (_) {}
+          fs.unlink(tmpFile, () => {})
+          done({ success: false, error: 'Captura: ' + e.message })
         }
         return
       }
@@ -520,8 +527,9 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
         },
         margins: { marginType: 'none' },
       }, (success, errorType) => {
+        clearTimeout(guard)
         win.close(); fs.unlink(tmpFile, () => {})
-        resolve({ success, error: errorType || null })
+        done({ success, error: errorType || null })
       })
     })
   })
