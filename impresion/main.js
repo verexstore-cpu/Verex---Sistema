@@ -488,7 +488,7 @@ public class BrotherRaw {
                 // valid_flag=0x80: no fuerza parametros, el RFID del DK-2251 ya dice 62mm continuo
                 // n5-n8: numero real de lineas raster (little-endian) para que el firmware no rechace
                 byte rln0=(byte)(printH&0xFF), rln1=(byte)((printH>>8)&0xFF);
-                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0xCE,0x0A,62, 0, rln0,rln1,0,0, 0,0});
+                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0A,62, 0, rln0,rln1,0,0, 0,0});
                 o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
                 o.AddRange(new byte[]{0x1B,0x69,0x41,0x01});
                 o.AddRange(new byte[]{0x1B,0x69,0x4B,0x08});
@@ -691,10 +691,10 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
               'html,body{overflow:hidden!important;margin:0!important;padding:0!important;' +
               'width:62mm!important;height:' + heightMm + 'mm!important;}'
             )
-            await new Promise(r => setTimeout(r, 600))
+            await new Promise(r => setTimeout(r, 1000))
             captureW = GWS
             captureH = Math.round(heightMm * 96 / 25.4) * GSCALE
-            printW   = 720
+            printW   = 696   // ancho imprimible real QL-810W 62mm = 696 dots (58.9mm), no 720
             printH   = Math.round(heightMm * 300 / 25.4)  // 90mm → 1063 dots
 
           } else {
@@ -703,12 +703,12 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
               'html,body{overflow:hidden!important;margin:0!important;padding:0!important;' +
               'width:62mm!important;}'
             )
-            await new Promise(r => setTimeout(r, 600))
+            await new Promise(r => setTimeout(r, 1000))
             const cssPx = await win.webContents.executeJavaScript('document.body.scrollHeight')
             captureW = GWS
-            captureH = cssPx * GSCALE
-            printW   = 720
-            printH   = Math.round(cssPx * 300 / 96)  // px→dots a 300dpi
+            captureH = Math.max(cssPx, 1) * GSCALE
+            printW   = 696   // ancho imprimible real QL-810W 62mm = 696 dots (58.9mm), no 720
+            printH   = Math.max(Math.round(cssPx * 300 / 96), 100)  // mínimo 100 dots
           }
 
           const img = await win.webContents.capturePage({ x: 0, y: 0, width: captureW, height: captureH })
