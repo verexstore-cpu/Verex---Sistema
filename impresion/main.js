@@ -490,12 +490,12 @@ public class BrotherRaw {
         var o=new List<byte>();
         // Init + raster mode
         o.AddRange(new byte[]{0x1B,0x40,0x1B,0x69,0x61,0x01});
-        // Print info: valid_flag=0x8E, tipo=die-cut(0x0B), width=29mm, length=90mm
-        // Coincide EXACTAMENTE con lo que reporta el RFID del cartucho DK-1201
-        // → el firmware acepta el trabajo sin error de medios
-        // El raster de 638 dots igual se imprime en su totalidad — la cabeza activa los dots del bitmap
+        // Print info: valid_flag=0x8C (width+length válidos, type NO validado vs RFID)
+        // width=29mm  → coincide con RFID DK-1201 → pasa validación de ancho
+        // length=17mm → posición de corte real para DK-1204 (17mm por etiqueta)
+        // type=0x0B   → die-cut (no validado → no conflicto RFID en tipo)
         var np=BitConverter.GetBytes((short)pages);
-        o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x8E,0x0B,29,90, np[0],np[1],0,0,0,0});
+        o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x8C,0x0B,29,17, np[0],np[1],0,0,0,0});
         // Mode: auto-cut ON (die-cut)
         o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
         // Cut every 1 label
@@ -617,12 +617,16 @@ exit 0
 ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printerName, pageCount }) => {
   const PC = Math.max(1, parseInt(pageCount) || 1)
 
-  // Dimensiones de ventana para DK-1204: offscreen rendering a 2× para mejor calidad
-  // offscreen:true garantiza render real aunque la ventana esté oculta
-  const LW = Math.round(54 * 96 / 25.4)   // 204px (54mm @ 96dpi)
-  const LH = Math.round(17 * 96 / 25.4)   // 64px  (17mm @ 96dpi)
-  const winW = widthMm === 0 ? LW  : 1100
-  const winH = widthMm === 0 ? LH * PC : 750
+  // DK-1204: renderizar a 4× escala para obtener píxeles nítidos
+  // 54mm×17mm @ 96dpi = 204×64px → ×4 = 816×256px
+  // El código C# escala de 816×256 HACIA ABAJO a 638×201 → mucho mejor calidad
+  const LW   = Math.round(54 * 96 / 25.4)        // 204px base
+  const LH   = Math.round(17 * 96 / 25.4)        // 64px  base
+  const SCALE = 4
+  const LWS  = LW * SCALE                        // 816px captura
+  const LHS  = LH * SCALE                        // 256px captura
+  const winW = widthMm === 0 ? LWS : 1100
+  const winH = widthMm === 0 ? LHS * PC : 750
 
   return new Promise((resolve) => {
     let settled = false
@@ -651,14 +655,15 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
       // ── DK-1204: RAW Brother QL raster (bypasa driver + RFID firmware) ──
       if (widthMm === 0) {
         try {
-          // Eliminar scrollbars y forzar dimensiones exactas antes de capturar
+          // Zoom 4× para renderizar texto nítido antes de capturar
+          win.webContents.setZoomFactor(SCALE)
           await win.webContents.insertCSS(
             'html,body{overflow:hidden!important;margin:0!important;padding:0!important;' +
             'width:54mm!important;height:' + (17 * PC) + 'mm!important;}'
           )
-          await new Promise(r => setTimeout(r, 400))
+          await new Promise(r => setTimeout(r, 500))
           const img = await win.webContents.capturePage({
-            x: 0, y: 0, width: LW, height: LH * PC,
+            x: 0, y: 0, width: LWS, height: LHS * PC,
           })
           clearTimeout(guard)
           win.close(); fs.unlink(tmpFile, () => {})
