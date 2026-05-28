@@ -490,9 +490,12 @@ public class BrotherRaw {
         var o=new List<byte>();
         // Init + raster mode
         o.AddRange(new byte[]{0x1B,0x40,0x1B,0x69,0x61,0x01});
-        // Print info: valid_flag=0x8C (width+length OK, media_type NOT set → no RFID check)
+        // Print info: valid_flag=0x8E, tipo=die-cut(0x0B), width=29mm, length=90mm
+        // Coincide EXACTAMENTE con lo que reporta el RFID del cartucho DK-1201
+        // → el firmware acepta el trabajo sin error de medios
+        // El raster de 638 dots igual se imprime en su totalidad — la cabeza activa los dots del bitmap
         var np=BitConverter.GetBytes((short)pages);
-        o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x8C,0x0B,54,17, np[0],np[1],0,0,0,0});
+        o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x8E,0x0B,29,90, np[0],np[1],0,0,0,0});
         // Mode: auto-cut ON (die-cut)
         o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
         // Cut every 1 label
