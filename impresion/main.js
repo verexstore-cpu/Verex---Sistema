@@ -607,7 +607,7 @@ exit 0
 ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printerName, pageCount }) => {
   const PC = Math.max(1, parseInt(pageCount) || 1)
 
-  // DK-1204: renderizar a 4× escala para obtener píxeles nítidos
+  // DK-2251/Etiquetas: renderizar a 4× escala para obtener píxeles nítidos
   // 54mm×17mm @ 96dpi = 204×64px → ×4 = 816×256px
   // El código C# escala de 816×256 HACIA ABAJO a 638×201 → mucho mejor calidad
   const LW   = Math.round(54 * 96 / 25.4)        // 204px base
@@ -645,7 +645,7 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
     win.loadFile(tmpFile)
 
     win.webContents.once('did-finish-load', async () => {
-      // ── DK-1204: RAW Brother QL raster (bypasa driver + RFID firmware) ──
+      // ── DK-2251 / Etiquetas Joyería: RAW Brother QL raster (bypasa driver + RFID firmware) ──
       if (widthMm === 0) {
         try {
           await win.webContents.insertCSS(
@@ -679,25 +679,44 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
       }
 
       // ── Guías / Recibos: webContents.print() con pageSize ──
-      let finalHeightMm = heightMm
-      if (heightMm === 0) {
-        const px = await win.webContents.executeJavaScript('document.body.scrollHeight')
-        finalHeightMm = Math.ceil((px / 96) * 25.4) + 6
-      }
-      win.webContents.print({
-        silent: true,
-        printBackground: true,
-        deviceName: printerName || '',
-        pageSize: {
-          width: Math.round(widthMm * 1000),
-          height: Math.round(finalHeightMm * 1000),
-        },
-        margins: { marginType: 'none' },
-      }, (success, errorType) => {
+      try {
+        // Esperar a que CSS y fuentes terminen de renderizarse
+        await new Promise(r => setTimeout(r, 500))
+
+        let finalHeightMm = heightMm
+        if (heightMm === 0) {
+          const px = await win.webContents.executeJavaScript('document.body.scrollHeight')
+          finalHeightMm = Math.ceil((px / 96) * 25.4) + 6
+        }
+
+        // Auto-configurar DEVMODE del driver Brother antes de imprimir
+        // Garantiza que el driver tenga 62mm configurado sin importar el estado previo
+        if (printerName) {
+          const devW = Math.round(widthMm * 10)
+          const devH = Math.round((finalHeightMm > 0 ? finalHeightMm : 90) * 10)
+          await runPs1(buildDevModeScript(printerName, devW, devH), 8000)
+        }
+
+        win.webContents.print({
+          silent: true,
+          printBackground: true,
+          deviceName: printerName || '',
+          pageSize: {
+            width: Math.round(widthMm * 1000),
+            height: Math.round(finalHeightMm * 1000),
+          },
+          margins: { marginType: 'none' },
+        }, (success, errorType) => {
+          clearTimeout(guard)
+          win.close(); fs.unlink(tmpFile, () => {})
+          done({ success, error: errorType || null })
+        })
+      } catch (e) {
         clearTimeout(guard)
-        win.close(); fs.unlink(tmpFile, () => {})
-        done({ success, error: errorType || null })
-      })
+        try { win.close() } catch (_) {}
+        fs.unlink(tmpFile, () => {})
+        done({ success: false, error: 'Error guía/recibo: ' + e.message })
+      }
     })
   })
 })
