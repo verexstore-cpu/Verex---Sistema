@@ -478,22 +478,28 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
           return
         }
         try {
-          // Esperar a que el renderer pinte el contenido (did-finish-load no garantiza paint)
-          await new Promise(r => setTimeout(r, 300))
-          const img = await win.webContents.capturePage()
+          // CDP: forzar viewport exacto y capturar a 4× (alta resolución para impresión)
+          // Esto funciona aunque la ventana esté oculta — capturePage() no funciona en hidden
+          const LW_CSS = Math.round(54 * 96 / 25.4)  // 204 CSS-px
+          const LH_CSS = Math.round(17 * 96 / 25.4)  // 64  CSS-px
+          const DSCALE = 4  // deviceScaleFactor: produce 816×256 px por etiqueta
+          const dbg = win.webContents.debugger
+          dbg.attach('1.3')
+          await dbg.sendCommand('Emulation.setDeviceMetricsOverride', {
+            width: LW_CSS, height: LH_CSS * PC,
+            deviceScaleFactor: DSCALE, mobile: false,
+          })
+          await new Promise(r => setTimeout(r, 400))  // esperar reflow tras resize
+          const ss = await dbg.sendCommand('Page.captureScreenshot', { format: 'png' })
+          dbg.detach()
           win.close(); fs.unlink(tmpFile, () => {})
-          if (!img || img.isEmpty()) {
-            resolve({ success: false, error: 'Error capturando imagen del label' }); return
-          }
-          const pngBuf = img.toPNG()
-          // Guardar PNG de debug en escritorio para verificar contenido visualmente
-          const dbgPng = path.join(app.getPath('desktop'), 'verex-debug-label.png')
-          fs.writeFileSync(dbgPng, pngBuf)
+          const pngBuf = Buffer.from(ss.data, 'base64')
+          // PNG de debug en escritorio
+          fs.writeFileSync(path.join(app.getPath('desktop'), 'verex-debug-label.png'), pngBuf)
           const tmpPng = path.join(os.tmpdir(), `verex-lbl-${Date.now()}.png`)
           fs.writeFileSync(tmpPng, pngBuf)
           const r = await runPs1(buildGdiPrintScript(printerName || '', tmpPng, profileFile, PC), 30000)
           fs.unlink(tmpPng, () => {})
-          // Incluir stdout en el mensaje de éxito para diagnóstico
           resolve({ success: r.ok, error: r.ok ? null : r.error, debug: r.ok ? r.error : null })
         } catch (e) {
           win.close(); fs.unlink(tmpFile, () => {})
