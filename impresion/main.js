@@ -454,7 +454,7 @@ try {
 } catch {}
 
 if ($ip) {
-    Write-Output "TCP directo a $ip`:9100"
+    Write-Output ("TCP directo a " + $ip + ":9100")
     try {
         $tcp = New-Object System.Net.Sockets.TcpClient
         $tcp.Connect($ip, 9100)
