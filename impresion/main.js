@@ -478,6 +478,7 @@ public class BrotherRaw {
         // valid_flag=0x80 → sin validacion RFID | type=0x0A → continuo → 0x1A corta a 17mm
         int leftPad=(headDots-printW)/2, rowBytes=headDots/8;
         var o=new List<byte>();
+        o.AddRange(new byte[200]); // Brother QL reset: 200 bytes nulos limpian estado anterior
         using(var src=new Bitmap(pngPath)) {
             int sliceH=src.Height/pages;
             for(int page=0;page<pages;page++) {
@@ -485,8 +486,9 @@ public class BrotherRaw {
                 o.AddRange(new byte[]{0x1B,0x69,0x61,0x01});
                 // DK-2251: rollo continuo 62mm
                 // valid_flag=0x80: no fuerza parametros, el RFID del DK-2251 ya dice 62mm continuo
-                // El printer usa automaticamente: 720 dots activos + modo continuo + 0x1A corta a 17mm
-                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0A,62, 0, 1,0,0,0,0,0});
+                // n5-n8: numero real de lineas raster (little-endian) para que el firmware no rechace
+                byte rln0=(byte)(printH&0xFF), rln1=(byte)((printH>>8)&0xFF);
+                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0A,62, 0, rln0,rln1,0,0, 0,0});
                 o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
                 o.AddRange(new byte[]{0x1B,0x69,0x41,0x01});
                 o.AddRange(new byte[]{0x1B,0x69,0x4B,0x08});
