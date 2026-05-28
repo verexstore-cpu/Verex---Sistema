@@ -873,103 +873,90 @@ function extraerMaterial(nombre, descripcion) {
 async function generarEtiquetas() {
     if (seleccionEtiquetas.size === 0) { toast("⚠️ Selecciona al menos un producto"); return; }
     const prods = productosDisponibles.filter(p => seleccionEtiquetas.has(p.codigo));
-    toast("⏳ Generando etiquetas...");
+    toast("⏳ Generando etiquetas DK-1204...");
 
-    // Generate QR images for all products first
+    // ── Generar imágenes QR ──────────────────────────────────────────────────────
     const qrImages = {};
     await Promise.all(prods.map(p => new Promise(resolve => {
         const div = document.createElement("div");
         div.style.display = "none";
         document.body.appendChild(div);
         try {
-            const qr = new QRCode(div, {
+            new QRCode(div, {
                 text: p.codigo,
-                width: 120, height: 120,
+                width: 128, height: 128,
                 colorDark: "#000000", colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.M
             });
             setTimeout(() => {
                 const img = div.querySelector("img") || div.querySelector("canvas");
-                if (img) {
-                    if (img.tagName === "CANVAS") qrImages[p.codigo] = img.toDataURL("image/png");
-                    else qrImages[p.codigo] = img.src;
-                }
+                if (img) qrImages[p.codigo] = img.tagName === "CANVAS"
+                    ? img.toDataURL("image/png") : img.src;
                 document.body.removeChild(div);
                 resolve();
-            }, 100);
+            }, 120);
         } catch(e) { document.body.removeChild(div); resolve(); }
     })));
 
+    // ── PDF formato DK-1204: UNA ETIQUETA POR PÁGINA, 54mm × 17mm ───────────────
+    // Cada página del PDF = una etiqueta lista para imprimir directamente en la
+    // app de impresión (arrastra el PDF → "Imprimir todas").
+    // Al renderizar cada página a 638px de ancho se obtienen exactamente 201px de
+    // alto (17mm a 300dpi) → escala perfecta para el cabezal Brother QL-810W.
     const { jsPDF } = window.jspdf;
-    // Avery 5418 — medidas EXACTAS del template oficial Word
-    // Página: 4" x 6" | Margen izq: 0.444" | Margen sup: 0.5"
-    // Etiqueta: 0.75" x 0.5" | Gap X: 0.0785" | Gap Y: 0.0625"
-    const pageW = 4.0, pageH = 6.0;
-    const cols = 4, rows = 9;
-    const labelW = 0.75, labelH = 0.5;
-    const marginLeft = 0.444, marginTop = 0.5;
-    const gapX = 0.0785;
-    const gapY = 0.0625;
+    const LW = 54, LH = 17;  // mm — dimensiones exactas Brother DK-1204
+    const doc = new jsPDF({ unit: 'mm', format: [LW, LH], orientation: 'landscape' });
 
-    const doc = new jsPDF({ unit: 'in', format: [4, 6], orientation: 'portrait' });
-    let col = 0, row = 0;
+    // Layout por etiqueta (coordenadas en mm):
+    //  QR  : x=1,  y=2,  tamaño=13mm  (centrado verticalmente)
+    //  Texto: x=15.5 → x=53mm
+    //    Precio   y=6.5 (bold grande)
+    //    Material y=10.5 (normal pequeño, solo si existe)
+    //    Código   y=14.5 (bold gris)
+    const qrSz  = 13;
+    const qrX   = 1;
+    const qrY   = (LH - qrSz) / 2;   // 2mm — centrado vertical
+    const tX    = qrX + qrSz + 1.5;   // 15.5mm
+    const tMaxW = LW - tX - 1;        // ~37.5mm disponibles para texto
 
     prods.forEach((p, idx) => {
-        if (idx > 0 && col === 0 && row === 0) doc.addPage();
+        if (idx > 0) doc.addPage([LW, LH], 'landscape');
 
-        const x = marginLeft + col * (labelW + gapX);
-        const y = marginTop + row * (labelH + gapY);
-
-        // LAYOUT FIJO — todo dentro de labelW(0.75") x labelH(0.5")
-        // Fila 1: QR pequeño | Precio
-        // Fila 2: QR cont.  | Codigo  
-        // Fila 3: Material centrado
-        const pad = 0.018;
-        const qrSize = 0.17;  // QR fijo pequeño
-        const qrX = x + pad;
-        const qrY = y + pad;
-        const textX = qrX + qrSize + 0.018;
-        const textMaxW = labelW - qrSize - pad * 3 - 0.018;
-
-        // QR pequeño
+        // QR
         if (qrImages[p.codigo]) {
-            try { doc.addImage(qrImages[p.codigo], "PNG", qrX, qrY, qrSize, qrSize); }
+            try { doc.addImage(qrImages[p.codigo], "PNG", qrX, qrY, qrSz, qrSz); }
             catch(e) {}
         }
 
-        // Precio fila 1
-        const precio = "$ " + parseFloat(p.precio||0).toFixed(2);
-        doc.setFont("helvetica","bold");
-        let pSize = 6.5;
-        while (pSize > 3) { doc.setFontSize(pSize); if (doc.getTextWidth(precio) <= textMaxW) break; pSize -= 0.3; }
-        doc.setTextColor(0,0,0);
-        doc.text(precio, textX, y + 0.12);
+        // Precio — grande y negro
+        const precio = "$ " + parseFloat(p.precio || 0).toFixed(2);
+        doc.setFont("helvetica", "bold");
+        let pSz = 9;
+        while (pSz > 4) { doc.setFontSize(pSz); if (doc.getTextWidth(precio) <= tMaxW) break; pSz -= 0.5; }
+        doc.setTextColor(0, 0, 0);
+        doc.text(precio, tX, 6.5);
 
-        // Codigo fila 2
-        const codigo = p.codigo || "";
-        doc.setFont("helvetica","bold");
-        let cSize = 5;
-        while (cSize > 3) { doc.setFontSize(cSize); if (doc.getTextWidth(codigo) <= textMaxW) break; cSize -= 0.3; }
-        doc.setTextColor(60,60,60);
-        doc.text(codigo, textX, y + 0.22);
-
-        // Material fila 3 — centrado, DENTRO de la etiqueta
+        // Material — gris oscuro, solo si existe
         const material = extraerMaterial(p.nombre || "", p.descripcion || "");
         if (material) {
-            doc.setFont("helvetica","bold");
-            let mSize = 4.5;
-            while (mSize > 2.5) { doc.setFontSize(mSize); if (doc.getTextWidth(material) <= labelW - pad*2) break; mSize -= 0.3; }
-            doc.setTextColor(0,0,0);
-            doc.text(material, x + labelW/2, y + 0.34, { align: "center" });
+            doc.setFont("helvetica", "normal");
+            let mSz = 5.5;
+            while (mSz > 3) { doc.setFontSize(mSz); if (doc.getTextWidth(material) <= tMaxW) break; mSz -= 0.3; }
+            doc.setTextColor(60, 60, 60);
+            doc.text(material, tX, 10.5);
         }
 
-        col++;
-        if (col >= cols) { col = 0; row++; }
-        if (row >= rows) { col = 0; row = 0; }
+        // Código — bold gris
+        const codigo = p.codigo || "";
+        doc.setFont("helvetica", "bold");
+        let cSz = 6.5;
+        while (cSz > 3) { doc.setFontSize(cSz); if (doc.getTextWidth(codigo) <= tMaxW) break; cSz -= 0.3; }
+        doc.setTextColor(70, 70, 70);
+        doc.text(codigo, tX, 14.5);
     });
 
-    doc.save("Etiquetas_VEREX.pdf");
-    toast("✅ " + prods.length + " etiquetas generadas");
+    doc.save("Etiquetas_VEREX_DK1204.pdf");
+    toast("✅ " + prods.length + " etiqueta" + (prods.length !== 1 ? "s" : "") + " DK-1204 generadas");
 }
 
 function renderDashboard() {

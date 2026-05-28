@@ -486,28 +486,32 @@ public class BrotherRaw {
     }
 
     public static byte[] MakeRaster(string pngPath,int pages,int printW,int printH,int headDots) {
+        // ── ESTRATEGIA: mini-job completo por etiqueta ──────────────────────────────
+        // Cada etiqueta lleva su propio init + config + raster + 0x1A.
+        // Esto garantiza que 0x1A corta INMEDIATAMENTE al fin del raster (17mm)
+        // sin importar el RFID DK-1201 (90mm): en modo continuo el firmware ignora
+        // el chip RFID y corta segun los datos recibidos.
+        // ─────────────────────────────────────────────────────────────────────────────
         int leftPad=(headDots-printW)/2, rowBytes=headDots/8;
         var o=new List<byte>();
-        // Init + raster mode
-        o.AddRange(new byte[]{0x1B,0x40,0x1B,0x69,0x61,0x01});
-        // Print info: valid_flag=0x80 — SOLO bit recover, SIN bits de validacion RFID
-        // type=0x0A (CONTINUA) — en modo continuo 0x0C corta exactamente al fin del raster (17mm)
-        //   con type=0x0B (die-cut) el firmware avanzaba al die-cut del RFID (90mm) en vez de 17mm
-        // width=54mm, length=17mm → printer activa 638 dots correctos y sabe el largo de cada label
-        var np=BitConverter.GetBytes((short)pages);
-        o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0A,54,17, np[0],np[1],0,0,0,0});
-        // Mode: auto-cut ON (die-cut)
-        o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
-        // Cut every 1 label
-        o.AddRange(new byte[]{0x1B,0x69,0x41,0x01});
-        // Expanded mode: cut at end
-        o.AddRange(new byte[]{0x1B,0x69,0x4B,0x08});
-        // Margins = 0
-        o.AddRange(new byte[]{0x1B,0x69,0x64,0x00,0x00});
-
         using(var src=new Bitmap(pngPath)) {
             int sliceH=src.Height/pages;
             for(int page=0;page<pages;page++) {
+                // ── 1. Secuencia de inicio para este label ──
+                o.AddRange(new byte[]{0x1B,0x40});                   // reset impresora
+                o.AddRange(new byte[]{0x1B,0x69,0x61,0x01});         // modo raster
+                // Print info:
+                //   valid_flag=0x80  → sin validacion RFID (no luz roja)
+                //   type=0x0A        → cinta continua (0x1A corta al fin del raster)
+                //   width=54mm       → activa los 638 dots correctos del cabezal
+                //   length=17mm      → define el largo de la etiqueta
+                //   pages=1          → un label por mini-job
+                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0A,54,17, 1,0,0,0,0,0});
+                o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});         // auto-cut ON
+                o.AddRange(new byte[]{0x1B,0x69,0x41,0x01});         // cortar cada 1 label
+                o.AddRange(new byte[]{0x1B,0x69,0x4B,0x08});         // expanded: cut-at-end
+                o.AddRange(new byte[]{0x1B,0x69,0x64,0x00,0x00});    // margen = 0 dots
+                // ── 2. Datos raster de este label ──
                 var rect=new Rectangle(0,page*sliceH,src.Width,sliceH);
                 using(var slice=src.Clone(rect,PixelFormat.Format32bppArgb))
                 using(var rsz=new Bitmap(printW,printH)) {
@@ -519,6 +523,7 @@ public class BrotherRaw {
                         var row=new byte[rowBytes];
                         for(int x=0;x<printW;x++) {
                             var c=rsz.GetPixel(x,y);
+                            // Umbral 160: captura texto anti-aliased que quedaria blanco con 128
                             if(c.R*0.299+c.G*0.587+c.B*0.114<160) {
                                 int pos=leftPad+x;
                                 if(pos>=0&&pos<headDots) row[pos/8]|=(byte)(0x80>>(pos%8));
@@ -529,11 +534,12 @@ public class BrotherRaw {
                         o.AddRange(cmp);
                     }
                 }
-                // 0x0C: imprime y avanza al siguiente gap fisico (sensor detecta 17mm DK-1204)
-                o.Add(0x0C);
+                // ── 3. Cortar esta etiqueta ──
+                // 0x1A en modo continuo: imprime y corta al terminar los 201 dots (17mm)
+                // No usa la posicion de die-cut del RFID → corte exacto a 17mm
+                o.Add(0x1A);
             }
         }
-        o.Add(0x1A); // eject final
         return o.ToArray();
     }
 }
