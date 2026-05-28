@@ -485,7 +485,7 @@ public class BrotherRaw {
         return o.ToArray();
     }
 
-    public static byte[] MakeRaster(string pngPath,int pages,int printW,int printH,int headDots,int padH) {
+    public static byte[] MakeRaster(string pngPath,int pages,int printW,int printH,int headDots) {
         int leftPad=(headDots-printW)/2, rowBytes=headDots/8;
         var o=new List<byte>();
         // Init + raster mode
@@ -518,7 +518,7 @@ public class BrotherRaw {
                         var row=new byte[rowBytes];
                         for(int x=0;x<printW;x++) {
                             var c=rsz.GetPixel(x,y);
-                            if(c.R*0.299+c.G*0.587+c.B*0.114<128) {
+                            if(c.R*0.299+c.G*0.587+c.B*0.114<160) {
                                 int pos=leftPad+x;
                                 if(pos>=0&&pos<headDots) row[pos/8]|=(byte)(0x80>>(pos%8));
                             }
@@ -528,18 +528,10 @@ public class BrotherRaw {
                         o.AddRange(cmp);
                     }
                 }
-                // Rellenar con líneas en blanco hasta padH (90mm = 1063 dots a 300dpi)
-                // Necesario para que el firmware reciba el label completo antes de imprimir
-                var blank=new byte[rowBytes];
-                var blankCmp=PackBits(blank);
-                for(int y=printH;y<padH;y++) {
-                    o.Add(0x67); o.Add(0x00); o.Add((byte)blankCmp.Length);
-                    o.AddRange(blankCmp);
-                }
-                o.Add(0x0C); // print + avanzar a siguiente label
+                // 0x1A: ejecta/corta en posición actual (17mm), sin avanzar al die-cut de 90mm
+                o.Add(0x1A);
             }
         }
-        o.Add(0x1A); // fin
         return o.ToArray();
     }
 }
@@ -547,7 +539,7 @@ public class BrotherRaw {
 $m = [Runtime.InteropServices.Marshal]
 $pages = ${pageCount}
 Write-Output "RAW-PRINT impresora='${pn}' paginas=$pages"
-$rawData = [BrotherRaw]::MakeRaster('${png}',$pages,638,201,720,1063)
+$rawData = [BrotherRaw]::MakeRaster('${png}',$pages,638,201,720)
 Write-Output "Raster: $($rawData.Length) bytes"
 
 ${forcedIp
@@ -652,7 +644,10 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        offscreen,           // render real aunque window esté oculta
+        offscreen,
+        // zoomFactor en webPreferences = activo ANTES de cargar cualquier contenido
+        // garantiza renderizado a 4× desde el inicio (no requiere re-render post-load)
+        zoomFactor: offscreen ? SCALE : 1,
       },
     })
 
@@ -662,13 +657,11 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
       // ── DK-1204: RAW Brother QL raster (bypasa driver + RFID firmware) ──
       if (widthMm === 0) {
         try {
-          // Zoom 4× para renderizar texto nítido antes de capturar
-          win.webContents.setZoomFactor(SCALE)
           await win.webContents.insertCSS(
             'html,body{overflow:hidden!important;margin:0!important;padding:0!important;' +
             'width:54mm!important;height:' + (17 * PC) + 'mm!important;}'
           )
-          await new Promise(r => setTimeout(r, 500))
+          await new Promise(r => setTimeout(r, 800))
           const img = await win.webContents.capturePage({
             x: 0, y: 0, width: LWS, height: LHS * PC,
           })
