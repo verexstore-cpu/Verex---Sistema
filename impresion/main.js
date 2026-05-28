@@ -490,11 +490,12 @@ public class BrotherRaw {
         var o=new List<byte>();
         // Init + raster mode
         o.AddRange(new byte[]{0x1B,0x40,0x1B,0x69,0x61,0x01});
-        // Print info: valid_flag=0x8E — coincide EXACTAMENTE con RFID DK-1201
-        // width=29mm, length=90mm, type=die-cut(0x0B) → pasa validación RFID sin error
-        // El contenido real (17mm) se imprime en los primeros 201 dots; el resto se rellena blanco
+        // Print info: valid_flag=0x80 — SOLO bit recover, SIN bits de validacion RFID
+        // Con 0x80 el firmware NO compara width/length/type contra el chip RFID → sin luz roja
+        // Especificamos las dimensiones reales DK-1204: width=54mm, length=17mm, type=die-cut(0x0B)
+        // El printer activa los 638 dots correctos (54mm) y usa el sensor fisico de gap para cortar a 17mm
         var np=BitConverter.GetBytes((short)pages);
-        o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x8E,0x0B,29,90, np[0],np[1],0,0,0,0});
+        o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0B,54,17, np[0],np[1],0,0,0,0});
         // Mode: auto-cut ON (die-cut)
         o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
         // Cut every 1 label
@@ -528,10 +529,11 @@ public class BrotherRaw {
                         o.AddRange(cmp);
                     }
                 }
-                // 0x1A: ejecta/corta en posición actual (17mm), sin avanzar al die-cut de 90mm
-                o.Add(0x1A);
+                // 0x0C: imprime y avanza al siguiente gap fisico (sensor detecta 17mm DK-1204)
+                o.Add(0x0C);
             }
         }
+        o.Add(0x1A); // eject final
         return o.ToArray();
     }
 }
