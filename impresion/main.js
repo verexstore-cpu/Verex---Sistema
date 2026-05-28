@@ -435,7 +435,7 @@ ipcMain.handle('get-printers', async () => {
 // Ruta 1 (WiFi): TCP directo port 9100  → sin driver, sin RFID
 // Ruta 2 (USB) : CreateFile "\\.\USBxxx" → sin spooler, sin driver, sin RFID
 // Nunca usa WritePrinter/spooler (ese camino bloquea por RFID DK-1201).
-function buildRawPrintScript(printerName, pngFile, pageCount, forcedIp = null) {
+function buildRawPrintScript(printerName, pngFile, pageCount, forcedIp = null, printW = 638, printH = 201, headDots = 720) {
   const pn  = printerName.replace(/'/g, "''")
   const png = pngFile.replace(/\\/g, '\\\\').replace(/'/g, "''")
   return `
@@ -521,8 +521,8 @@ public class BrotherRaw {
 "@ -Language CSharp -ReferencedAssemblies "System.Drawing"
 
 $pages = ${pageCount}
-Write-Output "RAW-PRINT impresora='${pn}' paginas=$pages"
-$rawData = [BrotherRaw]::MakeRaster('${png}',$pages,638,201,720)
+Write-Output "RAW-PRINT impresora='${pn}' paginas=$pages printW=${printW} printH=${printH}"
+$rawData = [BrotherRaw]::MakeRaster('${png}',$pages,${printW},${printH},${headDots})
 Write-Output "Raster: $($rawData.Length) bytes"
 
 $sentOK = $false
@@ -603,31 +603,52 @@ exit 0
 }
 
 // ── Imprimir sin diálogo ──
-// pageCount: número de etiquetas DK-1204 en el HTML (slices verticales iguales)
+// TODOS los módulos usan RAW raster via TCP (bypasa driver + spooler Windows):
+//   widthMm=0          → Etiquetas 54mm×17mm (DK-2251)  → printW=638, printH=201
+//   widthMm=62, h>0    → Guía de Envío 62mm×90mm        → printW=720, printH=1063
+//   widthMm=62, h=0    → Recibo Térmico 62mm×auto       → printW=720, printH=auto
 ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printerName, pageCount }) => {
   const PC = Math.max(1, parseInt(pageCount) || 1)
 
-  // DK-2251/Etiquetas: renderizar a 4× escala para obtener píxeles nítidos
-  // 54mm×17mm @ 96dpi = 204×64px → ×4 = 816×256px
-  // El código C# escala de 816×256 HACIA ABAJO a 638×201 → mucho mejor calidad
-  const LW   = Math.round(54 * 96 / 25.4)        // 204px base
-  const LH   = Math.round(17 * 96 / 25.4)        // 64px  base
-  const SCALE = 4
-  const LWS  = LW * SCALE                        // 816px captura
-  const LHS  = LH * SCALE                        // 256px captura
-  const winW = widthMm === 0 ? LWS : 1100
-  const winH = widthMm === 0 ? LHS * PC : 750
+  // ── Constantes de renderizado ──────────────────────────────────────────────
+  // Etiquetas: 54mm×17mm @96dpi×4 = 816×256px → C# escala a 638×201 dots (300dpi)
+  const LW_CSS = Math.round(54 * 96 / 25.4)  // 204px virtual
+  const LH_CSS = Math.round(17 * 96 / 25.4)  // 64px  virtual
+  const LSCALE = 4
+  const LWS    = LW_CSS * LSCALE              // 816px captura física
+  const LHS    = LH_CSS * LSCALE              // 256px captura física
+
+  // Guías/Recibos: 62mm @96dpi×3 = 702px → C# escala a 720 dots (300dpi)
+  const GW_CSS = Math.round(62 * 96 / 25.4)  // 234px virtual
+  const GSCALE = 3
+  const GWS    = GW_CSS * GSCALE              // 702px captura física
+
+  const isLabel = widthMm === 0
+  const is62mm  = widthMm === 62
+
+  // Tamaño de ventana offscreen según módulo
+  let winW, winH, zoomFactor
+  if (isLabel) {
+    winW = LWS; winH = LHS * PC; zoomFactor = LSCALE
+  } else if (is62mm) {
+    winW = GWS
+    winH = heightMm > 0
+      ? Math.round(heightMm * 96 / 25.4) * GSCALE  // guía: fija
+      : 4500                                         // recibo: generoso para cualquier largo
+    zoomFactor = GSCALE
+  } else {
+    winW = 1100; winH = 750; zoomFactor = 1
+  }
 
   return new Promise((resolve) => {
     let settled = false
     const done = (val) => { if (!settled) { settled = true; resolve(val) } }
-    // Timeout de seguridad: nunca dejar la UI colgada
-    const guard = setTimeout(() => done({ success: false, error: 'Tiempo agotado — revisa la impresora' }), 50000)
+    const guard = setTimeout(() => done({ success: false, error: 'Tiempo agotado — revisa la impresora' }), 60000)
 
     const tmpFile = path.join(os.tmpdir(), `verex-${Date.now()}.html`)
     fs.writeFileSync(tmpFile, html, 'utf8')
 
-    const offscreen = widthMm === 0  // solo DK-1204 necesita offscreen
+    const offscreen = isLabel || is62mm
     const win = new BrowserWindow({
       show: false,
       width: winW,
@@ -636,67 +657,98 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
         nodeIntegration: false,
         contextIsolation: true,
         offscreen,
-        // zoomFactor en webPreferences = activo ANTES de cargar cualquier contenido
-        // garantiza renderizado a 4× desde el inicio (no requiere re-render post-load)
-        zoomFactor: offscreen ? SCALE : 1,
+        zoomFactor: offscreen ? zoomFactor : 1,
       },
     })
 
     win.loadFile(tmpFile)
 
     win.webContents.once('did-finish-load', async () => {
-      // ── DK-2251 / Etiquetas Joyería: RAW Brother QL raster (bypasa driver + RFID firmware) ──
-      if (widthMm === 0) {
+
+      // ── RAW raster TCP: etiquetas + guías + recibos ───────────────────────
+      if (isLabel || is62mm) {
         try {
-          await win.webContents.insertCSS(
-            'html,body{overflow:hidden!important;margin:0!important;padding:0!important;' +
-            'width:54mm!important;height:' + (17 * PC) + 'mm!important;}'
-          )
-          await new Promise(r => setTimeout(r, 800))
-          const img = await win.webContents.capturePage({
-            x: 0, y: 0, width: LWS, height: LHS * PC,
-          })
+          let captureW, captureH, printW, printH
+          const headDots = 720
+
+          if (isLabel) {
+            // ── Etiquetas DK-2251: 54mm×17mm ──
+            await win.webContents.insertCSS(
+              'html,body{overflow:hidden!important;margin:0!important;padding:0!important;' +
+              'width:54mm!important;height:' + (17 * PC) + 'mm!important;}'
+            )
+            await new Promise(r => setTimeout(r, 800))
+            captureW = LWS
+            captureH = LHS * PC
+            printW   = 638
+            printH   = 201
+
+          } else if (heightMm > 0) {
+            // ── Guía de Envío: 62mm × altura fija (90mm) ──
+            await win.webContents.insertCSS(
+              'html,body{overflow:hidden!important;margin:0!important;padding:0!important;' +
+              'width:62mm!important;height:' + heightMm + 'mm!important;}'
+            )
+            await new Promise(r => setTimeout(r, 600))
+            captureW = GWS
+            captureH = Math.round(heightMm * 96 / 25.4) * GSCALE
+            printW   = 720
+            printH   = Math.round(heightMm * 300 / 25.4)  // 90mm → 1063 dots
+
+          } else {
+            // ── Recibo Térmico: 62mm × altura automática ──
+            await win.webContents.insertCSS(
+              'html,body{overflow:hidden!important;margin:0!important;padding:0!important;' +
+              'width:62mm!important;}'
+            )
+            await new Promise(r => setTimeout(r, 600))
+            const cssPx = await win.webContents.executeJavaScript('document.body.scrollHeight')
+            captureW = GWS
+            captureH = cssPx * GSCALE
+            printW   = 720
+            printH   = Math.round(cssPx * 300 / 96)  // px→dots a 300dpi
+          }
+
+          const img = await win.webContents.capturePage({ x: 0, y: 0, width: captureW, height: captureH })
           clearTimeout(guard)
           win.close(); fs.unlink(tmpFile, () => {})
+
           if (!img || img.isEmpty()) {
             done({ success: false, error: 'Captura vacía — intenta de nuevo' }); return
           }
+
           const pngBuf = img.toPNG()
-          fs.writeFileSync(path.join(app.getPath('desktop'), 'verex-debug-label.png'), pngBuf)
+          const dbgName = isLabel ? 'verex-debug-label.png' : 'verex-debug-print.png'
+          fs.writeFileSync(path.join(app.getPath('desktop'), dbgName), pngBuf)
+
           const tmpPng = path.join(os.tmpdir(), `verex-lbl-${Date.now()}.png`)
           fs.writeFileSync(tmpPng, pngBuf)
+
           const cfg = loadConfig()
-          const r = await runPs1(buildRawPrintScript(printerName || '', tmpPng, PC, cfg.printerIp || null), 35000)
+          const r = await runPs1(
+            buildRawPrintScript(printerName || '', tmpPng, PC, cfg.printerIp || null, printW, printH, headDots),
+            35000
+          )
           fs.unlink(tmpPng, () => {})
           done({ success: r.ok, error: r.ok ? null : r.error, debug: r.out })
+
         } catch (e) {
           clearTimeout(guard)
           try { win.close() } catch (_) {}
           fs.unlink(tmpFile, () => {})
-          done({ success: false, error: 'Captura: ' + e.message })
+          done({ success: false, error: 'Error RAW: ' + e.message })
         }
         return
       }
 
-      // ── Guías / Recibos: webContents.print() con pageSize ──
+      // ── Fallback webContents.print() para tamaños no estándar ────────────
       try {
-        // Esperar a que CSS y fuentes terminen de renderizarse
         await new Promise(r => setTimeout(r, 500))
-
         let finalHeightMm = heightMm
         if (heightMm === 0) {
           const px = await win.webContents.executeJavaScript('document.body.scrollHeight')
           finalHeightMm = Math.ceil((px / 96) * 25.4) + 6
         }
-
-        // Auto-configurar DEVMODE del driver Brother antes de imprimir
-        // Garantiza que el driver tenga 62mm configurado sin importar el estado previo
-        if (printerName) {
-          const devW = Math.round(widthMm * 10)
-          const devH = Math.round((finalHeightMm > 0 ? finalHeightMm : 90) * 10)
-          await runPs1(buildDevModeScript(printerName, devW, devH), 8000)
-        }
-
         win.webContents.print({
           silent: true,
           printBackground: true,
@@ -715,7 +767,7 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
         clearTimeout(guard)
         try { win.close() } catch (_) {}
         fs.unlink(tmpFile, () => {})
-        done({ success: false, error: 'Error guía/recibo: ' + e.message })
+        done({ success: false, error: 'Error impresión: ' + e.message })
       }
     })
   })
