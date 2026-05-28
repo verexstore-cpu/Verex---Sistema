@@ -485,17 +485,16 @@ public class BrotherRaw {
         return o.ToArray();
     }
 
-    public static byte[] MakeRaster(string pngPath,int pages,int printW,int printH,int headDots) {
+    public static byte[] MakeRaster(string pngPath,int pages,int printW,int printH,int headDots,int padH) {
         int leftPad=(headDots-printW)/2, rowBytes=headDots/8;
         var o=new List<byte>();
         // Init + raster mode
         o.AddRange(new byte[]{0x1B,0x40,0x1B,0x69,0x61,0x01});
-        // Print info: valid_flag=0x8C (width+length válidos, type NO validado vs RFID)
-        // width=29mm  → coincide con RFID DK-1201 → pasa validación de ancho
-        // length=17mm → posición de corte real para DK-1204 (17mm por etiqueta)
-        // type=0x0B   → die-cut (no validado → no conflicto RFID en tipo)
+        // Print info: valid_flag=0x8E — coincide EXACTAMENTE con RFID DK-1201
+        // width=29mm, length=90mm, type=die-cut(0x0B) → pasa validación RFID sin error
+        // El contenido real (17mm) se imprime en los primeros 201 dots; el resto se rellena blanco
         var np=BitConverter.GetBytes((short)pages);
-        o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x8C,0x0B,29,17, np[0],np[1],0,0,0,0});
+        o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x8E,0x0B,29,90, np[0],np[1],0,0,0,0});
         // Mode: auto-cut ON (die-cut)
         o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
         // Cut every 1 label
@@ -529,10 +528,18 @@ public class BrotherRaw {
                         o.AddRange(cmp);
                     }
                 }
-                o.Add(0x0C); // print + cut
+                // Rellenar con líneas en blanco hasta padH (90mm = 1063 dots a 300dpi)
+                // Necesario para que el firmware reciba el label completo antes de imprimir
+                var blank=new byte[rowBytes];
+                var blankCmp=PackBits(blank);
+                for(int y=printH;y<padH;y++) {
+                    o.Add(0x67); o.Add(0x00); o.Add((byte)blankCmp.Length);
+                    o.AddRange(blankCmp);
+                }
+                o.Add(0x0C); // print + avanzar a siguiente label
             }
         }
-        o.Add(0x1A); // end
+        o.Add(0x1A); // fin
         return o.ToArray();
     }
 }
@@ -540,7 +547,7 @@ public class BrotherRaw {
 $m = [Runtime.InteropServices.Marshal]
 $pages = ${pageCount}
 Write-Output "RAW-PRINT impresora='${pn}' paginas=$pages"
-$rawData = [BrotherRaw]::MakeRaster('${png}',$pages,638,201,720)
+$rawData = [BrotherRaw]::MakeRaster('${png}',$pages,638,201,720,1063)
 Write-Output "Raster: $($rawData.Length) bytes"
 
 ${forcedIp
