@@ -483,10 +483,12 @@ public class BrotherRaw {
             for(int page=0;page<pages;page++) {
                 o.AddRange(new byte[]{0x1B,0x40});
                 o.AddRange(new byte[]{0x1B,0x69,0x61,0x01});
-                // valid_flag=0x84: bit7=recuperar + bit2=solo ancho (sin cambiar tipo ni largo)
-                // type=0x0B die-cut igual al RFID, largo=90 igual al RFID -> minimos conflictos
-                // Solo el ancho difiere (54mm vs RFID 29mm). Si bit7 suprime ese conflicto -> sin luz roja
-                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x84,0x0B,54,90, 1,0,0,0,0,0});
+                // DK-2251: rollo continuo 62mm — RFID coincide exactamente con estos parametros
+                // valid_flag=0x8E: todos los bits validos, todo coincide con RFID -> sin luz roja
+                // type=0x0A continuo -> 0x1A corta exactamente al terminar el raster (17mm)
+                // width=62mm (tape width, RFID=62mm) -> 720 dots activos
+                // Contenido: 638 dots (54mm) centrado en 720 dots -> 4mm margen c/lado en el rollo
+                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x8E,0x0A,62, 0, 1,0,0,0,0,0});
                 o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
                 o.AddRange(new byte[]{0x1B,0x69,0x41,0x01});
                 o.AddRange(new byte[]{0x1B,0x69,0x4B,0x08});
