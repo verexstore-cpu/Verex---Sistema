@@ -1281,11 +1281,10 @@ async function setRoll(type) {
   const result = await window.electronAPI.loadRollProfile(type, printerName)
 
   if (result.notSetup) {
-    // Primera vez: abrir preferencias para que el usuario configure el rollo
+    // Primera vez con DK-1204: abrir preferencias → elegir DK-1204 → OK → click 💾
     pendingRoll = type
     refreshSaveBtn()
-    const label = type === '62mm' ? '62mm continuo (DK-2205/DK-2251)' : 'DK-1204 (54×17mm)'
-    toast(`⚙️ Configura el driver para "${label}" → luego click 💾 Guardar perfil`, true)
+    toast('⚙️ 1ª vez con DK-1204: en las preferencias elige DK-1204 → OK → vuelve y click 💾', true)
     await window.electronAPI.openPrinterProps(printerName)
     return
   }

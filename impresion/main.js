@@ -92,20 +92,39 @@ function startPrintServer() {
   })
 }
 
-// ── Selector de rollo: modifica el DEVMODE del driver via Spooler API ───────
-// Dimensiones en décimas de mm (formato DEVMODE: 54mm = 540, 17mm = 170)
-const ROLL_DIMS = {
-  '62mm':   { w: 620, l: 900  },  // 62mm ancho × 90mm largo (guías)
-  'dk1204': { w: 540, l: 170  },  // 54mm ancho × 17mm largo (DK-1204)
+// ── Selector de rollo ────────────────────────────────────────────────────────
+// 62mm continuo : DEVMODE se construye automáticamente por API (el driver
+//                 Brother reconoce 62mm×90mm sin configuración previa).
+// DK-1204 54×17mm: se captura el DEVMODE binario EXACTO del driver después de
+//                   que el usuario lo configura en preferencias Windows, y se
+//                   restaura antes de imprimir — incluyendo los campos privados
+//                   (dmDriverExtra) que codifican el tipo de medio correcto.
+
+function getProfilePath(rollType) {
+  return path.join(app.getPath('userData'), `verex-roll-${rollType}.devmode`)
 }
 
+// Ejecuta un script PowerShell en archivo temporal y devuelve { ok, error }
+function runPs1(script, timeout = 15000) {
+  const ps1 = path.join(os.tmpdir(), `verex-ps-${Date.now()}.ps1`)
+  fs.writeFileSync(ps1, script, 'utf8')
+  return new Promise(resolve => {
+    exec(`powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "${ps1}"`,
+      { timeout }, (err, stdout, stderr) => {
+        fs.unlink(ps1, () => {})
+        resolve({ ok: !err, error: err?.message || (stderr || '').trim() || null })
+      })
+  })
+}
+
+// ── 62mm: construye DEVMODE con API Spooler (funciona sin perfil guardado) ──
 function buildDevModeScript(printerName, widthTenths, lengthTenths) {
   const pn = printerName.replace(/'/g, "''")
   return `
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
-public class WinPrint {
+public class WinPrintBuild {
     [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)]
     public static extern bool OpenPrinter(string n, out IntPtr h, IntPtr d);
     [DllImport("winspool.drv",SetLastError=true)]
@@ -116,61 +135,136 @@ public class WinPrint {
     public static extern bool SetPrinter(IntPtr h,int level,IntPtr pPrinter,int cmd);
 }
 "@ -Language CSharp
-
 $name = '${pn}'
 $w    = ${widthTenths}
 $l    = ${lengthTenths}
 $m    = [Runtime.InteropServices.Marshal]
 $hP   = [IntPtr]::Zero
-
-if (-not [WinPrint]::OpenPrinter($name,[ref]$hP,[IntPtr]::Zero)) { exit 1 }
+if (-not [WinPrintBuild]::OpenPrinter($name,[ref]$hP,[IntPtr]::Zero)) { exit 1 }
 try {
-    $sz = [WinPrint]::DocumentProperties([IntPtr]::Zero,$hP,$name,[IntPtr]::Zero,[IntPtr]::Zero,0)
+    $sz = [WinPrintBuild]::DocumentProperties([IntPtr]::Zero,$hP,$name,[IntPtr]::Zero,[IntPtr]::Zero,0)
     if ($sz -le 0) { exit 1 }
     $dm = $m::AllocHGlobal($sz)
     try {
-        # Leer DEVMODE actual
-        if ([WinPrint]::DocumentProperties([IntPtr]::Zero,$hP,$name,$dm,[IntPtr]::Zero,2) -le 0) { exit 1 }
-        # Modificar campos de papel (offsets DEVMODEW Unicode):
-        # +72 dmFields, +78 dmPaperSize, +80 dmPaperLength, +82 dmPaperWidth
-        $m::WriteInt32($dm,72,($m::ReadInt32($dm,72) -bor 14))  # 14 = DM_PAPERSIZE|DM_PAPERLENGTH|DM_PAPERWIDTH
-        $m::WriteInt16($dm,78,256)          # DMPAPER_USER
-        $m::WriteInt16($dm,80,[short]$l)    # dmPaperLength
-        $m::WriteInt16($dm,82,[short]$w)    # dmPaperWidth
-        # Dejar que el driver rellene sus datos privados (dmDriverExtra)
+        if ([WinPrintBuild]::DocumentProperties([IntPtr]::Zero,$hP,$name,$dm,[IntPtr]::Zero,2) -le 0) { exit 1 }
+        $m::WriteInt32($dm,72,($m::ReadInt32($dm,72) -bor 14))
+        $m::WriteInt16($dm,78,256)
+        $m::WriteInt16($dm,80,[short]$l)
+        $m::WriteInt16($dm,82,[short]$w)
         $dm2 = $m::AllocHGlobal($sz)
         try {
-            if ([WinPrint]::DocumentProperties([IntPtr]::Zero,$hP,$name,$dm2,$dm,10) -le 0) { exit 1 }
-            # Guardar como default de usuario (nivel 9)
+            if ([WinPrintBuild]::DocumentProperties([IntPtr]::Zero,$hP,$name,$dm2,$dm,10) -le 0) { exit 1 }
             $pi = $m::AllocHGlobal($m::SizeOf([IntPtr]))
             try {
                 $m::WriteIntPtr($pi,$dm2)
-                if (-not [WinPrint]::SetPrinter($hP,9,$pi,0)) { exit 1 }
+                if (-not [WinPrintBuild]::SetPrinter($hP,9,$pi,0)) { exit 1 }
             } finally { $m::FreeHGlobal($pi) }
         } finally { $m::FreeHGlobal($dm2) }
     } finally { $m::FreeHGlobal($dm) }
-} finally { [WinPrint]::ClosePrinter($hP) }
+} finally { [WinPrintBuild]::ClosePrinter($hP) }
 exit 0
 `
 }
 
-// No necesita "perfil guardado" — las dimensiones son fijas por tipo de rollo
-ipcMain.handle('roll-profile-exists', () => ({ exists: true }))
-ipcMain.handle('save-roll-profile',   () => ({ ok: true }))
+// ── DK-1204: captura el DEVMODE binario exacto del driver ─────────────────
+// Llama a DocumentProperties(DM_OUT_BUFFER) y vuelca todos los bytes a disco,
+// incluyendo dmDriverExtra (tipo de medio Brother privado).
+function buildSaveDevModeScript(printerName, outputFile) {
+  const pn = printerName.replace(/'/g, "''")
+  const of = outputFile.replace(/\\/g, '\\\\').replace(/'/g, "''")
+  return `
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class WinPrintSave {
+    [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)]
+    public static extern bool OpenPrinter(string n, out IntPtr h, IntPtr d);
+    [DllImport("winspool.drv",SetLastError=true)]
+    public static extern bool ClosePrinter(IntPtr h);
+    [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)]
+    public static extern int DocumentProperties(IntPtr hWnd,IntPtr hPrinter,string dev,IntPtr dmOut,IntPtr dmIn,int fMode);
+}
+"@ -Language CSharp
+$name = '${pn}'
+$m    = [Runtime.InteropServices.Marshal]
+$hP   = [IntPtr]::Zero
+if (-not [WinPrintSave]::OpenPrinter($name,[ref]$hP,[IntPtr]::Zero)) { exit 1 }
+try {
+    $sz = [WinPrintSave]::DocumentProperties([IntPtr]::Zero,$hP,$name,[IntPtr]::Zero,[IntPtr]::Zero,0)
+    if ($sz -le 0) { exit 1 }
+    $dm = $m::AllocHGlobal($sz)
+    try {
+        if ([WinPrintSave]::DocumentProperties([IntPtr]::Zero,$hP,$name,$dm,[IntPtr]::Zero,2) -le 0) { exit 1 }
+        $bytes = New-Object byte[] $sz
+        $m::Copy($dm, $bytes, 0, $sz)
+        [System.IO.File]::WriteAllBytes('${of}', $bytes)
+    } finally { $m::FreeHGlobal($dm) }
+} finally { [WinPrintSave]::ClosePrinter($hP) }
+exit 0
+`
+}
 
+// ── DK-1204: restaura el DEVMODE binario como default de usuario ───────────
+// Carga los bytes guardados y los pasa a SetPrinter(nivel 9) —
+// el mismo nivel que usan las preferencias de usuario de Windows.
+function buildLoadDevModeScript(printerName, inputFile) {
+  const pn = printerName.replace(/'/g, "''")
+  const inf = inputFile.replace(/\\/g, '\\\\').replace(/'/g, "''")
+  return `
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class WinPrintLoad {
+    [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)]
+    public static extern bool OpenPrinter(string n, out IntPtr h, IntPtr d);
+    [DllImport("winspool.drv",SetLastError=true)]
+    public static extern bool ClosePrinter(IntPtr h);
+    [DllImport("winspool.drv",SetLastError=true)]
+    public static extern bool SetPrinter(IntPtr h,int level,IntPtr pPrinter,int cmd);
+}
+"@ -Language CSharp
+$name  = '${pn}'
+$m     = [Runtime.InteropServices.Marshal]
+$hP    = [IntPtr]::Zero
+$bytes = [System.IO.File]::ReadAllBytes('${inf}')
+if (-not [WinPrintLoad]::OpenPrinter($name,[ref]$hP,[IntPtr]::Zero)) { exit 1 }
+try {
+    $dm = $m::AllocHGlobal($bytes.Length)
+    try {
+        $m::Copy($bytes, 0, $dm, $bytes.Length)
+        $pi = $m::AllocHGlobal($m::SizeOf([IntPtr]))
+        try {
+            $m::WriteIntPtr($pi, $dm)
+            if (-not [WinPrintLoad]::SetPrinter($hP,9,$pi,0)) { exit 1 }
+        } finally { $m::FreeHGlobal($pi) }
+    } finally { $m::FreeHGlobal($dm) }
+} finally { [WinPrintLoad]::ClosePrinter($hP) }
+exit 0
+`
+}
+
+// roll-profile-exists: 62mm siempre listo; dk1204 solo si tiene archivo guardado
+ipcMain.handle('roll-profile-exists', (_, rollType) => {
+  if (rollType === '62mm') return { exists: true }
+  return { exists: fs.existsSync(getProfilePath(rollType)) }
+})
+
+// save-roll-profile: captura el DEVMODE actual del driver (con sus campos privados)
+ipcMain.handle('save-roll-profile', (_, { rollType, printerName }) => {
+  const profileFile = getProfilePath(rollType)
+  return runPs1(buildSaveDevModeScript(printerName, profileFile))
+})
+
+// load-roll-profile:
+//   62mm   → construye DEVMODE por API (automático)
+//   dk1204 → restaura binario guardado; si no existe → notSetup:true
 ipcMain.handle('load-roll-profile', (_, { rollType, printerName }) => {
-  const dims = ROLL_DIMS[rollType]
-  if (!dims) return { ok: false, error: 'Tipo de rollo desconocido' }
-  const script = buildDevModeScript(printerName, dims.w, dims.l)
-  const ps1 = path.join(os.tmpdir(), `verex-devmode-${Date.now()}.ps1`)
-  fs.writeFileSync(ps1, script, 'utf8')
-  return new Promise(resolve => {
-    exec(`powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "${ps1}"`,
-      { timeout: 15000 }, (err, stdout, stderr) => {
-        fs.unlink(ps1, () => {})
-        resolve({ ok: !err, error: err?.message || stderr || null })
-      })
-  })
+  if (rollType === '62mm') {
+    return runPs1(buildDevModeScript(printerName, 620, 900))
+  }
+  const profileFile = getProfilePath(rollType)
+  if (!fs.existsSync(profileFile)) return { ok: false, notSetup: true }
+  return runPs1(buildLoadDevModeScript(printerName, profileFile))
 })
 
 ipcMain.handle('open-printer-props', (_, printerName) => {
