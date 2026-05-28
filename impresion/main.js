@@ -166,40 +166,61 @@ exit 0
 `
 }
 
-// ── DK-1204: captura el DEVMODE binario exacto del driver ─────────────────
-// Llama a DocumentProperties(DM_OUT_BUFFER) y vuelca todos los bytes a disco,
-// incluyendo dmDriverExtra (tipo de medio Brother privado).
-function buildSaveDevModeScript(printerName, outputFile) {
+// ── DK-1204 BYPASS: construye DEVMODE híbrido para base DK-1201 con rollo DK-1204 ──
+// Estrategia: leer DEVMODE actual → tiene código privado del chip RFID (ej. DK-1201).
+// Modificar SOLO los campos estándar de papel a 54×17mm SIN tocar dmDriverExtra.
+// Resultado: código privado coincide con RFID → validación pasa → imprime al tamaño correcto.
+// También funciona si el cartucho es el DK-1204 original (su código también coincide).
+function buildDK1204BypassScript(printerName, outputFile) {
   const pn = printerName.replace(/'/g, "''")
   const of = outputFile.replace(/\\/g, '\\\\').replace(/'/g, "''")
   return `
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
-public class WinPrintSave {
+public class WinPrintBypass {
     [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)]
     public static extern bool OpenPrinter(string n, out IntPtr h, IntPtr d);
     [DllImport("winspool.drv",SetLastError=true)]
     public static extern bool ClosePrinter(IntPtr h);
     [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)]
     public static extern int DocumentProperties(IntPtr hWnd,IntPtr hPrinter,string dev,IntPtr dmOut,IntPtr dmIn,int fMode);
+    [DllImport("winspool.drv",SetLastError=true)]
+    public static extern bool SetPrinter(IntPtr h,int level,IntPtr pPrinter,int cmd);
 }
 "@ -Language CSharp
 $name = '${pn}'
 $m    = [Runtime.InteropServices.Marshal]
 $hP   = [IntPtr]::Zero
-if (-not [WinPrintSave]::OpenPrinter($name,[ref]$hP,[IntPtr]::Zero)) { exit 1 }
+if (-not [WinPrintBypass]::OpenPrinter($name,[ref]$hP,[IntPtr]::Zero)) { exit 1 }
 try {
-    $sz = [WinPrintSave]::DocumentProperties([IntPtr]::Zero,$hP,$name,[IntPtr]::Zero,[IntPtr]::Zero,0)
+    $sz = [WinPrintBypass]::DocumentProperties([IntPtr]::Zero,$hP,$name,[IntPtr]::Zero,[IntPtr]::Zero,0)
     if ($sz -le 0) { exit 1 }
     $dm = $m::AllocHGlobal($sz)
     try {
-        if ([WinPrintSave]::DocumentProperties([IntPtr]::Zero,$hP,$name,$dm,[IntPtr]::Zero,2) -le 0) { exit 1 }
+        if ([WinPrintBypass]::DocumentProperties([IntPtr]::Zero,$hP,$name,$dm,[IntPtr]::Zero,2) -le 0) { exit 1 }
+        # Modificar SOLO campos estándar de papel — dmDriverExtra (código RFID) intacto
+        $m::WriteInt32($dm,72,($m::ReadInt32($dm,72) -bor 14)) # dmFields |= DM_PAPERSIZE|DM_PAPERLENGTH|DM_PAPERWIDTH
+        $m::WriteInt16($dm,78,256)   # dmPaperSize = DMPAPER_USER
+        $m::WriteInt16($dm,80,170)   # dmPaperLength = 17mm (en décimas)
+        $m::WriteInt16($dm,82,540)   # dmPaperWidth  = 54mm (en décimas)
+        # Guardar bytes a archivo de perfil
         $bytes = New-Object byte[] $sz
         $m::Copy($dm, $bytes, 0, $sz)
         [System.IO.File]::WriteAllBytes('${of}', $bytes)
+        # Aplicar inmediatamente: SetPrinter nivel 9 (per-user)
+        $pi = $m::AllocHGlobal($m::SizeOf([IntPtr]))
+        try {
+            $m::WriteIntPtr($pi, $dm)
+            [WinPrintBypass]::SetPrinter($hP,9,$pi,0)
+        } finally { $m::FreeHGlobal($pi) }
+        # Escribir también directo al registro HKCU como respaldo
+        $regPath = 'HKCU:\\Printers\\DevModePerUser'
+        if (Test-Path $regPath) {
+            Set-ItemProperty -Path $regPath -Name '${pn}' -Value $bytes -Type Binary -ErrorAction SilentlyContinue
+        }
     } finally { $m::FreeHGlobal($dm) }
-} finally { [WinPrintSave]::ClosePrinter($hP) }
+} finally { [WinPrintBypass]::ClosePrinter($hP) }
 exit 0
 `
 }
@@ -249,10 +270,14 @@ ipcMain.handle('roll-profile-exists', (_, rollType) => {
   return { exists: fs.existsSync(getProfilePath(rollType)) }
 })
 
-// save-roll-profile: captura el DEVMODE actual del driver (con sus campos privados)
+// save-roll-profile:
+//   dk1204 → BYPASS: lee DEVMODE actual (código RFID intacto) + cambia dimensiones a 54×17mm
+//            Funciona tanto con cartucho DK-1201 base + rollo DK-1204 como con DK-1204 original
+//   62mm   → no necesita guardar (se construye automático)
 ipcMain.handle('save-roll-profile', (_, { rollType, printerName }) => {
+  if (rollType !== 'dk1204') return { ok: true }
   const profileFile = getProfilePath(rollType)
-  return runPs1(buildSaveDevModeScript(printerName, profileFile))
+  return runPs1(buildDK1204BypassScript(printerName, profileFile))
 })
 
 // load-roll-profile:
@@ -332,14 +357,17 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
       //   su propio DEVMODE → sin error de tipo de rollo.
       // widthMm  >  0 → guías / recibos: webContents.print() con pageSize explícito.
       if (widthMm === 0) {
-        // Etiquetas DK-1204: 54mm × 17mm en micrones.
-        // El DEVMODE fue corregido por load-roll-profile → el driver Brother
-        // valida su media type code (DK-1204) contra el rollo físico → match.
+        // Etiquetas DK-1204: NO especificar pageSize — usar el DEVMODE almacenado tal cual.
+        // El DEVMODE bypass tiene el código RFID del cartucho (ej. DK-1201) intacto
+        // + dimensiones 54×17mm en campos estándar.
+        // Si Electron sobreescribiera el DEVMODE con pageSize, DocumentProperties
+        // actualizaría el código privado al DK-1204 → mismatch con RFID DK-1201 → error.
+        // Sin pageSize, Electron usa el DEVMODE almacenado sin modificarlo → validación pasa.
+        // El tamaño del contenido lo controla @page { size: 54mm 17mm; } en el HTML.
         win.webContents.print({
           silent: true,
           printBackground: true,
           deviceName: printerName || '',
-          pageSize: { width: 54000, height: 17000 },
           margins: { marginType: 'none' },
         }, (success, errorType) => {
           win.close()
