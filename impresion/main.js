@@ -483,10 +483,10 @@ public class BrotherRaw {
             for(int page=0;page<pages;page++) {
                 o.AddRange(new byte[]{0x1B,0x40});
                 o.AddRange(new byte[]{0x1B,0x69,0x61,0x01});
-                // valid_flag=0x8C: bit7=recuperar(sin luz roja) + bit3=largo 17mm + bit2=ancho 54mm
-                // type=0x0B die-cut igual que RFID (cambiar tipo causa luz roja, la impresora detecta gaps fisicos)
-                // 0x1A corta al terminar el raster (17mm), no avanza al gap del RFID (90mm)
-                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x8C,0x0B,54,17, 1,0,0,0,0,0});
+                // valid_flag=0x84: bit7=recuperar + bit2=solo ancho (sin cambiar tipo ni largo)
+                // type=0x0B die-cut igual al RFID, largo=90 igual al RFID -> minimos conflictos
+                // Solo el ancho difiere (54mm vs RFID 29mm). Si bit7 suprime ese conflicto -> sin luz roja
+                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x84,0x0B,54,90, 1,0,0,0,0,0});
                 o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
                 o.AddRange(new byte[]{0x1B,0x69,0x41,0x01});
                 o.AddRange(new byte[]{0x1B,0x69,0x4B,0x08});
