@@ -488,7 +488,7 @@ public class BrotherRaw {
                 // valid_flag=0x80: no fuerza parametros, el RFID del DK-2251 ya dice 62mm continuo
                 // n5-n8: numero real de lineas raster (little-endian) para que el firmware no rechace
                 byte rln0=(byte)(printH&0xFF), rln1=(byte)((printH>>8)&0xFF);
-                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0A,62, 0, rln0,rln1,0,0, 0,0});
+                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0xCE,0x0A,62, 0, rln0,rln1,0,0, 0,0});
                 o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
                 o.AddRange(new byte[]{0x1B,0x69,0x41,0x01});
                 o.AddRange(new byte[]{0x1B,0x69,0x4B,0x08});
