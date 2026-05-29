@@ -193,15 +193,12 @@ class SistemaImpresionVerex(TkinterDnDApp):
             # ── Combinar etiquetas mini de 3 en 3 ──────────────────────────────
             if tipo == "mini" and mini_buffer:
                 # DK-1201: 306×991px — 6 minis horizontales (landscape, 1 col × 6 filas)
-                # Sin rotación → QR al lado, sin aplastamiento
                 DIE_W, DIE_H = 306, 991
-                ROWS = 6
-
-                # Escalar manteniendo proporción del PDF landscape (19.05×12.7mm)
-                M_W = int(DIE_W * 0.92)                 # 281px — ocupa 92% del ancho
-                M_H = int(M_W * 12.7 / 19.05)           # 188px — ratio exacto
-                GAP_X = (DIE_W - M_W) // 2              # margen lateral centrado
-                GAP_Y = (DIE_H - ROWS * M_H) // (ROWS + 1)  # margen vertical entre filas
+                ROWS  = 6
+                GAP_Y = 14                               # 14px margen entre etiquetas
+                M_H   = (DIE_H - (ROWS + 1) * GAP_Y) // ROWS   # ~134px por etiqueta
+                M_W   = int(M_H * 19.05 / 12.7)         # ~201px — ratio exacto ¾"×½"
+                GAP_X = (DIE_W - M_W) // 2              # centrado horizontal
 
                 canvas_die = None
                 for i, lbl in enumerate(mini_buffer):
