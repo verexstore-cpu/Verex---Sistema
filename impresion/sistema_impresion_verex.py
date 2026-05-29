@@ -148,24 +148,24 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     img = img.resize((ANCHO_IMPRESORA, 1063), Image.Resampling.LANCZOS)
 
                 elif tipo == "producto":
-                    # Etiqueta 5cm × 1.5cm — diseño DK-1204 del sistema de consignación
-                    # El PDF ya trae el diseño completo: QR a la izquierda, precio/material/código a la derecha
-                    largo_etiqueta = 590   # 5.0cm a 300dpi
-                    alto_etiqueta  = 177   # 1.5cm a 300dpi
+                    # Etiqueta 5cm × 1.5cm: 2.5cm izquierdos en blanco, contenido en los 2.5cm derechos
+                    alto_etiqueta   = 177   # 1.5cm a 300dpi
+                    mitad_px        = 295   # 2.5cm a 300dpi
+                    largo_contenido = 295   # los 2.5cm derechos donde va el diseño
 
-                    # Escalar el PDF completo para que quepa en el área de la etiqueta
-                    prop_ancho = largo_etiqueta / float(img.width)
-                    prop_alto  = alto_etiqueta  / float(img.height)
+                    # Escalar el PDF completo para que quepa en la mitad derecha
+                    prop_ancho = largo_contenido / float(img.width)
+                    prop_alto  = alto_etiqueta   / float(img.height)
                     proporcion = min(prop_ancho, prop_alto)
 
                     nuevo_ancho = int(img.width  * proporcion)
                     nuevo_alto  = int(img.height * proporcion)
                     img_resized = img.resize((nuevo_ancho, nuevo_alto), Image.Resampling.LANCZOS)
 
-                    # Colocar centrado en el canvas de 62mm (696px)
+                    # Canvas 62mm (696px): blanco a la izquierda, contenido pegado a partir de mitad_px
                     canvas = Image.new("RGB", (ANCHO_IMPRESORA, alto_etiqueta), "white")
-                    x_offset = (ANCHO_IMPRESORA - nuevo_ancho) // 2
-                    y_offset = (alto_etiqueta  - nuevo_alto)  // 2
+                    x_offset = mitad_px + (largo_contenido - nuevo_ancho) // 2
+                    y_offset = (alto_etiqueta - nuevo_alto) // 2
                     canvas.paste(img_resized, (x_offset, y_offset))
                     img = canvas
 

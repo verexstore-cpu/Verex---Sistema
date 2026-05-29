@@ -939,7 +939,7 @@ async function generarEtiquetas() {
         // Material — gris oscuro, solo si existe
         const material = extraerMaterial(p.nombre || "", p.descripcion || "");
         if (material) {
-            doc.setFont("helvetica", "normal");
+            doc.setFont("helvetica", "bold");
             let mSz = 5.5;
             while (mSz > 3) { doc.setFontSize(mSz); if (doc.getTextWidth(material) <= tMaxW) break; mSz -= 0.3; }
             doc.setTextColor(60, 60, 60);
