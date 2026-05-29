@@ -197,7 +197,8 @@ class SistemaImpresionVerex(TkinterDnDApp):
                 DIE_H = 991
 
                 for i, lbl in enumerate(mini_buffer):
-                    # Escalar la mini para llenar el die-cut manteniendo proporción
+                    # Rotar 90° y escalar al die-cut 306×991px
+                    lbl = lbl.rotate(90, expand=True)
                     prop = min(DIE_W / float(lbl.width), DIE_H / float(lbl.height))
                     nw   = int(lbl.width  * prop)
                     nh   = int(lbl.height * prop)
