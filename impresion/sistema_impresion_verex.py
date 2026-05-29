@@ -246,9 +246,9 @@ class SistemaImpresionVerex(TkinterDnDApp):
                 qlr=qlr, 
                 images=self.imagenes_impresion, 
                 label=TIPO_ETIQUETA_MINI if self.tipo_seleccionado.get() == "mini" else TIPO_ETIQUETA,
-                dither=True, 
-                compress=False, 
-                red=True 
+                dither=True,
+                compress=False,
+                red=self.tipo_seleccionado.get() != "mini"  # False para die-cut 29x90 (solo negro)
             )
 
             send(instrucciones, IP_IMPRESORA)
