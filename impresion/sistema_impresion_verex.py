@@ -169,8 +169,8 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     draw = ImageDraw.Draw(canvas)
                     cx = zona_contenido // 2
                     try:
-                        font_titulo = ImageFont.truetype(“C:/Windows/Fonts/arialbd.ttf”, size=30)
-                        font_slogan = ImageFont.truetype(“C:/Windows/Fonts/arialbd.ttf”, size=13)
+                        font_titulo = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", size=30)
+                        font_slogan = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", size=13)
                     except:
                         font_titulo = ImageFont.load_default()
                         font_slogan = font_titulo
@@ -180,8 +180,8 @@ class SistemaImpresionVerex(TkinterDnDApp):
                         w = bbox[2] - bbox[0]
                         draw.text(((ancho_zona - w) // 2, y), texto, fill=fill, font=font)
 
-                    titulo  = “VEREX”
-                    slogan  = '”Mas que accesorios... Identidad”'
+                    titulo  = "VEREX"
+                    slogan  = '"Mas que accesorios... Identidad"'
                     bbox_t  = draw.textbbox((0, 0), titulo, font=font_titulo)
                     h_t     = bbox_t[3] - bbox_t[1]
                     bbox_s  = draw.textbbox((0, 0), slogan, font=font_slogan)
