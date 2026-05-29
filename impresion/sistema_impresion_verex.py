@@ -60,6 +60,11 @@ class SistemaImpresionVerex(TkinterDnDApp):
                                         command=lambda: self.seleccionar_modulo("recibo"))
         self.btn_recibo.pack(side="left", padx=5, expand=True, fill="x")
 
+        self.btn_mini = ctk.CTkButton(frame_opciones, text="📎 Mini ½×¾", font=("Arial", 16, "bold"),
+                                      corner_radius=8, height=45, hover_color=self.color_hover,
+                                      command=lambda: self.seleccionar_modulo("mini"))
+        self.btn_mini.pack(side="left", padx=5, expand=True, fill="x")
+
         self.chk_rotar = ctk.CTkCheckBox(self, text="Rotar 90° (Aplica SOLO para guías)", variable=self.rotar_var, command=self.actualizar_vista_previa_manual, onvalue=True, offvalue=False)
         self.chk_rotar.pack(pady=15)
 
@@ -88,6 +93,7 @@ class SistemaImpresionVerex(TkinterDnDApp):
         self.btn_guia.configure(fg_color=self.color_inactivo, text_color="#AAAAAA")
         self.btn_producto.configure(fg_color=self.color_inactivo, text_color="#AAAAAA")
         self.btn_recibo.configure(fg_color=self.color_inactivo, text_color="#AAAAAA")
+        self.btn_mini.configure(fg_color=self.color_inactivo, text_color="#AAAAAA")
 
         if modulo == "guia":
             self.btn_guia.configure(fg_color=self.color_activo, text_color="white")
@@ -95,6 +101,8 @@ class SistemaImpresionVerex(TkinterDnDApp):
             self.btn_producto.configure(fg_color=self.color_activo, text_color="white")
         elif modulo == "recibo":
             self.btn_recibo.configure(fg_color=self.color_activo, text_color="white")
+        elif modulo == "mini":
+            self.btn_mini.configure(fg_color=self.color_activo, text_color="white")
 
         self.actualizar_vista_previa_manual()
 
@@ -161,6 +169,19 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     canvas.paste(img_resized, (x_offset, 0))
                     img = canvas
                     
+                elif tipo == "mini":
+                    # Mini ½"×¾" = 12.7mm×19.05mm portrait
+                    # En cinta 62mm: ancho=12.7mm, alto corte=19.05mm
+                    px_mm    = 696 / 62.0
+                    target_w = int(12.7 * px_mm)   # 143px = ½" ancho
+                    target_h = int(19.05 * px_mm)  # 214px = ¾" alto (corte)
+
+                    img_resized = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+                    canvas   = Image.new("RGB", (ANCHO_IMPRESORA, target_h), "white")
+                    x_offset = (ANCHO_IMPRESORA - target_w) // 2
+                    canvas.paste(img_resized, (x_offset, 0))
+                    img = canvas
+
                 elif tipo == "recibo":
                     proporcion = ANCHO_IMPRESORA / float(img.width)
                     nuevo_alto = int((float(img.height) * float(proporcion)))
