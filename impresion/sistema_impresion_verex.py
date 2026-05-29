@@ -245,7 +245,7 @@ class SistemaImpresionVerex(TkinterDnDApp):
             instrucciones = convert(
                 qlr=qlr, 
                 images=self.imagenes_impresion, 
-                label=TIPO_ETIQUETA_MINI if tipo == "mini" else TIPO_ETIQUETA, 
+                label=TIPO_ETIQUETA_MINI if self.tipo_seleccionado.get() == "mini" else TIPO_ETIQUETA,
                 dither=True, 
                 compress=False, 
                 red=True 
