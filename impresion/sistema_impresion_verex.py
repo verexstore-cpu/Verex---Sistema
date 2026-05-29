@@ -148,38 +148,22 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     img = img.resize((ANCHO_IMPRESORA, 1063), Image.Resampling.LANCZOS)
                 
                 elif tipo == "producto":
-                    alto_corte = 118 
-                    largo_total = 590 
-                    
-                    canvas = Image.new("RGB", (ANCHO_IMPRESORA, alto_corte), "white")
-                    
-                    max_ancho = largo_total - 10
-                    max_alto = alto_corte - 6 
-                    
-                    prop_ancho = max_ancho / float(img.width)
-                    prop_alto = max_alto / float(img.height)
-                    
-                    # Usa el tamaño máximo posible sin deformarse
+                    # Escalar el PDF completo al ancho de la cinta, centrado verticalmente
+                    alto_corte  = 118
+                    largo_total = 590
+
+                    prop_ancho = largo_total / float(img.width)
+                    prop_alto  = alto_corte  / float(img.height)
                     proporcion = min(prop_ancho, prop_alto)
-                    
-                    nuevo_ancho = int(float(img.width) * proporcion)
-                    nuevo_alto = int(float(img.height) * proporcion)
-                    
+
+                    nuevo_ancho = int(img.width  * proporcion)
+                    nuevo_alto  = int(img.height * proporcion)
                     img_resized = img.resize((nuevo_ancho, nuevo_alto), Image.Resampling.LANCZOS)
-                    
-                    # Filtro de Negrita Extrema para que el código QR sea 100% negro
-                    img_resized = img_resized.convert("L").point(lambda p: 0 if p < 230 else 255).convert("RGB")
-                    
-                    # Lo pegamos en el centro de los 5 centímetros
-                    x_offset = (largo_total - nuevo_ancho) // 2
+
+                    canvas   = Image.new("RGB", (ANCHO_IMPRESORA, alto_corte), "white")
+                    x_offset = (ANCHO_IMPRESORA - nuevo_ancho) // 2
                     y_offset = (alto_corte - nuevo_alto) // 2
-                    
                     canvas.paste(img_resized, (x_offset, y_offset))
-                    
-                    # Línea de corte
-                    draw = ImageDraw.Draw(canvas)
-                    draw.line([(largo_total, 0), (largo_total, alto_corte)], fill="#CCCCCC", width=2)
-                    
                     img = canvas
                     
                 elif tipo == "recibo":
