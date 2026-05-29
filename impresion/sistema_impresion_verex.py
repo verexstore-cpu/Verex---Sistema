@@ -11,7 +11,7 @@ from brother_ql.raster import BrotherQLRaster
 MODELO_IMPRESORA = 'QL-810W'
 TIPO_ETIQUETA = '62red'
 # ¡IMPORTANTE! Reemplaza esto con tu IP real
-IP_IMPRESORA = 'tcp://192.168.1.100'
+IP_IMPRESORA = 'tcp://192.168.0.2'
 
 class TkinterDnDApp(ctk.CTk, TkinterDnD.DnDWrapper):
     def __init__(self, *args, **kwargs):
@@ -150,8 +150,8 @@ class SistemaImpresionVerex(TkinterDnDApp):
                 elif tipo == "producto":
                     # Etiqueta 5cm × 1.5cm: 2.5cm izquierdos en blanco, contenido en los 2.5cm derechos
                     alto_etiqueta   = 177   # 1.5cm a 300dpi
-                    mitad_px        = 295   # 2.5cm a 300dpi
-                    largo_contenido = 295   # los 2.5cm derechos donde va el diseño
+                    mitad_px        = 295   # 2.5cm a 300dpi — inicio del contenido
+                    largo_contenido = 295   # 2.5cm disponibles para el diseño
 
                     # Escalar el PDF completo para que quepa en la mitad derecha
                     prop_ancho = largo_contenido / float(img.width)
@@ -162,7 +162,7 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     nuevo_alto  = int(img.height * proporcion)
                     img_resized = img.resize((nuevo_ancho, nuevo_alto), Image.Resampling.LANCZOS)
 
-                    # Canvas 62mm (696px): blanco a la izquierda, contenido pegado a partir de mitad_px
+                    # Canvas 62mm (696px): blanco a la izquierda, contenido en los 2.5cm derechos
                     canvas = Image.new("RGB", (ANCHO_IMPRESORA, alto_etiqueta), "white")
                     x_offset = mitad_px + (largo_contenido - nuevo_ancho) // 2
                     y_offset = (alto_etiqueta - nuevo_alto) // 2
