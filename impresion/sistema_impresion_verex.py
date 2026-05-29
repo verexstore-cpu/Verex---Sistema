@@ -148,22 +148,16 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     img = img.resize((ANCHO_IMPRESORA, 1063), Image.Resampling.LANCZOS)
                 
                 elif tipo == "producto":
-                    # Escalar el PDF completo al ancho de la cinta, centrado verticalmente
-                    alto_corte  = 118
-                    largo_total = 590
+                    # Escalar PDF a dimensiones físicas exactas: 54mm×17mm a 300dpi
+                    # 300dpi → 1mm = 11.81px → 54mm=637px, 17mm=201px
+                    PX_MM    = 300 / 25.4
+                    target_w = int(54 * PX_MM)   # 637px = 54mm exactos
+                    target_h = int(17 * PX_MM)   # 201px = 17mm exactos
 
-                    prop_ancho = largo_total / float(img.width)
-                    prop_alto  = alto_corte  / float(img.height)
-                    proporcion = min(prop_ancho, prop_alto)
-
-                    nuevo_ancho = int(img.width  * proporcion)
-                    nuevo_alto  = int(img.height * proporcion)
-                    img_resized = img.resize((nuevo_ancho, nuevo_alto), Image.Resampling.LANCZOS)
-
-                    canvas   = Image.new("RGB", (ANCHO_IMPRESORA, alto_corte), "white")
-                    x_offset = (ANCHO_IMPRESORA - nuevo_ancho) // 2
-                    y_offset = (alto_corte - nuevo_alto) // 2
-                    canvas.paste(img_resized, (x_offset, y_offset))
+                    img_resized = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+                    canvas   = Image.new("RGB", (ANCHO_IMPRESORA, target_h), "white")
+                    x_offset = (ANCHO_IMPRESORA - target_w) // 2  # centrado en cinta 62mm
+                    canvas.paste(img_resized, (x_offset, 0))
                     img = canvas
                     
                 elif tipo == "recibo":
