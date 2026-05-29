@@ -158,20 +158,19 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     img = canvas
 
                 elif tipo == "mini":
-                    # Mini: NO recortar — escalar el PDF completo proporcional
-                    px_mm   = 696 / 62.0
-                    tw = int(19.05 * px_mm)   # 214px — ancho
-                    th = int(12.7  * px_mm)   # 143px — alto
-                    # Escalar proporcional al alto para no distorsionar
-                    prop = th / float(img.height)
-                    nw   = int(img.width * prop)
-                    nh   = th
+                    # PDF portrait 12.7×19.05mm → escalar a 143×214px
+                    # Rotar 90° para tira → 214×143px (QR queda a un lado)
+                    px_mm = 696 / 62.0
+                    tw = int(12.7  * px_mm)   # 143px — ancho portrait
+                    th = int(19.05 * px_mm)   # 214px — alto portrait
+                    # Escalar manteniendo aspecto
+                    prop = min(tw/float(img.width), th/float(img.height))
+                    nw   = int(img.width  * prop)
+                    nh   = int(img.height * prop)
                     img_sc = img.resize((nw, nh), Image.Resampling.LANCZOS)
-                    # Canvas exacto antes de rotar
                     canvas_mini = Image.new("RGB", (tw, th), "white")
-                    x_off = (tw - nw) // 2
-                    canvas_mini.paste(img_sc, (x_off, 0))
-                    img_rotado = canvas_mini.rotate(90, expand=True)  # 143×214px
+                    canvas_mini.paste(img_sc, ((tw-nw)//2, (th-nh)//2))
+                    img_rotado = canvas_mini.rotate(90, expand=True)  # 214×143px
                     mini_buffer.append(img_rotado)
                     continue
 
@@ -195,9 +194,9 @@ class SistemaImpresionVerex(TkinterDnDApp):
 
             # ── Combinar etiquetas mini de 3 en 3 ──────────────────────────────
             if tipo == "mini" and mini_buffer:
-                lbl_w = mini_buffer[0].width   # 143px
-                lbl_h = mini_buffer[0].height  # 214px
-                margen = (ANCHO_IMPRESORA - 3 * lbl_w) // 2  # centrar 3 en 696px
+                lbl_w = mini_buffer[0].width   # 214px tras rotar
+                lbl_h = mini_buffer[0].height  # 143px tras rotar
+                margen = (ANCHO_IMPRESORA - 3 * lbl_w) // 2  # (696 - 642) / 2 = 27px
 
                 for i in range(0, len(mini_buffer), 3):
                     grupo = mini_buffer[i:i+3]
