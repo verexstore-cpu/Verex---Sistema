@@ -486,8 +486,7 @@ public class BrotherRaw {
                 // DK-2251: rollo continuo 62mm
                 // valid_flag=0x80: no fuerza parametros, el RFID del DK-2251 ya dice 62mm continuo
                 // n5-n8: numero real de lineas raster (little-endian) para que el firmware no rechace
-                byte rln0=(byte)(printH&0xFF),rln1=(byte)((printH>>8)&0xFF);
-                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0A,62, 0, rln0,rln1,0,0,0,0});
+                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0A,62, 0, 1,0,0,0,0,0});
                 o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
                 o.AddRange(new byte[]{0x1B,0x69,0x41,0x01});
                 o.AddRange(new byte[]{0x1B,0x69,0x4B,0x08});
@@ -801,11 +800,13 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
             // printW=720: rollo 62mm continuo usa el ancho completo del cabezal (720 dots)
             // printH: líneas raster exactas según contenido → corte limpio con 0x1A
             const cfg = loadConfig()
+            // printW=696: área imprimible para 62mm continuo en QL-810W
+            // (720 dots totales − 12 dots margen por lado = 696 dots imprimibles, leftPad=12)
             const printH62 = heightMm > 0
-              ? Math.round(heightMm * 300 / 25.4)                // guía: 90mm → 1063 líneas
+              ? Math.round(heightMm * 300 / 25.4)                 // guía: 90mm → 1063 líneas
               : Math.max(Math.round(reciboCssPx * 300 / 96), 300) // recibo: dinámico, mín ~30mm
             r = await runPs1(
-              buildRawPrintScript(printerName || '', tmpPng, 1, cfg.printerIp || null, 720, printH62, 720),
+              buildRawPrintScript(printerName || '', tmpPng, 1, cfg.printerIp || null, 696, printH62, 720),
               35000
             )
           }
