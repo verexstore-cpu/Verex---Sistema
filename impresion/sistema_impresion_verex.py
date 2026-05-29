@@ -148,9 +148,10 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     img = img.resize((ANCHO_IMPRESORA, 1063), Image.Resampling.LANCZOS)
 
                 elif tipo == "producto":
-                    # Cinta completa 62mm: 696×117px — mitad izquierda blanco, mitad derecha contenido
-                    alto_etiqueta  = 133          # 1.7cm — mejor legibilidad del contenido
-                    zona_contenido = ANCHO_IMPRESORA // 2  # 348px cada mitad
+                    # 295px (2.5cm) zona blanca | 401px zona contenido (QR+texto mas grande)
+                    alto_etiqueta  = 133
+                    zona_blanca    = 295
+                    zona_contenido = ANCHO_IMPRESORA - zona_blanca  # 401px
 
                     prop_alto  = (alto_etiqueta - 4) / float(img.height)
                     prop_ancho = zona_contenido / float(img.width)
@@ -161,38 +162,35 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     img_resized = img.resize((nuevo_ancho, nuevo_alto), Image.Resampling.LANCZOS)
 
                     canvas = Image.new("RGB", (ANCHO_IMPRESORA, alto_etiqueta), "white")
-                    x_offset = zona_contenido + (zona_contenido - nuevo_ancho) // 2
+                    x_offset = zona_blanca + (zona_contenido - nuevo_ancho) // 2
                     y_offset = (alto_etiqueta - nuevo_alto) // 2
                     canvas.paste(img_resized, (x_offset, y_offset))
 
-                    # Texto VEREX en la mitad izquierda (zona en blanco)
+                    # VEREX + eslogan en la zona blanca izquierda
                     draw = ImageDraw.Draw(canvas)
-                    cx = zona_contenido // 2
                     try:
-                        font_titulo = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", size=30)
-                        font_slogan = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", size=13)
+                        f_titulo = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", size=32)
+                        f_slogan = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", size=12)
                     except:
-                        font_titulo = ImageFont.load_default()
-                        font_slogan = font_titulo
+                        f_titulo = ImageFont.load_default()
+                        f_slogan = ImageFont.load_default()
 
-                    def centrar_texto(draw, texto, font, y, ancho_zona, fill):
+                    linea1 = "VEREX"
+                    linea2 = "Mas que accesorios..."
+                    linea3 = "Identidad"
+
+                    y_cur = 18
+                    for texto, font, color in [
+                        (linea1, f_titulo, (0, 0, 0)),
+                        (linea2, f_slogan, (60, 60, 60)),
+                        (linea3, f_slogan, (60, 60, 60)),
+                    ]:
                         bbox = draw.textbbox((0, 0), texto, font=font)
-                        w = bbox[2] - bbox[0]
-                        draw.text(((ancho_zona - w) // 2, y), texto, fill=fill, font=font)
+                        tw = bbox[2] - bbox[0]
+                        th = bbox[3] - bbox[1]
+                        draw.text(((zona_blanca - tw) // 2, y_cur), texto, fill=color, font=font)
+                        y_cur += th + 3
 
-                    titulo  = "VEREX"
-                    slogan  = '"Mas que accesorios... Identidad"'
-                    bbox_t  = draw.textbbox((0, 0), titulo, font=font_titulo)
-                    h_t     = bbox_t[3] - bbox_t[1]
-                    bbox_s  = draw.textbbox((0, 0), slogan, font=font_slogan)
-                    h_s     = bbox_s[3] - bbox_s[1]
-                    espacio = 4
-                    bloque  = h_t + espacio + h_s
-                    y_t     = (alto_etiqueta - bloque) // 2
-                    y_s     = y_t + h_t + espacio
-
-                    centrar_texto(draw, titulo, font_titulo, y_t, zona_contenido, fill=(0, 0, 0))
-                    centrar_texto(draw, slogan, font_slogan, y_s, zona_contenido, fill=(80, 80, 80))
                     img = canvas
 
                 elif tipo == "recibo":
