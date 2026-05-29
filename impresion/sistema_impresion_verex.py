@@ -9,8 +9,8 @@ from brother_ql.raster import BrotherQLRaster
 
 # --- Configuración de la Impresora ---
 MODELO_IMPRESORA = 'QL-810W'
-TIPO_ETIQUETA_GUIA   = '62red'   # Cinta continua 62mm para guías y recibos
-TIPO_ETIQUETA_PRODUCTO = '17x54' # DK-1204 die-cut 54mm×17mm para etiquetas de producto
+TIPO_ETIQUETA_GUIA     = '62red'
+TIPO_ETIQUETA_PRODUCTO = '62red'
 IP_IMPRESORA = 'tcp://192.168.0.2'
 
 class TkinterDnDApp(ctk.CTk, TkinterDnD.DnDWrapper):
@@ -148,25 +148,24 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     img = img.resize((ANCHO_IMPRESORA, 1063), Image.Resampling.LANCZOS)
 
                 elif tipo == "producto":
-                    # DK-1204 (17x54): 54mm×17mm die-cut ≈ 5.4cm×1.7cm
-                    # Canvas exacto que espera brother_ql para '17x54' a 300dpi
-                    ancho_label = 638   # 54mm a 300dpi
-                    alto_label  = 201   # 17mm a 300dpi
-                    mitad_px    = 319   # 2.5cm de la izquierda va en blanco
+                    # Etiqueta 5cm × 1.5cm sobre rollo 62mm
+                    # Calibrado en esta impresora: 133px=1.5cm, 580px=5cm
+                    alto_etiqueta  = 133  # 1.5cm
+                    ancho_etiqueta = 580  # 5cm — centrado en el rollo de 696px (6cm)
+                    margen_lat     = (ANCHO_IMPRESORA - ancho_etiqueta) // 2  # 58px c/lado
+                    zona_contenido = ancho_etiqueta // 2  # 290px — mitad derecha con contenido
 
-                    # Escalar el PDF para que quepa en la mitad derecha (319px)
-                    prop_ancho = mitad_px / float(img.width)
-                    prop_alto  = alto_label / float(img.height)
-                    proporcion = min(prop_ancho, prop_alto)
+                    prop_alto  = (alto_etiqueta - 6) / float(img.height)
+                    prop_ancho = zona_contenido / float(img.width)
+                    proporcion = min(prop_alto, prop_ancho)
 
                     nuevo_ancho = int(img.width  * proporcion)
                     nuevo_alto  = int(img.height * proporcion)
                     img_resized = img.resize((nuevo_ancho, nuevo_alto), Image.Resampling.LANCZOS)
 
-                    # Canvas 54×17mm: izquierda en blanco, contenido en mitad derecha
-                    canvas = Image.new("RGB", (ancho_label, alto_label), "white")
-                    x_offset = mitad_px + (mitad_px - nuevo_ancho) // 2
-                    y_offset = (alto_label - nuevo_alto) // 2
+                    canvas = Image.new("RGB", (ANCHO_IMPRESORA, alto_etiqueta), "white")
+                    x_offset = margen_lat + zona_contenido + (zona_contenido - nuevo_ancho) // 2
+                    y_offset = (alto_etiqueta - nuevo_alto) // 2
                     canvas.paste(img_resized, (x_offset, y_offset))
                     img = canvas
 
@@ -219,7 +218,7 @@ class SistemaImpresionVerex(TkinterDnDApp):
             self.lbl_drop.configure(text=f"¡Se enviaron {len(self.imagenes_impresion)} etiquetas a imprimir!", text_color="#28a745")
 
         except Exception as e:
-            self.lbl_drop.configure(text="Error de conexión Wi-Fi. Revisa la IP.", text_color="red")
+            self.lbl_drop.configure(text=f"Error: {e}", text_color="red")
 
 if __name__ == "__main__":
     app = SistemaImpresionVerex()
