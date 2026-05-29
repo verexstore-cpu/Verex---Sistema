@@ -170,11 +170,11 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     img = canvas
                     
                 elif tipo == "mini":
-                    # Mini ½"×¾" = 12.7mm×19.05mm portrait
-                    # En cinta 62mm: ancho=12.7mm, alto corte=19.05mm
+                    # Mini landscape: 19.05mm×12.7mm (¾"×½")
+                    # En cinta 62mm: ancho=19.05mm (en cinta), corte=12.7mm
                     px_mm    = 696 / 62.0
-                    target_w = int(12.7 * px_mm)   # 143px = ½" ancho
-                    target_h = int(19.05 * px_mm)  # 214px = ¾" alto (corte)
+                    target_w = int(19.05 * px_mm)  # 214px = ¾" ancho en cinta
+                    target_h = int(12.7  * px_mm)  # 143px = ½" corte
 
                     img_resized = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
                     canvas   = Image.new("RGB", (ANCHO_IMPRESORA, target_h), "white")
