@@ -9,7 +9,8 @@ from brother_ql.raster import BrotherQLRaster
 
 # --- Configuración de la Impresora ---
 MODELO_IMPRESORA = 'QL-810W'
-TIPO_ETIQUETA = '62red' 
+TIPO_ETIQUETA      = '62red'    # guias y recibos
+TIPO_ETIQUETA_MINI = '29x90.3' # DK-1201: 29mm × 90.3mm die-cut para etiquetas mini
 IP_IMPRESORA = 'tcp://192.168.0.7'
 
 class TkinterDnDApp(ctk.CTk, TkinterDnD.DnDWrapper):
@@ -191,23 +192,31 @@ class SistemaImpresionVerex(TkinterDnDApp):
 
             # ── Combinar etiquetas mini de 3 en 3 ──────────────────────────────
             if tipo == "mini" and mini_buffer:
-                lbl_w = mini_buffer[0].width   # 143px tras rotar
-                lbl_h = mini_buffer[0].height  # 214px tras rotar
-                margen = (ANCHO_IMPRESORA - 3 * lbl_w) // 2  # (696-429)/2 = 133px
+                # DK-1201: 29mm × 90.3mm die-cut
+                # Dimensiones en píxeles a 300dpi (aproximado, el error corregirá si hace falta)
+                DIE_W = 306   # 29mm ≈ 306px (valor real del DK-1201)
+                DIE_H = 991   # 90.3mm ≈ 991px
+
+                # Calcular tamaño de cada mini dentro del die-cut (3 apiladas vertical)
+                # mini portrait: 12.7mm × 19.05mm → dentro de 29×90.3mm
+                lbl_unit_w = int(DIE_W * 12.7 / 29)    # ~134px
+                lbl_unit_h = int(DIE_H / 3)             # ~330px por mini (3 en 90.3mm)
 
                 for i in range(0, len(mini_buffer), 3):
                     grupo = mini_buffer[i:i+3]
-                    tira  = Image.new("RGB", (ANCHO_IMPRESORA, lbl_h), "white")
+                    tira  = Image.new("RGB", (DIE_W, DIE_H), "white")
                     draw  = ImageDraw.Draw(tira)
 
                     for j, lbl in enumerate(grupo):
-                        x = margen + j * lbl_w
-                        tira.paste(lbl, (x, 0))
+                        lbl_r = lbl.resize((lbl_unit_w, lbl_unit_h), Image.Resampling.LANCZOS)
+                        x_off = (DIE_W - lbl_unit_w) // 2
+                        y_off = j * lbl_unit_h
+                        tira.paste(lbl_r, (x_off, y_off))
                         # Línea guía punteada entre etiquetas
                         if j < len(grupo) - 1:
-                            lx = x + lbl_w
-                            for y in range(0, lbl_h, 12):
-                                draw.line([(lx, y), (lx, min(y+6, lbl_h))], fill="#333333", width=2)
+                            ly = y_off + lbl_unit_h
+                            for x in range(0, DIE_W, 12):
+                                draw.line([(x, ly), (min(x+6, DIE_W), ly)], fill="#333333", width=2)
 
                     self.imagenes_impresion.append(tira)
 
@@ -217,7 +226,7 @@ class SistemaImpresionVerex(TkinterDnDApp):
                         ctk_img = ctk.CTkImage(light_image=prev, dark_image=prev, size=(prev.width, prev.height))
                         tiras = (len(mini_buffer) + 2) // 3
                         self.lbl_preview.configure(image=ctk_img,
-                            text=f"{len(mini_buffer)} etiquetas en {tiras} tira(s) de 3",
+                            text=f"{len(mini_buffer)} etiquetas — {tiras} die-cut(s) DK-1201",
                             compound="bottom")
 
             self.btn_imprimir.configure(state="normal")
@@ -236,7 +245,7 @@ class SistemaImpresionVerex(TkinterDnDApp):
             instrucciones = convert(
                 qlr=qlr, 
                 images=self.imagenes_impresion, 
-                label=TIPO_ETIQUETA, 
+                label=TIPO_ETIQUETA_MINI if tipo == "mini" else TIPO_ETIQUETA, 
                 dither=True, 
                 compress=False, 
                 red=True 
