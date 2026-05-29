@@ -486,7 +486,8 @@ public class BrotherRaw {
                 // DK-2251: rollo continuo 62mm
                 // valid_flag=0x80: no fuerza parametros, el RFID del DK-2251 ya dice 62mm continuo
                 // n5-n8: numero real de lineas raster (little-endian) para que el firmware no rechace
-                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0A,62, 0, 1,0,0,0,0,0});
+                byte rln0=(byte)(printH&0xFF),rln1=(byte)((printH>>8)&0xFF);
+                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0A,62, 0, rln0,rln1,0,0,0,0});
                 o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
                 o.AddRange(new byte[]{0x1B,0x69,0x41,0x01});
                 o.AddRange(new byte[]{0x1B,0x69,0x4B,0x08});
@@ -675,8 +676,8 @@ Write-Output "GDI-PRINT OK"
 }
 
 // ── Imprimir sin diálogo ──
-//   widthMm=0   → Etiquetas 54mm×17mm  → RAW TCP directo (bypasa driver)
-//   widthMm=62  → Guía/Recibo 62mm     → GDI driver Brother QL (confiable)
+//   widthMm=0   → Etiquetas 54mm×17mm  → RAW TCP directo (bypasa driver), printW=638, printH=201
+//   widthMm=62  → Guía/Recibo 62mm     → RAW TCP directo (bypasa GDI/spooler), printW=720, printH=dinámico
 ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printerName, pageCount }) => {
   const PC = Math.max(1, parseInt(pageCount) || 1)
 
@@ -738,7 +739,7 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
       // ── Impresión: etiquetas (RAW TCP) + guías/recibos (GDI driver) ─────────
       if (isLabel || is62mm) {
         try {
-          let captureW, captureH
+          let captureW, captureH, reciboCssPx = 0
 
           if (isLabel) {
             // ── Etiquetas DK-2251: 54mm×17mm — RAW TCP ──
@@ -751,7 +752,7 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
             captureH = LHS * PC
 
           } else if (heightMm > 0) {
-            // ── Guía de Envío: 62mm × 90mm — GDI driver ──
+            // ── Guía de Envío: 62mm × 90mm — RAW TCP ──
             await win.webContents.insertCSS(
               'html,body{overflow:hidden!important;margin:0!important;padding:0!important;' +
               'width:62mm!important;height:' + heightMm + 'mm!important;}'
@@ -761,14 +762,14 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
             captureH = Math.round(heightMm * 96 / 25.4) * GSCALE
 
           } else {
-            // ── Recibo Térmico: 62mm × altura automática — GDI driver ──
+            // ── Recibo Térmico: 62mm × altura automática — RAW TCP ──
             await win.webContents.insertCSS(
               'html,body{overflow:hidden!important;margin:0!important;padding:0!important;' +
               'width:62mm!important;}'
             )
             await new Promise(r => setTimeout(r, 1000))
-            const cssPx = await win.webContents.executeJavaScript('document.body.scrollHeight')
-            captureH = Math.max(cssPx, 100) * GSCALE
+            reciboCssPx = await win.webContents.executeJavaScript('document.body.scrollHeight')
+            captureH = Math.max(reciboCssPx, 100) * GSCALE
             captureW = GWS
           }
 
@@ -796,14 +797,15 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
               35000
             )
           } else {
-            // Guías/Recibos: GDI via driver Brother QL
-            // El driver sabe exactamente el formato RAW que necesita la QL-810W
-            const wT = 620  // 62mm × 10 = 620 décimas de mm
-            const hT = heightMm > 0
-              ? Math.round(heightMm * 10)                                    // guía: 90mm→900
-              : Math.max(Math.round((captureH / GSCALE) * 25.4 / 96 * 10), 300) // recibo: auto, min 30mm
+            // Guías/Recibos: RAW TCP 62mm — mismo protocolo que etiquetas, bypasa GDI/spooler
+            // printW=720: rollo 62mm continuo usa el ancho completo del cabezal (720 dots)
+            // printH: líneas raster exactas según contenido → corte limpio con 0x1A
+            const cfg = loadConfig()
+            const printH62 = heightMm > 0
+              ? Math.round(heightMm * 300 / 25.4)                // guía: 90mm → 1063 líneas
+              : Math.max(Math.round(reciboCssPx * 300 / 96), 300) // recibo: dinámico, mín ~30mm
             r = await runPs1(
-              buildGdiPrintScript(printerName || '', tmpPng, wT, hT),
+              buildRawPrintScript(printerName || '', tmpPng, 1, cfg.printerIp || null, 720, printH62, 720),
               35000
             )
           }
