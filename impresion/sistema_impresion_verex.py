@@ -150,13 +150,13 @@ class SistemaImpresionVerex(TkinterDnDApp):
                 elif tipo == "producto":
                     # Escalar PDF a dimensiones físicas exactas: 54mm×17mm a 300dpi
                     # 300dpi → 1mm = 11.81px → 54mm=637px, 17mm=201px
-                    PX_MM    = 300 / 25.4
-                    target_w = int(54 * PX_MM)   # 637px = 54mm exactos a 300dpi
-                    target_h = 133               # calibrado: 133px = 1.5cm en esta impresora
+                    # Escalar manteniendo proporción 54×17mm del PDF
+                    target_h = 133                              # 1.5cm calibrado
+                    target_w = int(target_h * 54.0 / 17.0)    # 422px — respeta aspecto
 
                     img_resized = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
                     canvas   = Image.new("RGB", (ANCHO_IMPRESORA, target_h), "white")
-                    x_offset = (ANCHO_IMPRESORA - target_w) // 2  # centrado en cinta 62mm
+                    x_offset = (ANCHO_IMPRESORA - target_w) // 2
                     canvas.paste(img_resized, (x_offset, 0))
                     img = canvas
                     
