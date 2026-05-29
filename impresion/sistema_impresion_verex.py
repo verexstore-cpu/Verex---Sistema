@@ -167,16 +167,32 @@ class SistemaImpresionVerex(TkinterDnDApp):
 
                     # Texto VEREX en la mitad izquierda (zona en blanco)
                     draw = ImageDraw.Draw(canvas)
-                    cx = zona_contenido // 2  # centro horizontal de la zona blanca
+                    cx = zona_contenido // 2
                     try:
-                        font_titulo = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", size=28)
-                        font_slogan = ImageFont.truetype("C:/Windows/Fonts/ariali.ttf",  size=14)
+                        font_titulo = ImageFont.truetype(“C:/Windows/Fonts/arialbd.ttf”, size=30)
+                        font_slogan = ImageFont.truetype(“C:/Windows/Fonts/arialbd.ttf”, size=13)
                     except:
                         font_titulo = ImageFont.load_default()
-                        font_slogan = ImageFont.load_default()
+                        font_slogan = font_titulo
 
-                    draw.text((cx, alto_etiqueta // 2 - 14), "VEREX",      fill="black",       font=font_titulo, anchor="mm")
-                    draw.text((cx, alto_etiqueta // 2 + 16), "“Más que accesorios... Identidad”", fill=(80, 80, 80), font=font_slogan, anchor="mm")
+                    def centrar_texto(draw, texto, font, y, ancho_zona, fill):
+                        bbox = draw.textbbox((0, 0), texto, font=font)
+                        w = bbox[2] - bbox[0]
+                        draw.text(((ancho_zona - w) // 2, y), texto, fill=fill, font=font)
+
+                    titulo  = “VEREX”
+                    slogan  = '”Mas que accesorios... Identidad”'
+                    bbox_t  = draw.textbbox((0, 0), titulo, font=font_titulo)
+                    h_t     = bbox_t[3] - bbox_t[1]
+                    bbox_s  = draw.textbbox((0, 0), slogan, font=font_slogan)
+                    h_s     = bbox_s[3] - bbox_s[1]
+                    espacio = 4
+                    bloque  = h_t + espacio + h_s
+                    y_t     = (alto_etiqueta - bloque) // 2
+                    y_s     = y_t + h_t + espacio
+
+                    centrar_texto(draw, titulo, font_titulo, y_t, zona_contenido, fill=(0, 0, 0))
+                    centrar_texto(draw, slogan, font_slogan, y_s, zona_contenido, fill=(80, 80, 80))
                     img = canvas
 
                 elif tipo == "recibo":

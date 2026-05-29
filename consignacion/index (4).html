@@ -913,11 +913,11 @@ async function generarEtiquetas() {
     //    Precio   y=6   (bold grande)
     //    Material y=10  (bold mediano)
     //    Código   y=14.5 (bold gris)
-    const qrSz  = 16;
-    const qrX   = 0.5;
+    const qrSz  = 16.5;
+    const qrX   = 0.2;
     const qrY   = (LH - qrSz) / 2;
-    const tX    = qrX + qrSz + 1;     // 17.5mm
-    const tMaxW = LW - tX - 1;        // ~35.5mm disponibles para texto
+    const tX    = qrX + qrSz + 0.8;   // 17.5mm
+    const tMaxW = LW - tX - 0.5;      // ~36mm disponibles para texto
 
     prods.forEach((p, idx) => {
         if (idx > 0) doc.addPage([LW, LH], 'landscape');
