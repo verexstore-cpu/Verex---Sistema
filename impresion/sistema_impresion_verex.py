@@ -1,17 +1,16 @@
 import os
 import customtkinter as ctk
 from tkinterdnd2 import TkinterDnD, DND_FILES
-import fitz  # PyMuPDF
-from PIL import Image, ImageTk, ImageChops, ImageDraw, ImageFont
+import fitz
+from PIL import Image, ImageTk, ImageChops, ImageDraw, ImageEnhance
 from brother_ql.conversion import convert
 from brother_ql.backends.helpers import send
 from brother_ql.raster import BrotherQLRaster
 
 # --- Configuración de la Impresora ---
 MODELO_IMPRESORA = 'QL-810W'
-TIPO_ETIQUETA_GUIA     = '62red'
-TIPO_ETIQUETA_PRODUCTO = '62red'
-IP_IMPRESORA = 'tcp://192.168.0.2'
+TIPO_ETIQUETA = '62red' 
+IP_IMPRESORA = 'tcp://192.168.0.7'
 
 class TkinterDnDApp(ctk.CTk, TkinterDnD.DnDWrapper):
     def __init__(self, *args, **kwargs):
@@ -23,19 +22,19 @@ class SistemaImpresionVerex(TkinterDnDApp):
         super().__init__()
 
         self.title("SISTEMA DE IMPRESIÓN VEREX")
-        self.geometry("700x850")
+        self.geometry("750x850") 
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
 
         self.pdf_actual = None
-        self.imagenes_impresion = []
-
+        self.imagenes_impresion = [] 
+        
         self.tipo_seleccionado = ctk.StringVar(value="guia")
         self.rotar_var = ctk.BooleanVar(value=True)
 
-        self.color_activo = "#2B78E4"
-        self.color_inactivo = "#333333"
-        self.color_hover = "#3A8DF5"
+        self.color_activo = "#2B78E4" 
+        self.color_inactivo = "#333333" 
+        self.color_hover = "#3A8DF5" 
 
         self.construir_interfaz()
 
@@ -67,8 +66,8 @@ class SistemaImpresionVerex(TkinterDnDApp):
         self.frame_drop = ctk.CTkFrame(self, height=120, corner_radius=10, fg_color="#2b2b2b", border_width=2, border_color="#555555")
         self.frame_drop.pack(pady=10, padx=40, fill="x")
         self.frame_drop.pack_propagate(False)
-
-        self.lbl_drop = ctk.CTkLabel(self.frame_drop, text="Arrastra y suelta tu PDF aquí", font=("Arial", 16, "bold"))
+        
+        self.lbl_drop = ctk.CTkLabel(self.frame_drop, text="Arrastra y suelta tu PDF aquí", font=("Arial", 16, "bold")) 
         self.lbl_drop.pack(expand=True)
 
         self.frame_drop.drop_target_register(DND_FILES)
@@ -77,8 +76,8 @@ class SistemaImpresionVerex(TkinterDnDApp):
         self.lbl_preview = ctk.CTkLabel(self, text="Vista Previa", text_color="gray")
         self.lbl_preview.pack(pady=10, expand=True)
 
-        self.btn_imprimir = ctk.CTkButton(self, text="IMPRIMIR ETIQUETA", font=("Arial", 16, "bold"),
-                                          fg_color="#28a745", hover_color="#218838", height=50, corner_radius=8,
+        self.btn_imprimir = ctk.CTkButton(self, text="IMPRIMIR ETIQUETA", font=("Arial", 16, "bold"), 
+                                          fg_color="#28a745", hover_color="#218838", height=50, corner_radius=8, 
                                           state="disabled", command=self.imprimir_etiqueta)
         self.btn_imprimir.pack(pady=15, ipadx=20)
 
@@ -118,87 +117,77 @@ class SistemaImpresionVerex(TkinterDnDApp):
             self.imagenes_impresion.clear()
             doc = fitz.open(self.pdf_actual)
             total_paginas = len(doc)
-
-            ANCHO_IMPRESORA = 696
+            
+            ANCHO_IMPRESORA = 696 
             tipo = self.tipo_seleccionado.get()
 
             for num_pag in range(total_paginas):
                 pagina = doc.load_page(num_pag)
-                matriz = fitz.Matrix(4.0, 4.0)
+                matriz = fitz.Matrix(4.0, 4.0) 
                 pix = pagina.get_pixmap(matrix=matriz, alpha=False)
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
-                # Auto-recorte de márgenes blancos
-                bg = Image.new(img.mode, img.size, (255, 255, 255))
-                diff = ImageChops.difference(img, bg)
-                bbox = diff.getbbox()
+                # --- NUEVO: RECORTE AGRESIVO ---
+                # Convertimos la imagen a un negativo extremo solo para buscar dónde hay tinta real
+                img_busqueda = img.convert("L").point(lambda x: 0 if x > 240 else 255, '1')
+                bbox = img_busqueda.getbbox()
+                
                 if bbox:
-                    b_left, b_top, b_right, b_bottom = bbox
-                    img = img.crop((max(0, b_left-10), max(0, b_top-10), min(img.width, b_right+10), min(img.height, b_bottom+10)))
+                    # Recortamos la imagen original usando solo el cuadro donde encontró tinta
+                    # (Le damos un pequeñísimo respiro de 2 píxeles para no cortar letras)
+                    img = img.crop((max(0, bbox[0]-2), max(0, bbox[1]-2), min(img.width, bbox[2]+2), min(img.height, bbox[3]+2)))
 
-                # Rotación
                 if tipo == "guia" and self.rotar_var.get():
                     img = img.rotate(90, expand=True)
                 elif tipo == "producto":
                     if img.height > img.width:
                         img = img.rotate(90, expand=True)
 
-                # ESCALADO
+                # ESCALADO 
                 if tipo == "guia":
                     img = img.resize((ANCHO_IMPRESORA, 1063), Image.Resampling.LANCZOS)
-
+                
                 elif tipo == "producto":
-                    # 295px (2.5cm) zona blanca | 401px zona contenido (QR+texto mas grande)
-                    alto_etiqueta  = 133
-                    zona_blanca    = 295
-                    zona_contenido = ANCHO_IMPRESORA - zona_blanca  # 401px
-
-                    prop_alto  = (alto_etiqueta - 4) / float(img.height)
-                    prop_ancho = zona_contenido / float(img.width)
-                    proporcion = min(prop_alto, prop_ancho)
-
-                    nuevo_ancho = int(img.width  * proporcion)
-                    nuevo_alto  = int(img.height * proporcion)
+                    alto_corte = 118 
+                    largo_total = 590 
+                    
+                    canvas = Image.new("RGB", (ANCHO_IMPRESORA, alto_corte), "white")
+                    
+                    max_ancho = largo_total - 10
+                    max_alto = alto_corte - 6 
+                    
+                    prop_ancho = max_ancho / float(img.width)
+                    prop_alto = max_alto / float(img.height)
+                    
+                    # Usa el tamaño máximo posible sin deformarse
+                    proporcion = min(prop_ancho, prop_alto)
+                    
+                    nuevo_ancho = int(float(img.width) * proporcion)
+                    nuevo_alto = int(float(img.height) * proporcion)
+                    
                     img_resized = img.resize((nuevo_ancho, nuevo_alto), Image.Resampling.LANCZOS)
-
-                    canvas = Image.new("RGB", (ANCHO_IMPRESORA, alto_etiqueta), "white")
-                    x_offset = zona_blanca + (zona_contenido - nuevo_ancho) // 2
-                    y_offset = (alto_etiqueta - nuevo_alto) // 2
+                    
+                    # Filtro de Negrita Extrema para que el código QR sea 100% negro
+                    img_resized = img_resized.convert("L").point(lambda p: 0 if p < 230 else 255).convert("RGB")
+                    
+                    # Lo pegamos en el centro de los 5 centímetros
+                    x_offset = (largo_total - nuevo_ancho) // 2
+                    y_offset = (alto_corte - nuevo_alto) // 2
+                    
                     canvas.paste(img_resized, (x_offset, y_offset))
-
-                    # VEREX + eslogan en la zona blanca izquierda
+                    
+                    # Línea de corte
                     draw = ImageDraw.Draw(canvas)
-                    try:
-                        f_titulo = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", size=32)
-                        f_slogan = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", size=12)
-                    except:
-                        f_titulo = ImageFont.load_default()
-                        f_slogan = ImageFont.load_default()
-
-                    linea1 = "VEREX"
-                    linea2 = "Mas que accesorios..."
-                    linea3 = "Identidad"
-
-                    y_cur = 18
-                    for texto, font, color in [
-                        (linea1, f_titulo, (0, 0, 0)),
-                        (linea2, f_slogan, (60, 60, 60)),
-                        (linea3, f_slogan, (60, 60, 60)),
-                    ]:
-                        bbox = draw.textbbox((0, 0), texto, font=font)
-                        tw = bbox[2] - bbox[0]
-                        th = bbox[3] - bbox[1]
-                        draw.text(((zona_blanca - tw) // 2, y_cur), texto, fill=color, font=font)
-                        y_cur += th + 3
-
+                    draw.line([(largo_total, 0), (largo_total, alto_corte)], fill="#CCCCCC", width=2)
+                    
                     img = canvas
-
+                    
                 elif tipo == "recibo":
                     proporcion = ANCHO_IMPRESORA / float(img.width)
                     nuevo_alto = int((float(img.height) * float(proporcion)))
                     img = img.resize((ANCHO_IMPRESORA, nuevo_alto), Image.Resampling.LANCZOS)
-
-                    margen_seguridad = 250
+                    
+                    margen_seguridad = 250 
                     imagen_con_margen = Image.new("RGB", (ANCHO_IMPRESORA, nuevo_alto + margen_seguridad), "white")
                     imagen_con_margen.paste(img, (0, 0))
                     img = imagen_con_margen
@@ -207,9 +196,9 @@ class SistemaImpresionVerex(TkinterDnDApp):
 
                 if num_pag == 0:
                     img_preview = img.copy()
-                    img_preview.thumbnail((300, 350))
+                    img_preview.thumbnail((300, 350)) 
                     ctk_img = ctk.CTkImage(light_image=img_preview, dark_image=img_preview, size=(img_preview.width, img_preview.height))
-
+                    
                     texto_preview = "" if total_paginas == 1 else f"Mostrando 1 de {total_paginas} etiquetas"
                     self.lbl_preview.configure(image=ctk_img, text=texto_preview, compound="bottom")
 
@@ -223,26 +212,26 @@ class SistemaImpresionVerex(TkinterDnDApp):
             return
 
         try:
-            tipo = self.tipo_seleccionado.get()
-            label_type = TIPO_ETIQUETA_PRODUCTO if tipo == "producto" else TIPO_ETIQUETA_GUIA
-
             qlr = BrotherQLRaster(MODELO_IMPRESORA)
             qlr.exception_on_warning = True
 
             instrucciones = convert(
-                qlr=qlr,
-                images=self.imagenes_impresion,
-                label=label_type,
-                dither=True,
-                compress=False,
-                red=True
+                qlr=qlr, 
+                images=self.imagenes_impresion, 
+                label=TIPO_ETIQUETA, 
+                dither=True, 
+                compress=False, 
+                red=True 
             )
 
             send(instrucciones, IP_IMPRESORA)
-            self.lbl_drop.configure(text=f"¡Se enviaron {len(self.imagenes_impresion)} etiquetas a imprimir!", text_color="#28a745")
-
+            
+            total_etiquetas = len(self.imagenes_impresion)
+            mensaje_exito = f"¡Se enviaron {total_etiquetas} etiquetas a imprimir!"
+            self.lbl_drop.configure(text=mensaje_exito, text_color="#28a745")
+            
         except Exception as e:
-            self.lbl_drop.configure(text=f"Error: {e}", text_color="red")
+            self.lbl_drop.configure(text="Error de conexión Wi-Fi. Revisa la IP.", text_color="red")
 
 if __name__ == "__main__":
     app = SistemaImpresionVerex()
