@@ -9,8 +9,8 @@ from brother_ql.raster import BrotherQLRaster
 
 # --- Configuración de la Impresora ---
 MODELO_IMPRESORA = 'QL-810W'
-TIPO_ETIQUETA = '62red'
-# ¡IMPORTANTE! Reemplaza esto con tu IP real
+TIPO_ETIQUETA_GUIA   = '62red'   # Cinta continua 62mm para guías y recibos
+TIPO_ETIQUETA_PRODUCTO = '17x54' # DK-1204 die-cut 54mm×17mm para etiquetas de producto
 IP_IMPRESORA = 'tcp://192.168.0.2'
 
 class TkinterDnDApp(ctk.CTk, TkinterDnD.DnDWrapper):
@@ -148,24 +148,25 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     img = img.resize((ANCHO_IMPRESORA, 1063), Image.Resampling.LANCZOS)
 
                 elif tipo == "producto":
-                    # Etiqueta 5cm × 1.5cm: 2.5cm izquierdos en blanco, contenido en los 2.5cm derechos
-                    alto_etiqueta   = 177   # 1.5cm a 300dpi
-                    mitad_px        = 295   # 2.5cm a 300dpi — inicio del contenido
-                    largo_contenido = 295   # 2.5cm disponibles para el diseño
+                    # DK-1204 (17x54): 54mm×17mm die-cut ≈ 5.4cm×1.7cm
+                    # Canvas exacto que espera brother_ql para '17x54' a 300dpi
+                    ancho_label = 638   # 54mm a 300dpi
+                    alto_label  = 201   # 17mm a 300dpi
+                    mitad_px    = 319   # 2.5cm de la izquierda va en blanco
 
-                    # Escalar el PDF completo para que quepa en la mitad derecha
-                    prop_ancho = largo_contenido / float(img.width)
-                    prop_alto  = alto_etiqueta   / float(img.height)
+                    # Escalar el PDF para que quepa en la mitad derecha (319px)
+                    prop_ancho = mitad_px / float(img.width)
+                    prop_alto  = alto_label / float(img.height)
                     proporcion = min(prop_ancho, prop_alto)
 
                     nuevo_ancho = int(img.width  * proporcion)
                     nuevo_alto  = int(img.height * proporcion)
                     img_resized = img.resize((nuevo_ancho, nuevo_alto), Image.Resampling.LANCZOS)
 
-                    # Canvas 62mm (696px): blanco a la izquierda, contenido en los 2.5cm derechos
-                    canvas = Image.new("RGB", (ANCHO_IMPRESORA, alto_etiqueta), "white")
-                    x_offset = mitad_px + (largo_contenido - nuevo_ancho) // 2
-                    y_offset = (alto_etiqueta - nuevo_alto) // 2
+                    # Canvas 54×17mm: izquierda en blanco, contenido en mitad derecha
+                    canvas = Image.new("RGB", (ancho_label, alto_label), "white")
+                    x_offset = mitad_px + (mitad_px - nuevo_ancho) // 2
+                    y_offset = (alto_label - nuevo_alto) // 2
                     canvas.paste(img_resized, (x_offset, y_offset))
                     img = canvas
 
@@ -199,13 +200,16 @@ class SistemaImpresionVerex(TkinterDnDApp):
             return
 
         try:
+            tipo = self.tipo_seleccionado.get()
+            label_type = TIPO_ETIQUETA_PRODUCTO if tipo == "producto" else TIPO_ETIQUETA_GUIA
+
             qlr = BrotherQLRaster(MODELO_IMPRESORA)
             qlr.exception_on_warning = True
 
             instrucciones = convert(
                 qlr=qlr,
                 images=self.imagenes_impresion,
-                label=TIPO_ETIQUETA,
+                label=label_type,
                 dither=True,
                 compress=False,
                 red=True
