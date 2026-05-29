@@ -158,7 +158,7 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     img = canvas
 
                 elif tipo == "mini":
-                    # PDF landscape 19.05×12.7mm — sin rotar, QR queda a la derecha
+                    # PDF landscape 19.05×12.7mm → escalar → rotar 90° → QR al lado
                     px_mm = 696 / 62.0
                     tw = int(19.05 * px_mm)   # 214px ancho
                     th = int(12.7  * px_mm)   # 143px alto
@@ -168,7 +168,7 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     img_sc = img.resize((nw, nh), Image.Resampling.LANCZOS)
                     canvas_mini = Image.new("RGB", (tw, th), "white")
                     canvas_mini.paste(img_sc, ((tw-nw)//2, (th-nh)//2))
-                    mini_buffer.append(canvas_mini)
+                    mini_buffer.append(canvas_mini.rotate(90, expand=True))  # 143×214px
                     continue
 
                 elif tipo == "recibo":
@@ -191,9 +191,9 @@ class SistemaImpresionVerex(TkinterDnDApp):
 
             # ── Combinar etiquetas mini de 3 en 3 ──────────────────────────────
             if tipo == "mini" and mini_buffer:
-                lbl_w = mini_buffer[0].width   # 214px
-                lbl_h = mini_buffer[0].height  # 143px
-                margen = (ANCHO_IMPRESORA - 3 * lbl_w) // 2  # 27px
+                lbl_w = mini_buffer[0].width   # 143px tras rotar
+                lbl_h = mini_buffer[0].height  # 214px tras rotar
+                margen = (ANCHO_IMPRESORA - 3 * lbl_w) // 2  # (696-429)/2 = 133px
 
                 for i in range(0, len(mini_buffer), 3):
                     grupo = mini_buffer[i:i+3]
