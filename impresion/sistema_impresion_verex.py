@@ -125,24 +125,19 @@ class SistemaImpresionVerex(TkinterDnDApp):
             self.imagenes_impresion.clear()
             doc = fitz.open(self.pdf_actual)
             total_paginas = len(doc)
-            
-            ANCHO_IMPRESORA = 696 
+            ANCHO_IMPRESORA = 696
             tipo = self.tipo_seleccionado.get()
+            mini_buffer = []  # acumula etiquetas mini individuales
 
             for num_pag in range(total_paginas):
                 pagina = doc.load_page(num_pag)
-                matriz = fitz.Matrix(4.0, 4.0) 
+                matriz = fitz.Matrix(4.0, 4.0)
                 pix = pagina.get_pixmap(matrix=matriz, alpha=False)
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
-                # --- NUEVO: RECORTE AGRESIVO ---
-                # Convertimos la imagen a un negativo extremo solo para buscar dónde hay tinta real
                 img_busqueda = img.convert("L").point(lambda x: 0 if x > 240 else 255, '1')
                 bbox = img_busqueda.getbbox()
-                
                 if bbox:
-                    # Recortamos la imagen original usando solo el cuadro donde encontró tinta
-                    # (Le damos un pequeñísimo respiro de 2 píxeles para no cortar letras)
                     img = img.crop((max(0, bbox[0]-2), max(0, bbox[1]-2), min(img.width, bbox[2]+2), min(img.height, bbox[3]+2)))
 
                 if tipo == "guia" and self.rotar_var.get():
@@ -151,57 +146,75 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     if img.height > img.width:
                         img = img.rotate(90, expand=True)
 
-                # ESCALADO 
                 if tipo == "guia":
                     img = img.resize((ANCHO_IMPRESORA, 1063), Image.Resampling.LANCZOS)
-                
+
                 elif tipo == "producto":
-                    # Escalar PDF a dimensiones físicas exactas: 54mm×17mm a 300dpi
-                    # 300dpi → 1mm = 11.81px → 54mm=637px, 17mm=201px
-                    # target_w = 54mm a DPI real de la cinta (696px=62mm → 11.23px/mm)
-                    # target_h = calibrado: 133px = 1.5cm en esta impresora
-                    target_w = int(54 * 696 / 62)   # 607px — ancho físico correcto
-                    target_h = 117                   # 1.5cm calibrado (133px=1.7cm)
-
+                    target_w = int(54 * 696 / 62)
+                    target_h = 117
                     img_resized = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
-                    canvas   = Image.new("RGB", (ANCHO_IMPRESORA, target_h), "white")
-                    x_offset = (ANCHO_IMPRESORA - target_w) // 2
-                    canvas.paste(img_resized, (x_offset, 0))
+                    canvas = Image.new("RGB", (ANCHO_IMPRESORA, target_h), "white")
+                    canvas.paste(img_resized, ((ANCHO_IMPRESORA - target_w) // 2, 0))
                     img = canvas
-                    
+
                 elif tipo == "mini":
-                    # Mini landscape: 19.05mm×12.7mm (¾"×½")
-                    # En cinta 62mm: ancho=19.05mm (en cinta), corte=12.7mm
+                    # Renderizar y rotar cada etiqueta individual
                     px_mm    = 696 / 62.0
-                    target_w = int(19.05 * px_mm)  # 214px = ¾" ancho en cinta
-                    target_h = int(12.7  * px_mm)  # 143px = ½" corte
-
-                    img_resized = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
-                    img_rotado  = img_resized.rotate(90, expand=True)  # rota 90° → portrait
-                    canvas   = Image.new("RGB", (ANCHO_IMPRESORA, img_rotado.height), "white")
-                    x_offset = (ANCHO_IMPRESORA - img_rotado.width) // 2
-                    canvas.paste(img_rotado, (x_offset, 0))
-                    img = canvas
+                    tw = int(19.05 * px_mm)
+                    th = int(12.7  * px_mm)
+                    img_resized = img.resize((tw, th), Image.Resampling.LANCZOS)
+                    img_rotado  = img_resized.rotate(90, expand=True)  # 143×214px
+                    mini_buffer.append(img_rotado)
+                    continue  # se combinan después del loop
 
                 elif tipo == "recibo":
                     proporcion = ANCHO_IMPRESORA / float(img.width)
-                    nuevo_alto = int((float(img.height) * float(proporcion)))
+                    nuevo_alto = int(float(img.height) * float(proporcion))
                     img = img.resize((ANCHO_IMPRESORA, nuevo_alto), Image.Resampling.LANCZOS)
-                    
-                    margen_seguridad = 250 
+                    margen_seguridad = 250
                     imagen_con_margen = Image.new("RGB", (ANCHO_IMPRESORA, nuevo_alto + margen_seguridad), "white")
                     imagen_con_margen.paste(img, (0, 0))
                     img = imagen_con_margen
 
                 self.imagenes_impresion.append(img)
 
-                if num_pag == 0:
+                if num_pag == 0 and tipo != "mini":
                     img_preview = img.copy()
-                    img_preview.thumbnail((300, 350)) 
+                    img_preview.thumbnail((300, 350))
                     ctk_img = ctk.CTkImage(light_image=img_preview, dark_image=img_preview, size=(img_preview.width, img_preview.height))
-                    
                     texto_preview = "" if total_paginas == 1 else f"Mostrando 1 de {total_paginas} etiquetas"
                     self.lbl_preview.configure(image=ctk_img, text=texto_preview, compound="bottom")
+
+            # ── Combinar etiquetas mini de 3 en 3 ──────────────────────────────
+            if tipo == "mini" and mini_buffer:
+                lbl_w = mini_buffer[0].width   # 143px
+                lbl_h = mini_buffer[0].height  # 214px
+                margen = (ANCHO_IMPRESORA - 3 * lbl_w) // 2  # centrar 3 en 696px
+
+                for i in range(0, len(mini_buffer), 3):
+                    grupo = mini_buffer[i:i+3]
+                    tira  = Image.new("RGB", (ANCHO_IMPRESORA, lbl_h), "white")
+                    draw  = ImageDraw.Draw(tira)
+
+                    for j, lbl in enumerate(grupo):
+                        x = margen + j * lbl_w
+                        tira.paste(lbl, (x, 0))
+                        # Línea guía punteada entre etiquetas
+                        if j < len(grupo) - 1:
+                            lx = x + lbl_w
+                            for y in range(0, lbl_h, 10):
+                                draw.line([(lx, y), (lx, min(y+5, lbl_h))], fill="#AAAAAA", width=1)
+
+                    self.imagenes_impresion.append(tira)
+
+                    if i == 0:
+                        prev = tira.copy()
+                        prev.thumbnail((300, 350))
+                        ctk_img = ctk.CTkImage(light_image=prev, dark_image=prev, size=(prev.width, prev.height))
+                        tiras = (len(mini_buffer) + 2) // 3
+                        self.lbl_preview.configure(image=ctk_img,
+                            text=f"{len(mini_buffer)} etiquetas en {tiras} tira(s) de 3",
+                            compound="bottom")
 
             self.btn_imprimir.configure(state="normal")
 
