@@ -192,28 +192,51 @@ class SistemaImpresionVerex(TkinterDnDApp):
 
             # ── Combinar etiquetas mini de 3 en 3 ──────────────────────────────
             if tipo == "mini" and mini_buffer:
-                # DK-1201: 29×90mm — una mini por die-cut, escalada para llenar el label
-                DIE_W = 306
-                DIE_H = 991
+                # DK-1201: 306×991px — 6 minis por die-cut (2 cols × 3 filas)
+                DIE_W, DIE_H = 306, 991
+                COLS, ROWS   = 2, 3
+                # Tamaño de cada mini rotada (½"×¾" → portrait 12.7×19.05mm)
+                M_W  = 134                          # 12.7mm en el die-cut
+                M_H  = int(M_W * 19.05 / 12.7)     # 201px — mantiene proporción
+                GAP_X = (DIE_W - COLS * M_W) // (COLS + 1)  # ~12px
+                GAP_Y = (DIE_H - ROWS * M_H) // (ROWS + 1)  # ~96px
 
+                canvas_die = None
                 for i, lbl in enumerate(mini_buffer):
-                    # Rotar 90° y escalar al die-cut 306×991px
-                    lbl = lbl.rotate(90, expand=True)
-                    prop = min(DIE_W / float(lbl.width), DIE_H / float(lbl.height))
-                    nw   = int(lbl.width  * prop)
-                    nh   = int(lbl.height * prop)
-                    lbl_r = lbl.resize((nw, nh), Image.Resampling.LANCZOS)
-                    canvas_die = Image.new("RGB", (DIE_W, DIE_H), "white")
-                    canvas_die.paste(lbl_r, ((DIE_W - nw) // 2, (DIE_H - nh) // 2))
-                    self.imagenes_impresion.append(canvas_die)
+                    pos = i % 6
+                    if pos == 0:
+                        canvas_die = Image.new("RGB", (DIE_W, DIE_H), "white")
+                        draw = ImageDraw.Draw(canvas_die)
 
-                    if i == 0:
-                        prev = canvas_die.copy()
-                        prev.thumbnail((300, 350))
-                        ctk_img = ctk.CTkImage(light_image=prev, dark_image=prev, size=(prev.width, prev.height))
-                        self.lbl_preview.configure(image=ctk_img,
-                            text=f"{len(mini_buffer)} etiqueta(s) mini — DK-1201",
-                            compound="bottom")
+                    lbl_rot = lbl.rotate(90, expand=True)
+                    lbl_r   = lbl_rot.resize((M_W, M_H), Image.Resampling.LANCZOS)
+                    col = pos % COLS
+                    row = pos // COLS
+                    x = GAP_X + col * (M_W + GAP_X)
+                    y = GAP_Y + row * (M_H + GAP_Y)
+                    canvas_die.paste(lbl_r, (x, y))
+
+                    # Líneas guía punteadas entre columnas y filas
+                    if col == 0:  # línea vertical entre cols
+                        lx = x + M_W + GAP_X // 2
+                        for yg in range(0, DIE_H, 12):
+                            draw.line([(lx, yg), (lx, min(yg+6, DIE_H))], fill="#888888", width=1)
+                    if row < ROWS - 1 and col == 0:  # línea horizontal entre filas
+                        ly = y + M_H + GAP_Y // 2
+                        for xg in range(0, DIE_W, 12):
+                            draw.line([(xg, ly), (min(xg+6, DIE_W), ly)], fill="#888888", width=1)
+
+                    # Guardar die-cut cuando se completa o es el último
+                    if pos == 5 or i == len(mini_buffer) - 1:
+                        self.imagenes_impresion.append(canvas_die)
+                        if i < 6:
+                            prev = canvas_die.copy()
+                            prev.thumbnail((300, 350))
+                            ctk_img = ctk.CTkImage(light_image=prev, dark_image=prev, size=(prev.width, prev.height))
+                            die_cuts = (len(mini_buffer) + 5) // 6
+                            self.lbl_preview.configure(image=ctk_img,
+                                text=f"{len(mini_buffer)} etiquetas — {die_cuts} die-cut(s) de 6",
+                                compound="bottom")
 
             self.btn_imprimir.configure(state="normal")
 
