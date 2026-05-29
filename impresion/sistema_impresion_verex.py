@@ -158,14 +158,22 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     img = canvas
 
                 elif tipo == "mini":
-                    # Renderizar y rotar cada etiqueta individual
-                    px_mm    = 696 / 62.0
-                    tw = int(19.05 * px_mm)
-                    th = int(12.7  * px_mm)
-                    img_resized = img.resize((tw, th), Image.Resampling.LANCZOS)
-                    img_rotado  = img_resized.rotate(90, expand=True)  # 143×214px
+                    # Mini: NO recortar — escalar el PDF completo proporcional
+                    px_mm   = 696 / 62.0
+                    tw = int(19.05 * px_mm)   # 214px — ancho
+                    th = int(12.7  * px_mm)   # 143px — alto
+                    # Escalar proporcional al alto para no distorsionar
+                    prop = th / float(img.height)
+                    nw   = int(img.width * prop)
+                    nh   = th
+                    img_sc = img.resize((nw, nh), Image.Resampling.LANCZOS)
+                    # Canvas exacto antes de rotar
+                    canvas_mini = Image.new("RGB", (tw, th), "white")
+                    x_off = (tw - nw) // 2
+                    canvas_mini.paste(img_sc, (x_off, 0))
+                    img_rotado = canvas_mini.rotate(90, expand=True)  # 143×214px
                     mini_buffer.append(img_rotado)
-                    continue  # se combinan después del loop
+                    continue
 
                 elif tipo == "recibo":
                     proporcion = ANCHO_IMPRESORA / float(img.width)
@@ -202,8 +210,8 @@ class SistemaImpresionVerex(TkinterDnDApp):
                         # Línea guía punteada entre etiquetas
                         if j < len(grupo) - 1:
                             lx = x + lbl_w
-                            for y in range(0, lbl_h, 10):
-                                draw.line([(lx, y), (lx, min(y+5, lbl_h))], fill="#AAAAAA", width=1)
+                            for y in range(0, lbl_h, 12):
+                                draw.line([(lx, y), (lx, min(y+6, lbl_h))], fill="#333333", width=2)
 
                     self.imagenes_impresion.append(tira)
 
