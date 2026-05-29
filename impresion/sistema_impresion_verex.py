@@ -10,7 +10,7 @@ from brother_ql.raster import BrotherQLRaster
 # --- Configuración de la Impresora ---
 MODELO_IMPRESORA = 'QL-810W'
 TIPO_ETIQUETA      = '62red'    # guias y recibos
-TIPO_ETIQUETA_MINI = '29x90.3' # DK-1201: 29mm × 90.3mm die-cut para etiquetas mini
+TIPO_ETIQUETA_MINI = '29x90'   # DK-1201: 29mm × 90mm die-cut — 306×991px exactos
 IP_IMPRESORA = 'tcp://192.168.0.7'
 
 class TkinterDnDApp(ctk.CTk, TkinterDnD.DnDWrapper):
@@ -258,7 +258,7 @@ class SistemaImpresionVerex(TkinterDnDApp):
             self.lbl_drop.configure(text=mensaje_exito, text_color="#28a745")
             
         except Exception as e:
-            self.lbl_drop.configure(text="Error de conexión Wi-Fi. Revisa la IP.", text_color="red")
+            self.lbl_drop.configure(text=f"Error: {e}", text_color="red")
 
 if __name__ == "__main__":
     app = SistemaImpresionVerex()
