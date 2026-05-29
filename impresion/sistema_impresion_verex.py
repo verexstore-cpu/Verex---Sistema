@@ -177,9 +177,10 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     target_h = int(12.7  * px_mm)  # 143px = ½" corte
 
                     img_resized = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
-                    canvas   = Image.new("RGB", (ANCHO_IMPRESORA, target_h), "white")
-                    x_offset = (ANCHO_IMPRESORA - target_w) // 2
-                    canvas.paste(img_resized, (x_offset, 0))
+                    img_rotado  = img_resized.rotate(90, expand=True)  # rota 90° → portrait
+                    canvas   = Image.new("RGB", (ANCHO_IMPRESORA, img_rotado.height), "white")
+                    x_offset = (ANCHO_IMPRESORA - img_rotado.width) // 2
+                    canvas.paste(img_rotado, (x_offset, 0))
                     img = canvas
 
                 elif tipo == "recibo":
