@@ -2,7 +2,7 @@ import os
 import customtkinter as ctk
 from tkinterdnd2 import TkinterDnD, DND_FILES
 import fitz  # PyMuPDF
-from PIL import Image, ImageTk, ImageChops, ImageDraw
+from PIL import Image, ImageTk, ImageChops, ImageDraw, ImageFont
 from brother_ql.conversion import convert
 from brother_ql.backends.helpers import send
 from brother_ql.raster import BrotherQLRaster
@@ -148,14 +148,11 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     img = img.resize((ANCHO_IMPRESORA, 1063), Image.Resampling.LANCZOS)
 
                 elif tipo == "producto":
-                    # Etiqueta 5cm × 1.5cm sobre rollo 62mm
-                    # Calibrado en esta impresora: 133px=1.5cm, 580px=5cm
-                    alto_etiqueta  = 133  # 1.5cm
-                    ancho_etiqueta = 580  # 5cm — centrado en el rollo de 696px (6cm)
-                    margen_lat     = (ANCHO_IMPRESORA - ancho_etiqueta) // 2  # 58px c/lado
-                    zona_contenido = ancho_etiqueta // 2  # 290px — mitad derecha con contenido
+                    # Cinta completa 62mm: 696×117px — mitad izquierda blanco, mitad derecha contenido
+                    alto_etiqueta  = 133          # 1.7cm — mejor legibilidad del contenido
+                    zona_contenido = ANCHO_IMPRESORA // 2  # 348px cada mitad
 
-                    prop_alto  = (alto_etiqueta - 6) / float(img.height)
+                    prop_alto  = (alto_etiqueta - 4) / float(img.height)
                     prop_ancho = zona_contenido / float(img.width)
                     proporcion = min(prop_alto, prop_ancho)
 
@@ -164,9 +161,22 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     img_resized = img.resize((nuevo_ancho, nuevo_alto), Image.Resampling.LANCZOS)
 
                     canvas = Image.new("RGB", (ANCHO_IMPRESORA, alto_etiqueta), "white")
-                    x_offset = margen_lat + zona_contenido + (zona_contenido - nuevo_ancho) // 2
+                    x_offset = zona_contenido + (zona_contenido - nuevo_ancho) // 2
                     y_offset = (alto_etiqueta - nuevo_alto) // 2
                     canvas.paste(img_resized, (x_offset, y_offset))
+
+                    # Texto VEREX en la mitad izquierda (zona en blanco)
+                    draw = ImageDraw.Draw(canvas)
+                    cx = zona_contenido // 2  # centro horizontal de la zona blanca
+                    try:
+                        font_titulo = ImageFont.truetype("C:/Windows/Fonts/arialbd.ttf", size=28)
+                        font_slogan = ImageFont.truetype("C:/Windows/Fonts/ariali.ttf",  size=14)
+                    except:
+                        font_titulo = ImageFont.load_default()
+                        font_slogan = ImageFont.load_default()
+
+                    draw.text((cx, alto_etiqueta // 2 - 14), "VEREX",      fill="black",       font=font_titulo, anchor="mm")
+                    draw.text((cx, alto_etiqueta // 2 + 16), "“Más que accesorios... Identidad”", fill=(80, 80, 80), font=font_slogan, anchor="mm")
                     img = canvas
 
                 elif tipo == "recibo":

@@ -908,16 +908,16 @@ async function generarEtiquetas() {
     const doc = new jsPDF({ unit: 'mm', format: [LW, LH], orientation: 'landscape' });
 
     // Layout por etiqueta (coordenadas en mm):
-    //  QR  : x=1,  y=2,  tamaño=13mm  (centrado verticalmente)
-    //  Texto: x=15.5 → x=53mm
-    //    Precio   y=6.5 (bold grande)
-    //    Material y=10.5 (normal pequeño, solo si existe)
+    //  QR  : x=0.5, y=0.5, tamaño=16mm (ocupa casi todo el alto)
+    //  Texto: x=17.5 → x=53mm
+    //    Precio   y=6   (bold grande)
+    //    Material y=10  (bold mediano)
     //    Código   y=14.5 (bold gris)
-    const qrSz  = 13;
-    const qrX   = 1;
-    const qrY   = (LH - qrSz) / 2;   // 2mm — centrado vertical
-    const tX    = qrX + qrSz + 1.5;   // 15.5mm
-    const tMaxW = LW - tX - 1;        // ~37.5mm disponibles para texto
+    const qrSz  = 16;
+    const qrX   = 0.5;
+    const qrY   = (LH - qrSz) / 2;
+    const tX    = qrX + qrSz + 1;     // 17.5mm
+    const tMaxW = LW - tX - 1;        // ~35.5mm disponibles para texto
 
     prods.forEach((p, idx) => {
         if (idx > 0) doc.addPage([LW, LH], 'landscape');
@@ -931,25 +931,25 @@ async function generarEtiquetas() {
         // Precio — grande y negro
         const precio = "$ " + parseFloat(p.precio || 0).toFixed(2);
         doc.setFont("helvetica", "bold");
-        let pSz = 9;
-        while (pSz > 4) { doc.setFontSize(pSz); if (doc.getTextWidth(precio) <= tMaxW) break; pSz -= 0.5; }
+        let pSz = 12;
+        while (pSz > 5) { doc.setFontSize(pSz); if (doc.getTextWidth(precio) <= tMaxW) break; pSz -= 0.5; }
         doc.setTextColor(0, 0, 0);
-        doc.text(precio, tX, 6.5);
+        doc.text(precio, tX, 6);
 
-        // Material — gris oscuro, solo si existe
+        // Material — bold mediano
         const material = extraerMaterial(p.nombre || "", p.descripcion || "");
         if (material) {
             doc.setFont("helvetica", "bold");
-            let mSz = 5.5;
+            let mSz = 7.5;
             while (mSz > 3) { doc.setFontSize(mSz); if (doc.getTextWidth(material) <= tMaxW) break; mSz -= 0.3; }
             doc.setTextColor(60, 60, 60);
-            doc.text(material, tX, 10.5);
+            doc.text(material, tX, 10);
         }
 
         // Código — bold gris
         const codigo = p.codigo || "";
         doc.setFont("helvetica", "bold");
-        let cSz = 6.5;
+        let cSz = 8.5;
         while (cSz > 3) { doc.setFontSize(cSz); if (doc.getTextWidth(codigo) <= tMaxW) break; cSz -= 0.3; }
         doc.setTextColor(70, 70, 70);
         doc.text(codigo, tX, 14.5);
