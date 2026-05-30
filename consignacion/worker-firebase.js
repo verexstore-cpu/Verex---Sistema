@@ -1034,6 +1034,21 @@ export default {
           break;
         }
 
+        case "BACKUP_Y_RESET": {
+          if (!esAdmin) return forbidden();
+          const tablas = ["stock","vendedores","consignacion","abonos","entregas","cortes","pedidos","clientes","cupones"];
+          const backup = {};
+          for (const t of tablas) {
+            try { backup[t] = await sb.getAll(t); } catch(_) { backup[t] = []; }
+          }
+          backup._fecha = new Date().toISOString();
+          for (const t of tablas) {
+            try { await sb.deleteAll(t); } catch(_) {}
+          }
+          result = { ok: true, backup };
+          break;
+        }
+
         case "GEMINI_TEST": {
           if (!esAdmin) return forbidden();
           const gKey = env.GEMINI_KEY;
@@ -1234,6 +1249,18 @@ class Supabase {
     if (!res.ok) {
       const txt = await res.text();
       throw new Error(`SB delete ${table}/${id}: ${res.status} ${txt}`);
+    }
+  }
+
+  // Eliminar todos los registros de una tabla
+  async deleteAll(table) {
+    const res = await fetch(
+      `${this.url}/rest/v1/${table}?id=not.is.null`,
+      { method: "DELETE", headers: this._headers() }
+    );
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`SB deleteAll ${table}: ${res.status} ${txt}`);
     }
   }
 
