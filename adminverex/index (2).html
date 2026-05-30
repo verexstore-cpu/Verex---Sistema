@@ -843,7 +843,7 @@
 // ═════════════════════════════════════════════
 const API_URL    = "https://verex-api.verexstore.workers.dev/";
 const SECRET_KEY = "";
-let _sessionPass = "";
+let _sessionToken = "";
 
 let cfg = {
     tiendaActiva: true,
@@ -859,10 +859,10 @@ async function login() {
     const pass = document.getElementById("in-pass").value;
     if (!pass) return;
     try {
-        const res  = await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "VERIFICAR_PASS", _pass: pass }) });
+        const res  = await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "LOGIN", _pass: pass }) });
         const data = await res.json();
-        if (data.ok) {
-            _sessionPass = pass;
+        if (data.ok && data.token) {
+            _sessionToken = data.token;
             sessionStorage.setItem("vxa","1");
             document.getElementById("login-screen").style.display = "none";
             document.getElementById("panel").style.display = "block";
@@ -875,7 +875,7 @@ async function login() {
         document.getElementById("login-err").style.display = "block";
     }
 }
-function logout() { _sessionPass = ""; sessionStorage.clear(); location.reload(); }
+function logout() { _sessionToken = ""; sessionStorage.clear(); location.reload(); }
 if (sessionStorage.getItem("vxa")==="1") {
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("panel").style.display = "block";
@@ -918,7 +918,7 @@ async function init() {
 
 async function cargarDatos(silencioso=false) {
     try {
-        const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_TIENDA", _pass: _sessionPass }) });
+        const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_TIENDA", _token: _sessionToken }) });
         const data = await res.json();
         productos = data.productos || [];
         pedidos   = (data.pedidos || []).reverse();
@@ -1181,7 +1181,7 @@ async function generarCuponCliente(codigo, nombre, telefono) {
     if (!descuento || isNaN(descuento)) return;
     const codigoCupon = `${codigo}-${Math.random().toString(36).substr(2,4).toUpperCase()}`;
     const datos = {
-        accion: "CREAR_CUPON", _pass: _sessionPass,
+        accion: "CREAR_CUPON", _token: _sessionToken,
         codigo: codigoCupon, tipo: "porcentaje",
         descuento: parseFloat(descuento), categorias: "",
         montoMinimo: 0, limiteUsos: 1, activo: true,
@@ -1385,7 +1385,7 @@ async function eliminarPedido(numeroPedido) {
     if (idx >= 0) pedidos.splice(idx, 1);
     renderPedidos();
     await fetch(API_URL, { method:'POST', mode:'no-cors',
-        body: JSON.stringify({ accion:"ELIMINAR_PEDIDO", _pass:_sessionPass, numeroPedido })
+        body: JSON.stringify({ accion:"ELIMINAR_PEDIDO", _token:_sessionToken, numeroPedido })
     });
     toast("🗑️ Pedido eliminado", "#ef4444");
 }
@@ -1425,7 +1425,7 @@ async function cambiarEstado(sel, cliente, fecha) {
     if (p) p.estado = estado;
 
     await fetch(API_URL, { method:'POST', mode:'no-cors',
-        body: JSON.stringify({ accion:"ACTUALIZAR_ESTADO_PEDIDO", _pass:_sessionPass, cliente, fecha, estado })
+        body: JSON.stringify({ accion:"ACTUALIZAR_ESTADO_PEDIDO", _token:_sessionToken, cliente, fecha, estado })
     });
 
     // Enviar mensaje de WhatsApp si aplica
@@ -1551,7 +1551,7 @@ async function guardarEdicion() {
     }
 
     const datos = {
-        accion: "EDITAR_PRODUCTO", _pass: _sessionPass,
+        accion: "EDITAR_PRODUCTO", _token: _sessionToken,
         codigo: document.getElementById("ed-cod").value,
         nombre: document.getElementById("ed-nom").value,
         precio: document.getElementById("ed-prec").value,
@@ -1566,13 +1566,13 @@ async function guardarEdicion() {
 async function desactivarProducto() {
     const cod=document.getElementById("ed-cod").value;
     if (!confirm(`¿Desactivar ${cod}?`)) return;
-    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ELIMINAR_PRODUCTO",_pass:_sessionPass,codigo:cod})});
+    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ELIMINAR_PRODUCTO",_token:_sessionToken,codigo:cod})});
     cerrarModal(); toast("🗑️ Producto desactivado");
     await cargarDatos(true);
 }
 
 async function toggleDest(codigo, destacado) {
-    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"EDITAR_PRODUCTO",_pass:_sessionPass,codigo,destacado})});
+    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"EDITAR_PRODUCTO",_token:_sessionToken,codigo,destacado})});
     toast(destacado?"⭐ Marcado como destacado":"Quitado de destacados");
     await cargarDatos(true);
 }
@@ -1619,7 +1619,7 @@ async function publicarProducto() {
     const btn=document.querySelector("#tab-2 .bfull");
     btn.textContent="Publicando..."; btn.disabled=true;
     try {
-        await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"CREAR_PRODUCTO",_pass:_sessionPass,nombre,precio,img,codigo,caracteristicas:JSON.stringify(stocks)})});
+        await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"CREAR_PRODUCTO",_token:_sessionToken,nombre,precio,img,codigo,caracteristicas:JSON.stringify(stocks)})});
         toast("✅ Producto publicado","#22c55e");
         document.getElementById("in-prec").value=document.getElementById("in-img").value=document.getElementById("in-det").value="";
         document.querySelectorAll(".ts").forEach(i=>i.value=0);
@@ -1796,20 +1796,20 @@ async function crearCupon() {
     document.getElementById("cup-preview").style.display = "none";
 
     await fetch(API_URL, { method:'POST', mode:'no-cors',
-        body: JSON.stringify({ accion:"CREAR_CUPON", _pass:_sessionPass, ...nuevo }) });
+        body: JSON.stringify({ accion:"CREAR_CUPON", _token:_sessionToken, ...nuevo }) });
     toast("✅ Cupón creado", "#22c55e");
 }
 
 async function toggleCupon(i) {
     cupones[i].activo=!cupones[i].activo; renderCupones();
-    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"TOGGLE_CUPON",_pass:_sessionPass,codigo:cupones[i].codigo,activo:cupones[i].activo})});
+    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"TOGGLE_CUPON",_token:_sessionToken,codigo:cupones[i].codigo,activo:cupones[i].activo})});
     toast(cupones[i].activo?"✅ Cupón activado":"🔴 Cupón desactivado");
 }
 
 async function eliminarCupon(i) {
     if (!confirm(`¿Eliminar cupón "${cupones[i].codigo}"?`)) return;
     const cod=cupones[i].codigo; cupones.splice(i,1); renderCupones();
-    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ELIMINAR_CUPON",_pass:_sessionPass,codigo:cod})});
+    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ELIMINAR_CUPON",_token:_sessionToken,codigo:cod})});
     toast("🗑️ Cupón eliminado");
 }
 
@@ -2018,7 +2018,7 @@ function guardarCarrusel() {
 
 function saveConfig() {
     localStorage.setItem("vx_cfg",JSON.stringify(cfg));
-    fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ACTUALIZAR_CONFIG",_pass:_sessionPass,config:cfg})});
+    fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ACTUALIZAR_CONFIG",_token:_sessionToken,config:cfg})});
 }
 
 // ═════════════════════════════════════════════
@@ -2050,13 +2050,15 @@ async function guardarNuevaClave() {
     if (!actual || !nueva || !confirmar) { errEl.textContent = "⚠️ Completa todos los campos"; errEl.style.display = "block"; return; }
     if (nueva.length < 6) { errEl.textContent = "⚠️ Mínimo 6 caracteres"; errEl.style.display = "block"; return; }
     if (nueva !== confirmar) { errEl.textContent = "⚠️ Las contraseñas no coinciden"; errEl.style.display = "block"; return; }
-    if (actual !== _sessionPass) { errEl.textContent = "⚠️ Contraseña actual incorrecta"; errEl.style.display = "block"; return; }
-
     const btn = document.querySelector("#modal-pass button:last-child");
-    btn.textContent = "⏳ Guardando..."; btn.disabled = true;
+    btn.textContent = "⏳ Verificando..."; btn.disabled = true;
     try {
+        const verif = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"VERIFICAR_PASS", _pass: actual }) });
+        const vData = await verif.json();
+        if (!vData.ok) { errEl.textContent = "⚠️ Contraseña actual incorrecta"; errEl.style.display = "block"; btn.textContent = "💾 Guardar Nueva Contraseña"; btn.disabled = false; return; }
         const nuevoHash = await hashStr(nueva);
-        await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"ACTUALIZAR_PASS_HASH", _pass: _sessionPass, nuevoHash }) });
+        btn.textContent = "⏳ Guardando...";
+        await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"ACTUALIZAR_PASS_HASH", _token: _sessionToken, nuevoHash }) });
         toast("✅ Contraseña actualizada. Úsala en tu próximo login.", "#22c55e");
         document.getElementById("modal-pass").style.display = "none";
     } catch(e) {
@@ -2082,7 +2084,7 @@ async function cargarConsignacion(forzar = false) {
     document.getElementById("vend-loading").style.display = "block";
     document.getElementById("vend-lista").innerHTML = "";
     try {
-        const res  = await fetch(API_URL, { method:"POST", body: JSON.stringify({ accion:"GET_CONSIGNACION", _pass: _sessionPass }) });
+        const res  = await fetch(API_URL, { method:"POST", body: JSON.stringify({ accion:"GET_CONSIGNACION", _token: _sessionToken }) });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || "Error");
         _consigData = data;

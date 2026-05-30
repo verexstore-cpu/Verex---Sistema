@@ -43,14 +43,22 @@ export default {
     try {
       const d = await request.json();
 
-      // ── Verificación de contraseña (endpoint público de login) ───
+      // ── Login: devuelve token firmado ────────────────────────────
       if (d.accion === "VERIFICAR_PASS") {
         const ok = await verificarPassword(d._pass, env, sb);
         return json({ ok });
       }
 
-      // esAdmin: acepta SECRET_PASS (env var) O el hash guardado en Supabase
-      const esAdmin = (await verificarPassword(d._pass, env, sb)) ||
+      if (d.accion === "LOGIN") {
+        const ok = await verificarPassword(d._pass, env, sb);
+        if (!ok) return json({ ok: false, error: "Contraseña incorrecta" }, 401);
+        const token = await generarToken(env);
+        return json({ ok: true, token });
+      }
+
+      // esAdmin: acepta token firmado O contraseña directa (compatibilidad consignación)
+      const esAdmin = (d._token && await verificarToken(d._token, env)) ||
+                      (await verificarPassword(d._pass, env, sb)) ||
                       (d.key && d.key === env.SECRET_KEY);
 
       let result;
@@ -1299,9 +1307,37 @@ async function hashStr(str) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Verifica la contraseña: primero contra SECRET_PASS (env var),
-// si no coincide intenta con el hash guardado en Supabase
-// (permite cambiar contraseña sin editar el env var de Cloudflare).
+function b64url(str) {
+  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function generarToken(env) {
+  const payload = JSON.stringify({ role: "admin", exp: Date.now() + 8 * 3600 * 1000 });
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(env.SECRET_PASS || "verex"),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  const sigHex = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2,"0")).join("");
+  return b64url(payload) + "." + b64url(sigHex);
+}
+
+async function verificarToken(token, env) {
+  try {
+    const [payloadB64, sigB64] = token.split(".");
+    const payload = atob(payloadB64.replace(/-/g,"+").replace(/_/g,"/"));
+    const { role, exp } = JSON.parse(payload);
+    if (role !== "admin" || Date.now() > exp) return false;
+    const key = await crypto.subtle.importKey(
+      "raw", new TextEncoder().encode(env.SECRET_PASS || "verex"),
+      { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+    );
+    const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+    const sigHex = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2,"0")).join("");
+    return b64url(sigHex) === sigB64;
+  } catch(_) { return false; }
+}
+
 async function verificarPassword(pass, env, sb) {
   if (!pass) return false;
   if (pass === env.SECRET_PASS) return true;
