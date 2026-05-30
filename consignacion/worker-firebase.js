@@ -773,6 +773,29 @@ export default {
           break;
         }
 
+        case "TRANSFERIR_ENTRE_VENDEDORES": {
+          if (!esAdmin) return forbidden();
+          const { origen, destino, codigos } = d;
+          if (!origen || !destino || !codigos?.length) {
+            result = { ok: false, error: "Faltan parámetros" }; break;
+          }
+          const todasCons = await sb.getAll("consignacion");
+          let transferidas = 0;
+          for (const codigo of codigos) {
+            const reg = todasCons.find(c => c.vendedor === origen && c.codigo === codigo && c.estado === "activo");
+            if (reg) {
+              await sb.update("consignacion", reg.id, {
+                vendedor:         destino,
+                vendedorOrigen:   origen,
+                fechaTransferencia: new Date().toISOString()
+              });
+              transferidas++;
+            }
+          }
+          result = { ok: true, transferidas };
+          break;
+        }
+
         case "STOCK_DEVOLVER_BODEGA": {
           if (!esAdmin) return forbidden();
           for (const codigo of (d.codigos || [])) {

@@ -395,6 +395,7 @@
                     <button class="btn" style="background:#4a6fa5;color:#fff;padding:8px 14px;font-size:12px;" onclick="asignarAVendedor()">👤 Asignar a Vendedor</button>
                     <button class="btn btn-dorado" style="padding:8px 14px;font-size:12px;" onclick="asignarATienda()">🛍️ Enviar a Tienda</button>
                     <button class="btn btn-gris" style="padding:8px 14px;font-size:12px;" onclick="devolverABodega()">📦 Devolver a Bodega</button>
+                    <button class="btn" style="background:#8e44ad;color:#fff;padding:8px 14px;font-size:12px;" onclick="abrirTransferencia()">🔄 Transferir a Vendedor</button>
                     <button class="btn" style="background:#c0392b;color:#fff;padding:8px 14px;font-size:12px;" onclick="limpiarSeleccion()">✕ Cancelar</button>
                 </div>
 
@@ -3778,6 +3779,66 @@ function asignarAVendedor() {
         </div>
     </div>
 </div>
+
+<!-- MODAL TRANSFERIR ENTRE VENDEDORES -->
+<div class="modal-overlay" id="modal-transferir">
+    <div class="modal-box" style="max-width:400px;">
+        <div class="modal-header">
+            <h3>🔄 Transferir a Vendedor</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-transferir')">×</button>
+        </div>
+        <p style="font-size:13px;color:var(--plateado);margin-bottom:14px;" id="transferir-info"></p>
+        <label style="font-size:12px;color:var(--plateado);display:block;margin-bottom:6px;">Selecciona el vendedor destino:</label>
+        <select id="transferir-vendedor-sel" style="width:100%;margin-bottom:14px;background:var(--gris2);color:var(--blanco);border:1px solid var(--borde);border-radius:8px;padding:10px;font-size:14px;">
+            <option value="">-- Seleccionar vendedor --</option>
+        </select>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <button class="btn btn-gris" onclick="cerrarModal('modal-transferir')">Cancelar</button>
+            <button class="btn" style="background:#8e44ad;color:#fff;" onclick="confirmarTransferencia()">🔄 Transferir</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function abrirTransferencia() {
+    if (!stockSeleccionados.length) return;
+    if (!vendedorActual) return;
+    document.getElementById("transferir-info").textContent =
+        `${stockSeleccionados.length} pieza(s) de ${vendedorActual.nombre}`;
+    const sel = document.getElementById("transferir-vendedor-sel");
+    sel.innerHTML = '<option value="">-- Seleccionar vendedor --</option>';
+    vendedores
+        .filter(v => v.codigo !== vendedorActual.codigo)
+        .forEach(v => {
+            const opt = document.createElement("option");
+            opt.value = v.codigo;
+            opt.textContent = v.nombre;
+            sel.appendChild(opt);
+        });
+    abrirModal("modal-transferir");
+}
+
+async function confirmarTransferencia() {
+    const destino = document.getElementById("transferir-vendedor-sel").value;
+    if (!destino) { toast("⚠️ Selecciona un vendedor destino"); return; }
+    const nombreDestino = vendedores.find(v => v.codigo === destino)?.nombre || destino;
+    if (!confirm(`¿Transferir ${stockSeleccionados.length} pieza(s) de ${vendedorActual.nombre} a ${nombreDestino}?`)) return;
+    const res = await apiPost({
+        accion:  "TRANSFERIR_ENTRE_VENDEDORES",
+        origen:  vendedorActual.codigo,
+        destino,
+        codigos: stockSeleccionados
+    });
+    if (res.ok) {
+        toast(`✅ ${res.transferidas} pieza(s) transferidas a ${nombreDestino}`);
+        cerrarModal("modal-transferir");
+        limpiarSeleccion();
+        await cargarStock();
+    } else {
+        toast("❌ Error: " + (res.error || "No se pudo transferir"));
+    }
+}
+</script>
 
 </body>
 </html>
