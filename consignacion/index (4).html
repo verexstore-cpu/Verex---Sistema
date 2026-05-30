@@ -2241,7 +2241,6 @@ async function agregarProductoNuevo() {
     const prod = {
         id: codigo + "_" + Date.now(), codigo, nombre,
         descripcion: document.getElementById("np-desc").value.trim() + (window._tallaSeleccionada ? " T" + window._tallaSeleccionada : ""),
-        descripcionTienda: document.getElementById("np-desc-tienda").value.trim(),
         precio, precioNum: precio, img: fotoUrl, esNuevo: true
     };
     const extras = safeParseJSON(localStorage.getItem("vx_prod_extras"), []);

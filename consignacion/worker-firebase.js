@@ -68,12 +68,13 @@ export default {
           if (!esAdmin) return forbidden();
           const items = Array.isArray(d.items) ? d.items : [d];
           const codigos = [];
+          const todosLosItems = await sb.getAll("stock");
           for (const item of items) {
             // Auto-generar código si no viene o se pide
             let codigo = item.codigo;
             if (!codigo || item.autoGenerarCodigo) {
               const prefijo = String(item.categoria || "GEN").toUpperCase().slice(0, 2);
-              const allStock = await sb.getAll("stock");
+              const allStock = todosLosItems;
               let maxNum = 0;
               allStock.forEach(s => {
                 const base = String(s.codigoBase || s.codigo || "");
@@ -219,6 +220,7 @@ export default {
         }
 
         case "REGISTRAR_VENTA": {
+          if (!esAdmin) return forbidden();
           const cons = await sb.get("consignacion", d.id);
           if (!cons) { result = { ok: false, error: "Item no encontrado" }; break; }
           const nuevoVendido = (parseInt(cons.vendido)||0) + (parseInt(d.cantidad)||1);
@@ -274,6 +276,16 @@ export default {
           if (!esAdmin) return forbidden();
           for (const id of (d.devueltos || [])) {
             await sb.update("consignacion", id, { estado: "devuelto" });
+            const item = await sb.get("consignacion", id);
+            if (item) {
+              const stockDoc = await sb.get("stock", item.codigo || item.id);
+              if (stockDoc) {
+                await sb.update("stock", item.codigo || item.id, {
+                  stock_consignacion: Math.max(0, (parseInt(stockDoc.stock_consignacion)||0) - (item.cantidad||1)),
+                  stock_vendido: (parseInt(stockDoc.stock_vendido)||0) + (item.vendido||0)
+                });
+              }
+            }
           }
           const allCons = await sb.query("consignacion", "vendedor", "==", d.vendedor);
           for (const c of allCons.filter(c => c.estado === "activo")) {
@@ -308,7 +320,7 @@ export default {
 
         case "GET_HISTORIAL_CORTES": {
           const cortes = await sb.query("cortes_historial", "vendedor", "==", d.vendedor);
-          result = { ok: true, cortes };
+          result = { ok: true, historial: cortes };
           break;
         }
 
@@ -333,7 +345,8 @@ export default {
             const s = await sb.get("stock", item.codigo);
             if (s) {
               await sb.update("stock", item.codigo, {
-                stock_bodega: Math.max(0, (parseInt(s.stock_bodega)||0) - (item.cantidad||1))
+                stock_bodega: Math.max(0, (parseInt(s.stock_bodega)||0) - (item.cantidad||1)),
+                stock_vendido: (parseInt(s.stock_vendido)||0) + (item.cantidad||1)
               });
             }
           }
@@ -377,6 +390,7 @@ export default {
         }
 
         case "REGISTRAR_VENTA_VENDEDOR": {
+          if (!esAdmin) return forbidden();
           const consV = await sb.get("consignacion", d.id);
           if (!consV) { result = { ok: false, error: "Item no encontrado" }; break; }
           const nuevoVendidoV = (parseInt(consV.vendido)||0) + (parseInt(d.cantidad)||1);
@@ -528,6 +542,7 @@ export default {
         }
 
         case "GUARDAR_CLIENTE": {
+          if (!esAdmin) return forbidden();
           await sb.set("clientes", d.codigo || `CLI_${Date.now()}`, d);
           result = { ok: true };
           break;
@@ -537,6 +552,8 @@ export default {
         case "USAR_CUPON": {
           const cup = await sb.get("cupones", d.codigo);
           if (!cup) { result = { ok: false, error: "Cupón no encontrado" }; break; }
+          if (cup.activo === false || cup.activo === "false") return json({ ok: false, error: "Cupón inactivo" });
+          if (cup.limiteUsos && (cup.usosActuales || 0) >= cup.limiteUsos) return json({ ok: false, error: "Cupón agotado" });
           await sb.update("cupones", d.codigo, {
             usosActuales: (parseInt(cup.usosActuales)||0) + 1
           });
@@ -606,7 +623,7 @@ export default {
             codigoCliente = cliExist.codigo;
             await sb.update("clientes", codigoCliente, { totalPedidos: (parseInt(cliExist.totalPedidos)||0) + 1 });
           } else {
-            codigoCliente = `CVX-${String(clientes.length + 1).padStart(3, "0")}`;
+            codigoCliente = `CVX-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
             await sb.set("clientes", codigoCliente, {
               codigo: codigoCliente, nombre: d.cliente, telefono: d.telefono,
               municipio: d.municipio || "", direccion: d.direccion || "",
@@ -863,8 +880,8 @@ export default {
           if (!entDoc) { result = { ok: false, error: "Entrega no encontrada" }; break; }
           const esperado  = String(entDoc.codigoRecibo || "").toUpperCase();
           const ingresado = String(d.codigoRecibo || "").toUpperCase();
-          if (esperado && esperado !== ingresado) {
-            result = { ok: false, error: "Código de recibo incorrecto" }; break;
+          if (!esperado || esperado !== ingresado) {
+            result = { ok: false, error: "Código incorrecto" }; break;
           }
           await sb.update("entregas", d.id, {
             estado: "confirmado", fechaConfirmacion: new Date().toISOString()
