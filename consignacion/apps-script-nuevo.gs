@@ -922,21 +922,39 @@ Responde ÚNICAMENTE con este JSON:
         let hVD = hoja("ventas_directas");
         if (!hVD) {
           hVD = SS.insertSheet("ventas_directas");
-          hVD.getRange(1,1,1,10).setValues([["id","fecha","cliente","telefono","items","total","tipo","enganche","saldoPendiente","estado"]]);
+          hVD.getRange(1,1,1,13).setValues([["id","fecha","cliente","telefono","items","subtotal","descuento","total","tipo","enganche","saldoPendiente","nota","estado"]]);
+        } else {
+          // Agregar columnas faltantes si no existen
+          const hdr = hVD.getRange(1, 1, 1, hVD.getLastColumn()).getValues()[0];
+          ["nota","subtotal","descuento"].forEach(col => {
+            if (!hdr.includes(col)) {
+              hVD.getRange(1, hVD.getLastColumn() + 1).setValue(col);
+              hdr.push(col); // actualizar referencia local
+            }
+          });
         }
         const itemsJSON = JSON.stringify(d.items || []);
-        hVD.appendRow([
-          d.id || "VD_"+Date.now(),
-          d.fecha ? new Date(d.fecha) : new Date(),
-          d.cliente || "",
-          d.telefono || "",
-          itemsJSON,
-          parseFloat(d.total) || 0,
-          d.tipo || "contado",
-          parseFloat(d.enganche) || 0,
-          parseFloat(d.saldoPendiente) || 0,
-          d.estado || "pagado"
-        ]);
+        // Leer cabeceras actuales para insertar en el orden correcto
+        const hdrActual = hVD.getRange(1, 1, 1, hVD.getLastColumn()).getValues()[0];
+        const fila = hdrActual.map(col => {
+          switch(col) {
+            case "id":             return d.id || "VD_"+Date.now();
+            case "fecha":          return d.fecha ? new Date(d.fecha) : new Date();
+            case "cliente":        return d.cliente || "";
+            case "telefono":       return d.telefono || "";
+            case "items":          return itemsJSON;
+            case "subtotal":       return parseFloat(d.subtotal) || parseFloat(d.total) || 0;
+            case "descuento":      return parseFloat(d.descuento) || 0;
+            case "total":          return parseFloat(d.total) || 0;
+            case "tipo":           return d.tipo || "contado";
+            case "enganche":       return parseFloat(d.enganche) || 0;
+            case "saldoPendiente": return parseFloat(d.saldoPendiente) || 0;
+            case "nota":           return d.nota || "";
+            case "estado":         return d.estado || "pagado";
+            default:               return "";
+          }
+        });
+        hVD.appendRow(fila);
         // Descontar del stock bodega
         try {
           const hStock = hoja("stock");
@@ -971,10 +989,13 @@ Responde ÚNICAMENTE con este JSON:
             cliente:        r.cliente || "",
             telefono:       r.telefono || "",
             items:          typeof r.items === "string" ? r.items : JSON.stringify(r.items||[]),
+            subtotal:       parseFloat(r.subtotal) || parseFloat(r.total) || 0,
+            descuento:      parseFloat(r.descuento) || 0,
             total:          parseFloat(r.total) || 0,
             tipo:           r.tipo || "contado",
             enganche:       parseFloat(r.enganche) || 0,
             saldoPendiente: parseFloat(r.saldoPendiente) || 0,
+            nota:           r.nota || "",
             estado:         r.estado || "pagado"
           }));
         return jsonResp({ ok: true, ventas });
