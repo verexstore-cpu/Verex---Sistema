@@ -4675,7 +4675,17 @@ async function generarPDFVentaDirecta(venta, abonos) {
     doc.setFont('helvetica', 'italic');
     doc.setFontSize(7);
     doc.setTextColor(180, 150, 180);
-    doc.text('El mundo es mas maravilloso cuando brillas TU  ♥', W/2, y, { align: 'center' });
+    const tagline = 'El mundo es mas maravilloso cuando brillas TU';
+    const tw = doc.getTextWidth(tagline);
+    const tx = (W - tw) / 2;
+    doc.text(tagline, tx, y);
+    // Dibujar corazón pequeño después del texto
+    const hx = tx + tw + 3;
+    const hy = y - 1.5;
+    doc.setFillColor(220, 100, 150);
+    doc.circle(hx - 1,     hy, 1.2, 'F');
+    doc.circle(hx + 1,     hy, 1.2, 'F');
+    doc.triangle(hx - 2.1, hy + 0.5, hx + 2.1, hy + 0.5, hx, hy + 3, 'F');
 
     const nombreArchivo = 'VEREX_' + (venta.cliente||'Cliente').replace(/ /g,'_') + '_' + (venta.id||'').replace('VD_','') + '.pdf';
 
