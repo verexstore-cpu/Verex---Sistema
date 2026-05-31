@@ -1034,6 +1034,18 @@ export default {
           break;
         }
 
+        case "BACKUP_SOLO": {
+          if (!esAdmin) return forbidden();
+          const tablasBk = ["stock","vendedores","consignacion","abonos","entregas","cortes","pedidos","clientes","cupones"];
+          const backupData = {};
+          for (const t of tablasBk) {
+            try { backupData[t] = await sb.getAll(t); } catch(_) { backupData[t] = []; }
+          }
+          backupData._fecha = new Date().toISOString();
+          result = { ok: true, backup: backupData };
+          break;
+        }
+
         case "GEMINI_TEST": {
           if (!esAdmin) return forbidden();
           const gKey = env.GEMINI_KEY;
