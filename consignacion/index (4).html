@@ -450,6 +450,10 @@
                 style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
                 📊 Dashboard
             </button>
+            <button id="tab-fotoqr" onclick="cambiarTab('fotoqr')"
+                style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
+                📷 Foto QR
+            </button>
             <button id="tab-etiquetas" onclick="cambiarTab('etiquetas')"
                 style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
                 🏷️ Etiquetas
@@ -472,6 +476,11 @@
                     <button class="btn-nuevo-vendedor" onclick="abrirModalVendedor()">+ Nuevo Vendedor</button>
                 </div>
             </div>
+        </div>
+
+        <!-- Tab Foto QR -->
+        <div id="tab-content-fotoqr" style="display:none;">
+            <iframe src="foto-qr.html" style="width:100%;height:calc(100vh - 120px);border:none;border-radius:10px;" allow="camera"></iframe>
         </div>
 
         <!-- Tab Etiquetas -->
@@ -1133,6 +1142,7 @@ async function apiPost(datos) {
 const TAB_METALS = {
     vendedores:    { bg: 'linear-gradient(135deg,#7a5500,#C9A84C,#a87d20,#F5D78E,#7a5500)', color: '#fff8e1', shadow: '0 2px 8px rgba(201,168,76,0.5)' },
     dashboard:     { bg: 'linear-gradient(135deg,#1a3a6b,#4a90d9,#1a5fa8,#6ab0f5,#1a3a6b)', color: '#e8f4ff', shadow: '0 2px 8px rgba(74,144,217,0.5)' },
+    fotoqr:        { bg: 'linear-gradient(135deg,#1a4a2e,#27ae60,#0e6b35,#52d68a,#1a4a2e)', color: '#e8fff2', shadow: '0 2px 8px rgba(39,174,96,0.5)' },
     etiquetas:     { bg: 'linear-gradient(135deg,#6b1a2a,#e8748a,#b03050,#f5a0b0,#6b1a2a)', color: '#fff0f3', shadow: '0 2px 8px rgba(232,116,138,0.5)' },
     stock:         { bg: 'linear-gradient(135deg,#4a2800,#cd8c52,#7a4a1a,#e8b07a,#4a2800)', color: '#fff3e0', shadow: '0 2px 8px rgba(205,140,82,0.5)' },
     ventadirecta:  { bg: 'linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1,#38bdf8,#0a4a6b)', color: '#e0f7ff', shadow: '0 2px 8px rgba(14,165,233,0.5)' },
@@ -1140,7 +1150,7 @@ const TAB_METALS = {
 const TAB_INACTIVE = { bg: 'linear-gradient(135deg,#2a2a2a,#4a4a4a,#333,#555,#2a2a2a)', color: '#888', shadow: 'none' };
 
 function cambiarTab(tab) {
-    const tabs = ['vendedores', 'dashboard', 'etiquetas', 'stock', 'ventadirecta'];
+    const tabs = ['vendedores', 'dashboard', 'fotoqr', 'etiquetas', 'stock', 'ventadirecta'];
     tabs.forEach(t => {
         document.getElementById('tab-content-' + t).style.display = t === tab ? 'block' : 'none';
         const btn = document.getElementById('tab-' + t);
