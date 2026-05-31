@@ -4238,8 +4238,10 @@ function renderCarritoVD() {
         cardCl.style.display = "none";
         return;
     }
+    const eraOculto = cardC.style.display === "none";
     cardC.style.display = "block";
     cardCl.style.display = "block";
+    if (eraOculto) setTimeout(() => cardC.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     let total = 0;
     document.getElementById("lista-carrito-vd").innerHTML = items.map(({ prod, qty }) => {
         const sub = parseFloat(prod.precio || 0) * qty;
