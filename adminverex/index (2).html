@@ -275,7 +275,6 @@
         <div class="tab" onclick="tab(3)">🚚 Envío</div>
         <div class="tab" onclick="tab(4)">🎟️ Cupones</div>
         <div class="tab" onclick="tab(6);cargarConsignacion()">👤 Vendedores</div>
-        <div class="tab" onclick="tab(7)" style="color:#c0392b;">⚙️ Sistema</div>
     </div>
 
     <!-- TAB 0: DASHBOARD -->
@@ -705,27 +704,6 @@
     </div>
 </div>
 
-<!-- TAB 7: SISTEMA -->
-<div class="tab-content" id="tab-7">
-    <div class="card" style="border:2px solid #fecaca;background:#fff5f5;">
-        <h2 style="color:#c0392b;">⚠️ Zona de Peligro</h2>
-        <p style="color:#666;font-size:13px;margin-bottom:20px;">Estas acciones son <strong>irreversibles</strong>. Se generará un respaldo automático antes de borrar.</p>
-
-        <div style="background:#fff;border:1.5px solid #fecaca;border-radius:10px;padding:20px;margin-bottom:16px;">
-            <h3 style="font-size:15px;margin:0 0 8px;color:#c0392b;">🗑️ Resetear todo el sistema</h3>
-            <p style="font-size:13px;color:#666;margin:0 0 16px;">Borra stock, vendedores, consignaciones, ventas, pedidos, clientes, cupones y entregas. La configuración se conserva.</p>
-            <div style="background:#fef3c7;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px;color:#92400e;">
-                💾 Antes de borrar, se descargará automáticamente un archivo <strong>backup-verex.json</strong> con todos los datos.
-            </div>
-            <input type="password" id="reset-pass" placeholder="Ingresa tu contraseña para confirmar" style="width:100%;padding:10px 12px;border:1.5px solid #fecaca;border-radius:8px;font-size:14px;margin-bottom:12px;box-sizing:border-box;">
-            <button onclick="ejecutarReset()" style="background:#c0392b;color:#fff;border:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;width:100%;">
-                🗑️ Descargar Respaldo y Resetear Sistema
-            </button>
-            <div id="reset-status" style="margin-top:12px;font-size:13px;text-align:center;"></div>
-        </div>
-    </div>
-</div>
-
 <!-- MODAL VENTAS VENDEDOR -->
 <div class="mo" id="modal-ventas-vend">
     <div class="mb" style="max-width:660px;">
@@ -842,8 +820,8 @@
 //  CONFIG
 // ═════════════════════════════════════════════
 const API_URL    = "https://verex-api.verexstore.workers.dev/";
-const SECRET_KEY = "";
-let _sessionToken = "";
+const SECRET_KEY = ""; // Moved to Worker
+const ADMIN_PASS = "verex2026";
 
 let cfg = {
     tiendaActiva: true,
@@ -855,27 +833,18 @@ let notifLeidas = new Set(JSON.parse(localStorage.getItem("vx_notif")||"[]"));
 // ═════════════════════════════════════════════
 //  AUTH
 // ═════════════════════════════════════════════
-async function login() {
-    const pass = document.getElementById("in-pass").value;
-    if (!pass) return;
-    try {
-        const res  = await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "LOGIN", _pass: pass }) });
-        const data = await res.json();
-        if (data.ok && data.token) {
-            _sessionToken = data.token;
-            sessionStorage.setItem("vxa","1");
-            document.getElementById("login-screen").style.display = "none";
-            document.getElementById("panel").style.display = "block";
-            init();
-        } else {
-            document.getElementById("login-err").style.display = "block";
-            document.getElementById("in-pass").value = "";
-        }
-    } catch(e) {
+function login() {
+    if (document.getElementById("in-pass").value === ADMIN_PASS) {
+        sessionStorage.setItem("vxa","1");
+        document.getElementById("login-screen").style.display = "none";
+        document.getElementById("panel").style.display = "block";
+        init();
+    } else {
         document.getElementById("login-err").style.display = "block";
+        document.getElementById("in-pass").value = "";
     }
 }
-function logout() { _sessionToken = ""; sessionStorage.clear(); location.reload(); }
+function logout() { sessionStorage.clear(); location.reload(); }
 if (sessionStorage.getItem("vxa")==="1") {
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("panel").style.display = "block";
@@ -918,7 +887,7 @@ async function init() {
 
 async function cargarDatos(silencioso=false) {
     try {
-        const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_TIENDA", _token: _sessionToken }) });
+        const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_TIENDA", _pass: ADMIN_PASS }) });
         const data = await res.json();
         productos = data.productos || [];
         pedidos   = (data.pedidos || []).reverse();
@@ -1181,7 +1150,7 @@ async function generarCuponCliente(codigo, nombre, telefono) {
     if (!descuento || isNaN(descuento)) return;
     const codigoCupon = `${codigo}-${Math.random().toString(36).substr(2,4).toUpperCase()}`;
     const datos = {
-        accion: "CREAR_CUPON", _token: _sessionToken,
+        accion: "CREAR_CUPON", _pass: ADMIN_PASS,
         codigo: codigoCupon, tipo: "porcentaje",
         descuento: parseFloat(descuento), categorias: "",
         montoMinimo: 0, limiteUsos: 1, activo: true,
@@ -1385,7 +1354,7 @@ async function eliminarPedido(numeroPedido) {
     if (idx >= 0) pedidos.splice(idx, 1);
     renderPedidos();
     await fetch(API_URL, { method:'POST', mode:'no-cors',
-        body: JSON.stringify({ accion:"ELIMINAR_PEDIDO", _token:_sessionToken, numeroPedido })
+        body: JSON.stringify({ accion:"ELIMINAR_PEDIDO", _pass:ADMIN_PASS, numeroPedido })
     });
     toast("🗑️ Pedido eliminado", "#ef4444");
 }
@@ -1425,7 +1394,7 @@ async function cambiarEstado(sel, cliente, fecha) {
     if (p) p.estado = estado;
 
     await fetch(API_URL, { method:'POST', mode:'no-cors',
-        body: JSON.stringify({ accion:"ACTUALIZAR_ESTADO_PEDIDO", _token:_sessionToken, cliente, fecha, estado })
+        body: JSON.stringify({ accion:"ACTUALIZAR_ESTADO_PEDIDO", _pass:ADMIN_PASS, cliente, fecha, estado })
     });
 
     // Enviar mensaje de WhatsApp si aplica
@@ -1551,7 +1520,7 @@ async function guardarEdicion() {
     }
 
     const datos = {
-        accion: "EDITAR_PRODUCTO", _token: _sessionToken,
+        accion: "EDITAR_PRODUCTO", _pass: ADMIN_PASS,
         codigo: document.getElementById("ed-cod").value,
         nombre: document.getElementById("ed-nom").value,
         precio: document.getElementById("ed-prec").value,
@@ -1566,13 +1535,13 @@ async function guardarEdicion() {
 async function desactivarProducto() {
     const cod=document.getElementById("ed-cod").value;
     if (!confirm(`¿Desactivar ${cod}?`)) return;
-    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ELIMINAR_PRODUCTO",_token:_sessionToken,codigo:cod})});
+    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ELIMINAR_PRODUCTO",_pass:ADMIN_PASS,codigo:cod})});
     cerrarModal(); toast("🗑️ Producto desactivado");
     await cargarDatos(true);
 }
 
 async function toggleDest(codigo, destacado) {
-    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"EDITAR_PRODUCTO",_token:_sessionToken,codigo,destacado})});
+    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"EDITAR_PRODUCTO",_pass:ADMIN_PASS,codigo,destacado})});
     toast(destacado?"⭐ Marcado como destacado":"Quitado de destacados");
     await cargarDatos(true);
 }
@@ -1619,7 +1588,7 @@ async function publicarProducto() {
     const btn=document.querySelector("#tab-2 .bfull");
     btn.textContent="Publicando..."; btn.disabled=true;
     try {
-        await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"CREAR_PRODUCTO",_token:_sessionToken,nombre,precio,img,codigo,caracteristicas:JSON.stringify(stocks)})});
+        await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"CREAR_PRODUCTO",_pass:ADMIN_PASS,nombre,precio,img,codigo,caracteristicas:JSON.stringify(stocks)})});
         toast("✅ Producto publicado","#22c55e");
         document.getElementById("in-prec").value=document.getElementById("in-img").value=document.getElementById("in-det").value="";
         document.querySelectorAll(".ts").forEach(i=>i.value=0);
@@ -1796,20 +1765,20 @@ async function crearCupon() {
     document.getElementById("cup-preview").style.display = "none";
 
     await fetch(API_URL, { method:'POST', mode:'no-cors',
-        body: JSON.stringify({ accion:"CREAR_CUPON", _token:_sessionToken, ...nuevo }) });
+        body: JSON.stringify({ accion:"CREAR_CUPON", _pass:ADMIN_PASS, ...nuevo }) });
     toast("✅ Cupón creado", "#22c55e");
 }
 
 async function toggleCupon(i) {
     cupones[i].activo=!cupones[i].activo; renderCupones();
-    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"TOGGLE_CUPON",_token:_sessionToken,codigo:cupones[i].codigo,activo:cupones[i].activo})});
+    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"TOGGLE_CUPON",_pass:ADMIN_PASS,codigo:cupones[i].codigo,activo:cupones[i].activo})});
     toast(cupones[i].activo?"✅ Cupón activado":"🔴 Cupón desactivado");
 }
 
 async function eliminarCupon(i) {
     if (!confirm(`¿Eliminar cupón "${cupones[i].codigo}"?`)) return;
     const cod=cupones[i].codigo; cupones.splice(i,1); renderCupones();
-    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ELIMINAR_CUPON",_token:_sessionToken,codigo:cod})});
+    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ELIMINAR_CUPON",_pass:ADMIN_PASS,codigo:cod})});
     toast("🗑️ Cupón eliminado");
 }
 
@@ -2018,7 +1987,7 @@ function guardarCarrusel() {
 
 function saveConfig() {
     localStorage.setItem("vx_cfg",JSON.stringify(cfg));
-    fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ACTUALIZAR_CONFIG",_token:_sessionToken,config:cfg})});
+    fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ACTUALIZAR_CONFIG",_pass:ADMIN_PASS,config:cfg})});
 }
 
 // ═════════════════════════════════════════════
@@ -2050,15 +2019,13 @@ async function guardarNuevaClave() {
     if (!actual || !nueva || !confirmar) { errEl.textContent = "⚠️ Completa todos los campos"; errEl.style.display = "block"; return; }
     if (nueva.length < 6) { errEl.textContent = "⚠️ Mínimo 6 caracteres"; errEl.style.display = "block"; return; }
     if (nueva !== confirmar) { errEl.textContent = "⚠️ Las contraseñas no coinciden"; errEl.style.display = "block"; return; }
+    if (actual !== ADMIN_PASS) { errEl.textContent = "⚠️ Contraseña actual incorrecta"; errEl.style.display = "block"; return; }
+
     const btn = document.querySelector("#modal-pass button:last-child");
-    btn.textContent = "⏳ Verificando..."; btn.disabled = true;
+    btn.textContent = "⏳ Guardando..."; btn.disabled = true;
     try {
-        const verif = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"VERIFICAR_PASS", _pass: actual }) });
-        const vData = await verif.json();
-        if (!vData.ok) { errEl.textContent = "⚠️ Contraseña actual incorrecta"; errEl.style.display = "block"; btn.textContent = "💾 Guardar Nueva Contraseña"; btn.disabled = false; return; }
         const nuevoHash = await hashStr(nueva);
-        btn.textContent = "⏳ Guardando...";
-        await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"ACTUALIZAR_PASS_HASH", _token: _sessionToken, nuevoHash }) });
+        await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"ACTUALIZAR_PASS_HASH", _pass: ADMIN_PASS, nuevoHash }) });
         toast("✅ Contraseña actualizada. Úsala en tu próximo login.", "#22c55e");
         document.getElementById("modal-pass").style.display = "none";
     } catch(e) {
@@ -2084,7 +2051,7 @@ async function cargarConsignacion(forzar = false) {
     document.getElementById("vend-loading").style.display = "block";
     document.getElementById("vend-lista").innerHTML = "";
     try {
-        const res  = await fetch(API_URL, { method:"POST", body: JSON.stringify({ accion:"GET_CONSIGNACION", _token: _sessionToken }) });
+        const res  = await fetch(API_URL, { method:"POST", body: JSON.stringify({ accion:"GET_CONSIGNACION", _pass: ADMIN_PASS }) });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || "Error");
         _consigData = data;
@@ -2189,48 +2156,6 @@ function filtrarVentasModal() {
 
 function cerrarModalVentas() {
     document.getElementById("modal-ventas-vend").classList.remove("open");
-}
-</script>
-
-<script>
-async function ejecutarReset() {
-    const pass = document.getElementById("reset-pass").value;
-    if (!pass) { alert("Ingresa tu contraseña para confirmar."); return; }
-
-    const confirm1 = confirm("⚠️ VEREX SISTEMA\n\n¿Estás seguro que quieres borrar TODO el sistema?\n\nEsto incluye: stock, vendedores, consignaciones, ventas, pedidos, clientes, cupones y entregas.\n\nSe descargará un respaldo antes de borrar.");
-    if (!confirm1) return;
-
-    const confirm2 = confirm("🔴 ÚLTIMA CONFIRMACIÓN\n\nEsta acción NO se puede deshacer.\n\n¿Confirmas el reset completo del sistema?");
-    if (!confirm2) return;
-
-    const status = document.getElementById("reset-status");
-    status.style.color = "#92400e";
-    status.textContent = "⏳ Generando respaldo y ejecutando reset...";
-
-    try {
-        const res = await fetch(API_URL, {
-            method: "POST",
-            body: JSON.stringify({ accion: "BACKUP_Y_RESET", _pass: pass })
-        });
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.error || "Error en el servidor");
-
-        // Descargar backup automáticamente
-        const blob = new Blob([JSON.stringify(data.backup, null, 2)], { type: "application/json" });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement("a");
-        a.href     = url;
-        a.download = `backup-verex-${new Date().toISOString().slice(0,10)}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-
-        status.style.color = "#166534";
-        status.textContent = "✅ Sistema reseteado. Respaldo descargado correctamente.";
-        document.getElementById("reset-pass").value = "";
-    } catch(e) {
-        status.style.color = "#c0392b";
-        status.textContent = "❌ Error: " + e.message;
-    }
 }
 </script>
 

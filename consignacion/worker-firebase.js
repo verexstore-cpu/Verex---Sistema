@@ -43,22 +43,14 @@ export default {
     try {
       const d = await request.json();
 
-      // ── Login: devuelve token firmado ────────────────────────────
+      // ── Verificación de contraseña (endpoint público de login) ───
       if (d.accion === "VERIFICAR_PASS") {
         const ok = await verificarPassword(d._pass, env, sb);
         return json({ ok });
       }
 
-      if (d.accion === "LOGIN") {
-        const ok = await verificarPassword(d._pass, env, sb);
-        if (!ok) return json({ ok: false, error: "Contraseña incorrecta" }, 401);
-        const token = await generarToken(env);
-        return json({ ok: true, token });
-      }
-
-      // esAdmin: acepta token firmado O contraseña directa (compatibilidad consignación)
-      const esAdmin = (d._token && await verificarToken(d._token, env)) ||
-                      (await verificarPassword(d._pass, env, sb)) ||
+      // esAdmin: acepta SECRET_PASS (env var) O el hash guardado en Supabase
+      const esAdmin = (await verificarPassword(d._pass, env, sb)) ||
                       (d.key && d.key === env.SECRET_KEY);
 
       let result;
@@ -76,13 +68,12 @@ export default {
           if (!esAdmin) return forbidden();
           const items = Array.isArray(d.items) ? d.items : [d];
           const codigos = [];
-          const todosLosItems = await sb.getAll("stock");
           for (const item of items) {
             // Auto-generar código si no viene o se pide
             let codigo = item.codigo;
             if (!codigo || item.autoGenerarCodigo) {
               const prefijo = String(item.categoria || "GEN").toUpperCase().slice(0, 2);
-              const allStock = todosLosItems;
+              const allStock = await sb.getAll("stock");
               let maxNum = 0;
               allStock.forEach(s => {
                 const base = String(s.codigoBase || s.codigo || "");
@@ -228,7 +219,6 @@ export default {
         }
 
         case "REGISTRAR_VENTA": {
-          if (!esAdmin) return forbidden();
           const cons = await sb.get("consignacion", d.id);
           if (!cons) { result = { ok: false, error: "Item no encontrado" }; break; }
           const nuevoVendido = (parseInt(cons.vendido)||0) + (parseInt(d.cantidad)||1);
@@ -284,16 +274,6 @@ export default {
           if (!esAdmin) return forbidden();
           for (const id of (d.devueltos || [])) {
             await sb.update("consignacion", id, { estado: "devuelto" });
-            const item = await sb.get("consignacion", id);
-            if (item) {
-              const stockDoc = await sb.get("stock", item.codigo || item.id);
-              if (stockDoc) {
-                await sb.update("stock", item.codigo || item.id, {
-                  stock_consignacion: Math.max(0, (parseInt(stockDoc.stock_consignacion)||0) - (item.cantidad||1)),
-                  stock_vendido: (parseInt(stockDoc.stock_vendido)||0) + (item.vendido||0)
-                });
-              }
-            }
           }
           const allCons = await sb.query("consignacion", "vendedor", "==", d.vendedor);
           for (const c of allCons.filter(c => c.estado === "activo")) {
@@ -328,7 +308,7 @@ export default {
 
         case "GET_HISTORIAL_CORTES": {
           const cortes = await sb.query("cortes_historial", "vendedor", "==", d.vendedor);
-          result = { ok: true, historial: cortes };
+          result = { ok: true, cortes };
           break;
         }
 
@@ -353,8 +333,7 @@ export default {
             const s = await sb.get("stock", item.codigo);
             if (s) {
               await sb.update("stock", item.codigo, {
-                stock_bodega: Math.max(0, (parseInt(s.stock_bodega)||0) - (item.cantidad||1)),
-                stock_vendido: (parseInt(s.stock_vendido)||0) + (item.cantidad||1)
+                stock_bodega: Math.max(0, (parseInt(s.stock_bodega)||0) - (item.cantidad||1))
               });
             }
           }
@@ -398,7 +377,6 @@ export default {
         }
 
         case "REGISTRAR_VENTA_VENDEDOR": {
-          if (!esAdmin) return forbidden();
           const consV = await sb.get("consignacion", d.id);
           if (!consV) { result = { ok: false, error: "Item no encontrado" }; break; }
           const nuevoVendidoV = (parseInt(consV.vendido)||0) + (parseInt(d.cantidad)||1);
@@ -550,7 +528,6 @@ export default {
         }
 
         case "GUARDAR_CLIENTE": {
-          if (!esAdmin) return forbidden();
           await sb.set("clientes", d.codigo || `CLI_${Date.now()}`, d);
           result = { ok: true };
           break;
@@ -560,8 +537,6 @@ export default {
         case "USAR_CUPON": {
           const cup = await sb.get("cupones", d.codigo);
           if (!cup) { result = { ok: false, error: "Cupón no encontrado" }; break; }
-          if (cup.activo === false || cup.activo === "false") return json({ ok: false, error: "Cupón inactivo" });
-          if (cup.limiteUsos && (cup.usosActuales || 0) >= cup.limiteUsos) return json({ ok: false, error: "Cupón agotado" });
           await sb.update("cupones", d.codigo, {
             usosActuales: (parseInt(cup.usosActuales)||0) + 1
           });
@@ -631,7 +606,7 @@ export default {
             codigoCliente = cliExist.codigo;
             await sb.update("clientes", codigoCliente, { totalPedidos: (parseInt(cliExist.totalPedidos)||0) + 1 });
           } else {
-            codigoCliente = `CVX-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
+            codigoCliente = `CVX-${String(clientes.length + 1).padStart(3, "0")}`;
             await sb.set("clientes", codigoCliente, {
               codigo: codigoCliente, nombre: d.cliente, telefono: d.telefono,
               municipio: d.municipio || "", direccion: d.direccion || "",
@@ -773,29 +748,6 @@ export default {
           break;
         }
 
-        case "TRANSFERIR_ENTRE_VENDEDORES": {
-          if (!esAdmin) return forbidden();
-          const { origen, destino, codigos } = d;
-          if (!origen || !destino || !codigos?.length) {
-            result = { ok: false, error: "Faltan parámetros" }; break;
-          }
-          const todasCons = await sb.getAll("consignacion");
-          let transferidas = 0;
-          for (const codigo of codigos) {
-            const reg = todasCons.find(c => c.vendedor === origen && c.codigo === codigo && c.estado === "activo");
-            if (reg) {
-              await sb.update("consignacion", reg.id, {
-                vendedor:         destino,
-                vendedorOrigen:   origen,
-                fechaTransferencia: new Date().toISOString()
-              });
-              transferidas++;
-            }
-          }
-          result = { ok: true, transferidas };
-          break;
-        }
-
         case "STOCK_DEVOLVER_BODEGA": {
           if (!esAdmin) return forbidden();
           for (const codigo of (d.codigos || [])) {
@@ -911,8 +863,8 @@ export default {
           if (!entDoc) { result = { ok: false, error: "Entrega no encontrada" }; break; }
           const esperado  = String(entDoc.codigoRecibo || "").toUpperCase();
           const ingresado = String(d.codigoRecibo || "").toUpperCase();
-          if (!esperado || esperado !== ingresado) {
-            result = { ok: false, error: "Código incorrecto" }; break;
+          if (esperado && esperado !== ingresado) {
+            result = { ok: false, error: "Código de recibo incorrecto" }; break;
           }
           await sb.update("entregas", d.id, {
             estado: "confirmado", fechaConfirmacion: new Date().toISOString()
@@ -1079,21 +1031,6 @@ export default {
           } catch(e) {
             result = { ok: false, error: e.message };
           }
-          break;
-        }
-
-        case "BACKUP_Y_RESET": {
-          if (!esAdmin) return forbidden();
-          const tablas = ["stock","vendedores","consignacion","abonos","entregas","cortes","pedidos","clientes","cupones"];
-          const backup = {};
-          for (const t of tablas) {
-            try { backup[t] = await sb.getAll(t); } catch(_) { backup[t] = []; }
-          }
-          backup._fecha = new Date().toISOString();
-          for (const t of tablas) {
-            try { await sb.deleteAll(t); } catch(_) {}
-          }
-          result = { ok: true, backup };
           break;
         }
 
@@ -1300,18 +1237,6 @@ class Supabase {
     }
   }
 
-  // Eliminar todos los registros de una tabla
-  async deleteAll(table) {
-    const res = await fetch(
-      `${this.url}/rest/v1/${table}?id=not.is.null`,
-      { method: "DELETE", headers: this._headers() }
-    );
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(`SB deleteAll ${table}: ${res.status} ${txt}`);
-    }
-  }
-
   // Query con filtro sobre campo JSONB (campo == valor)
   async query(table, campo, _op, valor) {
     const res  = await fetch(
@@ -1330,37 +1255,9 @@ async function hashStr(str) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-function b64url(str) {
-  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-async function generarToken(env) {
-  const payload = JSON.stringify({ role: "admin", exp: Date.now() + 8 * 3600 * 1000 });
-  const key = await crypto.subtle.importKey(
-    "raw", new TextEncoder().encode(env.SECRET_PASS || "verex"),
-    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
-  const sigHex = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2,"0")).join("");
-  return b64url(payload) + "." + b64url(sigHex);
-}
-
-async function verificarToken(token, env) {
-  try {
-    const [payloadB64, sigB64] = token.split(".");
-    const payload = atob(payloadB64.replace(/-/g,"+").replace(/_/g,"/"));
-    const { role, exp } = JSON.parse(payload);
-    if (role !== "admin" || Date.now() > exp) return false;
-    const key = await crypto.subtle.importKey(
-      "raw", new TextEncoder().encode(env.SECRET_PASS || "verex"),
-      { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-    );
-    const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
-    const sigHex = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2,"0")).join("");
-    return b64url(sigHex) === sigB64;
-  } catch(_) { return false; }
-}
-
+// Verifica la contraseña: primero contra SECRET_PASS (env var),
+// si no coincide intenta con el hash guardado en Supabase
+// (permite cambiar contraseña sin editar el env var de Cloudflare).
 async function verificarPassword(pass, env, sb) {
   if (!pass) return false;
   if (pass === env.SECRET_PASS) return true;
