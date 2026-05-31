@@ -411,13 +411,6 @@
 
 <div id="toast"></div>
 
-<!-- VISOR FOTO GRANDE -->
-<div id="modal-foto-grande" onclick="this.style.display='none'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:12px;cursor:zoom-out;">
-    <img id="foto-grande-img" src="" style="max-width:95vw;max-height:85vh;object-fit:contain;border-radius:12px;box-shadow:0 0 40px rgba(0,0,0,0.8);">
-    <div id="foto-grande-nombre" style="color:#fff;font-size:14px;font-weight:600;text-align:center;padding:0 20px;"></div>
-    <div style="color:#888;font-size:12px;">Toca para cerrar</div>
-</div>
-
 <!-- LOGIN -->
 <div id="pantalla-login">
     <div class="login-card">
@@ -429,7 +422,7 @@
 </div>
 
 <!-- APP -->
-<div id="app" style="display:none">
+<div id="app">
     <div class="header">
         <div class="logo">VEREX <span>CONSIGNACIÓN</span></div>
         <div style="display:flex;gap:8px;align-items:center;">
@@ -569,34 +562,9 @@
             <div class="card" id="card-carrito-vd" style="display:none;">
                 <h2>🛒 Productos seleccionados</h2>
                 <div id="lista-carrito-vd"></div>
-
-                <!-- Descuento -->
-                <div style="margin-top:10px;padding-top:10px;border-top:1px solid #222;">
-                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                        <span style="font-size:12px;color:var(--plateado);">Subtotal:</span>
-                        <span id="subtotal-vd" style="font-size:13px;color:var(--plateado);">$0.00</span>
-                    </div>
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                        <span style="font-size:12px;color:#e85555;flex-shrink:0;">🏷️ Descuento:</span>
-                        <div style="display:flex;flex:1;gap:6px;align-items:center;">
-                            <!-- Toggle $ / % -->
-                            <button id="vd-desc-toggle" onclick="toggleTipoDescVD()"
-                                style="width:48px;height:38px;flex-shrink:0;border-radius:8px;border:2px solid #e85555;
-                                       background:linear-gradient(135deg,#3a0a0a,#7a1a1a,#3a0a0a);
-                                       color:#ff6b6b;font-size:16px;font-weight:900;cursor:pointer;
-                                       display:flex;align-items:center;justify-content:center;
-                                       box-shadow:0 0 10px rgba(232,85,85,0.3);
-                                       transition:all 0.2s;">$</button>
-                            <input type="hidden" id="vd-desc-tipo" value="monto">
-                            <input type="number" id="vd-desc-valor" placeholder="0" min="0" oninput="calcularTotalVD()"
-                                style="flex:1;padding:8px 10px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:15px;font-weight:700;width:100%;box-sizing:border-box;">
-                            <span id="vd-desc-monto" style="font-size:13px;font-weight:700;color:#e85555;flex-shrink:0;min-width:54px;text-align:right;">-$0.00</span>
-                        </div>
-                    </div>
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid #333;">
-                        <span style="font-size:14px;font-weight:700;">Total a pagar:</span>
-                        <span id="total-vd" style="font-size:20px;font-weight:700;color:var(--dorado);">$0.00</span>
-                    </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid #333;">
+                    <span style="font-size:13px;color:var(--plateado);">Total:</span>
+                    <span id="total-vd" style="font-size:18px;font-weight:700;color:var(--dorado);">$0.00</span>
                 </div>
             </div>
 
@@ -644,6 +612,12 @@
                     ✅ Confirmar Venta
                 </button>
             </div>
+
+            <!-- Botón de diagnóstico temporal -->
+            <button class="btn btn-full" onclick="diagnosticoVD()"
+                style="background:#2a1a00;border:1px solid #7a4a00;color:#ffcc44;font-size:12px;padding:8px;margin-top:6px;">
+                🔧 Probar conexión API (diagnóstico)
+            </button>
 
             <!-- Botones de paneles inferiores -->
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">
@@ -2617,22 +2591,6 @@ function cargarFoto(input) {
     reader.readAsDataURL(file);
 }
 
-async function reducirImagenParaAI(base64, maxPx = 400) {
-    return new Promise(res => {
-        const img = new Image();
-        img.onload = () => {
-            let w = img.width, h = img.height;
-            if (w > h && w > maxPx) { h = Math.round(h * maxPx / w); w = maxPx; }
-            else if (h > maxPx)     { w = Math.round(w * maxPx / h); h = maxPx; }
-            const cvs = document.createElement("canvas");
-            cvs.width = w; cvs.height = h;
-            cvs.getContext("2d").drawImage(img, 0, 0, w, h);
-            res(cvs.toDataURL("image/jpeg", 0.65));
-        };
-        img.src = base64;
-    });
-}
-
 async function analizarConIA() {
     if (!fotoBase64) return;
     const btn    = document.getElementById("btn-ia");
@@ -2640,15 +2598,12 @@ async function analizarConIA() {
     btn.textContent = "⏳ Analizando...";
     btn.disabled    = true;
     estado.style.display = "block";
-    estado.textContent   = "⏳ Preparando imagen...";
+    estado.textContent   = "Analizando imagen con IA...";
     try {
-        // Reducir imagen a 400px solo para la IA (más rápido, menos datos)
-        const imagenAI = await reducirImagenParaAI(fotoBase64, 400);
-        estado.textContent = "🤖 Analizando con IA...";
         const materialSeleccionado = window._materialProducto || null;
         const res  = await fetch(API_URL, {
             method: "POST",
-            body: JSON.stringify({ accion: "ANALIZAR_IMAGEN", _pass: _sessionPass, imagen: imagenAI, material: materialSeleccionado })
+            body: JSON.stringify({ accion: "ANALIZAR_IMAGEN", _pass: _sessionPass, imagen: fotoBase64, material: materialSeleccionado })
         });
         const data = await res.json();
         if (!data.ok) {
@@ -2898,11 +2853,13 @@ async function confirmarCorte() {
 
 async function verLinkInventario() {
     const cacheKey = "vx_token_" + vendedorActual.codigo;
-    // Siempre generar token fresco y guardarlo en Firebase
-    const linkId = generarLinkId();
-    await apiPost({ accion: "GUARDAR_TOKEN", vendedor: vendedorActual.codigo, token: linkId });
-    sessionStorage.setItem(cacheKey, linkId);
-    const link = "https://inventario-sellers.pages.dev?inv=" + vendedorActual.codigo + "&token=" + linkId;
+    let linkId = sessionStorage.getItem(cacheKey);
+    if (!linkId) {
+        linkId = generarLinkId();
+        await apiPost({ accion: "GUARDAR_TOKEN", vendedor: vendedorActual.codigo, token: linkId });
+        sessionStorage.setItem(cacheKey, linkId);
+    }
+    const link = "https://verex-invetario-consign.pages.dev?inv=" + vendedorActual.codigo + "&token=" + linkId;
     document.getElementById("inp-link").value = link;
     abrirModal("modal-link");
 }
@@ -3505,7 +3462,7 @@ function renderStock(items) {
                     ${sel ? "✓" : ""}
                 </div>
             </div>
-            ${item.foto ? `<img src="${sanitizar(item.foto)}" onerror="this.style.display='none'" onclick="event.stopPropagation();verFotoGrande(${jsArg(item.foto)},${jsArg(item.nombre)})" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;" title="Ver foto">` : '<div style="width:52px;height:52px;background:var(--gris2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">💍</div>'}
+            ${item.foto ? `<img src="${sanitizar(item.foto)}" onerror="this.style.display='none'" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0;">` : '<div style="width:52px;height:52px;background:var(--gris2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">💍</div>'}
             <div class="inv-item-info" style="flex:1;min-width:0;">
                 <div class="inv-item-codigo">${sanitizar(item.codigo)}</div>
                 <div class="inv-item-nombre">${sanitizar(item.nombre)}</div>
@@ -3521,13 +3478,6 @@ function renderStock(items) {
             </div>
         </div>`;
     }).join('');
-}
-
-function verFotoGrande(url, nombre) {
-    const modal = document.getElementById("modal-foto-grande");
-    document.getElementById("foto-grande-img").src = url;
-    document.getElementById("foto-grande-nombre").textContent = nombre || "";
-    modal.style.display = "flex";
 }
 
 function toggleSeleccionStock(codigo) {
@@ -3735,16 +3685,11 @@ function cargarFotoStockNuevo(input) {
 async function analizarFotoStockNuevo() {
     if (!_snFotoBase64) return;
     const estado = document.getElementById("sn-ia-estado");
-    const btn    = document.getElementById("sn-btn-ia");
-    estado.style.display = "block"; estado.style.color = "var(--dorado)";
-    estado.textContent = "⏳ Preparando imagen...";
-    btn.disabled = true;
+    estado.style.display = "block"; estado.textContent = "⏳ Analizando con IA...";
     try {
-        const imagenAI = await reducirImagenParaAI(_snFotoBase64, 400);
-        estado.textContent = "🤖 Analizando con IA...";
         const res = await fetch(API_URL, {
             method: "POST",
-            body: JSON.stringify({ accion: "ANALIZAR_IMAGEN", _pass: _sessionPass, imagen: imagenAI, material: _snMaterial })
+            body: JSON.stringify({ accion: "ANALIZAR_IMAGEN", _pass: _sessionPass, imagen: _snFotoBase64, material: _snMaterial })
         });
         const data = await res.json();
         if (data.ok) {
@@ -3756,13 +3701,8 @@ async function analizarFotoStockNuevo() {
                 mostrarTallaSN(data.resultado.categoria);
             }
             estado.textContent = "✅ IA completó el análisis";
-            estado.style.color = "#2ecc71";
-        } else {
-            estado.textContent = "⚠️ " + (data.error || "Error al analizar");
-            estado.style.color = "#e74c3c";
         }
-    } catch(e) { estado.textContent = "⚠️ Error de conexión"; estado.style.color = "#e74c3c"; }
-    btn.disabled = false;
+    } catch(e) { estado.textContent = "⚠️ Error al analizar"; }
 }
 
 async function guardarStockNuevo() {
@@ -3842,6 +3782,7 @@ function toast(msg, bg) {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("pantalla-login").style.display = "flex";
     document.getElementById("inp-foto").addEventListener("change", function() { cargarFoto(this); });
     cargarCategoriasPersonalizadas();
 });
@@ -4067,10 +4008,6 @@ function asignarAVendedor() {
     const hash = await hashStr(saved);
     if (hash !== PASS_HASH) { localStorage.removeItem("vx_consig_session"); return; }
     _sessionPass = saved;
-    // Esperar que el DOM esté listo antes de manipular visibilidad
-    if (document.readyState === "loading") {
-        await new Promise(r => window.addEventListener("DOMContentLoaded", r, { once: true }));
-    }
     document.getElementById("pantalla-login").style.display = "none";
     document.getElementById("app").style.display = "block";
     cargarDatos();
@@ -4138,6 +4075,34 @@ function renderGridVD(prods) {
     }).join('');
 }
 
+async function diagnosticoVD() {
+    const payload = {
+        accion: "REGISTRAR_VENTA_DIRECTA",
+        id: "TEST_" + Date.now(),
+        fecha: new Date().toISOString(),
+        cliente: "PRUEBA_DIAGNOSTICO",
+        telefono: "0000-0000",
+        items: [{ codigo: "TEST", nombre: "Producto prueba", precio: 99, cantidad: 1 }],
+        total: 99,
+        tipo: "credito",
+        enganche: 10,
+        saldoPendiente: 89,
+        nota: "diagnostico",
+        estado: "credito"
+    };
+    try {
+        const resp = await apiPost(payload);
+        alert(
+            "=== RESULTADO DIAGNÓSTICO ===\n\n" +
+            "Respuesta del API:\n" + JSON.stringify(resp, null, 2) +
+            "\n\n¿resp.ok es true? → " + (resp.ok ? "SÍ ✅" : "NO ❌") +
+            "\n\nSi ves ok: true, la venta de prueba se guardó en Google Sheets." +
+            "\nSi ves error, copia este mensaje y compártelo."
+        );
+    } catch(e) {
+        alert("=== ERROR DE CONEXIÓN ===\n\n" + e.message + "\n\nVerifica que tienes internet y que la URL del Worker está correcta.");
+    }
+}
 
 function toggleCreditosPendientes() {
     const panel = document.getElementById("panel-creditos-vd");
@@ -4233,7 +4198,6 @@ function renderHistorialVD() {
                     </div>
                 </div>
                 ${itemsResumen ? `<div style="font-size:11px;color:#666;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${itemsResumen}</div>` : ""}
-                ${parseFloat(v.descuento||0) > 0 ? `<div style="font-size:11px;color:#e85555;margin-bottom:4px;">🏷️ Descuento aplicado: -$${parseFloat(v.descuento).toFixed(2)} (subtotal $${parseFloat(v.subtotal||v.total).toFixed(2)})</div>` : ""}
                 ${esCredito ? `
                 <div style="background:#1a0a0a;border-radius:5px;height:5px;margin-bottom:6px;overflow:hidden;">
                     <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#27ae60,#52d68a);border-radius:5px;"></div>
@@ -4293,8 +4257,8 @@ function renderCarritoVD() {
             <div style="font-size:13px;font-weight:700;color:var(--dorado);min-width:50px;text-align:right;">$${sub.toFixed(2)}</div>
         </div>`;
     }).join('');
-    document.getElementById("subtotal-vd").textContent = "$" + total.toFixed(2);
-    calcularTotalVD();
+    document.getElementById("total-vd").textContent = "$" + total.toFixed(2);
+    calcularSaldoVD();
 }
 
 function seleccionarTipoVD(tipo) {
@@ -4310,56 +4274,10 @@ function seleccionarTipoVD(tipo) {
     if (esCredito) calcularSaldoVD();
 }
 
-function toggleTipoDescVD() {
-    const input = document.getElementById("vd-desc-tipo");
-    const btn   = document.getElementById("vd-desc-toggle");
-    if (!input || !btn) return;
-    if (input.value === "monto") {
-        input.value     = "pct";
-        btn.textContent = "%";
-        btn.style.background = "linear-gradient(135deg,#0a1a3a,#1a4a8a,#0a1a3a)";
-        btn.style.borderColor = "#3a9de8";
-        btn.style.color       = "#7dd3fc";
-        btn.style.boxShadow   = "0 0 10px rgba(58,157,232,0.3)";
-    } else {
-        input.value     = "monto";
-        btn.textContent = "$";
-        btn.style.background = "linear-gradient(135deg,#3a0a0a,#7a1a1a,#3a0a0a)";
-        btn.style.borderColor = "#e85555";
-        btn.style.color       = "#ff6b6b";
-        btn.style.boxShadow   = "0 0 10px rgba(232,85,85,0.3)";
-    }
-    calcularTotalVD();
-}
-
-function calcularTotalVD() {
-    const subtotal  = Object.values(_vdCarrito).reduce((s, { prod, qty }) => s + parseFloat(prod.precio||0)*qty, 0);
-    const tipo      = document.getElementById("vd-desc-tipo")?.value || "monto";
-    const descVal   = parseFloat(document.getElementById("vd-desc-valor")?.value || 0) || 0;
-    const descMonto = tipo === "pct"
-        ? Math.min(subtotal, subtotal * descVal / 100)
-        : Math.min(subtotal, descVal);
-    const total = Math.max(0, subtotal - descMonto);
-
-    const elSub  = document.getElementById("subtotal-vd");
-    const elDesc = document.getElementById("vd-desc-monto");
-    const elTot  = document.getElementById("total-vd");
-    if (elSub)  elSub.textContent  = "$" + subtotal.toFixed(2);
-    if (elDesc) elDesc.textContent = descMonto > 0 ? "-$" + descMonto.toFixed(2) : "-$0.00";
-    if (elTot)  elTot.textContent  = "$" + total.toFixed(2);
-    calcularSaldoVD();
-}
-
 function calcularSaldoVD() {
-    const subtotal  = Object.values(_vdCarrito).reduce((s, { prod, qty }) => s + parseFloat(prod.precio||0)*qty, 0);
-    const tipo      = document.getElementById("vd-desc-tipo")?.value || "monto";
-    const descVal   = parseFloat(document.getElementById("vd-desc-valor")?.value || 0) || 0;
-    const descMonto = tipo === "pct"
-        ? Math.min(subtotal, subtotal * descVal / 100)
-        : Math.min(subtotal, descVal);
-    const total     = Math.max(0, subtotal - descMonto);
-    const enganche  = parseFloat(document.getElementById("vd-enganche")?.value || 0) || 0;
-    const saldo     = Math.max(0, total - enganche);
+    const total = Object.values(_vdCarrito).reduce((s, { prod, qty }) => s + parseFloat(prod.precio||0)*qty, 0);
+    const enganche = parseFloat(document.getElementById("vd-enganche")?.value || 0) || 0;
+    const saldo = Math.max(0, total - enganche);
     const el = document.getElementById("vd-saldo-display");
     if (el) el.textContent = "$" + saldo.toFixed(2);
 }
@@ -4369,17 +4287,11 @@ async function confirmarVentaDirecta() {
     if (!items.length) { toast("⚠️ Agrega al menos un producto"); return; }
     const nombre = document.getElementById("vd-cliente-nombre").value.trim();
     if (!nombre) { toast("⚠️ Ingresa el nombre del cliente"); return; }
-    const tel       = document.getElementById("vd-cliente-tel").value.trim();
-    const subtotal  = items.reduce((s, { prod, qty }) => s + parseFloat(prod.precio||0)*qty, 0);
-    const descTipo  = document.getElementById("vd-desc-tipo")?.value || "monto";
-    const descVal   = parseFloat(document.getElementById("vd-desc-valor")?.value || 0) || 0;
-    const descMonto = descTipo === "pct"
-        ? Math.min(subtotal, subtotal * descVal / 100)
-        : Math.min(subtotal, descVal);
-    const total     = Math.max(0, subtotal - descMonto);
-    const enganche  = _vdTipo === 'credito' ? (parseFloat(document.getElementById("vd-enganche").value)||0) : total;
-    const saldo     = _vdTipo === 'credito' ? Math.max(0, total - enganche) : 0;
-    const nota      = _vdTipo === 'credito' ? (document.getElementById("vd-nota-credito").value.trim()) : "";
+    const tel    = document.getElementById("vd-cliente-tel").value.trim();
+    const total  = items.reduce((s, { prod, qty }) => s + parseFloat(prod.precio||0)*qty, 0);
+    const enganche = _vdTipo === 'credito' ? (parseFloat(document.getElementById("vd-enganche").value)||0) : total;
+    const saldo    = _vdTipo === 'credito' ? Math.max(0, total - enganche) : 0;
+    const nota     = _vdTipo === 'credito' ? (document.getElementById("vd-nota-credito").value.trim()) : "";
 
     const payload = {
         accion: "REGISTRAR_VENTA_DIRECTA",
@@ -4388,8 +4300,6 @@ async function confirmarVentaDirecta() {
         cliente: nombre,
         telefono: tel,
         items: items.map(({ prod, qty }) => ({ codigo: prod.codigo, nombre: prod.nombre, precio: prod.precio, cantidad: qty })),
-        subtotal,
-        descuento: descMonto,
         total,
         tipo: _vdTipo,
         enganche,
@@ -4412,12 +4322,10 @@ async function confirmarVentaDirecta() {
             _vdCarrito = {};
             document.getElementById("vd-cliente-nombre").value = "";
             document.getElementById("vd-cliente-tel").value = "";
-            const elEng  = document.getElementById("vd-enganche");
-            const elNot  = document.getElementById("vd-nota-credito");
-            const elDesc = document.getElementById("vd-desc-valor");
-            if (elEng)  elEng.value  = "";
-            if (elNot)  elNot.value  = "";
-            if (elDesc) elDesc.value = "";
+            const elEng = document.getElementById("vd-enganche");
+            const elNot = document.getElementById("vd-nota-credito");
+            if (elEng) elEng.value = "";
+            if (elNot) elNot.value = "";
             seleccionarTipoVD('contado');
             filtrarVD();
             renderCarritoVD();
@@ -4463,34 +4371,34 @@ function renderCreditosPendientes() {
         const total  = parseFloat(v.total||0);
         const pagado = total - saldo;
         const pct    = total > 0 ? Math.round((pagado/total)*100) : 0;
-        return `<div style="background:#111;border:1px solid #2a2a2a;border-radius:12px;padding:12px;margin-bottom:10px;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
+        return `<div style="background:#111;border:1px solid #2a2a2a;border-radius:10px;padding:12px;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
                 <div>
-                    <div style="font-size:15px;font-weight:700;color:#fff;">${v.cliente}</div>
+                    <div style="font-size:14px;font-weight:700;color:#fff;">${v.cliente}</div>
                     <div style="font-size:11px;color:var(--plateado);">${fecha} · Total: $${total.toFixed(2)}</div>
                     ${v.nota ? `<div style="font-size:11px;color:#666;margin-top:2px;">${v.nota}</div>` : ''}
                 </div>
                 <div style="text-align:right;">
-                    <div style="font-size:17px;font-weight:700;color:#e85555;">$${saldo.toFixed(2)}</div>
+                    <div style="font-size:16px;font-weight:700;color:#e85555;">$${saldo.toFixed(2)}</div>
                     <div style="font-size:10px;color:var(--plateado);">pendiente</div>
                 </div>
             </div>
-            <div style="background:#1a1a1a;border-radius:4px;height:5px;margin-bottom:4px;overflow:hidden;">
-                <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#27ae60,#52d68a);border-radius:4px;"></div>
+            <div style="background:#1a1a1a;border-radius:6px;height:6px;margin-bottom:10px;overflow:hidden;">
+                <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#27ae60,#52d68a);border-radius:6px;transition:width 0.5s;"></div>
             </div>
             <div style="font-size:10px;color:var(--plateado);margin-bottom:10px;">Pagado: $${pagado.toFixed(2)} (${pct}%)</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
-                <button onclick="abrirModalAbono('${v.id}')"
-                    style="background:linear-gradient(180deg,#b2f1ff,#5555b7,#03102f);color:#fff;font-size:14px;font-weight:700;padding:10px 6px;border-radius:8px;border:none;cursor:pointer;">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
+                <button onclick="abrirModalAbono('${v.id}')" class="btn"
+                    style="background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1,#38bdf8,#0a4a6b);color:#e0f7ff;font-size:11px;font-weight:700;padding:8px;">
                     💰 Abono
                 </button>
-                <button onclick="verEstadoCuenta('${v.id}')"
-                    style="background:linear-gradient(135deg,#2a0008,#6b0f1a,#3d000f,#9b1b30,#2a0008);color:#fff3e0;font-size:14px;font-weight:700;padding:10px 6px;border-radius:8px;border:none;cursor:pointer;">
+                <button onclick="verEstadoCuenta('${v.id}')" class="btn"
+                    style="background:linear-gradient(135deg,#4a2800,#cd8c52,#7a4a1a,#e8b07a,#4a2800);color:#fff3e0;font-size:11px;font-weight:700;padding:8px;">
                     📄 PDF
                 </button>
-                <button onclick="enviarWAEstadoCuenta('${v.id}')"
-                    style="background:linear-gradient(135deg,#128c7e,#25d366,#075e54,#59d685,#128c7e);color:#fff;font-size:14px;font-weight:700;padding:10px 6px;border-radius:8px;border:none;cursor:pointer;box-shadow:0 0 10px rgba(37,211,102,0.4);">
-                    💬 WhatsApp
+                <button onclick="enviarWAEstadoCuenta('${v.id}')" class="btn"
+                    style="background:linear-gradient(135deg,#1f1f1f,#6e6e6e,#d1d1d1,#4a4a4a);color:#D4AF37;border:1.5px solid #D4AF37;font-size:11px;font-weight:700;padding:8px;";font-size:11px;font-weight:700;padding:8px;">
+                    💬 WA
                 </button>
             </div>
         </div>`;
@@ -4701,14 +4609,13 @@ async function generarPDFVentaDirecta(venta, abonos) {
 
     // Saldo destacado si hay pendiente
     if (saldo > 0) {
-        // Barra gris oscuro
-       doc.setFillColor(60, 60, 60, 0.1); 
-       doc.setDrawColor(60, 60, 60);   
+        doc.setFillColor(192, 192, 192);
+        doc.setDrawColor(150, 150, 170);
         doc.setLineWidth(0.5);
-         doc.roundedRect(pad - 2, y - 4, W - pad*2 + 4, 12, 2, 2, 'FD');
+        doc.roundedRect(pad - 2, y - 4, W - pad*2 + 4, 12, 2, 2, 'FD');
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
-        doc.setTextColor(212, 175, 55);
+        doc.setTextColor(30, 60, 140);
         doc.text('SALDO PENDIENTE: $' + saldo.toFixed(2), W/2, y + 4, { align: 'center' });
         y += 16;
     } else {
@@ -4730,7 +4637,7 @@ async function generarPDFVentaDirecta(venta, abonos) {
     doc.setTextColor(39, 174, 96);
     doc.text('WhatsApp: 7125-0725', W/2, y + 1, { align: 'center' });
     doc.setTextColor(150, 150, 150);
-    doc.text('Gracias por su compra" ¡El mundo es más maravilloso, cuando brillas TÚ! · VEREX', W/2, y + 6, { align: 'center' });
+    doc.text('Gracias por su preferencia · VEREX', W/2, y + 6, { align: 'center' });
 
     const nombreArchivo = 'VEREX_' + (venta.cliente||'Cliente').replace(/ /g,'_') + '_' + (venta.id||'').replace('VD_','') + '.pdf';
 
@@ -5031,3 +4938,4 @@ function enviarWAEstadoCuenta(ventaId) {
 <!-- respaldo -->
 
 </html>
+
