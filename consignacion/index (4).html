@@ -548,15 +548,16 @@
                 </div>
             </div>
 
-            <!-- Buscar / agregar producto -->
-            <div class="card">
-                <h2>💸 Venta Directa</h2>
-                <div class="search-bar" style="margin-bottom:12px;">
-                    <input type="text" id="bus-vd" placeholder="Buscar producto..." oninput="filtrarVD()" style="flex:1;">
+            <!-- Buscador sticky -->
+            <div style="position:sticky;top:0;z-index:50;background:var(--negro);padding:10px 0 6px;">
+                <div class="search-bar">
+                    <input type="text" id="bus-vd" placeholder="🔍 Buscar producto..." oninput="filtrarVD()" style="flex:1;">
                     <button class="btn" style="background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1,#38bdf8,#0a4a6b);color:#e0f7ff;font-weight:700;" onclick="abrirQRVD()">📷 QR</button>
                 </div>
-                <div id="grid-vd" class="productos-entrega"></div>
             </div>
+
+            <!-- Grid de productos -->
+            <div id="grid-vd" class="productos-entrega" style="margin-bottom:10px;"></div>
 
             <!-- Carrito -->
             <div class="card" id="card-carrito-vd" style="display:none;">
