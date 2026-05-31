@@ -4653,10 +4653,9 @@ async function generarPDFVentaDirecta(venta, abonos) {
         doc.text('SALDO PENDIENTE: $' + saldo.toFixed(2), W/2, y + 4, { align: 'center' });
         y += 16;
     } else {
-        doc.setFillColor(39, 174, 96, 0.1);
         doc.setDrawColor(39, 174, 96);
         doc.setLineWidth(0.5);
-        doc.roundedRect(pad - 2, y - 4, W - pad*2 + 4, 12, 2, 2, 'FD');
+        doc.roundedRect(pad - 2, y - 4, W - pad*2 + 4, 12, 2, 2, 'S');
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
         doc.setTextColor(39, 174, 96);
@@ -4670,7 +4669,12 @@ async function generarPDFVentaDirecta(venta, abonos) {
     doc.setTextColor(168, 168, 180);
     doc.text('WhatsApp: 7125-0725', W/2, y + 1, { align: 'center' });
     doc.setTextColor(150, 150, 150);
-    doc.text('Gracias por su preferencia · VEREX', W/2, y + 6, { align: 'center' });
+    doc.text('Gracias por su preferencia  VEREX', W/2, y + 6, { align: 'center' });
+    y += 12;
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7);
+    doc.setTextColor(180, 150, 180);
+    doc.text('El mundo es mas maravilloso cuando brillas TU  <3', W/2, y, { align: 'center' });
 
     const nombreArchivo = 'VEREX_' + (venta.cliente||'Cliente').replace(/ /g,'_') + '_' + (venta.id||'').replace('VD_','') + '.pdf';
 
