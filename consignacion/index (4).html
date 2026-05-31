@@ -4660,15 +4660,14 @@ async function generarPDFVentaDirecta(venta, abonos) {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
         doc.setTextColor(39, 174, 96);
-        doc.text('✓ PAGADO COMPLETAMENTE', W/2, y + 4, { align: 'center' });
+        doc.text('PAGADO COMPLETAMENTE', W/2, y + 4, { align: 'center' });
         y += 16;
     }
 
     // Footer
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
-    doc.setTextColor(150, 150, 150);
-    doc.setTextColor(39, 174, 96);
+    doc.setTextColor(168, 168, 180);
     doc.text('WhatsApp: 7125-0725', W/2, y + 1, { align: 'center' });
     doc.setTextColor(150, 150, 150);
     doc.text('Gracias por su preferencia · VEREX', W/2, y + 6, { align: 'center' });
