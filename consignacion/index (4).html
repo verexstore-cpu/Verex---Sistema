@@ -4573,11 +4573,12 @@ async function generarPDFVentaDirecta(venta, abonos) {
     doc.setFontSize(8.5);
     doc.setTextColor(30, 30, 30);
     items.forEach(item => {
-        const qty   = parseInt(item.cantidad || 1);
+        const qty    = parseInt(item.cantidad || 1);
         const precio = parseFloat(item.precio || 0);
-        const sub   = (qty * precio).toFixed(2);
-        doc.text(`${item.nombre}`, pad, y);
-        doc.text(`${qty} × $${precio.toFixed(2)}`, W/2, y, { align: 'center' });
+        const sub    = (qty * precio).toFixed(2);
+        const nombre = (item.nombre || '').substring(0, 32);
+        doc.text(nombre, pad, y);
+        doc.text(`${qty} x $${precio.toFixed(2)}`, W - 38, y);
         doc.text(`$${sub}`, W - pad, y, { align: 'right' });
         y += 6;
     });
@@ -4653,12 +4654,12 @@ async function generarPDFVentaDirecta(venta, abonos) {
         doc.text('SALDO PENDIENTE: $' + saldo.toFixed(2), W/2, y + 4, { align: 'center' });
         y += 16;
     } else {
-        doc.setDrawColor(39, 174, 96);
+        doc.setDrawColor(201, 168, 76);
         doc.setLineWidth(0.5);
         doc.roundedRect(pad - 2, y - 4, W - pad*2 + 4, 12, 2, 2, 'S');
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
-        doc.setTextColor(39, 174, 96);
+        doc.setTextColor(201, 168, 76);
         doc.text('PAGADO COMPLETAMENTE', W/2, y + 4, { align: 'center' });
         y += 16;
     }
@@ -4674,7 +4675,7 @@ async function generarPDFVentaDirecta(venta, abonos) {
     doc.setFont('helvetica', 'italic');
     doc.setFontSize(7);
     doc.setTextColor(180, 150, 180);
-    doc.text('El mundo es mas maravilloso cuando brillas TU  <3', W/2, y, { align: 'center' });
+    doc.text('El mundo es mas maravilloso cuando brillas TU  ♥', W/2, y, { align: 'center' });
 
     const nombreArchivo = 'VEREX_' + (venta.cliente||'Cliente').replace(/ /g,'_') + '_' + (venta.id||'').replace('VD_','') + '.pdf';
 
