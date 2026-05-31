@@ -548,16 +548,24 @@
                 </div>
             </div>
 
-            <!-- Buscador sticky -->
-            <div style="position:sticky;top:0;z-index:50;background:var(--negro);padding:10px 0 6px;">
-                <div class="search-bar">
-                    <input type="text" id="bus-vd" placeholder="🔍 Buscar producto..." oninput="filtrarVD()" style="flex:1;">
+            <!-- Buscador -->
+            <div class="card" id="card-buscar-vd">
+                <h2>💸 Venta Directa</h2>
+                <div class="search-bar" style="margin-bottom:12px;">
+                    <input type="text" id="bus-vd" placeholder="Buscar producto..." oninput="filtrarVD()" style="flex:1;">
                     <button class="btn" style="background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1,#38bdf8,#0a4a6b);color:#e0f7ff;font-weight:700;" onclick="abrirQRVD()">📷 QR</button>
                 </div>
+                <div id="grid-vd" class="productos-entrega"></div>
             </div>
 
-            <!-- Grid de productos -->
-            <div id="grid-vd" class="productos-entrega" style="margin-bottom:10px;"></div>
+            <!-- Botón flotante para volver al buscador -->
+            <button id="fab-vd" onclick="document.getElementById('card-buscar-vd').scrollIntoView({behavior:'smooth'})"
+                style="display:none;position:fixed;bottom:24px;right:20px;z-index:999;
+                       background:linear-gradient(135deg,#0a4a6b,#0ea5e9);color:#fff;
+                       border:none;border-radius:50px;padding:12px 18px;font-size:14px;
+                       font-weight:700;cursor:pointer;box-shadow:0 4px 15px rgba(14,165,233,0.4);">
+                + Agregar
+            </button>
 
             <!-- Carrito -->
             <div class="card" id="card-carrito-vd" style="display:none;">
@@ -4237,11 +4245,13 @@ function renderCarritoVD() {
     if (!items.length) {
         cardC.style.display = "none";
         cardCl.style.display = "none";
+        document.getElementById("fab-vd").style.display = "none";
         return;
     }
     const eraOculto = cardC.style.display === "none";
     cardC.style.display = "block";
     cardCl.style.display = "block";
+    document.getElementById("fab-vd").style.display = "block";
     if (eraOculto) setTimeout(() => cardC.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     let total = 0;
     document.getElementById("lista-carrito-vd").innerHTML = items.map(({ prod, qty }) => {
