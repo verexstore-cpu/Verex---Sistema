@@ -4577,9 +4577,21 @@ async function generarPDFVentaDirecta(venta, abonos) {
         const precio = parseFloat(item.precio || 0);
         const sub    = (qty * precio).toFixed(2);
         const nombre = (item.nombre || '').substring(0, 32);
+        const ref    = item.codigo || item.ref || '';
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(30, 30, 30);
         doc.text(nombre, pad, y);
         doc.text(`${qty} x $${precio.toFixed(2)}`, W - 38, y);
         doc.text(`$${sub}`, W - pad, y, { align: 'right' });
+        if (ref) {
+            y += 4;
+            doc.setFontSize(7);
+            doc.setTextColor(150, 150, 150);
+            doc.text(`Ref: ${ref}`, pad, y);
+            doc.setFontSize(8.5);
+            doc.setTextColor(30, 30, 30);
+        }
         y += 6;
     });
 
