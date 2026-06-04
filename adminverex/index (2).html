@@ -1635,17 +1635,24 @@ function importarDesdeExcel(input) {
 
             if (!_importData.length) return toast("⚠️ Sin filas válidas para importar", "#f97316");
 
-            // Marcar duplicados con el catálogo actual
-            const codigosExistentes = new Set(productos.map(p => (p.codigo||"").toUpperCase()));
-            _importData.forEach(r => { r._dup = codigosExistentes.has(r.codigo.toUpperCase()); });
+            // Marcar duplicados y estado de foto con el catálogo actual
+            const mapExistentes = {};
+            productos.forEach(p => { mapExistentes[(p.codigo||"").toUpperCase()] = p; });
+            _importData.forEach(r => {
+                const existente = mapExistentes[r.codigo.toUpperCase()];
+                r._dup  = !!existente;
+                r._foto = existente ? !!(existente.foto || existente.img) : false;
+            });
 
-            const nuevos = _importData.filter(r => !r._dup).length;
-            const dups   = _importData.length - nuevos;
+            const nuevos    = _importData.filter(r => !r._dup).length;
+            const dups      = _importData.length - nuevos;
+            const sinFoto   = _importData.filter(r => r._dup && !r._foto).length;
 
             document.getElementById("import-resumen").innerHTML =
                 `<b>${_importData.length}</b> productos en el archivo — ` +
                 `<span style="color:#16a34a"><b>${nuevos}</b> nuevos</span>` +
-                (dups ? ` · <span style="color:#f97316"><b>${dups}</b> ya existen (se omitirán)</span>` : "");
+                (dups ? ` · <span style="color:#f97316"><b>${dups}</b> ya existen (se omitirán)</span>` : "") +
+                (sinFoto ? ` · <span style="color:#6366f1"><b>${sinFoto}</b> sin foto aún</span>` : "");
 
             const tabla = `<table style="width:100%;border-collapse:collapse;font-size:12px;">
                 <thead><tr style="background:#f1f5f9;text-align:left;">
@@ -1654,13 +1661,15 @@ function importarDesdeExcel(input) {
                     <th style="padding:7px 10px;">Precio</th>
                     <th style="padding:7px 10px;">Stock</th>
                     <th style="padding:7px 10px;">Estado</th>
+                    <th style="padding:7px 10px;">Foto</th>
                 </tr></thead><tbody>
-                ${_importData.map(r => `<tr style="border-top:1px solid #e5e7eb;${r._dup?'opacity:0.45':''}">
+                ${_importData.map(r => `<tr style="border-top:1px solid #e5e7eb;${r._dup?'opacity:0.5':''}">
                     <td style="padding:6px 10px;font-family:monospace;">${r.codigo}</td>
                     <td style="padding:6px 10px;">${r.nombre}</td>
                     <td style="padding:6px 10px;">$${r.precio.toFixed(2)}</td>
                     <td style="padding:6px 10px;">${r.stock}</td>
-                    <td style="padding:6px 10px;">${r._dup ? '<span style="color:#f97316;font-weight:600;">Ya existe</span>' : '<span style="color:#16a34a;font-weight:600;">Nuevo</span>'}</td>
+                    <td style="padding:6px 10px;">${r._dup ? '<span style="color:#f97316;font-weight:600;">Ya existe</span>' : '<span style="color:#16a34a;font-weight:600;">Nuevo ✨</span>'}</td>
+                    <td style="padding:6px 10px;">${r._dup ? (r._foto ? '<span style="color:#16a34a;">✅ Tiene</span>' : '<span style="color:#6366f1;font-weight:600;">📷 Pendiente</span>') : '<span style="color:#aaa;">— (usar foto-QR)</span>'}</td>
                 </tr>`).join("")}
                 </tbody></table>`;
 
