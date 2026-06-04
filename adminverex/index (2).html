@@ -426,31 +426,12 @@
     <div class="tab-content" id="tab-2">
         <div class="card">
             <h2>📦 Catálogo Actual</h2>
-            <div class="sb" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                <input type="text" id="bus-prod" placeholder="Buscar..." oninput="renderProductos()" style="flex:1;min-width:160px;">
-                <label style="background:#16a34a;color:#fff;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;white-space:nowrap;">
-                    📥 Importar Excel
-                    <input type="file" id="inp-excel-import" accept=".xlsx,.xls" style="display:none;" onchange="importarDesdeExcel(this)">
-                </label>
+            <div class="sb">
+                <input type="text" id="bus-prod" placeholder="Buscar..." oninput="renderProductos()">
             </div>
             <div id="lista-prod"></div>
         </div>
 
-        <!-- Modal preview importación -->
-        <div id="modal-import" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;">
-            <div style="background:#fff;border-radius:14px;padding:24px;max-width:780px;width:95%;max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.25);">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                    <h3 style="margin:0;font-size:16px;">📥 Importar Productos desde Excel</h3>
-                    <button onclick="document.getElementById('modal-import').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;">✕</button>
-                </div>
-                <p id="import-resumen" style="font-size:13px;color:#555;margin-bottom:12px;"></p>
-                <div id="import-tabla" style="overflow-x:auto;margin-bottom:16px;"></div>
-                <div style="display:flex;gap:10px;justify-content:flex-end;">
-                    <button onclick="document.getElementById('modal-import').style.display='none'" style="padding:10px 20px;border-radius:8px;border:1.5px solid #ddd;background:#fff;cursor:pointer;font-size:13px;">Cancelar</button>
-                    <button id="btn-confirmar-import" onclick="confirmarImportacion()" style="padding:10px 20px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-weight:700;cursor:pointer;font-size:13px;">✅ Publicar todos</button>
-                </div>
-            </div>
-        </div>
 
         <div class="card">
             <h2>➕ Nuevo Producto</h2>
@@ -1596,123 +1577,6 @@ document.addEventListener("click", e=>{
     if (!e.target.closest("#notif-panel")&&!e.target.closest("#notif-btn"))
         document.getElementById("notif-panel").classList.remove("open");
 });
-
-// ═════════════════════════════════════════════
-//  IMPORTAR DESDE EXCEL
-// ═════════════════════════════════════════════
-let _importData = [];
-
-function importarDesdeExcel(input) {
-    const file = input.files[0];
-    if (!file) return;
-    input.value = "";
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        try {
-            const wb = XLSX.read(e.target.result, { type: "array" });
-            const ws = wb.Sheets[wb.SheetNames[0]];
-            const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-            if (!rows.length) return toast("⚠️ El archivo está vacío", "#f97316");
-
-            // Detectar columnas flexiblemente (case-insensitive, sin tildes)
-            const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
-            const keys = Object.keys(rows[0]);
-            const findKey = (variants) => keys.find(k => variants.some(v => norm(k).includes(v))) || null;
-
-            const kCod  = findKey(["codigo","code","ref"]);
-            const kNom  = findKey(["descripcion","nombre","name","producto"]);
-            const kPre  = findKey(["precio","price","venta"]);
-            const kInv  = findKey(["inventario","stock","cantidad","qty"]);
-
-            if (!kCod || !kNom || !kPre) return toast("⚠️ No se encontraron columnas Codigo / Descripcion / Precio", "#ef4444");
-
-            _importData = rows.map(r => ({
-                codigo:    String(r[kCod] || "").trim(),
-                nombre:    String(r[kNom] || "").trim(),
-                precio:    parseFloat(r[kPre]) || 0,
-                stock:     parseInt(r[kInv])   || 0,
-            })).filter(r => r.codigo && r.nombre && r.precio > 0);
-
-            if (!_importData.length) return toast("⚠️ Sin filas válidas para importar", "#f97316");
-
-            // Marcar duplicados y estado de foto con el catálogo actual
-            const mapExistentes = {};
-            productos.forEach(p => { mapExistentes[(p.codigo||"").toUpperCase()] = p; });
-            _importData.forEach(r => {
-                const existente = mapExistentes[r.codigo.toUpperCase()];
-                r._dup  = !!existente;
-                r._foto = existente ? !!(existente.foto || existente.img) : false;
-            });
-
-            const nuevos    = _importData.filter(r => !r._dup).length;
-            const dups      = _importData.length - nuevos;
-            const sinFoto   = _importData.filter(r => r._dup && !r._foto).length;
-
-            document.getElementById("import-resumen").innerHTML =
-                `<b>${_importData.length}</b> productos en el archivo — ` +
-                `<span style="color:#16a34a"><b>${nuevos}</b> nuevos</span>` +
-                (dups ? ` · <span style="color:#f97316"><b>${dups}</b> ya existen (se omitirán)</span>` : "") +
-                (sinFoto ? ` · <span style="color:#6366f1"><b>${sinFoto}</b> sin foto aún</span>` : "");
-
-            const tabla = `<table style="width:100%;border-collapse:collapse;font-size:12px;">
-                <thead><tr style="background:#f1f5f9;text-align:left;">
-                    <th style="padding:7px 10px;">Código</th>
-                    <th style="padding:7px 10px;">Nombre</th>
-                    <th style="padding:7px 10px;">Precio</th>
-                    <th style="padding:7px 10px;">Stock</th>
-                    <th style="padding:7px 10px;">Estado</th>
-                    <th style="padding:7px 10px;">Foto</th>
-                </tr></thead><tbody>
-                ${_importData.map(r => `<tr style="border-top:1px solid #e5e7eb;${r._dup?'opacity:0.5':''}">
-                    <td style="padding:6px 10px;font-family:monospace;">${r.codigo}</td>
-                    <td style="padding:6px 10px;">${r.nombre}</td>
-                    <td style="padding:6px 10px;">$${r.precio.toFixed(2)}</td>
-                    <td style="padding:6px 10px;">${r.stock}</td>
-                    <td style="padding:6px 10px;">${r._dup ? '<span style="color:#f97316;font-weight:600;">Ya existe</span>' : '<span style="color:#16a34a;font-weight:600;">Nuevo ✨</span>'}</td>
-                    <td style="padding:6px 10px;">${r._dup ? (r._foto ? '<span style="color:#16a34a;">✅ Tiene</span>' : '<span style="color:#6366f1;font-weight:600;">📷 Pendiente</span>') : '<span style="color:#aaa;">— (usar foto-QR)</span>'}</td>
-                </tr>`).join("")}
-                </tbody></table>`;
-
-            document.getElementById("import-tabla").innerHTML = tabla;
-            document.getElementById("btn-confirmar-import").textContent = `✅ Publicar ${nuevos} producto${nuevos!==1?"s":""}`;
-            document.getElementById("modal-import").style.display = "flex";
-        } catch(err) {
-            toast("❌ Error leyendo el archivo: " + err.message, "#ef4444");
-        }
-    };
-    reader.readAsArrayBuffer(file);
-}
-
-async function confirmarImportacion() {
-    const nuevos = _importData.filter(r => !r._dup);
-    if (!nuevos.length) return toast("⚠️ No hay productos nuevos para importar", "#f97316");
-
-    const btn = document.getElementById("btn-confirmar-import");
-    btn.disabled = true;
-    btn.textContent = "Publicando...";
-
-    let ok = 0, fail = 0;
-    for (const p of nuevos) {
-        try {
-            await fetch(API_URL, { method:'POST', mode:'no-cors', body: JSON.stringify({
-                accion: "CREAR_PRODUCTO",
-                _pass: ADMIN_PASS,
-                nombre: p.nombre,
-                precio: p.precio,
-                img: "",
-                codigo: p.codigo,
-                caracteristicas: "{}"
-            })});
-            ok++;
-        } catch(_) { fail++; }
-        btn.textContent = `Publicando ${ok}/${nuevos.length}...`;
-    }
-
-    document.getElementById("modal-import").style.display = "none";
-    _importData = [];
-    await cargarDatos(true);
-    toast(`✅ ${ok} producto${ok!==1?"s":""} importado${ok!==1?"s":""}${fail?` · ⚠️ ${fail} fallaron`:""}`, ok>0?"#22c55e":"#ef4444");
-}
 
 // ═════════════════════════════════════════════
 //  PRODUCTOS
