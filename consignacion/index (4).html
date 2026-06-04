@@ -3049,6 +3049,15 @@ function activarEdicionProducto() {
     document.getElementById("ep-precio").value = p.precio || p.precioNum || "";
     document.getElementById("modal-prod-vista").style.display = "none";
     document.getElementById("modal-prod-edicion").style.display = "block";
+    // Mostrar foto actual en el preview del editor
+    const fotoActual = productoEditando.p.img || productoEditando.p.foto || "";
+    const prev = document.getElementById("ep-foto-preview");
+    if (fotoActual) {
+        prev.innerHTML = `<img src="${fotoActual}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">`;
+    } else {
+        prev.innerHTML = "📷";
+    }
+
     // foto change listener
     document.getElementById("ep-foto").onchange = function() {
         const file = this.files[0]; if (!file) return;
@@ -3063,8 +3072,7 @@ function activarEdicionProducto() {
                 canvas.width = w; canvas.height = h;
                 canvas.getContext("2d").drawImage(img, 0, 0, w, h);
                 productoEditando.nuevaFoto = canvas.toDataURL("image/jpeg", 0.7);
-                document.getElementById("modal-prod-foto").src = productoEditando.nuevaFoto;
-                document.getElementById("modal-prod-foto").style.display = "block";
+                prev.innerHTML = `<img src="${productoEditando.nuevaFoto}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">`;
             };
             img.src = e.target.result;
         };
@@ -4970,7 +4978,7 @@ function enviarWAEstadoCuenta(ventaId) {
         </div>
         <img id="modal-prod-foto" src="" style="width:100%;max-height:220px;object-fit:contain;border-radius:10px;background:var(--gris2);margin-bottom:14px;display:none;">
         <div id="modal-prod-vista">
-            <div style="font-size:11px;color:var(--dorado);font-weight:600;margin-bottom:4px;" id="vp-codigo"></div>
+            <div style="font-size:11px;color:var(--plateado);font-weight:600;margin-bottom:4px;" id="vp-codigo"></div>
             <div style="font-size:16px;font-weight:700;margin-bottom:6px;" id="vp-nombre"></div>
             <div style="font-size:13px;color:var(--plateado);margin-bottom:10px;" id="vp-desc"></div>
             <div style="font-size:20px;font-weight:700;color:var(--dorado-claro);margin-bottom:16px;" id="vp-precio"></div>
@@ -4981,9 +4989,12 @@ function enviarWAEstadoCuenta(ventaId) {
             <input type="text" id="ep-nombre" placeholder="Nombre">
             <input type="text" id="ep-desc" placeholder="Descripción">
             <input type="number" id="ep-precio" placeholder="Precio $" step="0.01">
-            <div class="foto-upload" style="margin-bottom:12px;position:relative;">
-                <input type="file" id="ep-foto" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;">
-                <div style="font-size:13px;color:var(--plateado);">📷 Cambiar foto (opcional)</div>
+            <div style="text-align:center;margin-bottom:12px;">
+                <label for="ep-foto" style="display:block;cursor:pointer;">
+                    <div id="ep-foto-preview" style="width:100%;height:150px;background:var(--gris2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:8px;overflow:hidden;">📷</div>
+                </label>
+                <input type="file" id="ep-foto" accept="image/*" capture="environment" style="display:none;">
+                <label for="ep-foto" class="btn btn-gris" style="font-size:12px;padding:6px 14px;display:inline-block;cursor:pointer;">📷 Cambiar Foto</label>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                 <button class="btn btn-gris" onclick="cancelarEdicionProducto()">Cancelar</button>
