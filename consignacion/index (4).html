@@ -2746,7 +2746,7 @@ function procesarFotoJoya(file) {
                 const bgG = Math.round(muestras.reduce((s,m)=>s+m[1],0)/4);
                 const bgB = Math.round(muestras.reduce((s,m)=>s+m[2],0)/4);
                 // Píxel es "fondo" si su color está cerca del color de esquinas (tolerancia 30)
-                const TOL = 18;
+                const TOL = 28;
                 const esFondo = (i) =>
                     Math.abs(data[i]-bgR)   < TOL &&
                     Math.abs(data[i+1]-bgG) < TOL &&
