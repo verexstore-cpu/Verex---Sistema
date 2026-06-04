@@ -250,7 +250,7 @@
                 🔔 Pedidos
                 <span id="notif-badge"></span>
             </button>
-            <a href="verex-store.html" target="_blank" class="btn-header">👁️ Ver Tienda</a>
+            <a href="https://verex-catalogo.pages.dev" target="_blank" class="btn-header">👁️ Ver Tienda</a>
             <a href="https://verex-consignacion.pages.dev" target="_blank" class="btn-header">📦 Consignación</a>
             <button class="btn-header" onclick="abrirCambiarClave()" style="border-color:#f59e0b;color:#f59e0b;">🔑 Cambiar Clave</button>
             <button class="btn-header btn-logout" onclick="logout()">Salir</button>
@@ -289,6 +289,25 @@
                 <label class="tog"><input type="checkbox" id="tog-tienda" onchange="guardarConfig()"><span class="sl"></span></label>
             </div>
             <div id="estado-info" style="font-size:13px;color:#888;padding:4px 0 0;"></div>
+            <!-- Límite catálogo -->
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid #333;">
+                <div style="font-size:13px;font-weight:600;margin-bottom:6px;">📦 Productos visibles en catálogo</div>
+                <div style="display:flex;gap:10px;align-items:center;">
+                    <input type="number" id="inp-limite-catalogo" min="0" max="100" placeholder="0 = todos"
+                        style="width:110px;padding:8px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:14px;"
+                        onchange="guardarLimiteCatalogo()">
+                    <span style="font-size:12px;color:#888;">0 = mostrar todos · máx recomendado: 24</span>
+                </div>
+                <div style="font-size:11px;color:var(--dorado);margin-top:6px;">⭐ Destacados siempre aparecen primero · El resto rota cada semana automáticamente</div>
+            </div>
+            <!-- Varios -->
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid #333;display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <div style="font-size:13px;font-weight:600;">📦 Categoría "Productos Varios"</div>
+                    <div style="font-size:11px;color:#888;margin-top:3px;">Muestra en el catálogo productos que no son joyería estándar</div>
+                </div>
+                <label class="tog"><input type="checkbox" id="tog-varios" onchange="guardarToggleVarios()"><span class="sl"></span></label>
+            </div>
         </div>
 
         <div class="stats" id="stats-grid">
@@ -303,9 +322,30 @@
             <div class="chart" id="chart"></div>
         </div>
 
+        <!-- Alerta pedidos pendientes -->
+        <div id="alerta-pendientes" style="display:none;background:rgba(231,76,60,0.15);border:1px solid #e74c3c;border-radius:12px;padding:14px 18px;margin-bottom:16px;display:none;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                <div>
+                    <div style="font-size:14px;font-weight:700;color:#e74c3c;">⚠️ <span id="txt-alerta-count"></span></div>
+                    <div style="font-size:12px;color:#aaa;margin-top:2px;">Pedidos con más de 2 días sin actualizar estado</div>
+                </div>
+                <button onclick="tab(1)" style="padding:7px 14px;background:#e74c3c;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px;">Ver pedidos →</button>
+            </div>
+        </div>
+
         <div class="card">
             <h2>🏆 Productos Más Pedidos</h2>
             <div id="top-prod"></div>
+        </div>
+
+        <!-- Estadísticas destinos y pagos -->
+        <div class="card">
+            <h2>📍 Top Destinos de Envío</h2>
+            <div id="stats-destinos"></div>
+        </div>
+        <div class="card">
+            <h2>💳 Métodos de Pago Preferidos</h2>
+            <div id="stats-pagos"></div>
         </div>
     </div>
 
@@ -356,10 +396,21 @@
             </div>
 
             <div class="tw">
-                <table>
+                <table style="table-layout:fixed;width:100%;">
+                    <colgroup>
+                        <col style="width:110px"><!-- Pedido -->
+                        <col style="width:72px"> <!-- Fecha -->
+                        <col style="width:130px"><!-- Cliente + WA -->
+                        <col style="width:90px"> <!-- Municipio -->
+                        <col style="width:160px"><!-- Productos -->
+                        <col style="width:68px"> <!-- Total -->
+                        <col style="width:90px"> <!-- Pago -->
+                        <col style="width:110px"><!-- Estado -->
+                        <col style="width:80px"> <!-- Acciones -->
+                    </colgroup>
                     <thead><tr>
-                        <th>#</th><th>N° Pedido</th><th>Fecha</th><th>Cliente</th>
-                        <th>WhatsApp</th><th>Municipio</th><th>Productos</th>
+                        <th>N° Pedido</th><th>Fecha</th><th>Cliente</th>
+                        <th>Municipio</th><th>Productos</th>
                         <th>Total</th><th>Pago</th><th>Estado</th><th></th>
                     </tr></thead>
                     <tbody id="tb-ped"></tbody>
@@ -375,10 +426,30 @@
     <div class="tab-content" id="tab-2">
         <div class="card">
             <h2>📦 Catálogo Actual</h2>
-            <div class="sb">
-                <input type="text" id="bus-prod" placeholder="Buscar..." oninput="renderProductos()">
+            <div class="sb" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <input type="text" id="bus-prod" placeholder="Buscar..." oninput="renderProductos()" style="flex:1;min-width:160px;">
+                <label style="background:#16a34a;color:#fff;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;white-space:nowrap;">
+                    📥 Importar Excel
+                    <input type="file" id="inp-excel-import" accept=".xlsx,.xls" style="display:none;" onchange="importarDesdeExcel(this)">
+                </label>
             </div>
             <div id="lista-prod"></div>
+        </div>
+
+        <!-- Modal preview importación -->
+        <div id="modal-import" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;padding:24px;max-width:780px;width:95%;max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.25);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                    <h3 style="margin:0;font-size:16px;">📥 Importar Productos desde Excel</h3>
+                    <button onclick="document.getElementById('modal-import').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;">✕</button>
+                </div>
+                <p id="import-resumen" style="font-size:13px;color:#555;margin-bottom:12px;"></p>
+                <div id="import-tabla" style="overflow-x:auto;margin-bottom:16px;"></div>
+                <div style="display:flex;gap:10px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('modal-import').style.display='none'" style="padding:10px 20px;border-radius:8px;border:1.5px solid #ddd;background:#fff;cursor:pointer;font-size:13px;">Cancelar</button>
+                    <button id="btn-confirmar-import" onclick="confirmarImportacion()" style="padding:10px 20px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-weight:700;cursor:pointer;font-size:13px;">✅ Publicar todos</button>
+                </div>
+            </div>
         </div>
 
         <div class="card">
@@ -624,8 +695,7 @@
 
             <label>Tipo de Cupón</label>
             <select id="cup-tipo" onchange="cambiarTipoCupon()">
-                <option value="porcentaje_total">🏷️ Descuento % — Toda la tienda</option>
-                <option value="porcentaje_categoria">🏷️ Descuento % — Por categoría</option>
+                <option value="porcentaje_total">🏷️ Descuento %</option>
                 <option value="segundo_mitad">🎁 2do producto a mitad de precio</option>
                 <option value="monto_minimo">💰 Descuento por monto mínimo</option>
                 <option value="envio_gratis">🚚 Envío gratis</option>
@@ -644,7 +714,7 @@
                 <input type="number" id="cup-monto-fijo" placeholder="5.00" step="0.01" min="0.01">
             </div>
 
-            <!-- Monto mínimo (para tipo monto_minimo) -->
+            <!-- Monto mínimo -->
             <div id="sec-monto-min" style="display:none;margin-top:12px;">
                 <div class="g2">
                     <div>
@@ -658,24 +728,38 @@
                 </div>
             </div>
 
-            <!-- Categorías (para porcentaje por categoría) -->
-            <div id="sec-cats" style="display:none;margin-top:12px;">
-                <label>Aplica a categorías</label>
-                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+            <!-- Aplica a -->
+            <div id="sec-cats" style="margin-top:14px;">
+                <label>Aplica a</label>
+                <div style="display:flex;gap:8px;margin:8px 0 10px;">
+                    <button type="button" id="btn-cats-todas" onclick="setCatsMode('todas')"
+                        style="flex:1;padding:8px;border-radius:8px;border:1.5px solid var(--verde);background:var(--verde);color:#fff;font-weight:700;font-size:13px;cursor:pointer;">
+                        ✅ Todas las categorías
+                    </button>
+                    <button type="button" id="btn-cats-sel" onclick="setCatsMode('seleccion')"
+                        style="flex:1;padding:8px;border-radius:8px;border:1.5px solid var(--borde);background:var(--gris);color:#aaa;font-weight:700;font-size:13px;cursor:pointer;">
+                        🎯 Categorías específicas
+                    </button>
+                </div>
+                <div id="sec-cats-detalle" style="display:none;display:flex;flex-wrap:wrap;gap:8px;">
                     <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
-                        <input type="checkbox" class="cup-cat" value="AN"> Anillos</label>
+                        <input type="checkbox" class="cup-cat" value="AN"> 💍 Anillos</label>
                     <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
-                        <input type="checkbox" class="cup-cat" value="AR"> Aretes</label>
+                        <input type="checkbox" class="cup-cat" value="AR"> ✨ Aretes</label>
                     <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
-                        <input type="checkbox" class="cup-cat" value="CD"> Cadenas</label>
+                        <input type="checkbox" class="cup-cat" value="CO"> 📿 Collares</label>
                     <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
-                        <input type="checkbox" class="cup-cat" value="PL"> Pulseras</label>
+                        <input type="checkbox" class="cup-cat" value="PU"> ⌚ Pulseras</label>
                     <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
-                        <input type="checkbox" class="cup-cat" value="CN"> Conjuntos</label>
+                        <input type="checkbox" class="cup-cat" value="CJ"> 🎁 Conjuntos</label>
                     <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
-                        <input type="checkbox" class="cup-cat" value="RL"> Relojes</label>
+                        <input type="checkbox" class="cup-cat" value="CD"> 🔗 Cadenas</label>
                     <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
-                        <input type="checkbox" class="cup-cat" value="OT"> Otros</label>
+                        <input type="checkbox" class="cup-cat" value="DJ"> 🌟 Dijes</label>
+                    <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
+                        <input type="checkbox" class="cup-cat" value="TB"> 🦶 Tobilleras</label>
+                    <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
+                        <input type="checkbox" class="cup-cat" value="OT"> 📦 Varios</label>
                 </div>
             </div>
 
@@ -695,12 +779,17 @@
     </div>
 </div>
 
-<!-- TAB 6: VENDEDORES / CONSIGNACIÓN -->
+<!-- TAB 6: ACCESO CONSIGNACIÓN -->
 <div class="tab-content" id="tab-6">
-    <div class="card">
-        <h2>👤 Vendedores — Ventas por Consignación</h2>
-        <div id="vend-loading" style="color:#888;font-size:13px;padding:10px 0;">⏳ Cargando...</div>
-        <div id="vend-lista"></div>
+    <div class="card" style="text-align:center;padding:40px 20px;">
+        <div style="font-size:52px;margin-bottom:16px;">🤝</div>
+        <h2 style="margin-bottom:8px;">Consignación VEREX</h2>
+        <p style="color:#888;font-size:14px;margin-bottom:28px;">Gestiona vendedores, entregas, cortes e inventario desde el módulo completo.</p>
+        <a href="https://verex-consignacion.pages.dev" target="_blank"
+            class="btn ba bfull"
+            style="display:inline-block;max-width:320px;padding:14px 28px;font-size:15px;text-decoration:none;border-radius:10px;">
+            🚀 Abrir Consignación VEREX
+        </a>
     </div>
 </div>
 
@@ -908,6 +997,67 @@ function renderAll(sil=false) {
     renderStats(); renderChart(); renderTop();
     renderPedidos(); renderProductos(); renderCupones(); renderClientes();
     renderEnvio(); renderEstado(); actualizarNotif(sil); renderBannerAdmin(); renderCarruselAdmin();
+    cargarEstadisticas();
+}
+
+async function cargarEstadisticas() {
+    try {
+        const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_ESTADISTICAS", _pass: ADMIN_PASS }) });
+        const data = await res.json();
+        if (!data.ok) return;
+
+        // Badge alerta pedidos pendientes
+        const alertaDiv = document.getElementById("alerta-pendientes");
+        if (data.alertas > 0) {
+            alertaDiv.style.display = "block";
+            document.getElementById("txt-alerta-count").textContent =
+                `${data.alertas} pedido${data.alertas>1?'s':''} sin actualizar (+2 días)`;
+        } else {
+            alertaDiv.style.display = "none";
+        }
+
+        // Top destinos
+        const destEl = document.getElementById("stats-destinos");
+        if (data.topDestinos?.length) {
+            const max = data.topDestinos[0].total;
+            destEl.innerHTML = data.topDestinos.map((d,i) => `
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                    <span style="min-width:18px;font-size:12px;color:#888;">${i+1}</span>
+                    <div style="flex:1;">
+                        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;">
+                            <span>${d.lugar}</span><span style="font-weight:700;color:var(--dorado);">${d.total}</span>
+                        </div>
+                        <div style="background:#222;border-radius:4px;height:6px;">
+                            <div style="background:var(--dorado);height:6px;border-radius:4px;width:${Math.round(d.total/max*100)}%;"></div>
+                        </div>
+                    </div>
+                </div>`).join('');
+        } else {
+            destEl.innerHTML = '<p style="color:#888;font-size:13px;">Sin datos aún.</p>';
+        }
+
+        // Top pagos
+        const pagEl = document.getElementById("stats-pagos");
+        if (data.topPagos?.length) {
+            const maxP = data.topPagos[0].total;
+            const total = data.topPagos.reduce((s,p)=>s+p.total,0);
+            pagEl.innerHTML = data.topPagos.map((p,i) => `
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                    <span style="min-width:18px;font-size:12px;color:#888;">${i+1}</span>
+                    <div style="flex:1;">
+                        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;">
+                            <span>${p.metodo}</span>
+                            <span style="font-weight:700;color:var(--dorado);">${p.total} <span style="font-size:11px;color:#888;">(${Math.round(p.total/total*100)}%)</span></span>
+                        </div>
+                        <div style="background:#222;border-radius:4px;height:6px;">
+                            <div style="background:#4a90d9;height:6px;border-radius:4px;width:${Math.round(p.total/maxP*100)}%;"></div>
+                        </div>
+                    </div>
+                </div>`).join('');
+        } else {
+            pagEl.innerHTML = '<p style="color:#888;font-size:13px;">Sin datos aún.</p>';
+        }
+    } catch(e) {}
 }
 
 // ═════════════════════════════════════════════
@@ -915,6 +1065,10 @@ function renderAll(sil=false) {
 // ═════════════════════════════════════════════
 function renderEstado() {
     document.getElementById("tog-tienda").checked = cfg.tiendaActiva;
+    const limEl = document.getElementById("inp-limite-catalogo");
+    if (limEl) limEl.value = cfg.limiteCatalogo || "";
+    const varEl = document.getElementById("tog-varios");
+    if (varEl) varEl.checked = cfg.mostrarVarios === true;
     document.getElementById("estado-info").innerHTML = cfg.tiendaActiva
         ? `<span class="badge bv2">✅ ABIERTA</span> <span style="margin-left:7px;">Clientes pueden ver y comprar.</span>`
         : `<span class="badge br2">🔴 CERRADA</span> <span style="margin-left:7px;">Catálogo oculto para clientes.</span>`;
@@ -1021,32 +1175,31 @@ function renderPedidos() {
     }
 
     tb.innerHTML = list.map((p,i) => {
-        const fecha = p.fecha ? new Date(p.fecha).toLocaleDateString("es-SV") : "—";
+        const fecha = p.fecha ? new Date(p.fecha).toLocaleDateString("es-SV",{day:"2-digit",month:"2-digit"}) : "—";
         const tel   = String(p.telefono||"").replace(/\D/g,"");
-        const opts  = ["Pendiente","En camino","Entregado","Cancelado"]
+        const opts  = ["Pendiente","En camino","Entregado","Cancelado","No entregado"]
             .map(s=>`<option value="${s}" ${p.estado===s?"selected":""}>${s}</option>`).join('');
+        const pagoCorto = (p.metodoPago||"—").replace("Contra Entrega (Efectivo)","Efectivo").replace("Pago con Tarjeta","Tarjeta");
+        const estadoColor = {Pendiente:"#f97316","En camino":"#3b82f6",Entregado:"#22c55e",Cancelado:"#ef4444","No entregado":"#888"}[p.estado]||"#888";
         return `<tr>
-            <td style="color:#aaa;">${list.length-i}</td>
-            <td>
-                <span style="font-family:monospace;font-size:12px;color:var(--azul);font-weight:700;">${p.numeroPedido||"—"}</span>
+            <td style="font-family:monospace;font-size:11px;color:var(--azul);font-weight:700;white-space:nowrap;">${p.numeroPedido||"—"}</td>
+            <td style="font-size:12px;white-space:nowrap;color:#888;">${fecha}</td>
+            <td style="overflow:hidden;">
+                <div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.cliente||"—"}</div>
+                <a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-size:11px;text-decoration:none;">${p.telefono||""}</a>
             </td>
-            <td style="white-space:nowrap;">${fecha}</td>
-            <td><b>${p.cliente||"—"}</b></td>
-            <td><a href="https://wa.me/${tel}" target="_blank"
-                   style="color:var(--verde);font-weight:600;text-decoration:none;">${p.telefono||"—"}</a></td>
-            <td>${p.municipio||"—"}</td>
-            <td style="font-size:12px;color:#555;max-width:160px;white-space:nowrap;
-                       overflow:hidden;text-overflow:ellipsis;">${p.productos||"—"}</td>
-            <td><b style="color:var(--verde)">${p.total||"—"}</b></td>
-            <td style="font-size:12px;">${p.metodoPago||"—"}</td>
-            <td><select class="es" onchange="cambiarEstado(this,'${p.cliente}','${p.fecha}')">${opts}</select></td>
-            <td style="white-space:nowrap;display:flex;gap:6px;padding:6px 4px;align-items:center;">
-                <button class="btn" style="background:#ef4444;color:#fff;padding:6px 12px;font-size:12px;font-weight:700;"
-                    onclick='generarPDFAdmin(${i},"${p.numeroPedido||""}")'>📄 PDF</button>
-                <button class="btn" style="background:#00875A;color:#fff;padding:6px 12px;font-size:12px;font-weight:700;"
-                    onclick='event.stopPropagation();mostrarGuiaC807("${p.numeroPedido||""}")'>📋 C807</button>
-                <button class="btn br" style="padding:6px 10px;font-size:12px;"
-                    onclick='eliminarPedido("${p.numeroPedido||""}")'>🗑️</button>
+            <td style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.municipio||"—"}</td>
+            <td style="font-size:11px;color:#777;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.productos||"—"}</td>
+            <td style="font-weight:700;color:var(--verde);white-space:nowrap;">$${parseFloat(String(p.total).replace(/[^0-9.]/g,"")||0).toFixed(2)}</td>
+            <td style="font-size:11px;color:#aaa;">${pagoCorto}</td>
+            <td><select class="es" style="font-size:11px;padding:3px 4px;border-color:${estadoColor};color:${estadoColor};" onchange="cambiarEstado(this,'${p.numeroPedido||""}','${p.cliente}','${p.fecha}')">${opts}</select></td>
+            <td>
+                <div style="display:flex;gap:4px;">
+                    <button class="btn" style="background:#ef4444;color:#fff;padding:4px 8px;font-size:11px;"
+                        onclick='generarPDFAdmin(${i},"${p.numeroPedido||""}")'>PDF</button>
+                    <button class="btn br" style="padding:4px 7px;font-size:11px;"
+                        onclick='eliminarPedido("${p.numeroPedido||""}")'>🗑️</button>
+                </div>
             </td>
         </tr>`;
     }).join('');
@@ -1073,7 +1226,7 @@ function renderPedidos() {
                 <span>💳 ${p.metodoPago||"—"}</span>
             </div>
             <div class="ped-card-footer">
-                <select class="es" onchange="cambiarEstado(this,'${p.cliente}','${p.fecha}')">${opts}</select>
+                <select class="es" onchange="cambiarEstado(this,'${p.numeroPedido||""}','${p.cliente}','${p.fecha}')">${opts}</select>
                 <div style="display:flex;gap:6px;">
                     <button class="btn" style="background:#ef4444;color:#fff;padding:6px 12px;font-size:12px;"
                         onclick='generarPDFAdmin(${i},"${p.numeroPedido||""}")'>📄 PDF</button>
@@ -1388,13 +1541,13 @@ function mensajeWhatsApp(estado, p) {
     return null;
 }
 
-async function cambiarEstado(sel, cliente, fecha) {
+async function cambiarEstado(sel, numeroPedido, cliente, fecha) {
     const estado = sel.value;
-    const p = pedidos.find(p => p.cliente === cliente && String(p.fecha) === String(fecha));
+    const p = pedidos.find(p => p.numeroPedido === numeroPedido || (p.cliente === cliente && String(p.fecha) === String(fecha)));
     if (p) p.estado = estado;
 
     await fetch(API_URL, { method:'POST', mode:'no-cors',
-        body: JSON.stringify({ accion:"ACTUALIZAR_ESTADO_PEDIDO", _pass:ADMIN_PASS, cliente, fecha, estado })
+        body: JSON.stringify({ accion:"ACTUALIZAR_ESTADO_PEDIDO", _pass:ADMIN_PASS, numeroPedido, cliente, fecha, estado })
     });
 
     // Enviar mensaje de WhatsApp si aplica
@@ -1445,6 +1598,114 @@ document.addEventListener("click", e=>{
 });
 
 // ═════════════════════════════════════════════
+//  IMPORTAR DESDE EXCEL
+// ═════════════════════════════════════════════
+let _importData = [];
+
+function importarDesdeExcel(input) {
+    const file = input.files[0];
+    if (!file) return;
+    input.value = "";
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const wb = XLSX.read(e.target.result, { type: "array" });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+            if (!rows.length) return toast("⚠️ El archivo está vacío", "#f97316");
+
+            // Detectar columnas flexiblemente (case-insensitive, sin tildes)
+            const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+            const keys = Object.keys(rows[0]);
+            const findKey = (variants) => keys.find(k => variants.some(v => norm(k).includes(v))) || null;
+
+            const kCod  = findKey(["codigo","code","ref"]);
+            const kNom  = findKey(["descripcion","nombre","name","producto"]);
+            const kPre  = findKey(["precio","price","venta"]);
+            const kInv  = findKey(["inventario","stock","cantidad","qty"]);
+
+            if (!kCod || !kNom || !kPre) return toast("⚠️ No se encontraron columnas Codigo / Descripcion / Precio", "#ef4444");
+
+            _importData = rows.map(r => ({
+                codigo:    String(r[kCod] || "").trim(),
+                nombre:    String(r[kNom] || "").trim(),
+                precio:    parseFloat(r[kPre]) || 0,
+                stock:     parseInt(r[kInv])   || 0,
+            })).filter(r => r.codigo && r.nombre && r.precio > 0);
+
+            if (!_importData.length) return toast("⚠️ Sin filas válidas para importar", "#f97316");
+
+            // Marcar duplicados con el catálogo actual
+            const codigosExistentes = new Set(productos.map(p => (p.codigo||"").toUpperCase()));
+            _importData.forEach(r => { r._dup = codigosExistentes.has(r.codigo.toUpperCase()); });
+
+            const nuevos = _importData.filter(r => !r._dup).length;
+            const dups   = _importData.length - nuevos;
+
+            document.getElementById("import-resumen").innerHTML =
+                `<b>${_importData.length}</b> productos en el archivo — ` +
+                `<span style="color:#16a34a"><b>${nuevos}</b> nuevos</span>` +
+                (dups ? ` · <span style="color:#f97316"><b>${dups}</b> ya existen (se omitirán)</span>` : "");
+
+            const tabla = `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <thead><tr style="background:#f1f5f9;text-align:left;">
+                    <th style="padding:7px 10px;">Código</th>
+                    <th style="padding:7px 10px;">Nombre</th>
+                    <th style="padding:7px 10px;">Precio</th>
+                    <th style="padding:7px 10px;">Stock</th>
+                    <th style="padding:7px 10px;">Estado</th>
+                </tr></thead><tbody>
+                ${_importData.map(r => `<tr style="border-top:1px solid #e5e7eb;${r._dup?'opacity:0.45':''}">
+                    <td style="padding:6px 10px;font-family:monospace;">${r.codigo}</td>
+                    <td style="padding:6px 10px;">${r.nombre}</td>
+                    <td style="padding:6px 10px;">$${r.precio.toFixed(2)}</td>
+                    <td style="padding:6px 10px;">${r.stock}</td>
+                    <td style="padding:6px 10px;">${r._dup ? '<span style="color:#f97316;font-weight:600;">Ya existe</span>' : '<span style="color:#16a34a;font-weight:600;">Nuevo</span>'}</td>
+                </tr>`).join("")}
+                </tbody></table>`;
+
+            document.getElementById("import-tabla").innerHTML = tabla;
+            document.getElementById("btn-confirmar-import").textContent = `✅ Publicar ${nuevos} producto${nuevos!==1?"s":""}`;
+            document.getElementById("modal-import").style.display = "flex";
+        } catch(err) {
+            toast("❌ Error leyendo el archivo: " + err.message, "#ef4444");
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+async function confirmarImportacion() {
+    const nuevos = _importData.filter(r => !r._dup);
+    if (!nuevos.length) return toast("⚠️ No hay productos nuevos para importar", "#f97316");
+
+    const btn = document.getElementById("btn-confirmar-import");
+    btn.disabled = true;
+    btn.textContent = "Publicando...";
+
+    let ok = 0, fail = 0;
+    for (const p of nuevos) {
+        try {
+            await fetch(API_URL, { method:'POST', mode:'no-cors', body: JSON.stringify({
+                accion: "CREAR_PRODUCTO",
+                _pass: ADMIN_PASS,
+                nombre: p.nombre,
+                precio: p.precio,
+                img: "",
+                codigo: p.codigo,
+                caracteristicas: "{}"
+            })});
+            ok++;
+        } catch(_) { fail++; }
+        btn.textContent = `Publicando ${ok}/${nuevos.length}...`;
+    }
+
+    document.getElementById("modal-import").style.display = "none";
+    _importData = [];
+    await cargarDatos(true);
+    toast(`✅ ${ok} producto${ok!==1?"s":""} importado${ok!==1?"s":""}${fail?` · ⚠️ ${fail} fallaron`:""}`, ok>0?"#22c55e":"#ef4444");
+}
+
+// ═════════════════════════════════════════════
 //  PRODUCTOS
 // ═════════════════════════════════════════════
 function renderProductos() {
@@ -1454,11 +1715,19 @@ function renderProductos() {
     if (!list.length) { cont.innerHTML='<p style="color:#aaa;font-size:13px;">Sin productos.</p>'; return; }
     cont.innerHTML = list.map(p=>{
         let stock="";
-        try { const s=JSON.parse(p.caracteristicas||"{}"); const t=Object.values(s).reduce((a,b)=>a+Number(b),0); stock=t>0?`Stock: ${t}`:`<span style="color:var(--rojo)">Agotado</span>`; }
-        catch(_){ stock="Sin tallas"; }
+        try {
+            const s = JSON.parse(p.caracteristicas||"{}");
+            const t = Object.values(s).reduce((a,b)=>a+Number(b),0);
+            if (t > 0) { stock = `Stock: ${t}`; }
+            else {
+                // Fallback: usar contadores reales de stock
+                const total = (parseInt(p.stock_bodega)||0) + (parseInt(p.stock_tienda)||0) + (parseInt(p.stock_consignacion)||0);
+                stock = total > 0 ? `Stock: ${total}` : `<span style="color:var(--rojo)">Agotado</span>`;
+            }
+        } catch(_){ stock="Sin tallas"; }
         const dest = p.destacado===true||p.destacado==="TRUE";
         return `<div class="pc">
-            <img src="${p.img||''}" alt="" onerror="this.style.display='none'">
+            <img src="${p.foto||p.img||''}" alt="" onerror="this.style.display='none'">
             <div class="pi">
                 <div class="pn">${p.nombre||"—"} ${dest?'<span class="badge bam2">⭐ Destacado</span>':''}</div>
                 <div class="pd">Ref: ${p.codigo||"—"} · $${parseFloat(p.precio||0).toFixed(2)} · ${stock}</div>
@@ -1475,7 +1744,7 @@ function abrirEditar(p) {
     document.getElementById("ed-cod").value  = p.codigo;
     document.getElementById("ed-nom").value  = p.nombre;
     document.getElementById("ed-prec").value = p.precio;
-    document.getElementById("ed-img").value  = p.img;
+    document.getElementById("ed-img").value  = p.foto || p.img || "";
 
     // Mostrar tallas solo para anillos
     const esAnillo = (p.codigo || "").startsWith("AN-");
@@ -1675,12 +1944,30 @@ function renderCupones() {
     });
 }
 
+let _cupCatsMode = "todas"; // "todas" | "seleccion"
+
+function setCatsMode(mode) {
+    _cupCatsMode = mode;
+    const btnTodas = document.getElementById("btn-cats-todas");
+    const btnSel   = document.getElementById("btn-cats-sel");
+    const detalle  = document.getElementById("sec-cats-detalle");
+    btnTodas.style.background   = mode === "todas" ? "var(--verde)" : "var(--gris)";
+    btnTodas.style.color        = mode === "todas" ? "#fff" : "#aaa";
+    btnTodas.style.borderColor  = mode === "todas" ? "var(--verde)" : "var(--borde)";
+    btnSel.style.background     = mode === "seleccion" ? "var(--azul)" : "var(--gris)";
+    btnSel.style.color          = mode === "seleccion" ? "#fff" : "#aaa";
+    btnSel.style.borderColor    = mode === "seleccion" ? "var(--azul)" : "var(--borde)";
+    detalle.style.display       = mode === "seleccion" ? "flex" : "none";
+    actualizarPreviewCupon();
+}
+
 function cambiarTipoCupon() {
     const tipo = document.getElementById("cup-tipo").value;
     document.getElementById("sec-porc").style.display      = ["porcentaje_total","porcentaje_categoria"].includes(tipo) ? "block" : "none";
     document.getElementById("sec-fijo").style.display      = tipo === "descuento_fijo" ? "block" : "none";
     document.getElementById("sec-monto-min").style.display = tipo === "monto_minimo" ? "block" : "none";
-    document.getElementById("sec-cats").style.display      = ["porcentaje_categoria","segundo_mitad"].includes(tipo) ? "block" : "none";
+    // Siempre mostrar selector de categorías excepto envío gratis
+    document.getElementById("sec-cats").style.display      = tipo === "envio_gratis" ? "none" : "block";
     actualizarPreviewCupon();
 }
 
@@ -1691,8 +1978,10 @@ function actualizarPreviewCupon() {
     let texto  = "";
     switch(tipo) {
         case "porcentaje_total": {
-            const d = document.getElementById("cup-desc").value || "X";
-            texto = `Cupón <b>${cod}</b>: ${d}% de descuento en toda la tienda.`; break; }
+            const d    = document.getElementById("cup-desc").value || "X";
+            const donde = _cupCatsMode === "todas" ? "toda la tienda" :
+                ([...document.querySelectorAll(".cup-cat:checked")].map(x=>x.value).join(", ") || "ninguna categoría");
+            texto = `Cupón <b>${cod}</b>: ${d}% de descuento en ${donde}.`; break; }
         case "porcentaje_categoria": {
             const d    = document.getElementById("cup-desc").value || "X";
             const cats = [...document.querySelectorAll(".cup-cat:checked")].map(x=>x.value).join(", ") || "ninguna";
@@ -1723,7 +2012,14 @@ async function crearCupon() {
     if (!cod) return toast("⚠️ Ingresa un código de cupón", "#f97316");
     if (cupones.find(c => c.codigo === cod)) return toast("⚠️ Ese código ya existe", "#f97316");
 
-    const cats = [...document.querySelectorAll(".cup-cat:checked")].map(x => x.value).join(",");
+    // Categorías: vacío = todas, lista = específicas
+    const cats = _cupCatsMode === "todas" ? "" :
+        [...document.querySelectorAll(".cup-cat:checked")].map(x => x.value).join(",");
+    // Si es selección específica y no eligió nada, advertir
+    if (_cupCatsMode === "seleccion" && !cats && tipo !== "envio_gratis")
+        return toast("⚠️ Selecciona al menos una categoría", "#f97316");
+    // Unificar tipo: si hay cats específicas usar porcentaje_categoria, si no porcentaje_total
+    const tipoFinal = (tipo === "porcentaje_total" && cats) ? "porcentaje_categoria" : tipo;
 
     let descuento = 0, descuentoFijo = 0, montoMinimo = 0;
 
@@ -1750,7 +2046,7 @@ async function crearCupon() {
             break;
     }
 
-    const nuevo = { codigo:cod, tipo, descuento, descuentoFijo, montoMinimo,
+    const nuevo = { codigo:cod, tipo:tipoFinal, descuento, descuentoFijo, montoMinimo,
                     categorias:cats, limiteUsos:limite, usosActuales:0, activo:act };
     cupones.push(nuevo); renderCupones();
 
@@ -1789,6 +2085,19 @@ function guardarConfig() {
     cfg.tiendaActiva=document.getElementById("tog-tienda").checked;
     saveConfig(); renderEstado();
     toast(cfg.tiendaActiva?"✅ Tienda activada":"🔴 Tienda desactivada", cfg.tiendaActiva?"#22c55e":"#ef4444");
+}
+
+function guardarToggleVarios() {
+    cfg.mostrarVarios = document.getElementById("tog-varios").checked;
+    saveConfig();
+    toast(cfg.mostrarVarios ? "✅ Categoría Varios activada" : "🔴 Categoría Varios desactivada", cfg.mostrarVarios ? "#22c55e" : "#ef4444");
+}
+
+function guardarLimiteCatalogo() {
+    const val = parseInt(document.getElementById("inp-limite-catalogo").value) || 0;
+    cfg.limiteCatalogo = val;
+    saveConfig();
+    toast(val > 0 ? `✅ Catálogo limitado a ${val} productos` : "✅ Catálogo sin límite (todos los productos)", "#22c55e");
 }
 
 function exportarExcel() {
