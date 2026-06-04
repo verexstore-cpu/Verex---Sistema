@@ -6,6 +6,7 @@
 <title>VEREX — Consignación</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -466,6 +467,10 @@
                 style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
                 💸 Venta Directa
             </button>
+            <button id="tab-historialventas" onclick="cambiarTab('historialventas')"
+                style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#005f5f,#00c2c2,#008a8a,#00e5e5,#005f5f);color:#e0ffff;text-shadow:0 1px 3px rgba(0,0,0,0.4);box-shadow:0 2px 8px rgba(0,194,194,0.5);">
+                🧾 Ventas
+            </button>
         </div>
 
         <!-- Tab Vendedores -->
@@ -538,6 +543,7 @@
                     </select>
                     <button class="btn btn-dorado" onclick="abrirStockNuevoProd()" style="padding:8px 14px;font-size:13px;">+ Agregar</button>
                     <button class="btn" style="background:#4a6fa5;color:#fff;padding:8px 14px;font-size:13px;" onclick="abrirStockNuevoLote()">📦 Lote</button>
+                    <button class="btn" style="background:#27ae60;color:#fff;padding:8px 14px;font-size:13px;" onclick="abrirImportarExcel()">📥 Importar</button>
                 </div>
 
                 <!-- Acciones con seleccionados -->
@@ -575,6 +581,7 @@
                 <div class="search-bar" style="margin-bottom:12px;">
                     <input type="text" id="bus-vd" placeholder="Buscar producto..." oninput="filtrarVD()" style="flex:1;">
                     <button class="btn" style="background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1,#38bdf8,#0a4a6b);color:#e0f7ff;font-weight:700;" onclick="abrirQRVD()">📷 QR</button>
+                    <button class="btn btn-dorado" style="font-weight:700;white-space:nowrap;" onclick="abrirVDManual()">+ Manual</button>
                 </div>
                 <div id="grid-vd" class="productos-entrega"></div>
             </div>
@@ -592,9 +599,42 @@
             <div class="card" id="card-carrito-vd" style="display:none;">
                 <h2>🛒 Productos seleccionados</h2>
                 <div id="lista-carrito-vd"></div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid #333;">
-                    <span style="font-size:13px;color:var(--plateado);">Total:</span>
-                    <span id="total-vd" style="font-size:18px;font-weight:700;color:var(--dorado);">$0.00</span>
+                <!-- Descuento -->
+                <div style="background:#111;border:1px solid #333;border-radius:10px;padding:12px;margin-top:12px;">
+                    <div style="font-size:12px;color:var(--plateado);margin-bottom:8px;font-weight:600;">🏷️ Descuento</div>
+                    <div style="display:flex;gap:6px;margin-bottom:8px;">
+                        <button id="btn-desc-monto" onclick="setModoDescuento('monto')"
+                            style="flex:1;padding:7px;font-size:12px;font-weight:700;border:none;border-radius:8px;cursor:pointer;background:var(--dorado);color:#000;">
+                            $ Monto
+                        </button>
+                        <button id="btn-desc-pct" onclick="setModoDescuento('porcentaje')"
+                            style="flex:1;padding:7px;font-size:12px;font-weight:700;border:none;border-radius:8px;cursor:pointer;background:#2a2a2a;color:#888;">
+                            % Porcentaje
+                        </button>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input type="number" id="vd-descuento-val" placeholder="0" min="0" step="0.01"
+                            oninput="aplicarDescuentoVD()"
+                            style="flex:1;padding:8px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:14px;">
+                        <span id="vd-desc-simbolo" style="color:var(--dorado);font-weight:700;font-size:14px;">$</span>
+                        <button onclick="limpiarDescuentoVD()" style="padding:7px 12px;background:#2a2a2a;border:none;border-radius:8px;color:#888;cursor:pointer;font-size:12px;">✕</button>
+                    </div>
+                    <div id="vd-desc-info" style="font-size:11px;color:#4caf82;margin-top:6px;display:none;"></div>
+                </div>
+
+                <div style="margin-top:12px;padding-top:10px;border-top:1px solid #333;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                        <span style="font-size:13px;color:var(--plateado);">Subtotal:</span>
+                        <span id="subtotal-vd" style="font-size:13px;color:var(--plateado);">$0.00</span>
+                    </div>
+                    <div id="fila-descuento-vd" style="display:none;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                        <span style="font-size:13px;color:#e74c3c;">Descuento:</span>
+                        <span id="monto-desc-vd" style="font-size:13px;color:#e74c3c;">-$0.00</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <span style="font-size:13px;color:var(--plateado);">Total:</span>
+                        <span id="total-vd" style="font-size:18px;font-weight:700;color:var(--dorado);">$0.00</span>
+                    </div>
                 </div>
             </div>
 
@@ -1155,12 +1195,13 @@ const TAB_METALS = {
     fotoqr:        { bg: 'linear-gradient(135deg,#1a4a2e,#27ae60,#0e6b35,#52d68a,#1a4a2e)', color: '#e8fff2', shadow: '0 2px 8px rgba(39,174,96,0.5)' },
     etiquetas:     { bg: 'linear-gradient(135deg,#6b1a2a,#e8748a,#b03050,#f5a0b0,#6b1a2a)', color: '#fff0f3', shadow: '0 2px 8px rgba(232,116,138,0.5)' },
     stock:         { bg: 'linear-gradient(135deg,#4a2800,#cd8c52,#7a4a1a,#e8b07a,#4a2800)', color: '#fff3e0', shadow: '0 2px 8px rgba(205,140,82,0.5)' },
-    ventadirecta:  { bg: 'linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1,#38bdf8,#0a4a6b)', color: '#e0f7ff', shadow: '0 2px 8px rgba(14,165,233,0.5)' },
+    ventadirecta:    { bg: 'linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1,#38bdf8,#0a4a6b)', color: '#e0f7ff', shadow: '0 2px 8px rgba(14,165,233,0.5)' },
+    historialventas: { bg: 'linear-gradient(135deg,#005f5f,#00c2c2,#008a8a,#00e5e5,#005f5f)', color: '#e0ffff', shadow: '0 2px 8px rgba(0,194,194,0.5)' },
 };
 const TAB_INACTIVE = { bg: 'linear-gradient(135deg,#2a2a2a,#4a4a4a,#333,#555,#2a2a2a)', color: '#888', shadow: 'none' };
 
 function cambiarTab(tab) {
-    const tabs = ['vendedores', 'dashboard', 'fotoqr', 'etiquetas', 'stock', 'ventadirecta'];
+    const tabs = ['vendedores', 'dashboard', 'fotoqr', 'etiquetas', 'stock', 'ventadirecta', 'historialventas'];
     tabs.forEach(t => {
         document.getElementById('tab-content-' + t).style.display = t === tab ? 'block' : 'none';
         const btn = document.getElementById('tab-' + t);
@@ -1173,7 +1214,8 @@ function cambiarTab(tab) {
     if (tab === 'dashboard')    renderDashboard();
     if (tab === 'etiquetas')    renderGridEtiquetas(productosDisponibles);
     if (tab === 'stock')        cargarStock();
-    if (tab === 'ventadirecta') iniciarVentaDirecta();
+    if (tab === 'ventadirecta')    iniciarVentaDirecta();
+    if (tab === 'historialventas') cargarHistorialVentas();
 }
 
 // ── ETIQUETAS ────────────────────────────────────────────────────────
@@ -2330,7 +2372,7 @@ async function confirmarEntrega(firmaImg, codigoFirma) {
         categoria:   e.item.categoria || getCodigoBase(e.item.codigo).match(/^[A-Z]+/)?.[0] || "GEN",
         precio:      e.item.precio || e.item.precioNum || 0,
         cantidad:    e.qty,
-        foto:        e.item.img || ""
+        foto:        e.item.foto || e.item.img || ""
     }));
     if (!items.length) return;
 
@@ -2391,7 +2433,7 @@ async function enviarPorMensajeria() {
         categoria:   e.item.categoria || getCodigoBase(e.item.codigo).match(/^[A-Z]+/)?.[0] || "GEN",
         precio:      e.item.precio || e.item.precioNum || 0,
         cantidad:    e.qty,
-        foto:        e.item.img || ""
+        foto:        e.item.foto || e.item.img || ""
     }));
 
     try {
@@ -2647,7 +2689,8 @@ async function analizarConIA() {
             btn.disabled    = false;
             return;
         }
-        document.getElementById("np-nombre").value = data.resultado.nombre      || "";
+        const _cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : "";
+        document.getElementById("np-nombre").value = _cap(data.resultado.nombre || "");
         document.getElementById("np-desc").value   = data.resultado.descripcion || "";
         // Auto-seleccionar categoría detectada por IA
         if (data.resultado.categoria) {
@@ -3154,7 +3197,8 @@ async function analizarLote() {
                 });
                 const data = await res.json();
                 if (data.ok && data.resultado) {
-                    loteProductos[i].nombre            = data.resultado.nombre            || "";
+                    const capN = s => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : "";
+                    loteProductos[i].nombre            = capN(data.resultado.nombre || "");
                     loteProductos[i].descripcion       = data.resultado.descripcion       || "";
                     loteProductos[i].descripcionTienda = data.resultado.descripcion_tienda || "";
                     loteProductos[i].categoria         = mapCategoriaIA(data.resultado.categoria);
@@ -3463,7 +3507,7 @@ async function cargarStock() {
 
 function renderStock(items) {
     // KPIs
-    document.getElementById("sk-total").textContent   = items.reduce((s,i) => s + (parseInt(i.stock_total)||0), 0);
+    document.getElementById("sk-total").textContent   = items.reduce((s,i) => s + (parseInt(i.stock_bodega)||0) + (parseInt(i.stock_tienda)||0) + (parseInt(i.stock_consignacion)||0), 0);
     document.getElementById("sk-bodega").textContent  = items.reduce((s,i) => s + (parseInt(i.stock_bodega)||0), 0);
     document.getElementById("sk-tienda").textContent  = items.reduce((s,i) => s + (parseInt(i.stock_tienda)||0), 0);
     document.getElementById("sk-cons").textContent    = items.reduce((s,i) => s + (parseInt(i.stock_consignacion)||0), 0);
@@ -3493,18 +3537,25 @@ function renderStock(items) {
                     ${sel ? "✓" : ""}
                 </div>
             </div>
-            ${item.foto ? `<img src="${sanitizar(item.foto)}" onerror="this.style.display='none'" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0;">` : '<div style="width:52px;height:52px;background:var(--gris2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">💍</div>'}
+            ${item.foto ? `<img src="${sanitizar(item.foto)}" onerror="this.style.display='none'" onclick="event.stopPropagation();abrirFotoZoom(${jsArg(item.foto)},${jsArg(item.nombre)})" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;">` : '<div style="width:52px;height:52px;background:var(--gris2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">💍</div>'}
             <div class="inv-item-info" style="flex:1;min-width:0;">
                 <div class="inv-item-codigo">${sanitizar(item.codigo)}</div>
                 <div class="inv-item-nombre">${sanitizar(item.nombre)}</div>
-                <div style="font-size:11px;color:var(--plateado);">$${parseFloat(item.precio||0).toFixed(2)} · ${sanitizar(item.categoria||"")}</div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px;">
+                    <span style="font-size:11px;color:var(--plateado);">$${parseFloat(item.precio||0).toFixed(2)} · ${sanitizar(item.categoria||"")}</span>
+                    ${item.material ? `<span style="font-size:10px;font-weight:600;color:var(--dorado);background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.3);border-radius:4px;padding:1px 7px;">${sanitizar(item.material)}</span>` : ''}
+                </div>
             </div>
             <div style="text-align:right;flex-shrink:0;">
                 <span style="font-size:11px;padding:3px 8px;border-radius:20px;background:${est.bg};color:${est.color};font-weight:600;">${est.label}</span>
                 <div style="font-size:11px;color:var(--plateado);margin-top:4px;">
-                    Bodega: <b style="color:var(--blanco);">${item.stock_bodega||0}</b> · 
-                    Tienda: <b style="color:#4caf82;">${item.stock_tienda||0}</b> · 
+                    Bodega: <b style="color:var(--blanco);">${item.stock_bodega||0}</b> ·
+                    Tienda: <b style="color:#4caf82;">${item.stock_tienda||0}</b> ·
                     Consig: <b style="color:var(--dorado);">${item.stock_consignacion||0}</b>
+                </div>
+                <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px;">
+                    <button onclick="event.stopPropagation();abrirEditarStockItem(${jsArg(item.codigo)})" style="padding:4px 10px;font-size:11px;background:#4a6fa5;color:#fff;border:none;border-radius:6px;cursor:pointer;">✏️ Editar</button>
+                    <button onclick="event.stopPropagation();eliminarStockItem(${jsArg(item.codigo)})" style="padding:4px 10px;font-size:11px;background:#c0392b;color:#fff;border:none;border-radius:6px;cursor:pointer;">🗑️</button>
                 </div>
             </div>
         </div>`;
@@ -3567,6 +3618,38 @@ function limpiarSeleccion() {
     renderStock(stockData);
 }
 
+// ── EDITAR PRODUCTO DESDE STOCK ──────────────────────────────────────
+function abrirEditarStockItem(codigo) {
+    const item = stockData.find(p => p.codigo === codigo);
+    if (!item) return;
+    // Reutilizar modal existente de edición de producto
+    productoEditando = { key: item.codigo, p: { ...item, img: item.foto || item.img || "" } };
+    document.getElementById("modal-prod-titulo").textContent = item.codigo || "Producto";
+    const foto = document.getElementById("modal-prod-foto");
+    if (item.foto || item.img) { foto.src = item.foto || item.img; foto.style.display = "block"; }
+    else { foto.style.display = "none"; }
+    document.getElementById("vp-codigo").textContent  = item.codigo  || "";
+    document.getElementById("vp-nombre").textContent  = item.nombre  || "";
+    document.getElementById("vp-desc").textContent    = item.descripcion || item.descripcionTienda || "";
+    document.getElementById("vp-precio").textContent  = "$" + parseFloat(item.precio || 0).toFixed(2);
+    document.getElementById("modal-prod-vista").style.display   = "block";
+    document.getElementById("modal-prod-edicion").style.display = "none";
+    abrirModal("modal-ver-producto");
+}
+
+// ── ELIMINAR PRODUCTO DESDE STOCK ────────────────────────────────────
+async function eliminarStockItem(codigo) {
+    if (!confirm(`¿Eliminar "${codigo}" del inventario?\nEsta acción no se puede deshacer.`)) return;
+    const res = await apiPost({ accion: "ELIMINAR_PRODUCTO", codigo });
+    if (res && res.ok !== false) {
+        stockData = stockData.filter(p => p.codigo !== codigo);
+        renderStock(stockData);
+        toast("🗑️ Producto eliminado");
+    } else {
+        toast("⚠️ Error al eliminar", "#c0392b");
+    }
+}
+
 // ── ASIGNAR A TIENDA ─────────────────────────────────────────────────
 async function asignarATienda() {
     if (!stockSeleccionados.length) return;
@@ -3620,7 +3703,16 @@ async function confirmarAsignarVendedor() {
 async function devolverABodega() {
     if (!stockSeleccionados.length) return;
     if (!confirm(`¿Devolver ${stockSeleccionados.length} producto(s) a bodega?`)) return;
-    const res = await apiPost({ accion: "STOCK_DEVOLVER_BODEGA", codigos: stockSeleccionados, cantidad: 1, origen: "tienda" });
+    // Detectar origen real según los contadores del producto
+    const origen = (() => {
+        const prod = stockData.find(p => p.codigo === stockSeleccionados[0]);
+        if (!prod) return "tienda";
+        const enConsig = parseInt(prod.stock_consignacion) || 0;
+        const enTienda = parseInt(prod.stock_tienda) || 0;
+        if (enConsig > 0 && enTienda === 0) return "consignacion";
+        return "tienda";
+    })();
+    const res = await apiPost({ accion: "STOCK_DEVOLVER_BODEGA", codigos: stockSeleccionados, cantidad: 1, origen });
     if (res.ok) {
         toast("✅ Productos devueltos a bodega");
         limpiarSeleccion();
@@ -3656,7 +3748,7 @@ function cargarCategoriasPersonalizadas() {
 }
 
 function abrirStockNuevoProd() {
-    _snFotoBase64 = null; _snMaterial = null; _snTalla = null;
+    _snFotoBase64 = null; _snMaterial = null; _snTalla = null; _snTallasQty = {};
     document.getElementById("sn-foto-preview").innerHTML = "📷";
     document.getElementById("sn-nombre").value = "";
     document.getElementById("sn-categoria").value = "";
@@ -3678,17 +3770,62 @@ function seleccionarMatSN(btn) {
     _snMaterial = btn.dataset.mat;
 }
 
+let _snTallasQty = {}; // { "8": 2, "9": 1, "10": 3 }
+
 function seleccionarTallaSN(talla) {
-    _snTalla = talla;
+    const t = String(talla);
+    if (_snTallasQty[t] !== undefined) {
+        delete _snTallasQty[t]; // deseleccionar
+    } else {
+        _snTallasQty[t] = 1; // seleccionar con qty 1
+    }
+    // Mantener _snTalla para compatibilidad (primera talla seleccionada)
+    const keys = Object.keys(_snTallasQty);
+    _snTalla = keys.length ? parseInt(keys[0]) : null;
+    // Actualizar botones
     document.querySelectorAll(".sn-talla-btn").forEach(b => {
-        const sel = parseInt(b.dataset.talla) === talla;
-        b.style.background = sel ? "var(--dorado)" : "var(--gris2)";
-        b.style.color = sel ? "var(--negro)" : "var(--blanco)";
+        const sel = _snTallasQty[b.dataset.talla] !== undefined;
+        b.style.background  = sel ? "var(--dorado)" : "var(--gris2)";
+        b.style.color       = sel ? "var(--negro)"  : "var(--blanco)";
+        b.style.borderColor = sel ? "var(--dorado)" : "var(--borde)";
     });
+    renderResumenTallasSN();
+}
+
+function cambiarQtySN(talla, delta) {
+    const t = String(talla);
+    if (_snTallasQty[t] === undefined) return;
+    _snTallasQty[t] = Math.max(1, (_snTallasQty[t] || 1) + delta);
+    renderResumenTallasSN();
+}
+
+function renderResumenTallasSN() {
+    let cont = document.getElementById("sn-tallas-resumen");
+    if (!cont) return;
+    const entries = Object.entries(_snTallasQty);
+    if (!entries.length) { cont.innerHTML = ""; return; }
+    cont.innerHTML = `<div style="font-size:11px;color:var(--plateado);margin-bottom:6px;">Cantidades por talla:</div>` +
+        entries.map(([t, q]) => `
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <span style="min-width:36px;font-weight:700;color:var(--dorado);">T${t}</span>
+                <button onclick="cambiarQtySN(${t},-1)" style="width:26px;height:26px;border-radius:50%;border:1px solid #555;background:#2a2a2a;color:#fff;cursor:pointer;font-size:14px;">−</button>
+                <span style="min-width:20px;text-align:center;font-weight:700;">${q}</span>
+                <button onclick="cambiarQtySN(${t},1)"  style="width:26px;height:26px;border-radius:50%;border:1px solid #555;background:#2a2a2a;color:#fff;cursor:pointer;font-size:14px;">+</button>
+                <span style="font-size:11px;color:#888;">${q} pieza${q>1?'s':''}</span>
+            </div>`).join('');
 }
 
 function mostrarTallaSN(cat) {
-    document.getElementById("sn-talla-container").style.display = (cat === "AN" || cat === "CJ") ? "block" : "none";
+    const esAnillo = cat === "AN" || cat === "CJ";
+    document.getElementById("sn-talla-container").style.display = esAnillo ? "block" : "none";
+    document.getElementById("sn-cantidad-wrap").style.display   = esAnillo ? "none"  : "block";
+    // Limpiar selección al cambiar categoría
+    _snTallasQty = {}; _snTalla = null;
+    document.querySelectorAll(".sn-talla-btn").forEach(b => {
+        b.style.background = "var(--gris2)"; b.style.color = "var(--blanco)"; b.style.borderColor = "var(--borde)";
+    });
+    const res = document.getElementById("sn-tallas-resumen");
+    if (res) res.innerHTML = "";
 }
 
 function cargarFotoStockNuevo(input) {
@@ -3724,7 +3861,8 @@ async function analizarFotoStockNuevo() {
         });
         const data = await res.json();
         if (data.ok) {
-            document.getElementById("sn-nombre").value = data.resultado.nombre || "";
+            const capFirst = s => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : "";
+            document.getElementById("sn-nombre").value = capFirst(data.resultado.nombre || "");
             document.getElementById("sn-desc").value = data.resultado.descripcion || "";
             document.getElementById("sn-desc-tienda").value = data.resultado.descripcion_tienda || "";
             if (data.resultado.categoria) {
@@ -3737,61 +3875,74 @@ async function analizarFotoStockNuevo() {
 }
 
 async function guardarStockNuevo() {
-    const nombre   = document.getElementById("sn-nombre").value.trim();
-    const categoria = document.getElementById("sn-categoria").value;
-    const precio   = document.getElementById("sn-precio").value;
-    const cantidad = parseInt(document.getElementById("sn-cantidad").value) || 1;
+    const nombreVal  = document.getElementById("sn-nombre").value.trim();
+    const categoria  = document.getElementById("sn-categoria").value;
+    const precio     = document.getElementById("sn-precio").value;
+    const esAnillo   = categoria === "AN" || categoria === "CJ";
+    const cantidad   = parseInt(document.getElementById("sn-cantidad").value) || 1;
 
-    if (!nombre || !categoria || !precio) { toast("⚠️ Completa nombre, categoría y precio"); return; }
-    // Talla obligatoria solo para anillos — conjuntos pueden no llevar anillo
-    if (categoria === "AN" && !_snTalla) { toast("⚠️ Selecciona una talla para el anillo"); return; }
+    if (!nombreVal || !categoria || !precio) { toast("⚠️ Completa nombre, categoría y precio"); return; }
+    if (esAnillo && Object.keys(_snTallasQty).length === 0) { toast("⚠️ Selecciona al menos una talla"); return; }
 
     const btn = document.querySelector("#modal-stock-nuevo .btn-dorado");
     btn.textContent = "⏳ Guardando..."; btn.disabled = true;
 
     try {
-        // Generar código base desde servidor (GENERAR_CODIGO devuelve solo la base, ej: "AN-021")
+        // Generar código base
         const resC = await fetch(API_URL, {
             method: "POST",
             body: JSON.stringify({ accion: "GENERAR_CODIGO", _pass: _sessionPass, categoria })
         });
-        const dataC  = await resC.json();
+        const dataC    = await resC.json();
         const codigoBase = dataC.ok ? dataC.codigo : (categoria + Date.now());
-        // Si tiene talla, el código único es "AN021T10"; si no, el base mismo
-        const talla  = _snTalla ? String(_snTalla) : "";
-        const codigo = talla ? `${codigoBase}T${talla}` : codigoBase;
-        const nombre = document.getElementById("sn-nombre").value.trim();
 
-        // Subir foto si hay
+        // Subir foto una sola vez
         let fotoUrl = _snFotoBase64 || "";
         if (_snFotoBase64) {
-            const url = await subirFotoImageKit(_snFotoBase64, codigo);
+            const url = await subirFotoImageKit(_snFotoBase64, codigoBase);
             if (url) fotoUrl = url;
         }
 
-        // Guardar en stock con todos los campos requeridos
-        const res = await apiPost({
-            accion:            "STOCK_REGISTRAR",
-            codigo,            // clave única: "AN-021-T10" o "CO-005"
-            codigoBase,        // base para agrupación: "AN021"
-            talla,             // "10" o ""
-            nombre:            talla ? `${nombre} T${talla}` : nombre,
-            nombre_base:       nombre,
-            categoria,
-            precio:            parseFloat(precio),
-            foto:              fotoUrl,
-            cantidad,
-            descripcion:       document.getElementById("sn-desc").value.trim(),
-            descripcionTienda: document.getElementById("sn-desc-tienda").value.trim()
-        });
+        const desc         = document.getElementById("sn-desc").value.trim();
+        const descTienda   = document.getElementById("sn-desc-tienda").value.trim();
+        const precioNum    = parseFloat(precio);
 
-        if (res.ok) {
-            toast("✅ Producto guardado en stock");
-            cerrarModal("modal-stock-nuevo");
-            await cargarStock();
+        if (esAnillo) {
+            // Crear un producto por cada talla seleccionada
+            const tallas = Object.entries(_snTallasQty);
+            let guardados = 0;
+            for (const [talla, qty] of tallas) {
+                const codigo = `${codigoBase}T${talla}`;
+                const res = await apiPost({
+                    accion: "STOCK_REGISTRAR",
+                    codigo, codigoBase, talla,
+                    nombre:            `${nombreVal} T${talla}`,
+                    nombre_base:       nombreVal,
+                    categoria, precio: precioNum,
+                    foto: fotoUrl, cantidad: qty,
+                    material: _snMaterial || "",
+                    descripcion: desc, descripcionTienda: descTienda
+                });
+                if (res.ok) guardados++;
+            }
+            toast(`✅ ${guardados} talla${guardados > 1 ? 's' : ''} guardada${guardados > 1 ? 's' : ''} en stock`);
         } else {
-            toast("⚠️ " + (res.error || "Error al guardar"));
+            // Producto sin talla (pulsera, collar, etc.)
+            const res = await apiPost({
+                accion: "STOCK_REGISTRAR",
+                codigo: codigoBase, codigoBase, talla: "",
+                nombre: nombreVal, nombre_base: nombreVal,
+                categoria, precio: precioNum,
+                foto: fotoUrl, cantidad,
+                material: _snMaterial || "",
+                descripcion: desc, descripcionTienda: descTienda
+            });
+            if (!res.ok) { toast("⚠️ " + (res.error || "Error al guardar")); btn.textContent = "✅ Guardar en Stock"; btn.disabled = false; return; }
+            toast("✅ Producto guardado en stock");
         }
+
+        cerrarModal("modal-stock-nuevo");
+        await cargarStock();
     } catch(e) { toast("⚠️ Error de conexión"); }
 
     btn.textContent = "✅ Guardar en Stock"; btn.disabled = false;
@@ -4054,6 +4205,34 @@ let _vdTipo       = 'contado';
 let _vdQRStream   = null;
 let _vdQRInterval = null;
 let _creditosVD   = [];
+let _vdModoDescuento = 'monto'; // 'monto' | 'porcentaje'
+
+function setModoDescuento(modo) {
+    _vdModoDescuento = modo;
+    document.getElementById("btn-desc-monto").style.background = modo === 'monto' ? "var(--dorado)" : "#2a2a2a";
+    document.getElementById("btn-desc-monto").style.color      = modo === 'monto' ? "#000" : "#888";
+    document.getElementById("btn-desc-pct").style.background   = modo === 'porcentaje' ? "var(--dorado)" : "#2a2a2a";
+    document.getElementById("btn-desc-pct").style.color        = modo === 'porcentaje' ? "#000" : "#888";
+    document.getElementById("vd-desc-simbolo").textContent     = modo === 'monto' ? "$" : "%";
+    document.getElementById("vd-descuento-val").placeholder    = modo === 'monto' ? "0.00" : "0";
+    aplicarDescuentoVD();
+}
+
+function aplicarDescuentoVD() {
+    renderCarritoVD();
+}
+
+function limpiarDescuentoVD() {
+    document.getElementById("vd-descuento-val").value = "";
+    renderCarritoVD();
+}
+
+function _calcularDescuento(subtotal) {
+    const val = parseFloat(document.getElementById("vd-descuento-val")?.value || 0) || 0;
+    if (val <= 0) return 0;
+    if (_vdModoDescuento === 'porcentaje') return Math.min(subtotal, subtotal * val / 100);
+    return Math.min(subtotal, val);
+}
 let _abonoVentaId = null;
 
 async function iniciarVentaDirecta() {
@@ -4291,7 +4470,26 @@ function renderCarritoVD() {
             <div style="font-size:13px;font-weight:700;color:var(--dorado);min-width:50px;text-align:right;">$${sub.toFixed(2)}</div>
         </div>`;
     }).join('');
-    document.getElementById("total-vd").textContent = "$" + total.toFixed(2);
+    const descuento   = _calcularDescuento(total);
+    const totalFinal  = Math.max(0, total - descuento);
+    const val         = parseFloat(document.getElementById("vd-descuento-val")?.value || 0) || 0;
+
+    document.getElementById("subtotal-vd").textContent = "$" + total.toFixed(2);
+    document.getElementById("total-vd").textContent    = "$" + totalFinal.toFixed(2);
+
+    const filaDesc = document.getElementById("fila-descuento-vd");
+    const infoDesc = document.getElementById("vd-desc-info");
+    if (descuento > 0) {
+        filaDesc.style.display = "flex";
+        document.getElementById("monto-desc-vd").textContent = "-$" + descuento.toFixed(2);
+        infoDesc.style.display = "block";
+        infoDesc.textContent = _vdModoDescuento === 'porcentaje'
+            ? `${val}% de descuento = -$${descuento.toFixed(2)}`
+            : `Descuento de $${descuento.toFixed(2)} aplicado`;
+    } else {
+        filaDesc.style.display = "none";
+        infoDesc.style.display = "none";
+    }
     calcularSaldoVD();
 }
 
@@ -4309,10 +4507,12 @@ function seleccionarTipoVD(tipo) {
 }
 
 function calcularSaldoVD() {
-    const total = Object.values(_vdCarrito).reduce((s, { prod, qty }) => s + parseFloat(prod.precio||0)*qty, 0);
-    const enganche = parseFloat(document.getElementById("vd-enganche")?.value || 0) || 0;
-    const saldo = Math.max(0, total - enganche);
-    const el = document.getElementById("vd-saldo-display");
+    const subtotal    = Object.values(_vdCarrito).reduce((s, { prod, qty }) => s + parseFloat(prod.precio||0)*qty, 0);
+    const descuento   = _calcularDescuento(subtotal);
+    const total       = Math.max(0, subtotal - descuento);
+    const enganche    = parseFloat(document.getElementById("vd-enganche")?.value || 0) || 0;
+    const saldo       = Math.max(0, total - enganche);
+    const el          = document.getElementById("vd-saldo-display");
     if (el) el.textContent = "$" + saldo.toFixed(2);
 }
 
@@ -4322,9 +4522,11 @@ async function confirmarVentaDirecta() {
     const nombre = document.getElementById("vd-cliente-nombre").value.trim();
     if (!nombre) { toast("⚠️ Ingresa el nombre del cliente"); return; }
     const tel    = document.getElementById("vd-cliente-tel").value.trim();
-    const total  = items.reduce((s, { prod, qty }) => s + parseFloat(prod.precio||0)*qty, 0);
-    const enganche = _vdTipo === 'credito' ? (parseFloat(document.getElementById("vd-enganche").value)||0) : total;
-    const saldo    = _vdTipo === 'credito' ? Math.max(0, total - enganche) : 0;
+    const subtotal   = items.reduce((s, { prod, qty }) => s + parseFloat(prod.precio||0)*qty, 0);
+    const descuento  = _calcularDescuento(subtotal);
+    const total      = Math.max(0, subtotal - descuento);
+    const enganche   = _vdTipo === 'credito' ? (parseFloat(document.getElementById("vd-enganche").value)||0) : total;
+    const saldo      = _vdTipo === 'credito' ? Math.max(0, total - enganche) : 0;
     const nota     = _vdTipo === 'credito' ? (document.getElementById("vd-nota-credito").value.trim()) : "";
 
     const payload = {
@@ -4334,6 +4536,9 @@ async function confirmarVentaDirecta() {
         cliente: nombre,
         telefono: tel,
         items: items.map(({ prod, qty }) => ({ codigo: prod.codigo, nombre: prod.nombre, precio: prod.precio, cantidad: qty })),
+        subtotal,
+        descuento,
+        descuentoTipo: _vdModoDescuento,
         total,
         tipo: _vdTipo,
         enganche,
@@ -4431,7 +4636,7 @@ function renderCreditosPendientes() {
                     📄 PDF
                 </button>
                 <button onclick="enviarWAEstadoCuenta('${v.id}')" class="btn"
-                    style="background:linear-gradient(135deg,#1f1f1f,#6e6e6e,#d1d1d1,#4a4a4a);color:#D4AF37;border:1.5px solid #D4AF37;font-size:11px;font-weight:700;padding:8px;";font-size:11px;font-weight:700;padding:8px;">
+                    style="background:linear-gradient(135deg,#075e54,#25D366,#128C7E,#34eb7a,#075e54);color:#fff;border:none;font-size:11px;font-weight:700;padding:8px;box-shadow:0 2px 8px rgba(37,211,102,0.5);">
                     💬 WA
                 </button>
             </div>
@@ -4519,20 +4724,22 @@ async function generarPDFVentaDirecta(venta, abonos) {
     const W = 148, pad = 14;
     let y = 14;
 
-    // Encabezado
-    doc.setFillColor(15, 15, 15);
-    doc.rect(0, 0, W, 28, 'F');
+    // Encabezado — sin franja negra
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(20);
+    doc.setFontSize(22);
     doc.setTextColor(201, 168, 76);
-    doc.text('VEREX', W/2, 11, { align: 'center' });
+    doc.text('VEREX', W/2, 14, { align: 'center' });
     doc.setFontSize(8);
-    doc.setTextColor(180, 180, 180);
-    const titulo = parseFloat(venta.saldoPendiente||0) > 0 ? 'ESTADO DE CUENTA' : 'COMPROBANTE DE VENTA';
-    doc.text(titulo, W/2, 18, { align: 'center' });
+    doc.setTextColor(80, 80, 80);
+    const titulo = parseFloat(venta.saldoPendiente||0) > 0 ? 'ESTADO DE CUENTA' : 'RECIBO DE VENTA';
+    doc.text(titulo, W/2, 20, { align: 'center' });
     doc.setTextColor(39, 174, 96);
-    doc.text('WhatsApp: 7125-0725', W/2, 24, { align: 'center' });
-    y = 36;
+    doc.text('WhatsApp: 7125-0725', W/2, 26, { align: 'center' });
+    // Línea dorada decorativa
+    doc.setDrawColor(201, 168, 76);
+    doc.setLineWidth(0.5);
+    doc.line(pad, 30, W - pad, 30);
+    y = 38;
 
     // Info venta
     doc.setFont('helvetica', 'normal');
@@ -4540,7 +4747,8 @@ async function generarPDFVentaDirecta(venta, abonos) {
     doc.setTextColor(80, 80, 80);
     const fechaVenta = venta.fecha ? new Date(venta.fecha).toLocaleDateString('es-SV', { day:'2-digit', month:'long', year:'numeric' }) : '';
     doc.text('Fecha de compra: ' + fechaVenta, pad, y);
-    doc.text('Ref: ' + String(venta.id || '').replace('VD_',''), W - pad, y, { align: 'right' });
+    const refCorta = String(venta.id || '').replace('VD_','').slice(-6);
+    doc.text('Ref: ' + refCorta, W - pad, y, { align: 'right' });
     y += 7;
 
     // Cliente
@@ -4691,13 +4899,13 @@ async function generarPDFVentaDirecta(venta, abonos) {
     const tw = doc.getTextWidth(tagline);
     const tx = (W - tw) / 2;
     doc.text(tagline, tx, y);
-    // Dibujar corazón pequeño después del texto
-    const hx = tx + tw + 3;
-    const hy = y - 1.5;
-    doc.setFillColor(220, 100, 150);
-    doc.circle(hx - 1,     hy, 1.2, 'F');
-    doc.circle(hx + 1,     hy, 1.2, 'F');
-    doc.triangle(hx - 2.1, hy + 0.5, hx + 2.1, hy + 0.5, hx, hy + 3, 'F');
+    // Corazón pequeño y dorado después del texto
+    const hx = tx + tw + 2;
+    const hy = y - 1.2;
+    doc.setFillColor(201, 168, 76);
+    doc.circle(hx - 0.7, hy, 0.8, 'F');
+    doc.circle(hx + 0.7, hy, 0.8, 'F');
+    doc.triangle(hx - 1.4, hy + 0.4, hx + 1.4, hy + 0.4, hx, hy + 2.1, 'F');
 
     const nombreArchivo = 'VEREX_' + (venta.cliente||'Cliente').replace(/ /g,'_') + '_' + (venta.id||'').replace('VD_','') + '.pdf';
 
@@ -4908,9 +5116,11 @@ function enviarWAEstadoCuenta(ventaId) {
         </div>
         <!-- Foto -->
         <div style="text-align:center;margin-bottom:14px;">
-            <div id="sn-foto-preview" style="width:100%;height:160px;background:var(--gris2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:10px;overflow:hidden;cursor:pointer;" onclick="document.getElementById('sn-foto-input').click()">📷</div>
-            <input type="file" id="sn-foto-input" accept="image/*" style="display:none;" onchange="cargarFotoStockNuevo(this)">
-            <button class="btn btn-gris" style="font-size:12px;padding:6px 14px;" onclick="document.getElementById('sn-foto-input').click()">📷 Seleccionar Foto</button>
+            <label for="sn-foto-input" style="display:block;cursor:pointer;">
+                <div id="sn-foto-preview" style="width:100%;height:160px;background:var(--gris2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:10px;overflow:hidden;">📷</div>
+            </label>
+            <input type="file" id="sn-foto-input" accept="image/*" capture="environment" style="display:none;" onchange="cargarFotoStockNuevo(this)">
+            <label for="sn-foto-input" class="btn btn-gris" style="font-size:12px;padding:6px 14px;display:inline-block;cursor:pointer;">📷 Seleccionar Foto</label>
         </div>
         <!-- Material selector -->
         <div style="margin-bottom:10px;">
@@ -4947,7 +5157,7 @@ function enviarWAEstadoCuenta(ventaId) {
         </div>
         <!-- Tallas para anillos/conjuntos -->
         <div id="sn-talla-container" style="display:none;margin-top:8px;">
-            <label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:6px;">Talla americana:</label>
+            <label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:6px;">Talla americana: <span style="color:#888;">(selecciona una o varias)</span></label>
             <div style="display:flex;flex-wrap:wrap;gap:6px;">
                 <button type="button" class="sn-talla-btn" data-talla="5" onclick="seleccionarTallaSN(5)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:6px;background:var(--gris2);color:var(--blanco);font-size:12px;font-weight:600;cursor:pointer;">T5</button>
                 <button type="button" class="sn-talla-btn" data-talla="6" onclick="seleccionarTallaSN(6)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:6px;background:var(--gris2);color:var(--blanco);font-size:12px;font-weight:600;cursor:pointer;">T6</button>
@@ -4961,9 +5171,13 @@ function enviarWAEstadoCuenta(ventaId) {
                 <button type="button" class="sn-talla-btn" data-talla="14" onclick="seleccionarTallaSN(14)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:6px;background:var(--gris2);color:var(--blanco);font-size:12px;font-weight:600;cursor:pointer;">T14</button>
             </div>
         </div>
+        <!-- Resumen de tallas seleccionadas con qty -->
+        <div id="sn-tallas-resumen" style="margin-top:10px;background:rgba(201,168,76,0.08);border-radius:8px;padding:0;"></div>
         <input type="number" id="sn-precio" placeholder="Precio $" step="0.01" style="margin-top:8px;">
-        <label style="font-size:11px;color:var(--dorado);display:block;margin-top:10px;margin-bottom:4px;font-weight:600;">📦 Cantidad en existencia:</label>
-        <input type="number" id="sn-cantidad" placeholder="Cantidad de piezas" value="1" min="1" style="margin-top:0;border-color:var(--dorado);">
+        <div id="sn-cantidad-wrap">
+            <label style="font-size:11px;color:var(--dorado);display:block;margin-top:10px;margin-bottom:4px;font-weight:600;">📦 Cantidad en existencia:</label>
+            <input type="number" id="sn-cantidad" placeholder="Cantidad de piezas" value="1" min="1" style="margin-top:0;border-color:var(--dorado);">
+        </div>
         <input type="text" id="sn-desc" placeholder="Descripción corta" style="margin-top:8px;">
         <input type="text" id="sn-desc-tienda" placeholder="Descripción para tienda" style="margin-top:8px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;">
@@ -4991,6 +5205,470 @@ function enviarWAEstadoCuenta(ventaId) {
         </div>
     </div>
 </div>
+
+<!-- MODAL PRODUCTO MANUAL VENTA DIRECTA -->
+<div class="modal-overlay" id="modal-vd-manual">
+    <div class="modal-box" style="max-width:380px;">
+        <div class="modal-header">
+            <h3>✏️ Producto Manual</h3>
+            <button class="modal-close" onclick="cerrarQRManual();cerrarModal('modal-vd-manual')">×</button>
+        </div>
+        <!-- Foto -->
+        <div style="position:relative;margin-bottom:12px;">
+            <div id="vdm-foto-preview" onclick="document.getElementById('vdm-foto-input').click()"
+                style="width:100%;height:140px;background:var(--gris2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:36px;cursor:pointer;overflow:hidden;border:2px dashed #444;">
+                📷
+            </div>
+            <input type="file" id="vdm-foto-input" accept="image/*" capture="environment" style="display:none;" onchange="cargarFotoVDManual(this)">
+            <button onclick="document.getElementById('vdm-foto-input').click()" style="position:absolute;bottom:8px;right:8px;padding:5px 10px;font-size:11px;background:rgba(0,0,0,0.6);color:#fff;border:none;border-radius:6px;cursor:pointer;">📷 Foto</button>
+        </div>
+        <!-- QR Scanner -->
+        <div id="vdm-qr-area" style="display:none;margin-bottom:10px;">
+            <video id="vdm-qr-video" style="width:100%;border-radius:8px;background:#000;" autoplay playsinline muted></video>
+            <p id="vdm-qr-status" style="font-size:11px;color:var(--plateado);text-align:center;margin-top:4px;">Apunta al código QR</p>
+            <button class="btn btn-gris btn-full" style="margin-top:6px;font-size:12px;" onclick="cerrarQRManual()">Cancelar QR</button>
+        </div>
+        <!-- Campos -->
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <input type="text" id="vdm-codigo" placeholder="Código (opcional)" style="flex:1;margin:0;">
+            <button onclick="abrirQRManual()" style="padding:8px 12px;background:#4a6fa5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:18px;" title="Escanear QR">&#x1F4F7;</button>
+        </div>
+        <input type="text"   id="vdm-nombre"   placeholder="Nombre del producto *" style="margin-bottom:8px;">
+        <input type="number" id="vdm-precio"   placeholder="Precio $ *" step="0.01" min="0" style="margin-bottom:8px;">
+        <input type="number" id="vdm-cantidad" placeholder="Cantidad" value="1" min="1" style="margin-bottom:14px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <button class="btn btn-gris" onclick="cerrarQRManual();cerrarModal('modal-vd-manual')">Cancelar</button>
+            <button class="btn btn-dorado" onclick="confirmarVDManual()">Agregar al carrito</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL IMPORTAR EXCEL -->
+<div class="modal-overlay" id="modal-importar-excel">
+    <div class="modal-box" style="max-width:500px;">
+        <div class="modal-header">
+            <h3>📥 Importar desde Excel</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-importar-excel')">×</button>
+        </div>
+        <p style="font-size:12px;color:var(--plateado);margin-bottom:12px;">
+            Sube un archivo Excel (.xlsx) con tus productos. Las columnas deben ser:
+        </p>
+        <div style="background:var(--gris2);border-radius:8px;padding:10px 14px;font-size:11px;color:var(--plateado);margin-bottom:14px;font-family:monospace;line-height:1.8;">
+            <b style="color:var(--dorado);">Columnas requeridas:</b><br>
+            codigo · nombre · precio · categoria · cantidad<br>
+            <b style="color:var(--dorado);">Columnas opcionales:</b><br>
+            material · talla · descripcion
+        </div>
+        <label for="excel-input" style="display:block;border:2px dashed var(--borde);border-radius:10px;padding:20px;text-align:center;cursor:pointer;margin-bottom:12px;" id="excel-drop-zone">
+            <div style="font-size:32px;margin-bottom:8px;">📊</div>
+            <div style="font-size:13px;color:var(--plateado);">Toca para seleccionar archivo Excel</div>
+            <div id="excel-nombre-archivo" style="font-size:12px;color:var(--dorado);margin-top:6px;"></div>
+        </label>
+        <input type="file" id="excel-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="cargarExcel(this)">
+        <div id="excel-preview" style="display:none;margin-bottom:12px;">
+            <div style="font-size:12px;color:var(--plateado);margin-bottom:6px;">Vista previa:</div>
+            <div id="excel-tabla" style="overflow-x:auto;font-size:11px;max-height:200px;overflow-y:auto;"></div>
+            <div id="excel-resumen" style="font-size:12px;color:var(--dorado);margin-top:8px;font-weight:600;"></div>
+        </div>
+        <div id="excel-progreso" style="display:none;margin-bottom:10px;">
+            <div style="font-size:12px;color:var(--plateado);margin-bottom:4px;" id="excel-progreso-txt">Importando...</div>
+            <div style="background:var(--gris2);border-radius:4px;height:6px;">
+                <div id="excel-barra" style="background:var(--dorado);height:6px;border-radius:4px;width:0%;transition:width 0.3s;"></div>
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <button class="btn btn-gris" onclick="cerrarModal('modal-importar-excel')">Cancelar</button>
+            <button class="btn btn-dorado" id="btn-importar-confirmar" onclick="confirmarImportacion()" disabled>✅ Importar</button>
+        </div>
+        <div style="margin-top:10px;text-align:center;">
+            <button onclick="descargarPlantillaExcel()" style="background:none;border:none;color:var(--dorado);font-size:12px;cursor:pointer;text-decoration:underline;">
+                📄 Descargar plantilla de ejemplo
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- TAB HISTORIAL VENTAS -->
+<div id="tab-content-historialventas" style="display:none;">
+    <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+            <h2 style="margin:0;">🧾 Historial de Ventas</h2>
+            <button class="btn btn-gris" style="padding:7px 14px;font-size:12px;" onclick="cargarHistorialVentas()">🔄 Actualizar</button>
+        </div>
+
+        <!-- KPIs -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;">
+            <div style="background:var(--gris2);border-radius:10px;padding:10px;text-align:center;">
+                <div id="hv-total-ventas" style="font-size:20px;font-weight:700;color:var(--dorado);">—</div>
+                <div style="font-size:11px;color:var(--plateado);">Total ventas</div>
+            </div>
+            <div style="background:var(--gris2);border-radius:10px;padding:10px;text-align:center;">
+                <div id="hv-total-monto" style="font-size:20px;font-weight:700;color:#4caf82;">—</div>
+                <div style="font-size:11px;color:var(--plateado);">Monto total</div>
+            </div>
+            <div style="background:var(--gris2);border-radius:10px;padding:10px;text-align:center;">
+                <div id="hv-pendiente" style="font-size:20px;font-weight:700;color:#e74c3c;">—</div>
+                <div style="font-size:11px;color:var(--plateado);">Por cobrar</div>
+            </div>
+            <div style="background:var(--gris2);border-radius:10px;padding:10px;text-align:center;">
+                <div id="hv-hoy" style="font-size:20px;font-weight:700;color:var(--dorado);">—</div>
+                <div style="font-size:11px;color:var(--plateado);">Ventas hoy</div>
+            </div>
+        </div>
+
+        <!-- Filtros -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+            <input type="text" id="hv-buscar" placeholder="Buscar cliente o producto..." oninput="renderHistorialVentas()" style="flex:1;min-width:160px;">
+            <select id="hv-filtro-tipo" onchange="renderHistorialVentas()" style="width:140px;">
+                <option value="">Todos</option>
+                <option value="directa">💸 Venta Directa</option>
+                <option value="catalogo">🛍️ Catálogo</option>
+                <option value="consignacion">👤 Consignación</option>
+            </select>
+            <select id="hv-filtro-estado" onchange="renderHistorialVentas()" style="width:130px;">
+                <option value="">Todos</option>
+                <option value="pagado">✅ Pagado</option>
+                <option value="credito">🕐 Crédito</option>
+                <option value="pendiente">⏳ Pendiente</option>
+            </select>
+        </div>
+
+        <div id="lista-historial-ventas"><p style="color:var(--plateado);font-size:13px;">Toca 🔄 para cargar.</p></div>
+    </div>
+</div>
+
+<!-- LIGHTBOX FOTO -->
+<div id="modal-foto-zoom" onclick="cerrarFotoZoom()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:12px;cursor:zoom-out;">
+    <img id="foto-zoom-img" src="" alt="" style="max-width:92vw;max-height:82vh;border-radius:12px;object-fit:contain;box-shadow:0 8px 40px rgba(0,0,0,0.8);">
+    <div id="foto-zoom-nombre" style="color:#fff;font-size:13px;font-weight:600;text-align:center;max-width:90vw;opacity:0.8;"></div>
+    <div style="color:#888;font-size:11px;">Toca para cerrar</div>
+</div>
+
+<script>
+let _vdmFotoBase64 = "";
+let _vdmQRStream   = null;
+let _vdmQRInterval = null;
+
+// ── IMPORTAR EXCEL ────────────────────────────────────────────────────
+let _excelProductos = [];
+
+function abrirImportarExcel() {
+    _excelProductos = [];
+    document.getElementById("excel-input").value = "";
+    document.getElementById("excel-nombre-archivo").textContent = "";
+    document.getElementById("excel-preview").style.display = "none";
+    document.getElementById("excel-progreso").style.display = "none";
+    document.getElementById("btn-importar-confirmar").disabled = true;
+    abrirModal("modal-importar-excel");
+}
+
+function cargarExcel(input) {
+    const file = input.files[0]; if (!file) return;
+    document.getElementById("excel-nombre-archivo").textContent = "📄 " + file.name;
+    const reader = new FileReader();
+    reader.onload = e => {
+        try {
+            const wb   = XLSX.read(e.target.result, { type: "binary" });
+            const ws   = wb.Sheets[wb.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+            if (!rows.length) { toast("⚠️ El archivo está vacío"); return; }
+
+            // Normalizar columnas (case-insensitive)
+            _excelProductos = rows.map(r => {
+                const k = obj => Object.keys(obj).reduce((a,k) => { a[k.toLowerCase().trim()] = obj[k]; return a; }, {});
+                const row = k(r);
+                return {
+                    codigo:      String(row.codigo      || row.code   || "").toUpperCase().trim(),
+                    nombre:      String(row.nombre      || row.name   || row.producto || row.descripcion || row.description || "").trim(),
+                    precio:      parseFloat(row.precio  || row["precio de venta"] || row.price || 0),
+                    categoria:   String(row.categoria   || row.cat    || row.departamento || "").toUpperCase().trim(),
+                    cantidad:    parseInt(row.cantidad  || row.qty    || row.stock || row.inventario || 1),
+                    material:    String(row.material    || "").trim(),
+                    talla:       String(row.talla       || row.size   || "").trim(),
+                    descripcion: String(row.desc        || "").trim(),
+                };
+            }).filter(p => p.nombre || p.codigo);
+
+            // Vista previa
+            const cols = ["codigo","nombre","precio","categoria","cantidad","material","talla"];
+            const thead = `<tr>${cols.map(c=>`<th style="padding:4px 8px;background:var(--gris);border:1px solid var(--borde);font-size:10px;white-space:nowrap;">${c}</th>`).join('')}</tr>`;
+            const tbody = _excelProductos.slice(0,5).map(p =>
+                `<tr>${cols.map(c=>`<td style="padding:3px 7px;border:1px solid var(--borde);font-size:10px;white-space:nowrap;">${p[c]||"—"}</td>`).join('')}</tr>`
+            ).join('');
+            document.getElementById("excel-tabla").innerHTML = `<table style="border-collapse:collapse;">${thead}${tbody}</table>`;
+            document.getElementById("excel-resumen").textContent = `${_excelProductos.length} productos listos para importar`;
+            document.getElementById("excel-preview").style.display = "block";
+            document.getElementById("btn-importar-confirmar").disabled = false;
+        } catch(e) {
+            toast("⚠️ Error al leer el archivo: " + e.message);
+        }
+    };
+    reader.readAsBinaryString(file);
+}
+
+async function confirmarImportacion() {
+    if (!_excelProductos.length) return;
+    const btn = document.getElementById("btn-importar-confirmar");
+    btn.disabled = true;
+    document.getElementById("excel-progreso").style.display = "block";
+    const barra = document.getElementById("excel-barra");
+    const txt   = document.getElementById("excel-progreso-txt");
+    let ok = 0, err = 0;
+
+    for (let i = 0; i < _excelProductos.length; i++) {
+        const p = _excelProductos[i];
+        txt.textContent = `Importando ${i+1} de ${_excelProductos.length}...`;
+        barra.style.width = Math.round((i+1)/_excelProductos.length*100) + "%";
+        try {
+            const res = await apiPost({
+                accion:      "STOCK_REGISTRAR",
+                codigo:      p.codigo || undefined,
+                codigoBase:  p.codigo || undefined,
+                nombre:      p.nombre,
+                nombre_base: p.nombre,
+                precio:      p.precio,
+                categoria:   p.categoria || "GEN",
+                cantidad:    p.cantidad,
+                material:    p.material,
+                talla:       p.talla,
+                descripcion: p.descripcion,
+                estado:      "bodega"
+            });
+            if (res.ok) ok++; else err++;
+        } catch(_) { err++; }
+    }
+
+    txt.textContent = `✅ ${ok} importados${err > 0 ? ` · ⚠️ ${err} errores` : ""}`;
+    barra.style.width = "100%";
+    barra.style.background = err > 0 ? "#e74c3c" : "#27ae60";
+    toast(`✅ Importación completa: ${ok} productos`);
+    setTimeout(async () => {
+        cerrarModal("modal-importar-excel");
+        await cargarStock();
+    }, 1500);
+}
+
+function descargarPlantillaExcel() {
+    const ws = XLSX.utils.aoa_to_sheet([
+        ["codigo","nombre","precio","categoria","cantidad","material","talla","descripcion"],
+        ["AN001T8","Anillo corazón zirconia",25,"AN",2,"Plata Fina 925","8","Anillo con motivo corazón"],
+        ["CO001","Collar luna plata",18,"CO",3,"Plata Fina 925","","Collar con dije luna"],
+        ["PU001","Pulsera acero trenzada",15,"PU",5,"Acero 316L","","Pulsera trenzada"],
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Productos");
+    XLSX.writeFile(wb, "plantilla_verex.xlsx");
+}
+
+// ── HISTORIAL VENTAS UNIFICADO ────────────────────────────────────────
+let _historialVentas = [];
+
+async function cargarHistorialVentas() {
+    const lista = document.getElementById("lista-historial-ventas");
+    lista.innerHTML = '<p style="color:var(--plateado);font-size:13px;">⏳ Cargando...</p>';
+    try {
+        const res = await apiPost({ accion: "GET_HISTORIAL_VENTAS" });
+        _historialVentas = res.ventas || [];
+        renderHistorialVentas();
+    } catch(e) {
+        lista.innerHTML = '<p style="color:#e74c3c;font-size:13px;">⚠️ Error al cargar.</p>';
+    }
+}
+
+function renderHistorialVentas() {
+    const lista   = document.getElementById("lista-historial-ventas");
+    const busq    = (document.getElementById("hv-buscar")?.value || "").toLowerCase();
+    const filtTipo = document.getElementById("hv-filtro-tipo")?.value || "";
+    const filtEst  = document.getElementById("hv-filtro-estado")?.value || "";
+
+    let ventas = _historialVentas.filter(v => {
+        if (filtTipo && v.tipo !== filtTipo) return false;
+        if (filtEst  && v.estado !== filtEst) return false;
+        if (busq) {
+            const hayCliente = (v.cliente || "").toLowerCase().includes(busq);
+            let hayItem = false;
+            try { hayItem = JSON.parse(v.items||"[]").some(i => (i.nombre||"").toLowerCase().includes(busq)); } catch(_) {}
+            if (!hayCliente && !hayItem) return false;
+        }
+        return true;
+    });
+
+    // KPIs
+    const hoy = new Date().toISOString().slice(0, 10);
+    document.getElementById("hv-total-ventas").textContent = ventas.length;
+    document.getElementById("hv-total-monto").textContent  = "$" + ventas.reduce((s,v) => s + v.total, 0).toFixed(2);
+    document.getElementById("hv-pendiente").textContent    = "$" + ventas.reduce((s,v) => s + (v.saldoPendiente||0), 0).toFixed(2);
+    document.getElementById("hv-hoy").textContent          = ventas.filter(v => (v.fecha||"").slice(0,10) === hoy).length;
+
+    if (!ventas.length) { lista.innerHTML = '<p style="color:var(--plateado);font-size:13px;">No hay ventas que coincidan.</p>'; return; }
+
+    const tipoBadge = {
+        directa:      { label: "💸 Venta Directa", bg: "rgba(14,165,233,0.2)",  color: "#0ea5e9" },
+        catalogo:     { label: "🛍️ Catálogo",       bg: "rgba(39,174,96,0.2)",   color: "#4caf82" },
+        consignacion: { label: "👤 Consignación",   bg: "rgba(201,168,76,0.2)", color: "var(--dorado)" }
+    };
+    const estadoBadge = {
+        pagado:   { label: "✅ Pagado",   color: "#4caf82" },
+        credito:  { label: "🕐 Crédito",  color: "#e8b07a" },
+        pendiente:{ label: "⏳ Pendiente", color: "#e74c3c" }
+    };
+
+    lista.innerHTML = ventas.map(v => {
+        const tb = tipoBadge[v.tipo] || tipoBadge.directa;
+        const eb = estadoBadge[v.estado] || estadoBadge.pagado;
+        const fecha = v.fecha ? new Date(v.fecha).toLocaleDateString("es-SV", { day:"2-digit", month:"short", year:"numeric" }) : "—";
+        let itemsStr = "";
+        try {
+            const items = JSON.parse(v.items || "[]");
+            itemsStr = items.slice(0, 2).map(i => `${i.nombre||""}${i.cantidad > 1 ? " ×"+i.cantidad : ""}`).join(", ");
+            if (items.length > 2) itemsStr += ` +${items.length - 2} más`;
+        } catch(_) {}
+
+        return `<div style="background:var(--gris2);border:1px solid var(--borde);border-radius:10px;padding:12px;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
+                        <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:${tb.bg};color:${tb.color};font-weight:600;">${tb.label}</span>
+                        <span style="font-size:10px;color:${eb.color};font-weight:600;">${eb.label}</span>
+                    </div>
+                    <div style="font-size:13px;font-weight:700;color:var(--blanco);">${v.cliente}</div>
+                    <div style="font-size:11px;color:var(--plateado);margin-top:2px;">${fecha} · Ref: ${String(v.id||"").slice(-6)}</div>
+                    ${itemsStr ? `<div style="font-size:11px;color:#888;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${itemsStr}</div>` : ""}
+                    ${v.nota ? `<div style="font-size:11px;color:var(--plateado);font-style:italic;margin-top:2px;">${v.nota}</div>` : ""}
+                </div>
+                <div style="text-align:right;flex-shrink:0;">
+                    <div style="font-size:15px;font-weight:700;color:var(--dorado);">$${parseFloat(v.total||0).toFixed(2)}</div>
+                    ${v.saldoPendiente > 0 ? `<div style="font-size:11px;color:#e74c3c;font-weight:600;">Debe: $${parseFloat(v.saldoPendiente).toFixed(2)}</div>` : ""}
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function abrirVDManual() {
+    _vdmFotoBase64 = "";
+    document.getElementById("vdm-nombre").value   = "";
+    document.getElementById("vdm-precio").value   = "";
+    document.getElementById("vdm-cantidad").value = "1";
+    document.getElementById("vdm-codigo").value   = "";
+    document.getElementById("vdm-foto-preview").innerHTML = "📷";
+    document.getElementById("vdm-foto-preview").style.fontSize = "36px";
+    document.getElementById("vdm-qr-area").style.display = "none";
+    abrirModal("modal-vd-manual");
+    setTimeout(() => document.getElementById("vdm-nombre").focus(), 200);
+}
+
+function cargarFotoVDManual(input) {
+    const file = input.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement("canvas");
+            const MAX = 800; let w = img.width, h = img.height;
+            if (w > h && w > MAX) { h = Math.round(h*MAX/w); w = MAX; }
+            else if (h > MAX) { w = Math.round(w*MAX/h); h = MAX; }
+            canvas.width = w; canvas.height = h;
+            canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+            _vdmFotoBase64 = canvas.toDataURL("image/jpeg", 0.8);
+            const prev = document.getElementById("vdm-foto-preview");
+            prev.innerHTML = `<img src="${_vdmFotoBase64}" style="width:100%;height:100%;object-fit:cover;">`;
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+async function abrirQRManual() {
+    const area   = document.getElementById("vdm-qr-area");
+    const video  = document.getElementById("vdm-qr-video");
+    const status = document.getElementById("vdm-qr-status");
+    area.style.display = "block";
+    try {
+        _vdmQRStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        video.srcObject = _vdmQRStream;
+        await video.play();
+        if ("BarcodeDetector" in window) {
+            const detector = new BarcodeDetector({ formats: ["qr_code","code_128","code_39","ean_13"] });
+            _vdmQRInterval = setInterval(async () => {
+                try {
+                    const codes = await detector.detect(video);
+                    if (codes.length) {
+                        cerrarQRManual();
+                        const raw = codes[0].rawValue.trim().toUpperCase();
+                        document.getElementById("vdm-codigo").value = raw;
+                        // Si existe en stock, pre-llenar nombre y precio
+                        const prod = stockData.find(s => s.codigo.toUpperCase() === raw);
+                        if (prod) {
+                            document.getElementById("vdm-nombre").value = prod.nombre || "";
+                            document.getElementById("vdm-precio").value = prod.precio || "";
+                            toast("✅ Producto encontrado: " + prod.nombre);
+                        } else {
+                            toast("📷 Código escaneado: " + raw);
+                            document.getElementById("vdm-nombre").focus();
+                        }
+                    }
+                } catch(_) {}
+            }, 400);
+        } else {
+            cerrarQRManual();
+            const cod = prompt("Ingresa el código:");
+            if (cod) document.getElementById("vdm-codigo").value = cod.trim().toUpperCase();
+        }
+    } catch(e) {
+        status.textContent = "⚠️ No se pudo acceder a la cámara";
+    }
+}
+
+function cerrarQRManual() {
+    clearInterval(_vdmQRInterval); _vdmQRInterval = null;
+    if (_vdmQRStream) { _vdmQRStream.getTracks().forEach(t => t.stop()); _vdmQRStream = null; }
+    document.getElementById("vdm-qr-area").style.display = "none";
+}
+
+async function confirmarVDManual() {
+    const nombre   = document.getElementById("vdm-nombre").value.trim();
+    const precio   = parseFloat(document.getElementById("vdm-precio").value) || 0;
+    const cantidad = parseInt(document.getElementById("vdm-cantidad").value) || 1;
+    const codigoInput = document.getElementById("vdm-codigo").value.trim().toUpperCase();
+    if (!nombre) { toast("⚠️ Ingresa el nombre del producto"); return; }
+    if (!precio) { toast("⚠️ Ingresa el precio"); return; }
+
+    // Subir foto si hay
+    let fotoUrl = "";
+    if (_vdmFotoBase64) {
+        const codigo = codigoInput || ("MANUAL_" + Date.now());
+        const url = await subirFotoImageKit(_vdmFotoBase64, codigo);
+        fotoUrl = url || _vdmFotoBase64;
+    }
+
+    const codigo = codigoInput || ("MANUAL_" + Date.now());
+    const prod = { codigo, nombre, precio, foto: fotoUrl, stock_bodega: 999, esManual: true };
+
+    if (_vdCarrito[codigo]) {
+        _vdCarrito[codigo].qty += cantidad;
+    } else {
+        _vdCarrito[codigo] = { prod, qty: cantidad };
+    }
+    cerrarQRManual();
+    cerrarModal("modal-vd-manual");
+    renderCarritoVD();
+    filtrarVD();
+    toast("✅ " + nombre + " agregado");
+}
+
+function abrirFotoZoom(url, nombre) {
+    const modal = document.getElementById("modal-foto-zoom");
+    document.getElementById("foto-zoom-img").src = url;
+    document.getElementById("foto-zoom-nombre").textContent = nombre || "";
+    modal.style.display = "flex";
+    document.body.style.overflow = "hidden";
+}
+function cerrarFotoZoom() {
+    document.getElementById("modal-foto-zoom").style.display = "none";
+    document.body.style.overflow = "";
+}
+</script>
 
 </body>
     </body>
