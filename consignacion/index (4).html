@@ -2730,23 +2730,21 @@ function procesarFotoJoya(file) {
                 const tctx = tmp.getContext("2d");
                 tctx.drawImage(img, 0, 0);
 
-                // 2. Auto-trim: bounding box del sujeto (sin flood fill — preserva sombras naturales)
-                const data = tctx.getImageData(0, 0, tmp.width, tmp.height).data;
+                // 2. Trim simple: recortar bordes vacíos sin alterar colores internos
                 const W = tmp.width, H = tmp.height;
-                // Color de fondo desde esquinas
+                const data = tctx.getImageData(0, 0, W, H).data;
                 const px = (x,y) => { const i=(y*W+x)*4; return [data[i],data[i+1],data[i+2]]; };
                 const muestras = [px(0,0),px(W-1,0),px(0,H-1),px(W-1,H-1)];
                 const bgR = Math.round(muestras.reduce((s,m)=>s+m[0],0)/4);
                 const bgG = Math.round(muestras.reduce((s,m)=>s+m[1],0)/4);
                 const bgB = Math.round(muestras.reduce((s,m)=>s+m[2],0)/4);
-                const TOL = 32;
+                const TOL = 30;
                 const esFondo = (i) =>
                     Math.abs(data[i]-bgR)<TOL && Math.abs(data[i+1]-bgG)<TOL && Math.abs(data[i+2]-bgB)<TOL;
                 let top=H, bottom=0, left=W, right=0;
                 for (let y=0; y<H; y++) {
                     for (let x=0; x<W; x++) {
-                        const i=(y*W+x)*4;
-                        if (!esFondo(i)) {
+                        if (!esFondo((y*W+x)*4)) {
                             if (y<top)    top=y;
                             if (y>bottom) bottom=y;
                             if (x<left)   left=x;
@@ -2772,7 +2770,7 @@ function procesarFotoJoya(file) {
                 const out = document.createElement("canvas");
                 out.width = outSize; out.height = outSize;
                 const octx = out.getContext("2d");
-                octx.fillStyle = "#F7F7F7";
+                octx.fillStyle = `rgb(${bgR},${bgG},${bgB})`;
                 octx.fillRect(0, 0, outSize, outSize);
                 octx.drawImage(tmp, cx1, cy1, cw, ch,
                     Math.round(offX*scale), Math.round(offY*scale),
