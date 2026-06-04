@@ -16,7 +16,35 @@ const CORS = {
   "Content-Type":                 "application/json"
 };
 
+const ADMIN_WA = "50371250725"; // WhatsApp VEREX
+
 export default {
+  // ── CRON DIARIO: alertas pedidos pendientes +2 días ──────────────
+  async scheduled(event, env, ctx) {
+    const sb    = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+    const todos = await sb.getAll("pedidos");
+    const hace2dias = Date.now() - 2 * 24 * 60 * 60 * 1000;
+    const pendientes = todos.filter(p =>
+      (p.estado === "Pendiente" || p.estado === "En camino") &&
+      new Date(p.fecha).getTime() < hace2dias
+    );
+    if (!pendientes.length) return;
+
+    const lista = pendientes.map(p =>
+      `• ${p.numeroPedido} — ${p.cliente} ($${parseFloat(p.total||0).toFixed(2)}) — ${p.estado}`
+    ).join("\n");
+
+    const msg = encodeURIComponent(
+      `⚠️ VEREX — ${pendientes.length} pedido(s) llevan +2 días sin actualizar:\n\n${lista}\n\n📋 Actualiza el estado en: https://admin-tienda.pages.dev`
+    );
+
+    // Enviar via CallMeBot API (gratis, solo requiere registro inicial)
+    const apikey = env.CALLMEBOT_KEY || "";
+    if (apikey) {
+      await fetch(`https://api.callmebot.com/whatsapp.php?phone=${ADMIN_WA}&text=${msg}&apikey=${apikey}`).catch(()=>{});
+    }
+  },
+
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response("", { headers: CORS });
 
@@ -31,7 +59,7 @@ export default {
           sb.get("config", "settings"),
         ]);
         return json({
-          productos: prods.filter(p => p.enCatalogo === true && p.estado !== "inactivo"),
+          productos: prods.filter(p => (p.enCatalogo === true || p.enCatalogo === "true" || p.enCatalogo === "TRUE") && p.estado !== "inactivo"),
           cupones:   cups.filter(c => c.activo !== false && c.activo !== "false"),
           config:    cfgDoc || {}
         });
@@ -60,7 +88,7 @@ export default {
         // ══ STOCK ════════════════════════════════════════════════
         case "STOCK_GET_ALL": {
           const docs = await sb.getAll("stock");
-          result = { ok: true, stock: docs };
+          result = { ok: true, stock: docs.filter(p => p.estado !== "inactivo") };
           break;
         }
 
@@ -72,7 +100,16 @@ export default {
             // Auto-generar código si no viene o se pide
             let codigo = item.codigo;
             if (!codigo || item.autoGenerarCodigo) {
-              const prefijo = String(item.categoria || "GEN").toUpperCase().slice(0, 2);
+              // Prefijo de material
+              const mat = String(item.material || "").toLowerCase();
+              const prefMat = mat.includes("oro laminado") ? "PO"
+                            : mat.includes("oro")          ? "OR"
+                            : mat.includes("acero")        ? "A"
+                            : mat.includes("reloj")        ? "W"
+                            : mat.includes("plata")        ? "P"
+                            : "";
+              const prefCat = String(item.categoria || "GEN").toUpperCase().slice(0, 2);
+              const prefijo = prefMat ? `${prefMat}-${prefCat}` : prefCat;
               const allStock = await sb.getAll("stock");
               let maxNum = 0;
               allStock.forEach(s => {
@@ -391,6 +428,48 @@ export default {
           break;
         }
 
+        case "GET_HISTORIAL_VENTAS": {
+          if (!esAdmin) return forbidden();
+          const [vd, peds, consig] = await Promise.all([
+            sb.getAll("ventas_directas"),
+            sb.getAll("pedidos"),
+            sb.getAll("consignacion")
+          ]);
+          const unificadas = [
+            ...vd.map(v => ({
+              id: v.id, fecha: v.fecha, tipo: "directa",
+              cliente: v.cliente || "—", telefono: v.telefono || "",
+              total: parseFloat(v.total || 0),
+              estado: v.estado || "pagado",
+              saldoPendiente: parseFloat(v.saldoPendiente || 0),
+              items: v.items || "[]",
+              nota: v.nota || ""
+            })),
+            ...peds.map(p => ({
+              id: p.numeroPedido || p.id, fecha: p.fecha, tipo: "catalogo",
+              cliente: p.cliente || "—", telefono: p.telefono || "",
+              total: parseFloat(p.total || 0),
+              estado: p.estado || "pendiente",
+              saldoPendiente: 0,
+              items: JSON.stringify(
+                (p.productos || "").split(",").filter(Boolean).map(x => ({ nombre: x.trim() }))
+              ),
+              nota: p.municipio || ""
+            })),
+            ...consig.filter(c => parseInt(c.vendido) > 0).map(c => ({
+              id: c.id, fecha: c.fecha, tipo: "consignacion",
+              cliente: c.vendedor || "—", telefono: "",
+              total: parseFloat(c.precio || 0) * parseInt(c.vendido || 1),
+              estado: "pagado",
+              saldoPendiente: 0,
+              items: JSON.stringify([{ nombre: c.nombre || c.codigo, cantidad: c.vendido, precio: c.precio }]),
+              nota: ""
+            }))
+          ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+          result = { ok: true, ventas: unificadas };
+          break;
+        }
+
         case "GET_VENTAS_VENDEDOR": {
           const ventasV = await sb.query("consignacion", "vendedor", "==", d.vendedor);
           result = { ok: true, ventas: ventasV.filter(v => parseInt(v.vendido) > 0) };
@@ -475,44 +554,54 @@ export default {
           // Guardar nuevo estado
           await sb.update("pedidos", d.numeroPedido, { estado: d.estado });
 
-          // ── Descontar stock al marcar como Entregado (solo una vez) ──
-          if (d.estado === "Entregado" && !pedidoActual.stockActualizado) {
-            let items = [];
-            try {
-              items = typeof pedidoActual.items === "string"
-                ? JSON.parse(pedidoActual.items)
-                : (pedidoActual.items || []);
-            } catch(_) {}
+          // ── Ajustar stock según nuevo estado ──────────────────────
+          let itemsEst = [];
+          try {
+            itemsEst = typeof pedidoActual.items === "string"
+              ? JSON.parse(pedidoActual.items) : (pedidoActual.items || []);
+          } catch(_) {}
 
-            for (const item of items) {
+          if (d.estado === "Entregado" && !pedidoActual.stockActualizado) {
+            // Reservado → Vendido
+            for (const item of itemsEst) {
               if (!item.codigo) continue;
               const prod = await sb.get("stock", item.codigo);
               if (!prod) continue;
-
+              const qty = parseInt(item.cantidad || 1);
               const upd = {
-                stock_bodega:  Math.max(0, (parseInt(prod.stock_bodega)  || 0) - 1),
-                stock_vendido: (parseInt(prod.stock_vendido) || 0) + 1,
+                stock_reservado: Math.max(0, (parseInt(prod.stock_reservado)||0) - qty),
+                stock_vendido:   (parseInt(prod.stock_vendido)||0) + qty,
               };
-
-              // Anillos: descontar talla específica del JSON de caracteristicas
+              // Talla específica para anillos
               const talla = item.tallaElegida;
               if (talla && talla !== "—" && prod.caracteristicas) {
                 try {
                   const chars = typeof prod.caracteristicas === "string"
-                    ? JSON.parse(prod.caracteristicas)
-                    : prod.caracteristicas;
+                    ? JSON.parse(prod.caracteristicas) : prod.caracteristicas;
                   if (chars[talla] !== undefined) {
-                    chars[talla] = Math.max(0, (parseInt(chars[talla]) || 0) - 1);
+                    chars[talla] = Math.max(0, (parseInt(chars[talla])||0) - qty);
                     upd.caracteristicas = JSON.stringify(chars);
                   }
                 } catch(_) {}
               }
-
               await sb.update("stock", item.codigo, upd);
             }
-
-            // Marcar pedido para no descontar stock dos veces
             await sb.update("pedidos", d.numeroPedido, { stockActualizado: true });
+
+          } else if ((d.estado === "Cancelado" || d.estado === "No entregado") && !pedidoActual.stockLiberado) {
+            // Reservado → regresa a Tienda
+            for (const item of itemsEst) {
+              if (!item.codigo) continue;
+              const prod = await sb.get("stock", item.codigo);
+              if (!prod) continue;
+              const qty = parseInt(item.cantidad || 1);
+              await sb.update("stock", item.codigo, {
+                stock_reservado: Math.max(0, (parseInt(prod.stock_reservado)||0) - qty),
+                stock_tienda:    (parseInt(prod.stock_tienda)||0) + qty,
+                enCatalogo:      true
+              });
+            }
+            await sb.update("pedidos", d.numeroPedido, { stockLiberado: true });
           }
 
           result = { ok: true };
@@ -581,11 +670,40 @@ export default {
             sb.getAll("cupones"),
             sb.get("config", "settings"),
           ]);
+          const cfg2   = cfgDoc || {};
+          const limite = parseInt(cfg2.limiteCatalogo) || 0; // 0 = sin límite
+
+          let activos = prods.filter(p =>
+            (p.enCatalogo === true || p.enCatalogo === "true" || p.enCatalogo === "TRUE") &&
+            p.estado !== "inactivo"
+          );
+
+          // Separar destacados del resto
+          const destacados = activos.filter(p => p.destacado === true || p.destacado === "TRUE" || p.destacado === "true");
+          const normales   = activos.filter(p => !(p.destacado === true || p.destacado === "TRUE" || p.destacado === "true"));
+
+          // Rotación semanal: semilla basada en número de semana del año
+          const ahora     = new Date();
+          const inicioAno = new Date(ahora.getFullYear(), 0, 1);
+          const semana    = Math.floor((ahora - inicioAno) / (7 * 24 * 60 * 60 * 1000));
+          // Shuffle determinístico con semilla semanal
+          const shuffled = normales.slice().sort((a, b) => {
+            const ha = parseInt(String(semana) + String((a.codigo||"").charCodeAt(0)||0), 10) % 997;
+            const hb = parseInt(String(semana) + String((b.codigo||"").charCodeAt(0)||0), 10) % 997;
+            return ha - hb;
+          });
+
+          // Destacados primero, luego rotados
+          let final = [...destacados, ...shuffled];
+
+          // Aplicar límite si está configurado
+          if (limite > 0) final = final.slice(0, limite);
+
           result = {
-            ok: true,
-            productos: prods.filter(p => p.enCatalogo === true && p.estado !== "inactivo"),
+            ok:        true,
+            productos: final,
             cupones:   cups.filter(c => c.activo !== false && c.activo !== "false"),
-            config:    cfgDoc || {}
+            config:    cfg2
           };
           break;
         }
@@ -624,7 +742,54 @@ export default {
             items: d.items || "", cuponUsado: d.cuponUsado || "",
             descMonto: d.descMonto || 0, envio: d.envio || 0
           });
+
+          // ── Reservar stock inmediatamente ──────────────────────────
+          let itemsPed = [];
+          try { itemsPed = typeof d.items === "string" ? JSON.parse(d.items) : (d.items || []); } catch(_) {}
+          for (const item of itemsPed) {
+            if (!item.codigo) continue;
+            const prod = await sb.get("stock", item.codigo);
+            if (!prod) continue;
+            const qty = parseInt(item.cantidad || 1);
+            await sb.update("stock", item.codigo, {
+              stock_tienda:    Math.max(0, (parseInt(prod.stock_tienda)||0) - qty),
+              stock_reservado: (parseInt(prod.stock_reservado)||0) + qty
+            });
+          }
+
           result = { ok: true, numeroPedido, codigoCliente };
+          break;
+        }
+
+        case "GET_ESTADISTICAS": {
+          if (!esAdmin) return forbidden();
+          const pedsStat = await sb.getAll("pedidos");
+          // Destinos
+          const destinos = {};
+          pedsStat.forEach(p => {
+            const lugar = (p.municipio || p.departamento || "Sin especificar").trim();
+            if (!lugar || lugar === "—") return;
+            destinos[lugar] = (destinos[lugar] || 0) + 1;
+          });
+          const topDestinos = Object.entries(destinos)
+            .sort((a,b) => b[1]-a[1]).slice(0,10)
+            .map(([lugar, total]) => ({ lugar, total }));
+          // Métodos de pago
+          const pagos = {};
+          pedsStat.forEach(p => {
+            const m = (p.metodoPago || "Sin especificar").trim();
+            pagos[m] = (pagos[m] || 0) + 1;
+          });
+          const topPagos = Object.entries(pagos)
+            .sort((a,b) => b[1]-a[1])
+            .map(([metodo, total]) => ({ metodo, total }));
+          // Pedidos pendientes +2 días
+          const hace2 = Date.now() - 2*24*60*60*1000;
+          const alertas = pedsStat.filter(p =>
+            (p.estado === "Pendiente" || p.estado === "En camino") &&
+            new Date(p.fecha).getTime() < hace2
+          ).length;
+          result = { ok: true, topDestinos, topPagos, alertas };
           break;
         }
 
@@ -711,7 +876,7 @@ export default {
         // ══ ALIAS ════════════════════════════════════════════════
         case "GET_STOCK": {
           const stock = await sb.getAll("stock");
-          result = { ok: true, stock };
+          result = { ok: true, stock: stock.filter(p => p.estado !== "inactivo") };
           break;
         }
 
@@ -721,10 +886,14 @@ export default {
           for (const codigo of (d.codigos || [])) {
             const s = await sb.get("stock", codigo);
             if (s) {
-              const cant = d.cantidad || 1;
+              const disponible = parseInt(s.stock_bodega) || 0;
+              const cant = Math.min(d.cantidad || 1, disponible); // no mover más de lo que hay
+              if (cant <= 0) continue;
               await sb.update("stock", codigo, {
-                stock_bodega: Math.max(0, (parseInt(s.stock_bodega)||0) - cant),
-                stock_tienda: (parseInt(s.stock_tienda)||0) + cant
+                stock_bodega: disponible - cant,
+                stock_tienda: (parseInt(s.stock_tienda)||0) + cant,
+                enCatalogo:   true,
+                estado:       "tienda"
               });
             }
           }
@@ -737,10 +906,13 @@ export default {
           for (const codigo of (d.codigos || [])) {
             const s = await sb.get("stock", codigo);
             if (s) {
-              const cant = d.cantidad || 1;
+              const disponible = parseInt(s.stock_bodega) || 0;
+              const cant = Math.min(d.cantidad || 1, disponible);
+              if (cant <= 0) continue;
               await sb.update("stock", codigo, {
-                stock_bodega:       Math.max(0, (parseInt(s.stock_bodega)||0) - cant),
-                stock_consignacion: (parseInt(s.stock_consignacion)||0) + cant
+                stock_bodega:       disponible - cant,
+                stock_consignacion: (parseInt(s.stock_consignacion)||0) + cant,
+                estado:             "consignacion"
               });
             }
           }
@@ -753,13 +925,23 @@ export default {
           for (const codigo of (d.codigos || [])) {
             const s = await sb.get("stock", codigo);
             if (s) {
-              const cant   = d.cantidad || 1;
               const origen = d.origen || "tienda";
-              const updates = { stock_bodega: (parseInt(s.stock_bodega)||0) + cant };
-              if (origen === "tienda")
-                updates.stock_tienda        = Math.max(0, (parseInt(s.stock_tienda)||0) - cant);
-              else if (origen === "consignacion")
-                updates.stock_consignacion  = Math.max(0, (parseInt(s.stock_consignacion)||0) - cant);
+              // Determinar cuánto hay realmente en el origen para no inventar stock
+              const enOrigen = origen === "tienda"
+                ? (parseInt(s.stock_tienda)||0)
+                : (parseInt(s.stock_consignacion)||0);
+              const cant = Math.min(d.cantidad || 1, enOrigen);
+              if (cant <= 0) continue; // ya no hay nada que devolver
+              const updates = {
+                stock_bodega: (parseInt(s.stock_bodega)||0) + cant,
+                estado: "bodega"
+              };
+              if (origen === "tienda") {
+                updates.stock_tienda  = enOrigen - cant;
+                updates.enCatalogo    = false;
+              } else {
+                updates.stock_consignacion = enOrigen - cant;
+              }
               await sb.update("stock", codigo, updates);
             }
           }
@@ -991,7 +1173,7 @@ export default {
           });
           const ikData = await ikRes.json();
           if (ikData.url) {
-            const urlOptimizada = ikData.url + "?tr=w-800,q-90,f-webp,e-usm-2-2-0.8-0.024";
+            const urlOptimizada = ikData.url + "?tr=w-800,h-800,c-at_max,fo-auto,bg-FFFFFF,q-90,f-webp,e-usm-2-2-0.8-0.024";
             result = { ok: true, url: urlOptimizada };
           } else {
             result = { ok: false, error: ikData.message || "Error subiendo foto" };
@@ -1079,18 +1261,20 @@ export default {
               `• Acabado: pulido brillante, mate, esmaltado (color), enchapado oro, enchapado oro rosa, bicolor plata-oro, texturizado, filigrana\n` +
               `• Cantidad si aplica: solitario, trío, pavé, etc.\n\n` +
               `REGLAS PARA EL NOMBRE:\n` +
-              `- Formato: [tipo] + [motivo ESPECÍFICO] + [detalle piedra/color si hay] + [${material}]\n` +
+              `- Formato: [Tipo] + [motivo ESPECÍFICO] + [detalle piedra/color si hay]\n` +
+              `- PRIMERA letra en MAYÚSCULA, el resto en minúsculas\n` +
+              `- NO incluyas el material en el nombre (se guarda por separado)\n` +
               `- NUNCA uses palabras vagas como: abstracto, decorativo, elegante, bonito, diseño\n` +
               `- SÍ usa términos específicos: corazón, lazo, mariposa, luna creciente, estrella, etc.\n` +
-              `- Máximo 6 palabras\n\n` +
+              `- Máximo 5 palabras\n\n` +
               `REGLAS PARA DESCRIPCION:\n` +
-              `- Menciona el tipo, motivo exacto, piedras/acabado y material ${material}\n` +
-              `- Máximo 15 palabras, en español\n\n` +
+              `- Menciona el tipo, motivo exacto y piedras/acabado. NO menciones el material ${material} (va en campo aparte)\n` +
+              `- Máximo 12 palabras, en español\n\n` +
               `REGLAS PARA DESCRIPCION_TIENDA:\n` +
-              `- Frase elegante de marketing, incluye material y diseño específico\n` +
-              `- Máximo 20 palabras\n\n` +
+              `- Frase elegante de marketing enfocada en diseño y acabado\n` +
+              `- Máximo 18 palabras\n\n` +
               `Responde SOLO con este JSON:\n` +
-              `{"categoria":"XX","nombre":"[tipo] [motivo específico] [${material}]","descripcion":"texto específico en español","descripcion_tienda":"frase elegante de marketing"}`;
+              `{"categoria":"XX","nombre":"[tipo] [motivo específico] [piedra si aplica]","descripcion":"texto específico sin material","descripcion_tienda":"frase elegante de marketing"}`;
 
             // ── Usar Groq (gratis, llama-3.2-11b-vision) ─────────────────
             const groqKey = env.GROQ_KEY;

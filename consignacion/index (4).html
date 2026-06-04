@@ -958,6 +958,8 @@
                 <button type="button" class="mat-single-btn" data-mat="Plata Fina 925" onclick="seleccionarMaterialSingle(this)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">Plata Fina 925</button>
                 <button type="button" class="mat-single-btn" data-mat="Plata 925 con Oro Laminado" onclick="seleccionarMaterialSingle(this)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">Plata + Oro Lam.</button>
                 <button type="button" class="mat-single-btn" data-mat="Acero 316L" onclick="seleccionarMaterialSingle(this)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">Acero 316L</button>
+                <button type="button" class="mat-single-btn" data-mat="Oro" onclick="seleccionarMaterialSingle(this)" style="padding:6px 10px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:11px;font-weight:600;cursor:pointer;">✨ Oro</button>
+                <button type="button" class="mat-single-btn" data-mat="Reloj" onclick="seleccionarMaterialSingle(this)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">⌚ Reloj</button>
             </div>
         </div>
         <button class="btn btn-full" id="btn-ia" onclick="analizarConIA()" style="margin-bottom:12px;display:none;background:var(--plateado);color:var(--negro);font-size:16px;padding:14px 20px;letter-spacing:1px;">✨ Analizar con IA</button>
@@ -1275,6 +1277,9 @@ function filtrarProductosEtiquetas() {
 function extraerMaterial(nombre, descripcion) {
     const texto = ((nombre || "") + " " + (descripcion || "")).toLowerCase();
     if (texto.includes("plata fina")) return "Plata Fina 925";
+    if (texto.includes("oro laminado") || texto.includes("gold lam")) return "Plata 925 con Oro Laminado";
+    if (texto.includes("oro")) return "Oro";
+    if (texto.includes("reloj") || texto.includes("watch")) return "Reloj";
     if (texto.includes("oro laminado") || texto.includes("oro lam")) return "Plata 925 + Oro Lam.";
     if (texto.includes("acero")) return "Acero 316L";
     if (texto.includes("925")) return "Plata 925";
@@ -5140,6 +5145,8 @@ function enviarWAEstadoCuenta(ventaId) {
                 <button type="button" class="sn-mat-btn" data-mat="Plata Fina 925" onclick="seleccionarMatSN(this)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">Plata Fina 925</button>
                 <button type="button" class="sn-mat-btn" data-mat="Plata 925 con Oro Laminado" onclick="seleccionarMatSN(this)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">Plata + Oro Lam.</button>
                 <button type="button" class="sn-mat-btn" data-mat="Acero 316L" onclick="seleccionarMatSN(this)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">Acero 316L</button>
+                <button type="button" class="sn-mat-btn" data-mat="Oro" onclick="seleccionarMatSN(this)" style="padding:6px 10px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:11px;font-weight:600;cursor:pointer;">✨ Oro</button>
+                <button type="button" class="sn-mat-btn" data-mat="Reloj" onclick="seleccionarMatSN(this)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">⌚ Reloj</button>
             </div>
         </div>
         <button class="btn btn-gris btn-full" id="sn-btn-ia" onclick="analizarFotoStockNuevo()" style="display:none;margin-bottom:12px;">✨ Analizar con IA</button>
@@ -5388,13 +5395,30 @@ function cargarExcel(input) {
             _excelProductos = rows.map(r => {
                 const k = obj => Object.keys(obj).reduce((a,k) => { a[k.toLowerCase().trim()] = obj[k]; return a; }, {});
                 const row = k(r);
+                const dept = String(row.departamento || row.categoria || row.cat || "").toLowerCase();
+                const matDetectado = row.material ? String(row.material).trim()
+                    : dept.includes("oro laminado") ? "Plata 925 con Oro Laminado"
+                    : dept.includes("oro")          ? "Oro"
+                    : dept.includes("acero")        ? "Acero 316L"
+                    : dept.includes("reloj")        ? "Reloj"
+                    : dept.includes("plata")        ? "Plata Fina 925"
+                    : "";
+                const prefMat = matDetectado === "Plata Fina 925"             ? "P"
+                              : matDetectado === "Plata 925 con Oro Laminado" ? "PO"
+                              : matDetectado === "Acero 316L"                 ? "A"
+                              : matDetectado === "Oro"                        ? "OR"
+                              : matDetectado === "Reloj"                      ? "W"
+                              : "";
+                const codigoRaw = String(row.codigo || row.code || "").toUpperCase().trim();
+                const codigoFinal = (prefMat && codigoRaw && !codigoRaw.startsWith(prefMat + "-"))
+                    ? `${prefMat}-${codigoRaw}` : codigoRaw;
                 return {
-                    codigo:      String(row.codigo      || row.code   || "").toUpperCase().trim(),
+                    codigo:      codigoFinal,
                     nombre:      String(row.nombre      || row.name   || row.producto || row.descripcion || row.description || "").trim(),
                     precio:      parseFloat(row.precio  || row["precio de venta"] || row.price || 0),
                     categoria:   String(row.categoria   || row.cat    || row.departamento || "").toUpperCase().trim(),
                     cantidad:    parseInt(row.cantidad  || row.qty    || row.stock || row.inventario || 1),
-                    material:    String(row.material    || "").trim(),
+                    material:    matDetectado,
                     talla:       String(row.talla       || row.size   || "").trim(),
                     descripcion: String(row.desc        || "").trim(),
                 };
