@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-//  VEREX API — Cloudflare Worker con Supabase
+//  VEREX API — Cloudflare Worker con Supabase — v2026.06
 //
 //  SECRETS en Cloudflare (Settings → Variables → Secrets):
 //    SUPABASE_URL         → URL del proyecto (ej: https://xxx.supabase.co)
