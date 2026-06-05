@@ -959,6 +959,8 @@
                 <button type="button" class="mat-single-btn" data-mat="Plata 925 con Oro Laminado" onclick="seleccionarMaterialSingle(this)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">Plata + Oro Lam.</button>
                 <button type="button" class="mat-single-btn" data-mat="Acero 316L" onclick="seleccionarMaterialSingle(this)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">Acero 316L</button>
                 <button type="button" class="mat-single-btn" data-mat="Oro" onclick="seleccionarMaterialSingle(this)" style="padding:6px 10px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:11px;font-weight:600;cursor:pointer;">✨ Oro</button>
+                <button type="button" class="mat-single-btn" data-mat="Oro 10 Kilates" onclick="seleccionarMaterialSingle(this)" style="padding:6px 10px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:11px;font-weight:600;cursor:pointer;">🥇 Oro 10K</button>
+                <button type="button" class="mat-single-btn" data-mat="Oro 14 Kilates" onclick="seleccionarMaterialSingle(this)" style="padding:6px 10px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:11px;font-weight:600;cursor:pointer;">👑 Oro 14K</button>
                 <button type="button" class="mat-single-btn" data-mat="Reloj" onclick="seleccionarMaterialSingle(this)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">⌚ Reloj</button>
             </div>
         </div>
@@ -2703,6 +2705,8 @@ async function analizarConIA() {
 function generarCodigo(categoria, material) {
     const mat = String(material || _materialLote || "").toLowerCase();
     const prefMat = mat.includes("oro laminado") ? "PO"
+                  : mat.includes("14 kil") || mat.includes("14k") ? "OR14"
+                  : mat.includes("10 kil") || mat.includes("10k") ? "OR10"
                   : mat.includes("oro")          ? "OR"
                   : mat.includes("acero")        ? "A"
                   : mat.includes("reloj")        ? "W"
@@ -5108,6 +5112,14 @@ function enviarWAEstadoCuenta(ventaId) {
                         style="padding:8px 12px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:12px;font-weight:600;cursor:pointer;">
                         ✨ Oro
                     </button>
+                    <button type="button" class="material-btn" data-material="Oro 10 Kilates" onclick="seleccionarMaterialLote(this)"
+                        style="padding:8px 12px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:12px;font-weight:600;cursor:pointer;">
+                        🥇 Oro 10K
+                    </button>
+                    <button type="button" class="material-btn" data-material="Oro 14 Kilates" onclick="seleccionarMaterialLote(this)"
+                        style="padding:8px 12px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:12px;font-weight:600;cursor:pointer;">
+                        👑 Oro 14K
+                    </button>
                     <button type="button" class="material-btn" data-material="Reloj" onclick="seleccionarMaterialLote(this)"
                         style="padding:8px 12px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:12px;font-weight:600;cursor:pointer;">
                         ⌚ Reloj
@@ -5220,6 +5232,8 @@ function enviarWAEstadoCuenta(ventaId) {
                 <button type="button" class="sn-mat-btn" data-mat="Plata 925 con Oro Laminado" onclick="seleccionarMatSN(this)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">Plata + Oro Lam.</button>
                 <button type="button" class="sn-mat-btn" data-mat="Acero 316L" onclick="seleccionarMatSN(this)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">Acero 316L</button>
                 <button type="button" class="sn-mat-btn" data-mat="Oro" onclick="seleccionarMatSN(this)" style="padding:6px 10px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:11px;font-weight:600;cursor:pointer;">✨ Oro</button>
+                <button type="button" class="sn-mat-btn" data-mat="Oro 10 Kilates" onclick="seleccionarMatSN(this)" style="padding:6px 10px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:11px;font-weight:600;cursor:pointer;">🥇 Oro 10K</button>
+                <button type="button" class="sn-mat-btn" data-mat="Oro 14 Kilates" onclick="seleccionarMatSN(this)" style="padding:6px 10px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:11px;font-weight:600;cursor:pointer;">👑 Oro 14K</button>
                 <button type="button" class="sn-mat-btn" data-mat="Reloj" onclick="seleccionarMatSN(this)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">⌚ Reloj</button>
             </div>
         </div>

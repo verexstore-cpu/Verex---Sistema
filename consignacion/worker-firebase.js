@@ -103,6 +103,8 @@ export default {
               // Prefijo de material
               const mat = String(item.material || "").toLowerCase();
               const prefMat = mat.includes("oro laminado") ? "PO"
+                            : mat.includes("14 kil") || mat.includes("14k") ? "OR14"
+                            : mat.includes("10 kil") || mat.includes("10k") ? "OR10"
                             : mat.includes("oro")          ? "OR"
                             : mat.includes("acero")        ? "A"
                             : mat.includes("reloj")        ? "W"
