@@ -1339,7 +1339,7 @@ function generarPDFAdmin(idx, numeroPedido) {
     const datos = {
         nombre:       p.cliente    || "—",
         tel:          p.telefono   || "—",
-        ubicacion:    p.municipio  || "—",
+        ubicacion:    p.departamento || p.municipio || "—",
         direccion:    p.direccion  || "—",
         metodoPago:   p.metodoPago || "—",
         numeroPedido: p.numeroPedido || numeroPedido || "—",
@@ -1394,7 +1394,6 @@ function generarPDF(datos) {
     doc.text(`Cliente: ${datos.nombre}`,     marginL, y); y += lh;
     doc.text(`Teléfono: ${datos.tel}`,        marginL, y); y += lh;
     doc.text(`Ubicación: ${datos.ubicacion}`, marginL, y); y += lh;
-    doc.text(`Dirección: ${datos.direccion}`, marginL, y); y += lh;
     if (datos.metodoPago) { doc.text(`Pago: ${datos.metodoPago}`, marginL, y); y += lh; }
     y += 0.12;
 
@@ -1438,7 +1437,8 @@ function generarPDF(datos) {
         const talla = item.tallaElegida || item.talla || "";
         const tallaEsUnica = talla === "Única" || talla === "";
         const tallaCorta = tallaEsUnica ? "" : "T" + talla.replace(/[^0-9]/g, "");
-        const descripcion = tallaCorta ? `${item.nombre}  ${tallaCorta}` : item.nombre;
+        const material = item.material ? ` · ${item.material}` : "";
+        const descripcion = tallaCorta ? `${item.nombre}  ${tallaCorta}${material}` : `${item.nombre}${material}`;
         drawRow(y, rowH, null);
         cellText(item.codigo,                     cols[0], y, rowH);
         cellText(descripcion,                     cols[1], y, rowH);
