@@ -889,17 +889,14 @@
 // ═════════════════════════════════════════════
 //  CONFIG
 // ═════════════════════════════════════════════
-const API_URL        = "https://verex-api.verexstore.workers.dev/";
-const SECRET_KEY     = ""; // Moved to Worker
-const ADMIN_PASS_RAW = "verex2026";
-let   ADMIN_PASS     = ""; // Hash SHA-256, se calcula al cargar
+const API_URL    = "https://verex-api.verexstore.workers.dev/";
+const SECRET_KEY = "";
+let   ADMIN_PASS = ""; // Hash SHA-256 de la contraseña, nunca el texto plano
 
-// Hashear contraseña — nunca se envía en texto plano al Worker
 async function sha256(str) {
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
 }
-sha256(ADMIN_PASS_RAW).then(h => { ADMIN_PASS = h; });
 
 let cfg = {
     tiendaActiva: true,
@@ -911,9 +908,15 @@ let notifLeidas = new Set(JSON.parse(localStorage.getItem("vx_notif")||"[]"));
 // ═════════════════════════════════════════════
 //  AUTH
 // ═════════════════════════════════════════════
-function login() {
-    if (document.getElementById("in-pass").value === ADMIN_PASS_RAW) {
+async function login() {
+    const input = document.getElementById("in-pass").value;
+    if (!input) return;
+    const hash = await sha256(input);
+    const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"VERIFICAR_PASS", _pass: hash }) }).then(r=>r.json()).catch(()=>({ok:false}));
+    if (res.ok) {
+        ADMIN_PASS = hash; // Guardar hash para peticiones posteriores
         sessionStorage.setItem("vxa","1");
+        sessionStorage.setItem("vxh", hash); // Guardar hash en sesión
         document.getElementById("login-screen").style.display = "none";
         document.getElementById("panel").style.display = "block";
         init();
@@ -924,6 +927,7 @@ function login() {
 }
 function logout() { sessionStorage.clear(); location.reload(); }
 if (sessionStorage.getItem("vxa")==="1") {
+    ADMIN_PASS = sessionStorage.getItem("vxh") || "";
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("panel").style.display = "block";
     init();
