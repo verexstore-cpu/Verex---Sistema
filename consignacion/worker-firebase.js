@@ -428,8 +428,20 @@ export default {
           for (const item of (d.items || [])) {
             const s = await sb.get("stock", item.codigo);
             if (s) {
+              const cant = parseInt(item.cantidad) || 1;
+              const bodega  = parseInt(s.stock_bodega)  || 0;
+              const tienda  = parseInt(s.stock_tienda)  || 0;
+              // Descontar primero de tienda si hay, luego de bodega
+              let descBodega = 0, descTienda = 0;
+              if (tienda >= cant) {
+                descTienda = cant;
+              } else {
+                descTienda = tienda;
+                descBodega = cant - tienda;
+              }
               await sb.update("stock", item.codigo, {
-                stock_bodega: Math.max(0, (parseInt(s.stock_bodega)||0) - (item.cantidad||1))
+                stock_tienda: Math.max(0, tienda - descTienda),
+                stock_bodega: Math.max(0, bodega - descBodega)
               });
             }
           }
@@ -685,8 +697,18 @@ export default {
         case "USAR_CUPON": {
           const cup = await sb.get("cupones", d.codigo);
           if (!cup) { result = { ok: false, error: "Cupón no encontrado" }; break; }
+          if (cup.activo === false || cup.activo === "false") {
+            result = { ok: false, error: "Cupón inactivo" }; break;
+          }
+          const usosActuales = (parseInt(cup.usosActuales) || 0);
+          const limiteUsos   = parseInt(cup.limiteUsos) || 0;
+          if (limiteUsos > 0 && usosActuales >= limiteUsos) {
+            result = { ok: false, error: "Cupón agotado" }; break;
+          }
           await sb.update("cupones", d.codigo, {
-            usosActuales: (parseInt(cup.usosActuales)||0) + 1
+            usosActuales: usosActuales + 1,
+            // Desactivar automáticamente si llegó al límite
+            activo: limiteUsos > 0 ? (usosActuales + 1 < limiteUsos) : true
           });
           result = { ok: true };
           break;
@@ -1494,10 +1516,14 @@ class Supabase {
 
   // Query con filtro sobre campo JSONB (campo == valor)
   async query(table, campo, _op, valor) {
-    const res  = await fetch(
+    const res = await fetch(
       `${this.url}/rest/v1/${table}?select=id,data&data->>${encodeURIComponent(campo)}=eq.${encodeURIComponent(valor)}`,
       { headers: this._headers() }
     );
+    if (!res.ok) {
+      console.error(`[Supabase.query] Error ${res.status} en tabla ${table}`);
+      return [];
+    }
     const rows = await res.json();
     if (!Array.isArray(rows)) return [];
     return rows.map(r => ({ id: r.id, ...r.data }));
