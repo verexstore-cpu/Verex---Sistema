@@ -838,6 +838,42 @@ export default {
             });
           }
 
+          // ── Notificación por email ─────────────────────────────────
+          try {
+            const RESEND_KEY = "re_gYs3s2yY_DRho9Zqxb8um36JTPUZqCAM6";
+            await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
+              body: JSON.stringify({
+                from: "VEREX Store <hola@verexstore.com>",
+                to:   ["hola@verexstore.com"],
+                subject: `🛍️ Nuevo Pedido ${numeroPedido} — $${d.total}`,
+                html: `
+                  <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#0a0a0a;color:#fff;border-radius:12px;overflow:hidden;">
+                    <div style="background:linear-gradient(135deg,#7a5500,#C9A84C);padding:24px;text-align:center;">
+                      <h1 style="margin:0;font-size:22px;letter-spacing:3px;">VEREX STORE</h1>
+                      <p style="margin:6px 0 0;opacity:0.8;font-size:13px;">Nuevo pedido recibido</p>
+                    </div>
+                    <div style="padding:24px;">
+                      <h2 style="color:#C9A84C;margin:0 0 16px;">${numeroPedido}</h2>
+                      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+                        <tr><td style="padding:6px 0;color:#aaa;">Cliente</td><td style="font-weight:700;">${d.cliente}</td></tr>
+                        <tr><td style="padding:6px 0;color:#aaa;">Teléfono</td><td>${d.telefono}</td></tr>
+                        <tr><td style="padding:6px 0;color:#aaa;">Ubicación</td><td>${d.departamento || ""} ${d.municipio || ""}</td></tr>
+                        <tr><td style="padding:6px 0;color:#aaa;">Dirección</td><td>${d.direccion || "—"}</td></tr>
+                        <tr><td style="padding:6px 0;color:#aaa;">Productos</td><td>${d.productos || "—"}</td></tr>
+                        <tr><td style="padding:6px 0;color:#aaa;">Pago</td><td>${d.metodoPago || "—"}</td></tr>
+                        <tr><td style="padding:6px 0;color:#aaa;font-weight:700;">Total</td><td style="font-size:18px;font-weight:800;color:#C9A84C;">$${d.total}</td></tr>
+                      </table>
+                    </div>
+                    <div style="padding:16px 24px;background:#111;text-align:center;font-size:12px;color:#666;">
+                      El mundo es mejor cuando tu brillas ✨
+                    </div>
+                  </div>`
+              })
+            });
+          } catch(emailErr) { console.error("Email error:", emailErr); }
+
           result = { ok: true, numeroPedido, codigoCliente };
           break;
         }
