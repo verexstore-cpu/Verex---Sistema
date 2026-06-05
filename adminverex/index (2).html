@@ -15,15 +15,26 @@
             --naranja:#f97316; --ambar:#f59e0b;
         }
         *{box-sizing:border-box;margin:0;padding:0;}
-        body{font-family:'Segoe UI',sans-serif;background:var(--fondo);color:var(--texto);font-size:15px;}
-        /* Escala global de fuentes del panel */
-        #panel{font-size:15px;}
-        #panel td, #panel th{font-size:13px;}
-        #panel label{font-size:14px;}
-        #panel input, #panel select, #panel textarea{font-size:14px!important;padding:10px 12px!important;}
-        #panel h2{font-size:15px!important;}
-        #panel .lbl{font-size:14px!important;}
-        #panel .num{font-size:28px!important;}
+        body{font-family:'Segoe UI',sans-serif;background:var(--fondo);color:var(--texto);}
+        /* ── ESCALA GLOBAL PANEL ── */
+        #panel { font-size: 15px; }
+        #panel * { font-size: inherit; }
+        #panel input, #panel select, #panel textarea {
+            font-size: 14px !important;
+            padding: 10px 13px !important;
+            height: auto !important;
+        }
+        #panel button, #panel .btn {
+            font-size: 14px !important;
+            padding: 10px 18px !important;
+            min-height: 38px !important;
+        }
+        #panel td { font-size: 13px !important; }
+        #panel th { font-size: 13px !important; font-weight: 700; }
+        #panel .lbl { font-size: 14px !important; }
+        #panel .num { font-size: 30px !important; font-weight: 800; }
+        #panel h2   { font-size: 14px !important; }
+        #panel label{ font-size: 14px !important; }
 
         /* LOGIN */
         #login-screen{display:flex;justify-content:center;align-items:center;min-height:100vh;background:#0a0a0a;}
