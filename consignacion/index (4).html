@@ -3121,6 +3121,10 @@ function activarEdicionProducto() {
     document.getElementById("ep-desc").value = p.descripcion || "";
     document.getElementById("ep-precio").value = p.precio || p.precioNum || "";
     document.getElementById("ep-existencia").value = 0;
+    // Marcar material actual
+    document.querySelectorAll(".ep-mat-btn").forEach(b => {
+        b.style.outline = (b.dataset.mat === p.material) ? "2px solid var(--dorado)" : "";
+    });
     document.getElementById("modal-prod-vista").style.display = "none";
     document.getElementById("modal-prod-edicion").style.display = "block";
     // Mostrar foto actual en el preview del editor
@@ -3161,8 +3165,10 @@ async function guardarEdicionProducto() {
         if (url) img = url;
         else img = productoEditando.nuevaFoto;
     }
+    const matSelBtn = document.querySelector(".ep-mat-btn[style*='solid var(--dorado)']");
+    const material  = matSelBtn ? matSelBtn.dataset.mat : (productoEditando.p.material || "");
     // Update in Apps Script
-    await apiPost({ accion: "EDITAR_PRODUCTO", codigo: productoEditando.p.codigo, nombre, descripcion: desc, precio, img });
+    await apiPost({ accion: "EDITAR_PRODUCTO", codigo: productoEditando.p.codigo, nombre, descripcion: desc, precio, img, material });
     // Sumar existencia a bodega si se ingresó cantidad
     const existencia = parseInt(document.getElementById("ep-existencia")?.value) || 0;
     if (existencia > 0) {
@@ -3631,6 +3637,11 @@ function renderStock(items) {
             </div>
         </div>`;
     }).join('');
+}
+
+function selMatEdit(btn) {
+    document.querySelectorAll(".ep-mat-btn").forEach(b => b.style.outline = "");
+    btn.style.outline = "2px solid var(--dorado)";
 }
 
 function toggleMenuMover(codigo, btn) {
@@ -5073,6 +5084,16 @@ function enviarWAEstadoCuenta(ventaId) {
             <input type="text" id="ep-nombre" placeholder="Nombre">
             <input type="text" id="ep-desc" placeholder="Descripción">
             <input type="number" id="ep-precio" placeholder="Precio $" step="0.01">
+            <label style="font-size:11px;color:var(--plateado);display:block;margin:8px 0 4px;font-weight:600;">Material</label>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;" id="ep-mat-btns">
+                <button type="button" class="ep-mat-btn" data-mat="Plata Fina 925"        onclick="selMatEdit(this)" style="padding:5px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">Plata 925</button>
+                <button type="button" class="ep-mat-btn" data-mat="Plata 925 con Oro Laminado" onclick="selMatEdit(this)" style="padding:5px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">Plata + Oro</button>
+                <button type="button" class="ep-mat-btn" data-mat="Acero 316L"            onclick="selMatEdit(this)" style="padding:5px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">Acero 316L</button>
+                <button type="button" class="ep-mat-btn" data-mat="Oro"                   onclick="selMatEdit(this)" style="padding:5px 10px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:11px;font-weight:600;cursor:pointer;">✨ Oro</button>
+                <button type="button" class="ep-mat-btn" data-mat="Oro 10 Kilates"        onclick="selMatEdit(this)" style="padding:5px 10px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:11px;font-weight:600;cursor:pointer;">🥇 Oro 10K</button>
+                <button type="button" class="ep-mat-btn" data-mat="Oro 14 Kilates"        onclick="selMatEdit(this)" style="padding:5px 10px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:11px;font-weight:600;cursor:pointer;">👑 Oro 14K</button>
+                <button type="button" class="ep-mat-btn" data-mat="Reloj"                 onclick="selMatEdit(this)" style="padding:5px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">⌚ Reloj</button>
+            </div>
             <label style="font-size:11px;color:var(--plateado);display:block;margin:8px 0 4px;font-weight:600;">📦 Agregar a Bodega</label>
             <input type="number" id="ep-existencia" placeholder="Cantidad a sumar (ej: 2)" min="0" value="0" style="border-color:var(--dorado);">
             <div style="text-align:center;margin-bottom:12px;">
