@@ -921,17 +921,24 @@
 
 <!-- Modal Guía C807 -->
 <div id="modal-c807" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10000;justify-content:center;align-items:center;padding:20px;">
-    <div style="background:#fff;border-radius:16px;padding:24px;max-width:420px;width:100%;max-height:90vh;overflow-y:auto;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <div style="background:#fff;border-radius:16px;padding:24px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.4);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
             <h3 style="margin:0;font-size:16px;">📋 Datos para Guía C807</h3>
             <button onclick="document.getElementById('modal-c807').style.display='none'"
-                style="background:none;border:none;font-size:20px;cursor:pointer;">✕</button>
+                style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;">✕</button>
         </div>
+        <p style="font-size:12px;color:#888;margin-bottom:16px;">Toca cada campo para copiarlo al portapapeles</p>
         <div id="c807-contenido"></div>
-        <button onclick="copiarTodoC807()"
-            style="width:100%;padding:12px;background:#00875A;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;margin-top:16px;">
-            📋 Copiar Todo
-        </button>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;">
+            <button onclick="copiarTodoC807()"
+                style="padding:12px;background:#00875A;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">
+                📋 Copiar Todo
+            </button>
+            <button onclick="window.open('https://app.c807.com/xpress/#/tra/crear_guia','_blank');this.textContent='✅ Abierto!';setTimeout(()=>this.textContent='🚚 Abrir C807',2000)"
+                style="padding:12px;background:#1a56db;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">
+                🚚 Abrir C807
+            </button>
+        </div>
     </div>
 </div>
 
@@ -2243,6 +2250,8 @@ function mostrarGuiaC807(numeroPedido) {
 
     const modal = document.getElementById("modal-c807");
     modal.style.display = "flex";
+    // Abrir C807 automáticamente
+    window.open('https://app.c807.com/xpress/#/tra/crear_guia', '_blank');
 }
 
 function copiarTodoC807() {
