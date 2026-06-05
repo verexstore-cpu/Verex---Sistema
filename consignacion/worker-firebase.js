@@ -1482,12 +1482,19 @@ async function hashStr(str) {
 // (permite cambiar contraseña sin editar el env var de Cloudflare).
 async function verificarPassword(pass, env, sb) {
   if (!pass) return false;
+  // Aceptar texto plano (SECRET_PASS del env) o su hash SHA-256
   if (pass === env.SECRET_PASS) return true;
+  const hashDeSecret = await hashStr(env.SECRET_PASS || "");
+  if (pass === hashDeSecret) return true;
+  // También verificar contra passHash guardado en Supabase
   try {
     const cfg = await sb.get("config", "settings");
     if (cfg && cfg.passHash) {
+      // Aceptar el hash directamente (frontend ya lo hasheó)
+      if (pass === cfg.passHash) return true;
+      // O hashear lo que llegó (compatibilidad con texto plano)
       const hash = await hashStr(pass);
-      return hash === cfg.passHash;
+      if (hash === cfg.passHash) return true;
     }
   } catch(_) {}
   return false;
