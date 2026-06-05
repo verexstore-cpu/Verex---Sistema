@@ -898,6 +898,18 @@
 
 <script>
 // ═════════════════════════════════════════════
+//  SANITIZACIÓN HTML (previene XSS)
+// ═════════════════════════════════════════════
+function esc(str) {
+    return String(str ?? "")
+        .replace(/&/g,"&amp;")
+        .replace(/</g,"&lt;")
+        .replace(/>/g,"&gt;")
+        .replace(/"/g,"&quot;")
+        .replace(/'/g,"&#39;");
+}
+
+// ═════════════════════════════════════════════
 //  CONFIG
 // ═════════════════════════════════════════════
 const API_URL    = "https://verex-api.verexstore.workers.dev/";
@@ -1240,11 +1252,11 @@ function renderPedidos() {
             <td style="font-family:monospace;font-size:11px;color:var(--azul);font-weight:700;white-space:nowrap;">${p.numeroPedido||"—"}</td>
             <td style="font-size:12px;white-space:nowrap;color:#888;">${fecha}</td>
             <td style="overflow:hidden;">
-                <div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.cliente||"—"}</div>
-                <a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-size:11px;text-decoration:none;">${p.telefono||""}</a>
+                <div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.cliente)||"—"}</div>
+                <a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-size:11px;text-decoration:none;">${esc(p.telefono)||""}</a>
             </td>
-            <td style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.municipio||"—"}</td>
-            <td style="font-size:11px;color:#777;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.productos||"—"}</td>
+            <td style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.municipio)||"—"}</td>
+            <td style="font-size:11px;color:#777;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.productos)||"—"}</td>
             <td style="font-weight:700;color:var(--verde);white-space:nowrap;">$${parseFloat(String(p.total).replace(/[^0-9.]/g,"")||0).toFixed(2)}</td>
             <td style="font-size:11px;color:#aaa;">${pagoCorto}</td>
             <td><select class="es" style="font-size:11px;padding:3px 4px;border-color:${estadoColor};color:${estadoColor};" onchange="cambiarEstado(this,'${p.numeroPedido||""}','${p.cliente}','${p.fecha}')">${opts}</select></td>
@@ -1275,10 +1287,10 @@ function renderPedidos() {
                 <span class="ped-card-fecha">${fecha}</span>
             </div>
             <div class="ped-card-body">
-                <span>👤 <b>${p.cliente||"—"}</b></span>
-                <span>📱 <a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-weight:600;text-decoration:none;">${p.telefono||"—"}</a></span>
-                <span>📍 ${p.municipio||"—"}</span>
-                <span>🛍️ ${p.productos||"—"}</span>
+                <span>👤 <b>${esc(p.cliente)||"—"}</b></span>
+                <span>📱 <a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-weight:600;text-decoration:none;">${esc(p.telefono)||"—"}</a></span>
+                <span>📍 ${esc(p.municipio)||"—"}</span>
+                <span>🛍️ ${esc(p.productos)||"—"}</span>
                 <span>💰 <b style="color:var(--verde)">${p.total||"—"}</b></span>
                 <span>💳 ${p.metodoPago||"—"}</span>
             </div>
@@ -1321,9 +1333,9 @@ function renderClientes() {
         const fecha = c.fechaRegistro ? new Date(c.fechaRegistro).toLocaleDateString("es-SV") : "—";
         return `<tr>
             <td><span style="font-family:monospace;font-weight:700;color:var(--azul);">${c.codigo||"—"}</span></td>
-            <td><b>${c.nombre||"—"}</b></td>
-            <td><a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-weight:600;text-decoration:none;">${c.telefono||"—"}</a></td>
-            <td>${c.municipio||"—"}</td>
+            <td><b>${esc(c.nombre)||"—"}</b></td>
+            <td><a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-weight:600;text-decoration:none;">${esc(c.telefono)||"—"}</a></td>
+            <td>${esc(c.municipio)||"—"}</td>
             <td style="text-align:center;"><b>${c.totalPedidos||0}</b></td>
             <td style="font-size:12px;color:#888;">${fecha}</td>
             <td><button class="btn" style="background:#111;color:#fff;padding:4px 10px;font-size:12px;"
@@ -1342,9 +1354,9 @@ function renderClientes() {
                 <span class="ped-card-fecha">${fecha}</span>
             </div>
             <div class="ped-card-body">
-                <span>👤 <b>${c.nombre||"—"}</b></span>
-                <span>📱 <a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-weight:600;text-decoration:none;">${c.telefono||"—"}</a></span>
-                <span>📍 ${c.municipio||"—"}</span>
+                <span>👤 <b>${esc(c.nombre)||"—"}</b></span>
+                <span>📱 <a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-weight:600;text-decoration:none;">${esc(c.telefono)||"—"}</a></span>
+                <span>📍 ${esc(c.municipio)||"—"}</span>
                 <span>🛍️ <b>${c.totalPedidos||0}</b> pedidos</span>
             </div>
             <div class="ped-card-footer">

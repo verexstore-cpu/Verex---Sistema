@@ -4500,9 +4500,9 @@ function renderHistorialVD() {
             return `<div style="background:#0f0f0f;border:1px solid ${esCredito ? "#5c1a1a" : "#1a3a1a"};border-radius:10px;padding:12px;margin-bottom:8px;">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
                     <div style="flex:1;min-width:0;">
-                        <div style="font-size:14px;font-weight:700;color:#fff;">${v.cliente || "Sin nombre"}</div>
-                        <div style="font-size:11px;color:var(--plateado);">${fecha} ${hora} · ${v.telefono||""}</div>
-                        ${v.nota ? `<div style="font-size:11px;color:#888;margin-top:2px;font-style:italic;">"${v.nota}"</div>` : ""}
+                        <div style="font-size:14px;font-weight:700;color:#fff;">${sanitizar(v.cliente || "Sin nombre")}</div>
+                        <div style="font-size:11px;color:var(--plateado);">${fecha} ${hora} · ${sanitizar(v.telefono||"")}</div>
+                        ${v.nota ? `<div style="font-size:11px;color:#888;margin-top:2px;font-style:italic;">"${sanitizar(v.nota)}"</div>` : ""}
                     </div>
                     <div style="text-align:right;flex-shrink:0;margin-left:10px;">
                         <div style="font-size:16px;font-weight:700;color:${esCredito ? "#e85555" : "#52d68a"};">$${total.toFixed(2)}</div>
@@ -4719,9 +4719,9 @@ function renderCreditosPendientes() {
         return `<div style="background:#111;border:1px solid #2a2a2a;border-radius:10px;padding:12px;margin-bottom:10px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
                 <div>
-                    <div style="font-size:14px;font-weight:700;color:#fff;">${v.cliente}</div>
+                    <div style="font-size:14px;font-weight:700;color:#fff;">${sanitizar(v.cliente)}</div>
                     <div style="font-size:11px;color:var(--plateado);">${fecha} · Total: $${total.toFixed(2)}</div>
-                    ${v.nota ? `<div style="font-size:11px;color:#666;margin-top:2px;">${v.nota}</div>` : ''}
+                    ${v.nota ? `<div style="font-size:11px;color:#666;margin-top:2px;">${sanitizar(v.nota)}</div>` : ''}
                 </div>
                 <div style="text-align:right;">
                     <div style="font-size:16px;font-weight:700;color:#e85555;">$${saldo.toFixed(2)}</div>
@@ -5689,10 +5689,10 @@ function renderHistorialVentas() {
                         <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:${tb.bg};color:${tb.color};font-weight:600;">${tb.label}</span>
                         <span style="font-size:10px;color:${eb.color};font-weight:600;">${eb.label}</span>
                     </div>
-                    <div style="font-size:13px;font-weight:700;color:var(--blanco);">${v.cliente}</div>
+                    <div style="font-size:13px;font-weight:700;color:var(--blanco);">${sanitizar(v.cliente)}</div>
                     <div style="font-size:11px;color:var(--plateado);margin-top:2px;">${fecha} · Ref: ${String(v.id||"").slice(-6)}</div>
-                    ${itemsStr ? `<div style="font-size:11px;color:#888;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${itemsStr}</div>` : ""}
-                    ${v.nota ? `<div style="font-size:11px;color:var(--plateado);font-style:italic;margin-top:2px;">${v.nota}</div>` : ""}
+                    ${itemsStr ? `<div style="font-size:11px;color:#888;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sanitizar(itemsStr)}</div>` : ""}
+                    ${v.nota ? `<div style="font-size:11px;color:var(--plateado);font-style:italic;margin-top:2px;">${sanitizar(v.nota)}</div>` : ""}
                 </div>
                 <div style="text-align:right;flex-shrink:0;">
                     <div style="font-size:15px;font-weight:700;color:var(--dorado);">$${parseFloat(v.total||0).toFixed(2)}</div>
