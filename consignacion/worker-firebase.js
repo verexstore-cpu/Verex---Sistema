@@ -77,6 +77,39 @@ export default {
         return json({ ok });
       }
 
+      // ── 2FA: Enviar OTP por Telegram ───────────────────────────
+      if (d.accion === "ENVIAR_OTP") {
+        const ok = await verificarPassword(d._pass, env, sb);
+        if (!ok) return json({ ok: false, error: "No autorizado" }, 403);
+        const otp  = String(Math.floor(100000 + Math.random() * 900000));
+        const exp  = Date.now() + 5 * 60 * 1000; // 5 minutos
+        await sb.update("config", "settings", { otp, otpExp: exp });
+        const TELEGRAM_BOT = "8876219004:AAHZavenfX0SjTYZbzqGTEGBxD0P4VKvtLM";
+        const TELEGRAM_CHAT = "6788653579";
+        const msg = `🔐 *VEREX Admin*\n\nCódigo de acceso: *${otp}*\n\nVálido por 5 minutos.`;
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: TELEGRAM_CHAT, text: msg, parse_mode: "Markdown" })
+        });
+        return json({ ok: true });
+      }
+
+      // ── 2FA: Verificar OTP ─────────────────────────────────────
+      if (d.accion === "VERIFICAR_OTP") {
+        const ok = await verificarPassword(d._pass, env, sb);
+        if (!ok) return json({ ok: false, error: "No autorizado" }, 403);
+        const cfg = await sb.get("config", "settings");
+        if (!cfg || !cfg.otp || !cfg.otpExp) return json({ ok: false, error: "Sin OTP" });
+        if (Date.now() > cfg.otpExp) {
+          await sb.update("config", "settings", { otp: null, otpExp: null });
+          return json({ ok: false, error: "OTP expirado" });
+        }
+        if (String(d.codigo).trim() !== String(cfg.otp)) return json({ ok: false, error: "Código incorrecto" });
+        await sb.update("config", "settings", { otp: null, otpExp: null }); // Invalidar OTP usado
+        return json({ ok: true });
+      }
+
       // esAdmin: acepta SECRET_PASS (env var) O el hash guardado en Supabase
       const esAdmin = (await verificarPassword(d._pass, env, sb)) ||
                       (d.key && d.key === env.SECRET_KEY);

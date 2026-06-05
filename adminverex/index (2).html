@@ -235,9 +235,20 @@
     <div class="login-box">
         <h1>VEREX STORE</h1>
         <p>Panel de Administración</p>
-        <input type="password" id="in-pass" placeholder="Contraseña" onkeydown="if(event.key==='Enter')login()">
-        <button onclick="login()">INGRESAR</button>
-        <p id="login-err">⚠️ Contraseña incorrecta</p>
+        <!-- Paso 1: Contraseña -->
+        <div id="login-paso1">
+            <input type="password" id="in-pass" placeholder="Contraseña" onkeydown="if(event.key==='Enter')login()">
+            <button onclick="login()">INGRESAR</button>
+            <p id="login-err">⚠️ Contraseña incorrecta</p>
+        </div>
+        <!-- Paso 2: Código Telegram -->
+        <div id="login-paso2" style="display:none;">
+            <p style="font-size:13px;color:#aaa;margin-bottom:10px;">📱 Se envió un código a tu Telegram.<br>Ingresa el código de 6 dígitos:</p>
+            <input type="text" id="in-otp" placeholder="000000" maxlength="6" style="text-align:center;letter-spacing:6px;font-size:20px;font-weight:700;" onkeydown="if(event.key==='Enter')verificarOTP()">
+            <button onclick="verificarOTP()">VERIFICAR</button>
+            <p id="otp-err" style="color:var(--rojo);font-size:13px;margin-top:10px;display:none;">⚠️ Código incorrecto o expirado</p>
+            <p style="font-size:11px;color:#666;margin-top:8px;cursor:pointer;" onclick="reenviarOTP()">¿No llegó? Reenviar código</p>
+        </div>
     </div>
 </div>
 
@@ -906,32 +917,82 @@ let productos=[], pedidos=[], cupones=[];
 let notifLeidas = new Set(JSON.parse(localStorage.getItem("vx_notif")||"[]"));
 
 // ═════════════════════════════════════════════
-//  AUTH
+//  AUTH + 2FA TELEGRAM
 // ═════════════════════════════════════════════
+let _hashTemp = ""; // Hash temporal durante el proceso de 2FA
+
+function sesionValidaHoy() {
+    const data = JSON.parse(localStorage.getItem("vx_sesion_dia") || "{}");
+    const hoy  = new Date().toDateString();
+    return data.fecha === hoy && data.hash;
+}
+
+function entrarConSesion(hash) {
+    ADMIN_PASS = hash;
+    document.getElementById("login-screen").style.display = "none";
+    document.getElementById("panel").style.display = "block";
+    init();
+}
+
 async function login() {
     const input = document.getElementById("in-pass").value;
     if (!input) return;
     const hash = await sha256(input);
     const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"VERIFICAR_PASS", _pass: hash }) }).then(r=>r.json()).catch(()=>({ok:false}));
     if (res.ok) {
-        ADMIN_PASS = hash; // Guardar hash para peticiones posteriores
-        sessionStorage.setItem("vxa","1");
-        sessionStorage.setItem("vxh", hash); // Guardar hash en sesión
-        document.getElementById("login-screen").style.display = "none";
-        document.getElementById("panel").style.display = "block";
-        init();
+        _hashTemp = hash;
+        // Enviar OTP por Telegram
+        await enviarOTP();
+        document.getElementById("login-paso1").style.display = "none";
+        document.getElementById("login-paso2").style.display = "block";
+        document.getElementById("in-otp").focus();
     } else {
         document.getElementById("login-err").style.display = "block";
         document.getElementById("in-pass").value = "";
     }
 }
-function logout() { sessionStorage.clear(); location.reload(); }
-if (sessionStorage.getItem("vxa")==="1") {
-    ADMIN_PASS = sessionStorage.getItem("vxh") || "";
-    document.getElementById("login-screen").style.display = "none";
-    document.getElementById("panel").style.display = "block";
-    init();
+
+async function enviarOTP() {
+    await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"ENVIAR_OTP", _pass: _hashTemp }) }).catch(()=>{});
 }
+
+async function reenviarOTP() {
+    document.getElementById("otp-err").style.display = "none";
+    await enviarOTP();
+    document.getElementById("in-otp").value = "";
+    document.getElementById("in-otp").focus();
+    alert("Código reenviado a Telegram");
+}
+
+async function verificarOTP() {
+    const codigo = document.getElementById("in-otp").value.trim();
+    if (codigo.length !== 6) return;
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"VERIFICAR_OTP", _pass: _hashTemp, codigo }) }).then(r=>r.json()).catch(()=>({ok:false}));
+    if (res.ok) {
+        // Guardar sesión válida para todo el día
+        localStorage.setItem("vx_sesion_dia", JSON.stringify({ fecha: new Date().toDateString(), hash: _hashTemp }));
+        entrarConSesion(_hashTemp);
+    } else {
+        document.getElementById("otp-err").style.display = "block";
+        document.getElementById("in-otp").value = "";
+        document.getElementById("in-otp").focus();
+    }
+}
+
+function logout() {
+    localStorage.removeItem("vx_sesion_dia");
+    sessionStorage.clear();
+    location.reload();
+}
+
+// Auto-login si la sesión del día sigue válida
+(function() {
+    const sesion = JSON.parse(localStorage.getItem("vx_sesion_dia") || "{}");
+    const hoy    = new Date().toDateString();
+    if (sesion.fecha === hoy && sesion.hash) {
+        entrarConSesion(sesion.hash);
+    }
+})()
 
 // ═════════════════════════════════════════════
 //  TABS
