@@ -315,7 +315,13 @@
                 🔔 Pedidos
                 <span id="notif-badge"></span>
             </button>
-            <a href="https://verex-catalogo.pages.dev" target="_blank" class="btn-header">👁️ Ver Tienda</a>
+            <a href="https://mail.zoho.com" target="_blank" class="btn-header" id="btn-correo"
+               onclick="limpiarBadgeCorreo()"
+               style="position:relative;border-color:#C9A84C;color:#C9A84C;">
+                ✉️ Correo
+                <span id="correo-badge" style="display:none;position:absolute;top:-7px;right:-7px;background:#ef4444;color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;font-weight:700;align-items:center;justify-content:center;"></span>
+            </a>
+            <a href="https://verexstore.com" target="_blank" class="btn-header">👁️ Ver Tienda</a>
             <a href="https://verex-consignacion.pages.dev" target="_blank" class="btn-header">📦 Consignación</a>
             <button class="btn-header" onclick="abrirCambiarClave()" style="border-color:#f59e0b;color:#f59e0b;">🔑 Cambiar Clave</button>
             <button class="btn-header btn-logout" onclick="logout()">Salir</button>
@@ -1146,7 +1152,7 @@ async function cargarDatos(silencioso=false) {
 
 function renderAll(sil=false) {
     renderStats(); renderChart(); renderTop();
-    renderPedidos(); renderProductos(); renderCupones(); renderClientes();
+    renderPedidos(); renderProductos(); renderCupones(); renderClientes(); actualizarBadgeCorreo();
     renderEnvio(); renderEstado(); actualizarNotif(sil); renderBannerAdmin(); renderCarruselAdmin();
     cargarEstadisticas();
 }
@@ -1217,6 +1223,25 @@ function renderEstado() {
     document.getElementById("estado-info").innerHTML = cfg.tiendaActiva
         ? `<span class="badge bv2">✅ ABIERTA</span> <span style="margin-left:7px;">Clientes pueden ver y comprar.</span>`
         : `<span class="badge br2">🔴 CERRADA</span> <span style="margin-left:7px;">Catálogo oculto para clientes.</span>`;
+}
+
+function actualizarBadgeCorreo() {
+    const ultimaVisita = parseInt(localStorage.getItem("vx_ultima_visita") || "0");
+    const nuevos = pedidos.filter(p => p.fecha && new Date(p.fecha).getTime() > ultimaVisita).length;
+    const badge  = document.getElementById("correo-badge");
+    if (!badge) return;
+    if (nuevos > 0) {
+        badge.textContent = nuevos > 9 ? "9+" : nuevos;
+        badge.style.display = "flex";
+    } else {
+        badge.style.display = "none";
+    }
+}
+
+function limpiarBadgeCorreo() {
+    localStorage.setItem("vx_ultima_visita", Date.now());
+    const badge = document.getElementById("correo-badge");
+    if (badge) badge.style.display = "none";
 }
 
 function renderStats() {
