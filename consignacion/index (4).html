@@ -3120,6 +3120,7 @@ function activarEdicionProducto() {
     document.getElementById("ep-nombre").value = p.nombre || "";
     document.getElementById("ep-desc").value = p.descripcion || "";
     document.getElementById("ep-precio").value = p.precio || p.precioNum || "";
+    document.getElementById("ep-existencia").value = 0;
     document.getElementById("modal-prod-vista").style.display = "none";
     document.getElementById("modal-prod-edicion").style.display = "block";
     // Mostrar foto actual en el preview del editor
@@ -3162,6 +3163,14 @@ async function guardarEdicionProducto() {
     }
     // Update in Apps Script
     await apiPost({ accion: "EDITAR_PRODUCTO", codigo: productoEditando.p.codigo, nombre, descripcion: desc, precio, img });
+    // Sumar existencia a bodega si se ingresó cantidad
+    const existencia = parseInt(document.getElementById("ep-existencia")?.value) || 0;
+    if (existencia > 0) {
+        await apiPost({ accion: "STOCK_REGISTRAR", codigo, nombre, precio, cantidad: existencia, estado: "bodega" });
+        toast(`✅ Producto actualizado y +${existencia} unidades sumadas a bodega`);
+    } else {
+        toast("✅ Producto actualizado");
+    }
     // Update local
     const p = productoEditando.p;
     p.codigo = codigo; p.nombre = nombre; p.descripcion = desc;
@@ -3170,9 +3179,9 @@ async function guardarEdicionProducto() {
     const idx = productosDisponibles.findIndex(x => x.codigo === productoEditando.p.codigo);
     if (idx >= 0) productosDisponibles[idx] = p;
     btn.textContent = "💾 Guardar"; btn.disabled = false;
-    toast("✅ Producto actualizado");
     cerrarModal("modal-ver-producto");
     renderGridEntrega(productosDisponibles);
+    if (existencia > 0) await cargarStock();
 }
 
 // ── NUEVO LOTE ───────────────────────────────────────────────────────
@@ -5064,6 +5073,8 @@ function enviarWAEstadoCuenta(ventaId) {
             <input type="text" id="ep-nombre" placeholder="Nombre">
             <input type="text" id="ep-desc" placeholder="Descripción">
             <input type="number" id="ep-precio" placeholder="Precio $" step="0.01">
+            <label style="font-size:11px;color:var(--plateado);display:block;margin:8px 0 4px;font-weight:600;">📦 Agregar a Bodega</label>
+            <input type="number" id="ep-existencia" placeholder="Cantidad a sumar (ej: 2)" min="0" value="0" style="border-color:var(--dorado);">
             <div style="text-align:center;margin-bottom:12px;">
                 <label for="ep-foto" style="display:block;cursor:pointer;">
                     <div id="ep-foto-preview" style="width:100%;height:150px;background:var(--gris2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:8px;overflow:hidden;">📷</div>
