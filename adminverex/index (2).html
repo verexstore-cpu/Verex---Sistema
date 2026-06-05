@@ -1474,11 +1474,12 @@ function generarPDF(datos) {
     totalRow("ENVÍO", envio > 0 ? `$${envio.toFixed(2)}` : "GRATIS");
     totalRow("TOTAL FINAL:", `$${total.toFixed(2)}`, true, true);
 
+    const yFrase = Math.max(y + 0.25, 5.55);
     doc.setFont("times", "italic");
     doc.setFontSize(8);
     doc.setTextColor(120, 120, 120);
-    doc.text("Gracias por tu compra.", pageW / 2, 5.68, { align: "center" });
-    doc.text("El mundo es mejor cuando tu brillas.", pageW / 2, 5.81, { align: "center" });
+    doc.text("Gracias por tu compra.", pageW / 2, yFrase, { align: "center" });
+    doc.text("El mundo es mejor cuando tu brillas.", pageW / 2, yFrase + 0.13, { align: "center" });
     doc.setTextColor(0, 0, 0);
 
     return doc;
