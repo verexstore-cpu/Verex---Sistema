@@ -223,6 +223,7 @@ export default {
 
         // ══ CONSIGNACION ══════════════════════════════════════════
         case "GET_CONSIGNACION": {
+          if (!esAdmin) return forbidden();
           const [cons, vends, stock] = await Promise.all([
             sb.getAll("consignacion"),
             sb.getAll("vendedores"),
@@ -258,6 +259,7 @@ export default {
         }
 
         case "REGISTRAR_VENTA": {
+          if (!esAdmin) return forbidden();
           const cons = await sb.get("consignacion", d.id);
           if (!cons) { result = { ok: false, error: "Item no encontrado" }; break; }
           const nuevoVendido = (parseInt(cons.vendido)||0) + (parseInt(d.cantidad)||1);
@@ -303,6 +305,20 @@ export default {
 
         case "ELIMINAR_ITEM_CONSIGNACION": {
           if (!esAdmin) return forbidden();
+          // Restaurar stock_consignacion antes de borrar
+          const itemCons = await sb.get("consignacion", d.id);
+          if (itemCons && itemCons.codigo) {
+            const cantRestaurar = Math.max(0, (parseInt(itemCons.cantidad)||0) - (parseInt(itemCons.vendido)||0));
+            if (cantRestaurar > 0) {
+              const prodStock = await sb.get("stock", itemCons.codigo);
+              if (prodStock) {
+                await sb.update("stock", itemCons.codigo, {
+                  stock_consignacion: Math.max(0, (parseInt(prodStock.stock_consignacion)||0) - cantRestaurar),
+                  stock_bodega: (parseInt(prodStock.stock_bodega)||0) + cantRestaurar
+                });
+              }
+            }
+          }
           await sb.delete("consignacion", d.id);
           result = { ok: true };
           break;

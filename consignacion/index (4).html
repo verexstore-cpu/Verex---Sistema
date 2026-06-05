@@ -3170,10 +3170,12 @@ async function guardarEdicionProducto() {
     const material  = matSelBtn ? matSelBtn.dataset.mat : (productoEditando.p.material || "");
     // Update in Apps Script
     await apiPost({ accion: "EDITAR_PRODUCTO", codigo: productoEditando.p.codigo, nombre, descripcion: desc, precio, img, material });
-    // Sumar existencia a bodega si se ingresó cantidad
+    // Sumar existencia a bodega si se ingresó cantidad (sin sobreescribir foto/material)
     const existencia = parseInt(document.getElementById("ep-existencia")?.value) || 0;
     if (existencia > 0) {
-        await apiPost({ accion: "STOCK_REGISTRAR", codigo, nombre, precio, cantidad: existencia, estado: "bodega" });
+        const stockActual = stockData.find(s => s.codigo === productoEditando.p.codigo);
+        const bodegaActual = parseInt(stockActual?.stock_bodega || 0);
+        await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo, stock_bodega: bodegaActual + existencia }] });
         toast(`✅ Producto actualizado y +${existencia} unidades sumadas a bodega`);
     } else {
         toast("✅ Producto actualizado");

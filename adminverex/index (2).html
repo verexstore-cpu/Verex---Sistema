@@ -722,7 +722,7 @@
                         🎯 Categorías específicas
                     </button>
                 </div>
-                <div id="sec-cats-detalle" style="display:none;display:flex;flex-wrap:wrap;gap:8px;">
+                <div id="sec-cats-detalle" style="display:none;flex-wrap:wrap;gap:8px;">
                     <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
                         <input type="checkbox" class="cup-cat" value="AN"> 💍 Anillos</label>
                     <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;font-weight:500;margin:0;background:var(--gris);padding:7px 13px;border-radius:7px;border:1.5px solid var(--borde);cursor:pointer;">
@@ -918,6 +918,7 @@ function logout() { sessionStorage.clear(); location.reload(); }
 if (sessionStorage.getItem("vxa")==="1") {
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("panel").style.display = "block";
+    init();
 }
 
 // ═════════════════════════════════════════════
