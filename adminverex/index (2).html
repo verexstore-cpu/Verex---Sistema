@@ -15,7 +15,15 @@
             --naranja:#f97316; --ambar:#f59e0b;
         }
         *{box-sizing:border-box;margin:0;padding:0;}
-        body{font-family:'Segoe UI',sans-serif;background:var(--fondo);color:var(--texto);}
+        body{font-family:'Segoe UI',sans-serif;background:var(--fondo);color:var(--texto);font-size:15px;}
+        /* Escala global de fuentes del panel */
+        #panel{font-size:15px;}
+        #panel td, #panel th{font-size:13px;}
+        #panel label{font-size:14px;}
+        #panel input, #panel select, #panel textarea{font-size:14px!important;padding:10px 12px!important;}
+        #panel h2{font-size:15px!important;}
+        #panel .lbl{font-size:14px!important;}
+        #panel .num{font-size:28px!important;}
 
         /* LOGIN */
         #login-screen{display:flex;justify-content:center;align-items:center;min-height:100vh;background:#0a0a0a;}
@@ -92,7 +100,7 @@
         .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:11px;}
 
         /* BUTTONS */
-        .btn{padding:8px 16px;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:4px;}
+        .btn{padding:11px 20px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:6px;}
         .btn:hover{opacity:.85;transform:translateY(-1px);}
         .bp{background:#111;color:#fff;}
         .ba{background:var(--azul);color:#fff;}
