@@ -1178,6 +1178,8 @@ function renderPedidos() {
                 <div style="display:flex;gap:4px;">
                     <button class="btn" style="background:#ef4444;color:#fff;padding:4px 8px;font-size:11px;"
                         onclick='generarPDFAdmin(${i},"${p.numeroPedido||""}")'>PDF</button>
+                    <button class="btn" style="background:#00875A;color:#fff;padding:4px 8px;font-size:11px;"
+                        onclick='mostrarGuiaC807("${p.numeroPedido||""}")'>📋</button>
                     <button class="btn br" style="padding:4px 7px;font-size:11px;"
                         onclick='eliminarPedido("${p.numeroPedido||""}")'>🗑️</button>
                 </div>
