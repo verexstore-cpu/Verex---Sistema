@@ -3605,13 +3605,54 @@ function renderStock(items) {
                     Tienda: <b style="color:#4caf82;">${item.stock_tienda||0}</b> ·
                     Consig: <b style="color:var(--dorado);">${item.stock_consignacion||0}</b>
                 </div>
-                <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px;">
+                <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px;position:relative;">
                     <button onclick="event.stopPropagation();abrirEditarStockItem(${jsArg(item.codigo)})" style="padding:4px 10px;font-size:11px;background:#4a6fa5;color:#fff;border:none;border-radius:6px;cursor:pointer;">✏️ Editar</button>
+                    <button onclick="event.stopPropagation();toggleMenuMover(${jsArg(item.codigo)},this)" style="padding:4px 10px;font-size:11px;background:var(--dorado);color:var(--negro);border:none;border-radius:6px;cursor:pointer;font-weight:700;">Mover ▾</button>
                     <button onclick="event.stopPropagation();eliminarStockItem(${jsArg(item.codigo)})" style="padding:4px 10px;font-size:11px;background:#c0392b;color:#fff;border:none;border-radius:6px;cursor:pointer;">🗑️</button>
+                    <div id="menu-mover-${sanitizar(item.codigo)}" style="display:none;position:absolute;bottom:32px;right:0;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+                        <button onclick="event.stopPropagation();moverItemDirecto(${jsArg(item.codigo)},'tienda')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4caf82;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🛍️ Enviar a Tienda</button>
+                        <button onclick="event.stopPropagation();moverItemDirecto(${jsArg(item.codigo)},'bodega')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4a6fa5;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">📦 Devolver a Bodega</button>
+                        <button onclick="event.stopPropagation();moverItemDirectoVendedor(${jsArg(item.codigo)})" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:var(--dorado);border:none;cursor:pointer;text-align:left;font-weight:600;">👤 Asignar a Vendedor</button>
+                    </div>
                 </div>
             </div>
         </div>`;
     }).join('');
+}
+
+function toggleMenuMover(codigo, btn) {
+    // Cerrar todos los otros menús abiertos
+    document.querySelectorAll('[id^="menu-mover-"]').forEach(m => {
+        if (m.id !== `menu-mover-${codigo}`) m.style.display = "none";
+    });
+    const menu = document.getElementById(`menu-mover-${codigo}`);
+    if (!menu) return;
+    menu.style.display = menu.style.display === "none" ? "block" : "none";
+    // Cerrar al hacer clic fuera
+    if (menu.style.display === "block") {
+        setTimeout(() => {
+            document.addEventListener("click", function cerrar() {
+                menu.style.display = "none";
+                document.removeEventListener("click", cerrar);
+            }, { once: true });
+        }, 10);
+    }
+}
+
+async function moverItemDirecto(codigo, destino) {
+    document.querySelectorAll('[id^="menu-mover-"]').forEach(m => m.style.display = "none");
+    // Seleccionar solo ese item y ejecutar la acción
+    stockSeleccionados = [codigo];
+    if (destino === "tienda") await asignarATienda();
+    else if (destino === "bodega") await devolverABodega();
+    stockSeleccionados = [];
+}
+
+async function moverItemDirectoVendedor(codigo) {
+    document.querySelectorAll('[id^="menu-mover-"]').forEach(m => m.style.display = "none");
+    stockSeleccionados = [codigo];
+    await asignarAVendedor();
+    stockSeleccionados = [];
 }
 
 function toggleSeleccionStock(codigo) {
