@@ -1374,8 +1374,8 @@ async function generarEtiquetas() {
         doc.setTextColor(60,60,60);
         doc.text(codigo, textX, y + 0.22);
 
-        // Material fila 3 — centrado, DENTRO de la etiqueta
-        const material = extraerMaterial(p.nombre || "", p.descripcion || "");
+        // Material fila 3 — usar campo material directo, o detectar del nombre
+        const material = p.material || extraerMaterial(p.nombre || "", p.descripcion || "");
         if (material) {
             doc.setFont("helvetica","bold");
             let mSize = 4.5;
