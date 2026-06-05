@@ -891,7 +891,15 @@
 // ═════════════════════════════════════════════
 const API_URL    = "https://verex-api.verexstore.workers.dev/";
 const SECRET_KEY = ""; // Moved to Worker
-const ADMIN_PASS = "verex2026";
+const ADMIN_PASS_RAW = "verex2026";
+let   ADMIN_PASS = ADMIN_PASS_RAW; // Se reemplaza por hash SHA-256 al cargar
+
+// Hashear contraseña para nunca enviarla en texto plano
+async function sha256(str) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
+}
+sha256(ADMIN_PASS_RAW).then(h => { ADMIN_PASS = h; });
 
 let cfg = {
     tiendaActiva: true,
@@ -1293,7 +1301,7 @@ async function generarCuponCliente(codigo, nombre, telefono) {
         montoMinimo: 0, limiteUsos: 1, activo: true,
         codigoCliente: codigo
     };
-    await fetch(API_URL, { method:'POST', mode:'no-cors', body: JSON.stringify(datos) });
+    await fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(datos) });
     const tel = String(telefono).replace(/\D/g,"");
     const msg = "Hola " + nombre + "! Tienes un cupon exclusivo de VEREX: " + codigoCupon + " con " + descuento + "% de descuento. Valido para tu proxima compra!";
     window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`);
@@ -1491,7 +1499,7 @@ async function eliminarPedido(numeroPedido) {
     const idx = pedidos.findIndex(p => p.numeroPedido === numeroPedido);
     if (idx >= 0) pedidos.splice(idx, 1);
     renderPedidos();
-    await fetch(API_URL, { method:'POST', mode:'no-cors',
+    await fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ accion:"ELIMINAR_PEDIDO", _pass:ADMIN_PASS, numeroPedido })
     });
     toast("🗑️ Pedido eliminado", "#ef4444");
@@ -1531,7 +1539,7 @@ async function cambiarEstado(sel, numeroPedido, cliente, fecha) {
     const p = pedidos.find(p => p.numeroPedido === numeroPedido || (p.cliente === cliente && String(p.fecha) === String(fecha)));
     if (p) p.estado = estado;
 
-    await fetch(API_URL, { method:'POST', mode:'no-cors',
+    await fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ accion:"ACTUALIZAR_ESTADO_PEDIDO", _pass:ADMIN_PASS, numeroPedido, cliente, fecha, estado })
     });
 
@@ -1673,7 +1681,7 @@ async function guardarEdicion() {
         img:    document.getElementById("ed-img").value,
         ...(caracteristicas !== undefined && { caracteristicas }),
     };
-    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify(datos)});
+    await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(datos)});
     cerrarModal(); toast("✅ Producto actualizado","#22c55e");
     await cargarDatos(true);
 }
@@ -1681,13 +1689,13 @@ async function guardarEdicion() {
 async function desactivarProducto() {
     const cod=document.getElementById("ed-cod").value;
     if (!confirm(`¿Desactivar ${cod}?`)) return;
-    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ELIMINAR_PRODUCTO",_pass:ADMIN_PASS,codigo:cod})});
+    await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accion:"ELIMINAR_PRODUCTO",_pass:ADMIN_PASS,codigo:cod})});
     cerrarModal(); toast("🗑️ Producto desactivado");
     await cargarDatos(true);
 }
 
 async function toggleDest(codigo, destacado) {
-    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"EDITAR_PRODUCTO",_pass:ADMIN_PASS,codigo,destacado})});
+    await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accion:"EDITAR_PRODUCTO",_pass:ADMIN_PASS,codigo,destacado})});
     toast(destacado?"⭐ Marcado como destacado":"Quitado de destacados");
     await cargarDatos(true);
 }
@@ -1734,7 +1742,7 @@ async function publicarProducto() {
     const btn=document.querySelector("#tab-2 .bfull");
     btn.textContent="Publicando..."; btn.disabled=true;
     try {
-        await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"CREAR_PRODUCTO",_pass:ADMIN_PASS,nombre,precio,img,codigo,caracteristicas:JSON.stringify(stocks)})});
+        await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accion:"CREAR_PRODUCTO",_pass:ADMIN_PASS,nombre,precio,img,codigo,caracteristicas:JSON.stringify(stocks)})});
         toast("✅ Producto publicado","#22c55e");
         document.getElementById("in-prec").value=document.getElementById("in-img").value=document.getElementById("in-det").value="";
         document.querySelectorAll(".ts").forEach(i=>i.value=0);
@@ -1937,21 +1945,21 @@ async function crearCupon() {
     document.querySelectorAll(".cup-cat").forEach(x => x.checked = false);
     document.getElementById("cup-preview").style.display = "none";
 
-    await fetch(API_URL, { method:'POST', mode:'no-cors',
+    await fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ accion:"CREAR_CUPON", _pass:ADMIN_PASS, ...nuevo }) });
     toast("✅ Cupón creado", "#22c55e");
 }
 
 async function toggleCupon(i) {
     cupones[i].activo=!cupones[i].activo; renderCupones();
-    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"TOGGLE_CUPON",_pass:ADMIN_PASS,codigo:cupones[i].codigo,activo:cupones[i].activo})});
+    await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accion:"TOGGLE_CUPON",_pass:ADMIN_PASS,codigo:cupones[i].codigo,activo:cupones[i].activo})});
     toast(cupones[i].activo?"✅ Cupón activado":"🔴 Cupón desactivado");
 }
 
 async function eliminarCupon(i) {
     if (!confirm(`¿Eliminar cupón "${cupones[i].codigo}"?`)) return;
     const cod=cupones[i].codigo; cupones.splice(i,1); renderCupones();
-    await fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ELIMINAR_CUPON",_pass:ADMIN_PASS,codigo:cod})});
+    await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accion:"ELIMINAR_CUPON",_pass:ADMIN_PASS,codigo:cod})});
     toast("🗑️ Cupón eliminado");
 }
 
@@ -2173,7 +2181,7 @@ function guardarCarrusel() {
 
 function saveConfig() {
     localStorage.setItem("vx_cfg",JSON.stringify(cfg));
-    fetch(API_URL,{method:'POST',mode:'no-cors',body:JSON.stringify({accion:"ACTUALIZAR_CONFIG",_pass:ADMIN_PASS,config:cfg})});
+    fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accion:"ACTUALIZAR_CONFIG",_pass:ADMIN_PASS,config:cfg})});
 }
 
 // ═════════════════════════════════════════════

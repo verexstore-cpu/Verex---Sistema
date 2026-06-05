@@ -96,6 +96,9 @@ export default {
           if (!esAdmin) return forbidden();
           const items = Array.isArray(d.items) ? d.items : [d];
           const codigos = [];
+          // Cargar stock UNA sola vez fuera del loop (evita race condition y N queries)
+          const allStockCache = await sb.getAll("stock");
+          const codigosUsados = new Set(allStockCache.map(s => s.codigo));
           for (const item of items) {
             // Auto-generar código si no viene o se pide
             let codigo = item.codigo;
@@ -112,18 +115,23 @@ export default {
                             : "";
               const prefCat = String(item.categoria || "GEN").toUpperCase().slice(0, 2);
               const prefijo = prefMat ? `${prefMat}-${prefCat}` : prefCat;
-              const allStock = await sb.getAll("stock");
               let maxNum = 0;
-              allStock.forEach(s => {
+              allStockCache.forEach(s => {
                 const base = String(s.codigoBase || s.codigo || "");
                 if (base.startsWith(prefijo)) {
                   const num = parseInt(base.replace(prefijo, "")) || 0;
                   if (num > maxNum) maxNum = num;
                 }
               });
-              const codigoBase = `${prefijo}${String(maxNum + 1).padStart(3, "0")}`;
+              // Anti-colisión: incrementar hasta encontrar código libre
+              let codigoBase;
+              do {
+                maxNum++;
+                codigoBase = `${prefijo}${String(maxNum).padStart(3, "0")}`;
+              } while (codigosUsados.has(codigoBase) || codigosUsados.has(`${codigoBase}T${item.talla}`));
               codigo = item.talla ? `${codigoBase}T${item.talla}` : codigoBase;
               item.codigoBase = item.codigoBase || codigoBase;
+              codigosUsados.add(codigo); // Registrar para evitar colisión en el mismo lote
             }
             const qty = parseInt(item.cantidad) || 1;
             const doc = {

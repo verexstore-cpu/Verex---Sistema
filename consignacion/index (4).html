@@ -1108,7 +1108,7 @@ async function login() {
     const hash = await hashStr(pass);
     if (hash !== PASS_HASH) { toast("⚠️ Contraseña incorrecta", "#c0392b"); return; }
     _sessionPass = pass;
-    localStorage.setItem("vx_consig_session", pass);
+    sessionStorage.setItem("vx_consig_session", pass);
     document.getElementById("pantalla-login").style.display = "none";
     document.getElementById("app").style.display = "block";
     cargarDatos();
@@ -1160,7 +1160,7 @@ async function actualizarSistema() {
 
 function cerrarSesion() {
     _sessionPass = null;
-    localStorage.removeItem("vx_consig_session");
+    sessionStorage.removeItem("vx_consig_session");
     if (_autoSyncInterval) { clearInterval(_autoSyncInterval); _autoSyncInterval = null; }
     document.getElementById("pantalla-login").style.display = "flex";
     document.getElementById("app").style.display = "none";
@@ -4291,10 +4291,10 @@ function asignarAVendedor() {
 
 // Auto-login si hay sesión guardada
 (async () => {
-    const saved = localStorage.getItem("vx_consig_session");
+    const saved = sessionStorage.getItem("vx_consig_session");
     if (!saved) return;
     const hash = await hashStr(saved);
-    if (hash !== PASS_HASH) { localStorage.removeItem("vx_consig_session"); return; }
+    if (hash !== PASS_HASH) { sessionStorage.removeItem("vx_consig_session"); return; }
     _sessionPass = saved;
     document.getElementById("pantalla-login").style.display = "none";
     document.getElementById("app").style.display = "block";
