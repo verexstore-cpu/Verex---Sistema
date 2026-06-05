@@ -2770,7 +2770,7 @@ function procesarFotoJoya(file) {
                 const out = document.createElement("canvas");
                 out.width = outSize; out.height = outSize;
                 const octx = out.getContext("2d");
-                octx.fillStyle = `rgb(${bgR},${bgG},${bgB})`;
+                octx.fillStyle = `rgb(${bgR},${bgG},${bgB})`; // fondo original, sin alterar color
                 octx.fillRect(0, 0, outSize, outSize);
                 octx.drawImage(tmp, cx1, cy1, cw, ch,
                     Math.round(offX*scale), Math.round(offY*scale),
