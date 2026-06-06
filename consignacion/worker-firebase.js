@@ -840,7 +840,8 @@ export default {
 
           // ── Notificación por email ─────────────────────────────────
           try {
-            const RESEND_KEY = "re_gYs3s2yY_DRho9Zqxb8um36JTPUZqCAM6";
+            const RESEND_KEY = env.RESEND_KEY;
+            if (!RESEND_KEY) throw new Error("RESEND_KEY no configurada en Cloudflare Secrets");
             await fetch("https://api.resend.com/emails", {
               method: "POST",
               headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
