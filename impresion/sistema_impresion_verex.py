@@ -11,7 +11,7 @@ from brother_ql.raster import BrotherQLRaster
 MODELO_IMPRESORA = 'QL-810W'
 TIPO_ETIQUETA      = '62red'    # guias y recibos
 TIPO_ETIQUETA_MINI = '29x90'   # DK-1201: 29mm × 90mm die-cut — 306×991px exactos
-IP_IMPRESORA = 'tcp://192.168.0.7'
+IP_IMPRESORA = 'tcp://192.168.0.10'
 
 class TkinterDnDApp(ctk.CTk, TkinterDnD.DnDWrapper):
     def __init__(self, *args, **kwargs):
@@ -159,17 +159,19 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     img = canvas
 
                 elif tipo == "mini":
-                    # PDF landscape 19.05×12.7mm → escalar → rotar 90° → QR al lado
-                    px_mm = 696 / 62.0
-                    tw = int(19.05 * px_mm)   # 214px ancho
-                    th = int(12.7  * px_mm)   # 143px alto
-                    prop = min(tw/float(img.width), th/float(img.height))
-                    nw = int(img.width  * prop)
+                    # PDF landscape 60×15mm → cinta continua 62mm, corte a 15mm
+                    px_mm = 696 / 62.0          # 11.226 px/mm
+                    target_w = int(60 * px_mm)  # 674px
+                    target_h = int(15 * px_mm)  # 168px
+                    if img.height > img.width:
+                        img = img.rotate(90, expand=True)
+                    prop = min(target_w / float(img.width), target_h / float(img.height))
+                    nw = int(img.width * prop)
                     nh = int(img.height * prop)
                     img_sc = img.resize((nw, nh), Image.Resampling.LANCZOS)
-                    canvas_mini = Image.new("RGB", (tw, th), "white")
-                    canvas_mini.paste(img_sc, ((tw-nw)//2, (th-nh)//2))
-                    mini_buffer.append(canvas_mini.rotate(90, expand=True))  # 143×214px
+                    canvas_mini = Image.new("RGB", (ANCHO_IMPRESORA, target_h), "white")
+                    canvas_mini.paste(img_sc, ((ANCHO_IMPRESORA - nw) // 2, (target_h - nh) // 2))
+                    mini_buffer.append(canvas_mini)
                     continue
 
                 elif tipo == "recibo":
@@ -190,44 +192,17 @@ class SistemaImpresionVerex(TkinterDnDApp):
                     texto_preview = "" if total_paginas == 1 else f"Mostrando 1 de {total_paginas} etiquetas"
                     self.lbl_preview.configure(image=ctk_img, text=texto_preview, compound="bottom")
 
-            # ── Combinar etiquetas mini de 3 en 3 ──────────────────────────────
+            # ── Etiquetas mini: cinta continua 62mm, cada página = 1 etiqueta ──
             if tipo == "mini" and mini_buffer:
-                # DK-1201: 306×991px — 6 minis horizontales (landscape, 1 col × 6 filas)
-                DIE_W, DIE_H = 306, 991
-                ROWS  = 6
-                GAP_Y = 14                               # 14px margen entre etiquetas
-                M_H   = (DIE_H - (ROWS + 1) * GAP_Y) // ROWS   # ~134px por etiqueta
-                M_W   = int(M_H * 19.05 / 12.7)         # ~201px — ratio exacto ¾"×½"
-                GAP_X = (DIE_W - M_W) // 2              # centrado horizontal
-
-                canvas_die = None
                 for i, lbl in enumerate(mini_buffer):
-                    pos = i % ROWS
-                    if pos == 0:
-                        canvas_die = Image.new("RGB", (DIE_W, DIE_H), "white")
-                        draw = ImageDraw.Draw(canvas_die)
-
-                    lbl_r = lbl.resize((M_W, M_H), Image.Resampling.LANCZOS)
-                    x = GAP_X
-                    y = GAP_Y + pos * (M_H + GAP_Y)
-                    canvas_die.paste(lbl_r, (x, y))
-
-                    # Línea guía punteada entre filas
-                    if pos < ROWS - 1:
-                        ly = y + M_H + GAP_Y // 2
-                        for xg in range(0, DIE_W, 12):
-                            draw.line([(xg, ly), (min(xg+6, DIE_W), ly)], fill="#888888", width=1)
-
-                    if pos == ROWS - 1 or i == len(mini_buffer) - 1:
-                        self.imagenes_impresion.append(canvas_die)
-                        if i < ROWS:
-                            prev = canvas_die.copy()
-                            prev.thumbnail((300, 350))
-                            ctk_img = ctk.CTkImage(light_image=prev, dark_image=prev, size=(prev.width, prev.height))
-                            die_cuts = (len(mini_buffer) + ROWS - 1) // ROWS
-                            self.lbl_preview.configure(image=ctk_img,
-                                text=f"{len(mini_buffer)} etiquetas — {die_cuts} die-cut(s) de 6",
-                                compound="bottom")
+                    self.imagenes_impresion.append(lbl)
+                    if i == 0:
+                        prev = lbl.copy()
+                        prev.thumbnail((300, 350))
+                        ctk_img = ctk.CTkImage(light_image=prev, dark_image=prev, size=(prev.width, prev.height))
+                        self.lbl_preview.configure(image=ctk_img,
+                            text=f"{len(mini_buffer)} etiqueta(s) — cinta 62mm",
+                            compound="bottom")
 
             self.btn_imprimir.configure(state="normal")
 
@@ -243,12 +218,12 @@ class SistemaImpresionVerex(TkinterDnDApp):
             qlr.exception_on_warning = True
 
             instrucciones = convert(
-                qlr=qlr, 
-                images=self.imagenes_impresion, 
-                label=TIPO_ETIQUETA_MINI if self.tipo_seleccionado.get() == "mini" else TIPO_ETIQUETA,
+                qlr=qlr,
+                images=self.imagenes_impresion,
+                label=TIPO_ETIQUETA,
                 dither=True,
                 compress=False,
-                red=self.tipo_seleccionado.get() != "mini"  # False para die-cut 29x90 (solo negro)
+                red=True
             )
 
             send(instrucciones, IP_IMPRESORA)

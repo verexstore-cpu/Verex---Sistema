@@ -106,6 +106,8 @@
         .btn:hover { opacity: 0.85; }
         .btn-wsp { background: #25D366; }
         .btn-wsp:hover { background: #1ebe5d; opacity: 1; }
+        .btn-correo { background: #C9A84C; color: #111; }
+        .btn-correo:hover { background: #b8943e; opacity: 1; }
 
         /* ── CARRITO ── */
         #carrito {
@@ -414,7 +416,7 @@
         #buscador:focus { outline:none; border-color: var(--celeste); }
         #sin-resultados { text-align:center; color:#aaa; font-size:15px; padding:40px 20px; display:none; }
 
-        #carrito-fab { position: fixed; bottom: 28px; right: 24px; background: var(--primario); color: #fff; width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; cursor: pointer; box-shadow: 0 4px 18px rgba(0,0,0,.3); z-index: 100; transition: transform .2s; }
+        #carrito-fab { position: fixed; top: 16px; right: 16px; background: var(--primario); color: #fff; width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; cursor: pointer; box-shadow: 0 4px 18px rgba(0,0,0,.3); z-index: 100; transition: transform .2s; }
         #carrito-fab:hover { transform: scale(1.08); }
         #carrito-badge { position: absolute; top: -4px; right: -4px; background: var(--celeste); color: #fff; border-radius: 50%; width: 22px; height: 22px; font-size: 12px; font-weight: 700; display: none; align-items: center; justify-content: center; }
 
@@ -500,6 +502,7 @@
         </label>
     </div>
     <button class="btn btn-wsp" style="margin-top:14px" onclick="enviarPedido()">📲 Realizar Pedido por WhatsApp</button>
+    <button class="btn btn-correo" style="margin-top:8px" onclick="enviarPedidoCorreo()">✉️ Realizar Pedido por Correo</button>
 </div>
 
 <div id="modal-celebracion">
@@ -864,6 +867,43 @@
             mostrarCelebracion(nom, numeroPedido);
         } catch(e) { alert("Hubo un problema. Por favor intenta de nuevo."); }
         finally { btn.textContent = "📲 Realizar Pedido por WhatsApp"; btn.disabled = false; }
+    }
+
+    async function enviarPedidoCorreo() {
+        const nom    = document.getElementById("f-nombre").value.trim();
+        const tel    = document.getElementById("f-tel").value.trim();
+        const telLlam = document.getElementById("f-tel-llamada").value.trim();
+        const depto  = document.getElementById("f-depto").value.trim();
+        const ubi    = document.getElementById("f-muni").value.trim();
+        const dir    = document.getElementById("f-dir").value.trim();
+        const correo = document.getElementById("f-correo").value.trim();
+        if (!nom) return alert("Por favor ingresa tu nombre completo.");
+        if (!correo || !correo.includes("@")) return alert("Por favor ingresa un correo electrónico válido para enviarte la confirmación.");
+        if (!depto) return alert("Por favor selecciona tu departamento.");
+        if (!ubi) return alert("Por favor ingresa tu municipio.");
+        if (!carrito.length) return alert("El carrito está vacío.");
+        const productosTxt = carrito.map(i => `${i.nombre} (${i.tallaElegida})`).join(", ");
+        const totalFinal   = document.getElementById("totalText").textContent;
+        const subtotalVal  = carrito.reduce((s,i) => s + i.precioNum, 0);
+        const metodoPago   = document.querySelector('input[name="pago"]:checked')?.value || "Contra Entrega (Efectivo)";
+        const descMonto    = calcularDescuentoCupon(subtotalVal);
+        let envioFinal     = calcularEnvio(subtotalVal);
+        if (cuponActivo && cuponActivo.tipo === "envio_gratis") envioFinal = 0;
+        const btn = document.querySelector(".btn-correo");
+        btn.textContent = "⏳ Procesando..."; btn.disabled = true;
+        try {
+            if (cuponUsado) { try { await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"USAR_CUPON", key:"VEREX_2026_PRO", codigo: cuponUsado }) }); } catch(e) {} }
+            let numeroPedido = "", codigoCliente = "";
+            try {
+                const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ accion:"NUEVO_PEDIDO", key:"VEREX_2026_PRO", cliente:nom, telefono: tel || "—", municipio:ubi, departamento:depto, direccion:dir, correo, telLlamada:telLlam, productos:productosTxt, total:totalFinal, items:JSON.stringify(carrito), metodoPago, cuponUsado, descMonto, envio:envioFinal }) });
+                const json = await res.json();
+                numeroPedido = json.numeroPedido || ""; codigoCliente = json.codigoCliente || "";
+            } catch(e) {}
+            window._wspUrl = null;
+            document.getElementById("celeb-mensaje").innerHTML = `Gracias, <strong>${nom}</strong> 💛<br>Tu pedido está confirmado. Te contactaremos pronto por correo a <strong>${correo}</strong>.`;
+            mostrarCelebracion(nom, numeroPedido);
+        } catch(e) { alert("Hubo un problema. Por favor intenta de nuevo."); }
+        finally { btn.textContent = "✉️ Realizar Pedido por Correo"; btn.disabled = false; }
     }
 
     let slideActual = 0, slideTotal = 0, autoSlide = null;

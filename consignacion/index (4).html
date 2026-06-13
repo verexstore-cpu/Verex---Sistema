@@ -58,7 +58,10 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        min-height: 100vh;
+        position: fixed;
+        inset: 0;
+        z-index: 9000;
+        background: var(--negro);
         padding: 20px;
     }
     .login-card {
@@ -357,6 +360,10 @@
         padding: 28px 24px; max-width: 480px; width: 100%; max-height: 90vh; overflow-y: auto;
         animation: modalIn 0.3s cubic-bezier(.34,1.56,.64,1);
     }
+    @keyframes slideUpIn {
+        from { transform: translateX(-50%) translateY(20px); opacity: 0; }
+        to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
+    }
     @keyframes modalIn {
         from { transform: scale(0.85) translateY(20px); opacity: 0; }
         to   { transform: scale(1) translateY(0); opacity: 1; }
@@ -544,6 +551,7 @@
                     <button class="btn btn-dorado" onclick="abrirStockNuevoProd()" style="padding:8px 14px;font-size:13px;">+ Agregar</button>
                     <button class="btn" style="background:#4a6fa5;color:#fff;padding:8px 14px;font-size:13px;" onclick="abrirStockNuevoLote()">📦 Lote</button>
                     <button class="btn" style="background:#27ae60;color:#fff;padding:8px 14px;font-size:13px;" onclick="abrirImportarExcel()">📥 Importar</button>
+                    <button class="btn" style="background:#1a3a1a;color:#4ade80;border:1px solid #166534;padding:8px 14px;font-size:13px;" onclick="abrirModalFotosCelular()">📱 Fotos</button>
                 </div>
 
                 <!-- Acciones con seleccionados -->
@@ -843,6 +851,7 @@
                 <button class="btn btn-dorado" onclick="abrirModalProductoNuevo()">+ Nuevo</button>
                 <button class="btn" style="background:#4a6fa5;color:#fff;" onclick="abrirModalLote()">📦 Nuevo Lote</button>
                 <button class="btn btn-gris" onclick="abrirQR()">📷 QR</button>
+                <button class="btn" style="background:#1a3a1a;color:#4ade80;border:1px solid #166534;" onclick="abrirModalFotosCelular()">📱 Fotos</button>
             </div>
             <div class="productos-entrega" id="grid-entrega"></div>
         </div>
@@ -977,27 +986,21 @@
             <option value="CD">Cadenas con Dije</option>
             <option value="RS">Rosarios</option>
         </select>
-        <input type="text" id="np-codigo"  placeholder="Código (se genera auto)">
-        <!-- Selector de talla — solo para anillos y conjuntos -->
+        <input type="text" id="np-codigo"  placeholder="Código (se genera auto)" oninput="this.value=this.value.toUpperCase();onCodigoNPInput();">
+        <!-- Selector de tallas múltiples — solo para anillos y conjuntos -->
         <div id="np-talla-container" style="display:none;margin-bottom:12px;">
-            <label style="font-size:12px;color:var(--plateado);display:block;margin-bottom:8px;">Talla americana:</label>
-            <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                <button type="button" class="talla-btn" data-talla="5" onclick="seleccionarTalla(5)" style="padding:8px 12px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:13px;font-weight:600;cursor:pointer;">T5</button>
-                <button type="button" class="talla-btn" data-talla="6" onclick="seleccionarTalla(6)" style="padding:8px 12px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:13px;font-weight:600;cursor:pointer;">T6</button>
-                <button type="button" class="talla-btn" data-talla="7" onclick="seleccionarTalla(7)" style="padding:8px 12px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:13px;font-weight:600;cursor:pointer;">T7</button>
-                <button type="button" class="talla-btn" data-talla="8" onclick="seleccionarTalla(8)" style="padding:8px 12px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:13px;font-weight:600;cursor:pointer;">T8</button>
-                <button type="button" class="talla-btn" data-talla="9" onclick="seleccionarTalla(9)" style="padding:8px 12px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:13px;font-weight:600;cursor:pointer;">T9</button>
-                <button type="button" class="talla-btn" data-talla="10" onclick="seleccionarTalla(10)" style="padding:8px 12px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:13px;font-weight:600;cursor:pointer;">T10</button>
-                <button type="button" class="talla-btn" data-talla="11" onclick="seleccionarTalla(11)" style="padding:8px 12px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:13px;font-weight:600;cursor:pointer;">T11</button>
-                <button type="button" class="talla-btn" data-talla="12" onclick="seleccionarTalla(12)" style="padding:8px 12px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:13px;font-weight:600;cursor:pointer;">T12</button>
-                <button type="button" class="talla-btn" data-talla="13" onclick="seleccionarTalla(13)" style="padding:8px 12px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:13px;font-weight:600;cursor:pointer;">T13</button>
-                <button type="button" class="talla-btn" data-talla="14" onclick="seleccionarTalla(14)" style="padding:8px 12px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:13px;font-weight:600;cursor:pointer;">T14</button>
+            <label style="font-size:12px;color:var(--plateado);display:block;margin-bottom:8px;">Tallas <span style="color:#e74c3c;font-size:10px;">*selecciona una o más</span></label>
+            <div id="np-tallas-wrap" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
+                <input type="number" id="np-talla-especial" placeholder="Talla especial (ej: 7.5)" step="0.5" min="4" max="15" style="flex:1;padding:6px 10px;font-size:12px;background:var(--gris);border:1px solid var(--borde);border-radius:6px;color:var(--blanco);">
+                <button type="button" onclick="agregarTallaEspecialInd()" style="padding:6px 12px;background:var(--gris2);border:1px solid var(--borde);border-radius:6px;color:var(--plateado);font-size:12px;font-weight:600;cursor:pointer;">+ Agregar</button>
             </div>
+            <div id="np-tallas-total" style="display:none;margin-top:8px;padding:6px 10px;background:var(--gris);border-radius:6px;font-size:12px;color:var(--plateado);">Total: <b style="color:var(--dorado);" id="np-tallas-total-num">0</b> piezas</div>
         </div>
         <input type="text" id="np-nombre"  placeholder="Nombre del producto">
         <input type="text" id="np-desc"    placeholder="Descripción">
         <input type="number" id="np-precio" placeholder="Precio $" step="0.01">
-        <input type="number" id="np-qty"    placeholder="Cantidad" value="1" min="1">
+        <input type="number" id="np-qty"    placeholder="Cantidad" value="1" min="1" id="np-qty">
         <div id="estado-ia" style="font-size:12px;color:var(--dorado);margin-bottom:10px;display:none;"></div>
         <button class="btn btn-dorado btn-full" onclick="agregarProductoNuevo()">Agregar a Entrega</button>
     </div>
@@ -1039,6 +1042,28 @@
         <div id="lista-corte"></div>
         <div id="totales-corte" style="margin:16px 0;padding:14px;background:var(--gris2);border-radius:10px;"></div>
         <button class="btn btn-dorado btn-full" onclick="confirmarCorte()">✅ Confirmar Corte</button>
+    </div>
+</div>
+
+<div class="modal-overlay" id="modal-fotos-celular">
+    <div class="modal-box" style="max-width:480px;">
+        <div class="modal-header">
+            <h3>📱 Fotos desde Celular</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-fotos-celular')">×</button>
+        </div>
+        <p style="font-size:13px;color:var(--plateado);margin-bottom:14px;">Escanea el QR con tu celular para subir fotos directamente al sistema.</p>
+        <div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:16px;">
+            <img id="qr-celular" src="" style="width:140px;height:140px;border-radius:10px;background:#fff;padding:6px;flex-shrink:0;">
+            <div style="font-size:12px;color:var(--plateado);line-height:1.7;">
+                1. Escanea el QR con la cámara<br>
+                2. Toma la foto o elige de la galería<br>
+                3. Presiona "Subir foto"<br>
+                4. Haz clic en <b style="color:var(--dorado);">🔄 Actualizar</b> aquí
+            </div>
+        </div>
+        <button class="btn btn-gris btn-full" style="margin-bottom:14px;" onclick="cargarFotosPendientes()">🔄 Actualizar galería</button>
+        <div id="fotos-pendientes-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;max-height:260px;overflow-y:auto;"></div>
+        <p id="fotos-pendientes-msg" style="font-size:13px;color:var(--plateado);text-align:center;padding:20px 0;display:none;">No hay fotos pendientes aún</p>
     </div>
 </div>
 
@@ -1108,7 +1133,8 @@ async function login() {
     const hash = await hashStr(pass);
     if (hash !== PASS_HASH) { toast("⚠️ Contraseña incorrecta", "#c0392b"); return; }
     _sessionPass = pass;
-    sessionStorage.setItem("vx_consig_session", pass);
+    localStorage.setItem("vx_consig_session", pass);
+    localStorage.setItem("vx_consig_session_exp", Date.now() + 8 * 60 * 60 * 1000);
     document.getElementById("pantalla-login").style.display = "none";
     document.getElementById("app").style.display = "block";
     cargarDatos();
@@ -1160,7 +1186,8 @@ async function actualizarSistema() {
 
 function cerrarSesion() {
     _sessionPass = null;
-    sessionStorage.removeItem("vx_consig_session");
+    localStorage.removeItem("vx_consig_session");
+    localStorage.removeItem("vx_consig_session_exp");
     if (_autoSyncInterval) { clearInterval(_autoSyncInterval); _autoSyncInterval = null; }
     document.getElementById("pantalla-login").style.display = "flex";
     document.getElementById("app").style.display = "none";
@@ -1293,6 +1320,30 @@ function extraerMaterial(nombre, descripcion) {
 
 async function generarEtiquetas() {
     if (seleccionEtiquetas.size === 0) { toast("⚠️ Selecciona al menos un producto"); return; }
+
+    // Detectar servidor de impresión
+    let serverVivo = false;
+    try {
+        const res = await Promise.race([
+            fetch('http://127.0.0.1:5000/ping'),
+            new Promise((_, rej) => setTimeout(() => rej(), 1200))
+        ]);
+        serverVivo = res.ok;
+    } catch(e) {}
+
+    if (serverVivo) {
+        const codigosEtiq = productosDisponibles
+            .filter(p => seleccionEtiquetas.has(p.codigo))
+            .map(p => p.codigo);
+        const colaAnterior = [..._colaEtiquetas];
+        codigosEtiq.forEach(c => { if (!_colaEtiquetas.includes(c)) _colaEtiquetas.push(c); });
+        _formatoImpresion = 'producto'; // etiquetas de producto = 6×1.5cm
+        abrirModalImpresion();
+        const modal = document.getElementById('modal-print-server');
+        if (modal) modal._onclose = () => { _colaEtiquetas = colaAnterior; };
+        return;
+    }
+
     const prods = productosDisponibles.filter(p => seleccionEtiquetas.has(p.codigo));
     toast("⏳ Generando etiquetas...");
 
@@ -1322,75 +1373,16 @@ async function generarEtiquetas() {
     })));
 
     const { jsPDF } = window.jspdf;
-    // Avery 5418 — medidas EXACTAS del template oficial Word
-    // Página: 4" x 6" | Margen izq: 0.444" | Margen sup: 0.5"
-    // Etiqueta: 0.75" x 0.5" | Gap X: 0.0785" | Gap Y: 0.0625"
-    const pageW = 4.0, pageH = 6.0;
-    const cols = 4, rows = 9;
-    const labelW = 0.75, labelH = 0.5;
-    const marginLeft = 0.444, marginTop = 0.5;
-    const gapX = 0.0785;
-    const gapY = 0.0625;
-
-    const doc = new jsPDF({ unit: 'in', format: [4, 6], orientation: 'portrait' });
-    let col = 0, row = 0;
+    const W = 60, H = 25;
+    const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'landscape' });
 
     prods.forEach((p, idx) => {
-        if (idx > 0 && col === 0 && row === 0) doc.addPage();
-
-        const x = marginLeft + col * (labelW + gapX);
-        const y = marginTop + row * (labelH + gapY);
-
-        // LAYOUT FIJO — todo dentro de labelW(0.75") x labelH(0.5")
-        // Fila 1: QR pequeño | Precio
-        // Fila 2: QR cont.  | Codigo  
-        // Fila 3: Material centrado
-        const pad = 0.018;
-        const qrSize = 0.17;  // QR fijo pequeño
-        const qrX = x + pad;
-        const qrY = y + pad;
-        const textX = qrX + qrSize + 0.018;
-        const textMaxW = labelW - qrSize - pad * 3 - 0.018;
-
-        // QR pequeño
-        if (qrImages[p.codigo]) {
-            try { doc.addImage(qrImages[p.codigo], "PNG", qrX, qrY, qrSize, qrSize); }
-            catch(e) {}
-        }
-
-        // Precio fila 1
-        const precio = "$ " + parseFloat(p.precio||0).toFixed(2);
-        doc.setFont("helvetica","bold");
-        let pSize = 6.5;
-        while (pSize > 3) { doc.setFontSize(pSize); if (doc.getTextWidth(precio) <= textMaxW) break; pSize -= 0.3; }
-        doc.setTextColor(0,0,0);
-        doc.text(precio, textX, y + 0.12);
-
-        // Codigo fila 2
-        const codigo = p.codigo || "";
-        doc.setFont("helvetica","bold");
-        let cSize = 5;
-        while (cSize > 3) { doc.setFontSize(cSize); if (doc.getTextWidth(codigo) <= textMaxW) break; cSize -= 0.3; }
-        doc.setTextColor(60,60,60);
-        doc.text(codigo, textX, y + 0.22);
-
-        // Material fila 3 — usar campo material directo, o detectar del nombre
-        const material = p.material || extraerMaterial(p.nombre || "", p.descripcion || "");
-        if (material) {
-            doc.setFont("helvetica","bold");
-            let mSize = 4.5;
-            while (mSize > 2.5) { doc.setFontSize(mSize); if (doc.getTextWidth(material) <= labelW - pad*2) break; mSize -= 0.3; }
-            doc.setTextColor(0,0,0);
-            doc.text(material, x + labelW/2, y + 0.34, { align: "center" });
-        }
-
-        col++;
-        if (col >= cols) { col = 0; row++; }
-        if (row >= rows) { col = 0; row = 0; }
+        if (idx > 0) doc.addPage([W, H], 'landscape');
+        _dibujarEtiqueta60x25(doc, p, qrImages[p.codigo], W, H);
     });
 
     doc.save("Etiquetas_VEREX.pdf");
-    toast("✅ " + prods.length + " etiquetas generadas");
+    toast("✅ " + prods.length + " etiquetas generadas — 60×25mm");
 }
 
 function renderDashboard() {
@@ -2636,12 +2628,10 @@ function abrirModalProductoNuevo() {
     document.getElementById("np-qty").value = "1";
     document.getElementById("np-categoria").value = "";
     document.getElementById("np-talla-container").style.display = "none";
-    document.querySelectorAll(".talla-btn").forEach(b => {
-        b.style.background = "var(--gris2)";
-        b.style.color = "var(--blanco)";
-        b.style.borderColor = "var(--borde)";
-    });
-    window._tallaSeleccionada = null;
+    const tallaEsp = document.getElementById("np-talla-especial");
+    if (tallaEsp) tallaEsp.value = "";
+    window._tallasQtyIndividual = {};
+    renderTallasIndividual();
     abrirModal("modal-prod-nuevo");
 }
 
@@ -2701,6 +2691,22 @@ async function analizarConIA() {
     }
     btn.textContent = "✨ Analizar con IA";
     btn.disabled    = false;
+}
+
+// Si el código manual ya termina en T+número (ej: SA18509JT7), lo usa tal cual
+// sin agregar la talla de nuevo. Devuelve el código final.
+function aplicarTalla(codigoBase, talla) {
+    if (!talla) return codigoBase;
+    // Detectar si ya tiene talla: termina en T seguido de uno o dos dígitos (con punto opcional: T7, T8, T7.5)
+    if (/T\d+(\.\d+)?$/i.test(codigoBase)) return codigoBase;
+    return `${codigoBase}T${talla}`;
+}
+
+// Y el nombre con talla, igual de inteligente
+function aplicarTallaNombre(nombreBase, talla) {
+    if (!talla) return nombreBase;
+    if (/T\d+(\.\d+)?$/i.test(nombreBase)) return nombreBase;
+    return `${nombreBase} T${talla}`;
 }
 
 function generarCodigo(categoria, material) {
@@ -2781,7 +2787,7 @@ function procesarFotoJoya(file) {
                     Math.round(offX*scale), Math.round(offY*scale),
                     Math.round(cw*scale),   Math.round(ch*scale));
 
-                resolve(out.toDataURL("image/jpeg", 0.82));
+                resolve(out.toDataURL("image/jpeg", 0.95));
             };
             img.onerror = reject;
             img.src = e.target.result;
@@ -2807,51 +2813,228 @@ async function agregarProductoNuevo() {
     const categoria = document.getElementById("np-categoria").value;
     const nombre    = document.getElementById("np-nombre").value.trim();
     const precio    = parseFloat(document.getElementById("np-precio").value) || 0;
-    const qty       = parseInt(document.getElementById("np-qty").value) || 1;
+    const descripcion = document.getElementById("np-desc").value.trim();
     if (!categoria || !nombre || !precio) { toast("⚠️ Completa categoría, nombre y precio"); return; }
+
+    const esAnillo = (categoria === "AN" || categoria === "CJ");
+    const tallasQty = window._tallasQtyIndividual || {};
+    const tieneTallas = Object.keys(tallasQty).length > 0;
+
+    if (esAnillo && !tieneTallas) { toast("⚠️ Selecciona al menos una talla"); return; }
+
     const btn = document.querySelector("#modal-prod-nuevo .btn-dorado");
     btn.textContent = "⏳ Guardando...";
     btn.disabled = true;
 
-    let codigo = document.getElementById("np-codigo").value.trim().toUpperCase();
-    if (!codigo) {
-        // Generar código correlativo desde el servidor
-        const talla = (categoria === "AN" || categoria === "CJ") ? (window._tallaSeleccionada || null) : null;
+    // Obtener código base
+    let codigoBase = document.getElementById("np-codigo").value.trim().toUpperCase();
+    if (!codigoBase) {
         try {
             const resC = await fetch(API_URL, {
                 method: "POST",
-                body: JSON.stringify({ accion: "GENERAR_CODIGO", _pass: _sessionPass, categoria, talla })
+                body: JSON.stringify({ accion: "GENERAR_CODIGO", _pass: _sessionPass, categoria })
             });
             const dataC = await resC.json();
-            codigo = dataC.ok ? dataC.codigo : generarCodigo(categoria);
+            codigoBase = dataC.ok ? dataC.codigo : generarCodigo(categoria);
         } catch(e) {
-            codigo = generarCodigo(categoria);
+            codigoBase = generarCodigo(categoria);
         }
     }
+
+    // Construir variantes: una por talla si es anillo, o una sola si no
+    let variantes;
+    if (esAnillo && tieneTallas) {
+        variantes = Object.entries(tallasQty)
+            .map(([t, qty]) => ({ talla: Number(t), cantidad: Math.max(1, parseInt(qty) || 1) }))
+            .sort((a, b) => a.talla - b.talla);
+    } else {
+        const qty = parseInt(document.getElementById("np-qty").value) || 1;
+        variantes = [{ talla: null, cantidad: qty }];
+    }
+
+    // ── Validar duplicados antes de subir foto ────────────────────────────
+    const codigosDuplicados = variantes
+        .map(({ talla }) => aplicarTalla(codigoBase, talla))
+        .filter(cod => stockData.find(s => String(s.codigo).toUpperCase() === cod.toUpperCase()));
+    if (codigosDuplicados.length) {
+        btn.textContent = "Agregar a Entrega"; btn.disabled = false;
+        const existente = stockData.find(s => String(s.codigo).toUpperCase() === codigosDuplicados[0].toUpperCase());
+        toast(`⚠️ Código ${codigosDuplicados[0]} ya existe — "${existente ? existente.nombre : ""}"`);
+        return;
+    }
+
+    // Subir foto una sola vez con el código base
     let fotoUrl = fotoBase64;
     if (fotoBase64) {
-        const url = await subirFotoImageKit(fotoBase64, codigo);
+        const url = await subirFotoImageKit(fotoBase64, codigoBase);
         if (url) fotoUrl = url;
     }
-    const prod = {
-        id: codigo + "_" + Date.now(), codigo, nombre,
-        descripcion: document.getElementById("np-desc").value.trim() + (window._tallaSeleccionada ? " T" + window._tallaSeleccionada : ""),
-        descripcionTienda: document.getElementById("np-desc-tienda").value.trim(),
-        precio, precioNum: precio, img: fotoUrl, esNuevo: true
-    };
-    const extras = safeParseJSON(localStorage.getItem("vx_prod_extras"), []);
-    const idxEx = extras.findIndex(x => x.codigo === codigo);
-    if (idxEx >= 0) extras[idxEx] = prod; else extras.push(prod);
-    localStorage.setItem("vx_prod_extras", JSON.stringify(extras));
-    // Usar código como clave estable (no índice)
-    mapaProductos[codigo]  = prod;
-    carritoEntrega[codigo] = { item: prod, qty };
+
+    for (const { talla, cantidad } of variantes) {
+        const codigo         = aplicarTalla(codigoBase, talla);
+        const nombreConTalla = aplicarTallaNombre(nombre, talla);
+        const tallaReal      = talla && codigo === codigoBase ? "" : (talla ? String(talla) : "");
+
+        const prod = {
+            id: codigo + "_" + Date.now(), codigo, codigoBase,
+            talla: tallaReal,
+            nombre: nombreConTalla, nombre_base: nombre,
+            descripcion: descripcion + (tallaReal ? ` T${tallaReal}` : ""),
+            precio, precioNum: precio, img: fotoUrl, esNuevo: true
+        };
+
+        const extras = safeParseJSON(localStorage.getItem("vx_prod_extras"), []);
+        const idxEx = extras.findIndex(x => x.codigo === codigo);
+        const prodStorage = { ...prod, _fotoBase64: undefined };
+        if (idxEx >= 0) extras[idxEx] = prodStorage; else extras.push(prodStorage);
+        localStorage.setItem("vx_prod_extras", JSON.stringify(extras));
+
+        mapaProductos[codigo]  = prod;
+        carritoEntrega[codigo] = { item: prod, qty: cantidad };
+    }
+
     btn.textContent = "Agregar a Entrega";
     btn.disabled = false;
     cerrarModal("modal-prod-nuevo");
     renderGridEntrega(productosDisponibles);
     actualizarCarritoEntrega();
-    toast("✅ Producto agregado");
+    const total = variantes.reduce((s, v) => s + v.cantidad, 0);
+    toast(`✅ ${variantes.length > 1 ? variantes.length + " tallas agregadas (" + total + " piezas)" : "Producto agregado"}`);
+}
+
+// ── FOTOS DESDE CELULAR ──────────────────────────────────────────────
+const UPLOAD_URL = "https://verex-consignacion.pages.dev/upload";
+
+function abrirModalFotosCelular() {
+    // Generar QR con la URL de la página de carga
+    const qrImg = document.getElementById("qr-celular");
+    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&color=111111&bgcolor=ffffff&data=${encodeURIComponent(UPLOAD_URL)}`;
+    document.getElementById("fotos-pendientes-grid").innerHTML = "";
+    document.getElementById("fotos-pendientes-msg").style.display = "none";
+    abrirModal("modal-fotos-celular");
+    // Cargar fotos existentes al abrir
+    cargarFotosPendientes();
+}
+
+async function cargarFotosPendientes() {
+    const grid = document.getElementById("fotos-pendientes-grid");
+    const msg  = document.getElementById("fotos-pendientes-msg");
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--plateado);font-size:13px;padding:16px;">⏳ Cargando...</div>';
+    msg.style.display = "none";
+    try {
+        const res  = await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "GET_FOTOS_PENDIENTES", _pass: _sessionPass }) });
+        const data = await res.json();
+        if (!data.ok || !data.fotos.length) {
+            grid.innerHTML = "";
+            msg.style.display = "block";
+            return;
+        }
+        grid.innerHTML = data.fotos.map(f => `
+            <div style="position:relative;" title="Usar esta foto">
+                <img src="${f.url}" onclick="usarFotoCelular('${f.id}','${f.url}')"
+                     style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:2px solid transparent;transition:border-color .2s;cursor:pointer;"
+                     onmouseover="this.style.borderColor='var(--dorado)'" onmouseout="this.style.borderColor='transparent'">
+                <div style="position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,.6);border-radius:4px;padding:2px 5px;font-size:9px;color:#fff;">
+                    ${new Date(f.fecha).toLocaleDateString("es-SV",{day:"2-digit",month:"2-digit"})}
+                </div>
+                <button onclick="eliminarFotoPendiente('${f.id}',this)" title="Eliminar foto"
+                    style="position:absolute;top:3px;right:3px;background:rgba(192,57,43,0.85);border:none;color:#fff;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;">✕</button>
+            </div>`).join("");
+    } catch(e) {
+        grid.innerHTML = "";
+        msg.textContent = "❌ Error al cargar fotos";
+        msg.style.display = "block";
+    }
+}
+
+async function eliminarFotoPendiente(id, btn) {
+    btn.disabled = true;
+    try {
+        await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "MARCAR_FOTO_USADA", _pass: _sessionPass, id }) });
+        btn.closest("div[style]").remove();
+        const grid = document.getElementById("fotos-pendientes-grid");
+        if (!grid.children.length) {
+            document.getElementById("fotos-pendientes-msg").style.display = "block";
+        }
+    } catch(e) { btn.disabled = false; toast("❌ Error al eliminar"); }
+}
+
+async function usarFotoCelular(id, url) {
+    // Marcar como usada en background
+    fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "MARCAR_FOTO_USADA", _pass: _sessionPass, id }) }).catch(()=>{});
+    cerrarModal("modal-fotos-celular");
+    toast("⏳ Procesando foto...");
+
+    // Descargar URL como base64 y centrar en cuadrado (sin recorte de fondo)
+    let base64Procesado = null;
+    try {
+        const resp = await fetch(url);
+        const blob = await resp.blob();
+        base64Procesado = await new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onload = e => {
+                const img = new Image();
+                img.onload = () => {
+                    const MAX  = 900;
+                    const side = Math.min(MAX, Math.max(img.width, img.height));
+                    const out  = document.createElement("canvas");
+                    out.width  = side; out.height = side;
+                    const ctx  = out.getContext("2d");
+                    // Fondo blanco
+                    ctx.fillStyle = "#ffffff";
+                    ctx.fillRect(0, 0, side, side);
+                    // Centrar imagen manteniendo proporción
+                    const scale = Math.min(side / img.width, side / img.height);
+                    const dw = Math.round(img.width * scale);
+                    const dh = Math.round(img.height * scale);
+                    const dx = Math.round((side - dw) / 2);
+                    const dy = Math.round((side - dh) / 2);
+                    ctx.drawImage(img, 0, 0, img.width, img.height, dx, dy, dw, dh);
+                    resolve(out.toDataURL("image/jpeg", 0.95));
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(blob);
+        });
+    } catch(e) {
+        base64Procesado = null;
+    }
+
+    // Detectar qué sección está activa: Stock o Entrega
+    const secStock = document.getElementById("tab-content-stock");
+    const enStock  = secStock && secStock.style.display !== "none";
+
+    if (enStock) {
+        abrirStockNuevoProd();
+        setTimeout(() => {
+            const prev = document.getElementById("sn-foto-preview");
+            if (base64Procesado) {
+                _snFotoBase64 = base64Procesado;
+                window._snFotoUrl = null;
+                if (prev) prev.innerHTML = `<img src="${base64Procesado}" style="width:100%;height:100%;object-fit:contain;">`;
+                // Habilitar botón de IA
+                const btnIA = document.getElementById("sn-btn-ia");
+                if (btnIA) btnIA.style.display = "flex";
+            } else {
+                window._snFotoUrl = url;
+                if (prev) prev.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">`;
+            }
+        }, 150);
+    } else {
+        if (base64Procesado) {
+            fotoBase64 = base64Procesado;
+            const preview = document.getElementById("preview-foto");
+            if (preview) {
+                preview.src = base64Procesado;
+                preview.style.display = "block";
+                document.getElementById("foto-placeholder").style.display = "none";
+                document.getElementById("btn-ia").style.display = "flex";
+                document.getElementById("material-single-container").style.display = "block";
+            }
+        }
+        abrirModalProductoNuevo();
+    }
+    toast("✅ Foto lista");
 }
 
 function abrirQR() {
@@ -2865,6 +3048,7 @@ function abrirQR() {
         toast("⚠️ Producto no encontrado — agrégalo manualmente");
         document.getElementById("np-codigo").value = codigo.toUpperCase();
         abrirModalProductoNuevo();
+        onCodigoNPInput();
     }
 }
 
@@ -3362,11 +3546,20 @@ function renderLoteProductos() {
                 'style="margin-bottom:6px;padding:6px;font-size:11px;color:var(--plateado);font-family:sans-serif;" ' +
                 'oninput="loteProductos[' + i + '].codigoManual=this.value.toUpperCase();this.value=this.value.toUpperCase()">' +
 
-                '<div id="talla-lote-' + i + '" style="display:' + (mostrarTallas ? 'flex' : 'none') + ';flex-wrap:wrap;gap:6px;margin-bottom:6px;">' +
+                '<div id="talla-lote-' + i + '" style="display:' + (mostrarTallas ? 'flex' : 'none') + ';flex-wrap:wrap;gap:6px;margin-bottom:4px;">' +
                 '<div style="font-size:11px;color:var(--plateado);width:100%;margin-bottom:4px;">' +
                 (esCJ ? 'Tallas de anillo <span style="color:#e67e22;font-size:10px;">(opcional — solo si incluye anillo)</span>' : 'Tallas <span style="color:#e74c3c;font-size:10px;">*obligatorio</span>') +
                 ':</div>' +
-                btnsTalla + '</div>' +
+                btnsTalla +
+                '</div>' +
+                (mostrarTallas ?
+                '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center;">' +
+                '<input type="number" id="talla-esp-lote-' + i + '" placeholder="Talla especial (7.5…)" step="0.5" min="4" max="15" ' +
+                'style="flex:1;padding:5px 8px;font-size:11px;background:var(--gris);border:1px solid var(--borde);border-radius:6px;color:var(--blanco);">' +
+                '<button type="button" onclick="agregarTallaEspecialLote(' + i + ')" ' +
+                'style="padding:5px 10px;background:var(--gris2);border:1px solid var(--borde);border-radius:6px;color:var(--plateado);font-size:11px;font-weight:600;cursor:pointer;">+ Agregar</button>' +
+                '</div>'
+                : '') +
 
                 '<input type="number" id="lote-precio-' + i + '" value="' + (p.precio || '') + '" placeholder="Precio $" step="0.01" ' +
                 'style="margin-bottom:6px;padding:6px;font-size:12px;" ' +
@@ -3443,14 +3636,22 @@ async function confirmarLote() {
         }
 
         for (let { talla, cantidad } of variantes) {
-            const codigo         = talla ? `${codigoBase}T${talla}` : codigoBase;
-            const nombreConTalla = talla ? `${p.nombre} T${talla}` : p.nombre;
+            const codigo         = aplicarTalla(codigoBase, talla);
+            const nombreConTalla = aplicarTallaNombre(p.nombre, talla);
+            const tallaReal      = talla && codigo === codigoBase ? "" : (talla ? String(talla) : "");
+
+            // ── Validar duplicado ─────────────────────────────────────────────
+            const existeDup = stockData.find(s => String(s.codigo).toUpperCase() === codigo.toUpperCase());
+            if (existeDup) {
+                toast(`⚠️ Código ${codigo} ya existe — "${existeDup.nombre}" — omitido`);
+                continue; // saltar esta variante
+            }
 
             const prod = {
                 id:          codigo + "_" + Date.now(),
                 codigo,
                 codigoBase,
-                talla:       talla ? String(talla) : "",
+                talla:       tallaReal,
                 nombre:      nombreConTalla,
                 nombre_base: p.nombre,
                 descripcion: p.descripcion,
@@ -3586,6 +3787,13 @@ function renderStock(items) {
     document.getElementById("sk-tienda").textContent  = items.reduce((s,i) => s + (parseInt(i.stock_tienda)||0), 0);
     document.getElementById("sk-cons").textContent    = items.reduce((s,i) => s + (parseInt(i.stock_consignacion)||0), 0);
     document.getElementById("sk-reservado").textContent = items.reduce((s,i) => s + (parseInt(i.sstock_reservado||i.stock_reservado)||0), 0);
+
+    // Ordenar: más nuevos primero (por fecha_registro descendente)
+    items = [...items].sort((a, b) => {
+        const fa = new Date(a.fecha_registro || a.fechaRegistro || 0).getTime();
+        const fb = new Date(b.fecha_registro || b.fechaRegistro || 0).getTime();
+        return fb - fa;
+    });
 
     const lista = document.getElementById("lista-stock");
     if (!items.length) {
@@ -3867,9 +4075,22 @@ function cargarCategoriasPersonalizadas() {
     });
 }
 
+function escanearCodigoSN() {
+    const codigo = prompt("Escanea o ingresa el código del producto:");
+    if (codigo) { document.getElementById("sn-codigo-manual").value = codigo.trim().toUpperCase(); onCodigoSNInput(); }
+}
+
 function abrirStockNuevoProd() {
     _snFotoBase64 = null; _snMaterial = null; _snTalla = null; _snTallasQty = {};
+    _snMultiCodigos = [];
+    window._snFotoUrl = null;
+    const btnSN = document.querySelector("#modal-stock-nuevo .btn-dorado");
+    if (btnSN) { btnSN.textContent = "✅ Guardar en Stock"; btnSN.disabled = false; }
+    const inpTE = document.getElementById("sn-talla-especial"); if (inpTE) inpTE.value = "";
+    const chipTE = document.getElementById("sn-talla-especial-chip"); if (chipTE) chipTE.style.display = "none";
+    const wrapTE = document.getElementById("sn-talla-especial-wrap"); if (wrapTE) wrapTE.style.display = "none";
     document.getElementById("sn-foto-preview").innerHTML = "📷";
+    document.getElementById("sn-codigo-manual").value = "";
     document.getElementById("sn-nombre").value = "";
     document.getElementById("sn-categoria").value = "";
     document.getElementById("sn-precio").value = "";
@@ -3879,6 +4100,8 @@ function abrirStockNuevoProd() {
     document.getElementById("sn-btn-ia").style.display = "none";
     document.getElementById("sn-ia-estado").style.display = "none";
     document.getElementById("sn-talla-container").style.display = "none";
+    document.getElementById("sn-multicod-container").style.display = "none";
+    document.getElementById("sn-multicod-chips").innerHTML = "";
     document.querySelectorAll(".sn-mat-btn").forEach(b => { b.style.background="var(--gris2)"; b.style.color="var(--blanco)"; });
     document.querySelectorAll(".sn-talla-btn").forEach(b => { b.style.background="var(--gris2)"; b.style.color="var(--blanco)"; });
     abrirModal("modal-stock-nuevo");
@@ -3919,6 +4142,26 @@ function cambiarQtySN(talla, delta) {
     renderResumenTallasSN();
 }
 
+function agregarTallaEspecialSN(val) {
+    const t = String(val || "").trim();
+    if (!t || isNaN(parseFloat(t))) return;
+    // Quitar tallas especiales previas (solo puede haber una talla especial a la vez)
+    Object.keys(_snTallasQty).forEach(k => { if (k.includes(".")) delete _snTallasQty[k]; });
+    _snTallasQty[t] = 1;
+    const chip = document.getElementById("sn-talla-especial-chip");
+    if (chip) { chip.style.display = "inline-block"; chip.textContent = `T${t} ✕`; }
+    renderResumenTallasSN();
+}
+
+function quitarTallaEspecialSN() {
+    Object.keys(_snTallasQty).forEach(k => { if (k.includes(".")) delete _snTallasQty[k]; });
+    const inp = document.getElementById("sn-talla-especial");
+    if (inp) inp.value = "";
+    const chip = document.getElementById("sn-talla-especial-chip");
+    if (chip) chip.style.display = "none";
+    renderResumenTallasSN();
+}
+
 function renderResumenTallasSN() {
     let cont = document.getElementById("sn-tallas-resumen");
     if (!cont) return;
@@ -3937,15 +4180,153 @@ function renderResumenTallasSN() {
 
 function mostrarTallaSN(cat) {
     const esAnillo = cat === "AN" || cat === "CJ";
-    document.getElementById("sn-talla-container").style.display = esAnillo ? "block" : "none";
-    document.getElementById("sn-cantidad-wrap").style.display   = esAnillo ? "none"  : "block";
-    // Limpiar selección al cambiar categoría
+    const codigoManual = (document.getElementById("sn-codigo-manual")?.value || "").trim().toUpperCase();
+    const codigoYaTieneTalla = /T\d+(\.\d+)?$/.test(codigoManual);
+    const hayMultiCodigos = _snMultiCodigos.length > 0;
+
+    // Talla selector: solo si es anillo SIN código físico impreso y sin multi-códigos
+    document.getElementById("sn-talla-container").style.display =
+        (esAnillo && !codigoYaTieneTalla && !hayMultiCodigos) ? "block" : "none";
+
+    // Multi-código panel: si el código ya tiene talla O ya hay chips
+    document.getElementById("sn-multicod-container").style.display =
+        (esAnillo && (codigoYaTieneTalla || hayMultiCodigos)) ? "block" : "none";
+
+    // Cantidad: si no es anillo, o es anillo con código físico único (sin multi-chips)
+    document.getElementById("sn-cantidad-wrap").style.display =
+        (!esAnillo || (codigoYaTieneTalla && !hayMultiCodigos)) ? "block" : "none";
+
+    // Talla especial: visible cuando es anillo (tanto con selector como con código físico)
+    document.getElementById("sn-talla-especial-wrap").style.display =
+        (esAnillo && !hayMultiCodigos) ? "block" : "none";
+
+    // Limpiar selección de tallas al cambiar categoría
     _snTallasQty = {}; _snTalla = null;
     document.querySelectorAll(".sn-talla-btn").forEach(b => {
         b.style.background = "var(--gris2)"; b.style.color = "var(--blanco)"; b.style.borderColor = "var(--borde)";
     });
     const res = document.getElementById("sn-tallas-resumen");
     if (res) res.innerHTML = "";
+}
+
+// Detecta si el código manual ya incluye talla — activa modo multi-código
+let _snMultiCodigos = []; // [{ codigo, talla, codigoBase }]
+
+function onCodigoSNInput() {
+    // Solo muestra/oculta paneles según si el código tiene talla — NO agrega el código
+    // El código se agrega al presionar Enter (onCodigoSNEnter)
+    const val = (document.getElementById("sn-codigo-manual")?.value || "").trim().toUpperCase();
+    const cat = document.getElementById("sn-categoria")?.value || "";
+    const tieneTalla = /T\d+(\.\d+)?$/.test(val);
+    const esAnillo = cat === "AN" || cat === "CJ";
+
+    if (esAnillo && (tieneTalla || _snMultiCodigos.length > 0)) {
+        document.getElementById("sn-talla-container").style.display        = "none";
+        document.getElementById("sn-multicod-container").style.display      = "block";
+        document.getElementById("sn-cantidad-wrap").style.display           = "none";
+        document.getElementById("sn-talla-especial-wrap").style.display     = tieneTalla ? "block" : "none";
+    } else if (esAnillo) {
+        document.getElementById("sn-talla-container").style.display        = "block";
+        document.getElementById("sn-multicod-container").style.display      = "none";
+        document.getElementById("sn-cantidad-wrap").style.display           = "none";
+        document.getElementById("sn-talla-especial-wrap").style.display     = "block";
+    }
+}
+
+// Se llama al presionar Enter en el campo de código principal
+function onCodigoSNEnter(e) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const inp = document.getElementById("sn-codigo-manual");
+    const val = (inp?.value || "").trim().toUpperCase();
+    const cat = document.getElementById("sn-categoria")?.value || "";
+    const tieneTalla = /T\d+(\.\d+)?$/.test(val);
+    const esAnillo = cat === "AN" || cat === "CJ";
+
+    if (esAnillo && tieneTalla && val) {
+        // Agregar a la lista multi-código
+        agregarCodigoMultiDesde(val);
+        inp.value = "";
+        // Enfocar sn-multicod-input para el siguiente scan
+        setTimeout(() => document.getElementById("sn-multicod-input")?.focus(), 80);
+    } else {
+        // Comportamiento normal: ir al nombre
+        document.getElementById("sn-nombre")?.focus();
+    }
+}
+
+function agregarCodigoMultiDesde(cod) {
+    cod = cod.trim().toUpperCase();
+    if (!cod) return;
+    // Verificar duplicado en la lista actual
+    if (_snMultiCodigos.find(c => c.codigo === cod)) { toast(`⚠️ ${cod} ya está en la lista`); return; }
+    // Verificar duplicado en stock
+    const existeDup = stockData.find(s => String(s.codigo).toUpperCase() === cod);
+    if (existeDup) { toast(`⚠️ ${cod} ya existe en stock — "${existeDup.nombre}"`); return; }
+    // Extraer talla y base
+    const m = cod.match(/^(.+?)T(\d+(?:\.\d+)?)$/i);
+    const talla = m ? m[2] : "";
+    const codigoBase = m ? m[1] : cod;
+    _snMultiCodigos.push({ codigo: cod, talla, codigoBase, qty: 1 });
+    renderMultiCodigos();
+    setTimeout(() => document.getElementById("sn-multicod-input")?.focus(), 80);
+}
+
+function agregarCodigoMulti() {
+    const inp = document.getElementById("sn-multicod-input");
+    const val = (inp?.value || "").trim().toUpperCase();
+    if (!val) return;
+    agregarCodigoMultiDesde(val);
+    if (inp) inp.value = "";
+    inp?.focus();
+}
+
+function quitarCodigoMulti(cod) {
+    _snMultiCodigos = _snMultiCodigos.filter(c => c.codigo !== cod);
+    renderMultiCodigos();
+    if (_snMultiCodigos.length === 0) {
+        document.getElementById("sn-multicod-container").style.display = "none";
+        document.getElementById("sn-talla-container").style.display = "block";
+    }
+}
+
+function cambiarQtyMulti(cod, delta) {
+    const item = _snMultiCodigos.find(c => c.codigo === cod);
+    if (!item) return;
+    item.qty = Math.max(1, (item.qty || 1) + delta);
+    renderMultiCodigos();
+}
+
+function renderMultiCodigos() {
+    const wrap = document.getElementById("sn-multicod-chips");
+    if (!wrap) return;
+    wrap.innerHTML = _snMultiCodigos.map(c => `
+        <div style="display:flex;align-items:center;gap:6px;background:rgba(201,168,76,0.08);border:1px solid var(--dorado);border-radius:10px;padding:6px 10px;font-size:12px;margin-bottom:4px;">
+            <span style="font-weight:700;color:var(--dorado);flex:1;">${c.codigo}</span>
+            <span style="color:#888;font-size:10px;margin-right:4px;">${c.talla ? "T"+c.talla : ""}</span>
+            <button onclick="cambiarQtyMulti('${c.codigo}',-1)" style="width:22px;height:22px;border-radius:50%;border:1px solid #555;background:#2a2a2a;color:#fff;cursor:pointer;font-size:13px;line-height:1;">−</button>
+            <span style="min-width:20px;text-align:center;font-weight:700;">${c.qty || 1}</span>
+            <button onclick="cambiarQtyMulti('${c.codigo}',1)"  style="width:22px;height:22px;border-radius:50%;border:1px solid #555;background:#2a2a2a;color:#fff;cursor:pointer;font-size:13px;line-height:1;">+</button>
+            <span style="color:#888;font-size:10px;margin-left:2px;">pza${(c.qty||1)>1?"s":""}</span>
+            <span onclick="quitarCodigoMulti('${c.codigo}')" style="cursor:pointer;color:#e74c3c;font-size:16px;margin-left:4px;line-height:1;">×</span>
+        </div>`).join("");
+}
+
+function onCodigoNPInput() {
+    const val = (document.getElementById("np-codigo")?.value || "").trim().toUpperCase();
+    const cat = document.getElementById("np-categoria")?.value || "";
+    const tieneTalla = /T\d+(\.\d+)?$/.test(val);
+    const esAnillo = cat === "AN" || cat === "CJ";
+    const container = document.getElementById("np-talla-container");
+    if (esAnillo && container) {
+        container.style.display = tieneTalla ? "none" : "block";
+        if (tieneTalla) {
+            const m = val.match(/T(\d+(?:\.\d+)?)$/);
+            if (m) toast(`📌 Talla ${m[1]} detectada en el código — se usará como pieza única`);
+            window._tallasQtyIndividual = {};
+            renderTallasIndividual();
+        }
+    }
 }
 
 async function cargarFotoStockNuevo(input) {
@@ -3987,43 +4368,103 @@ async function guardarStockNuevo() {
     const esAnillo   = categoria === "AN" || categoria === "CJ";
     const cantidad   = parseInt(document.getElementById("sn-cantidad").value) || 1;
 
+    const modoMultiCod = esAnillo && _snMultiCodigos.length > 0;
+    const codigoManualTemp = (document.getElementById("sn-codigo-manual")?.value || "").trim().toUpperCase();
+    const codigoYaTieneTallaTemp = /T\d+(\.\d+)?$/.test(codigoManualTemp);
     if (!nombreVal || !categoria || !precio) { toast("⚠️ Completa nombre, categoría y precio"); return; }
-    if (esAnillo && Object.keys(_snTallasQty).length === 0) { toast("⚠️ Selecciona al menos una talla"); return; }
+    if (esAnillo && !modoMultiCod && !codigoYaTieneTallaTemp && Object.keys(_snTallasQty).length === 0) { toast("⚠️ Selecciona al menos una talla o escanea los códigos físicos"); return; }
+    if (modoMultiCod && _snMultiCodigos.length === 0) { toast("⚠️ Escanea al menos un código"); return; }
 
     const btn = document.querySelector("#modal-stock-nuevo .btn-dorado");
     btn.textContent = "⏳ Guardando..."; btn.disabled = true;
 
     try {
-        // Generar código base
-        const resC = await fetch(API_URL, {
-            method: "POST",
-            body: JSON.stringify({ accion: "GENERAR_CODIGO", _pass: _sessionPass, categoria })
-        });
-        const dataC    = await resC.json();
-        const codigoBase = dataC.ok ? dataC.codigo : (categoria + Date.now());
+        const desc       = document.getElementById("sn-desc").value.trim();
+        const descTienda = document.getElementById("sn-desc-tienda").value.trim();
+        const precioNum  = parseFloat(precio);
 
-        // Subir foto una sola vez
-        let fotoUrl = _snFotoBase64 || "";
+        // ── Modo multi-código: salida temprana ───────────────────────────────
+        if (modoMultiCod) {
+            // Rescatar códigos pendientes en campos (si el usuario no presionó Enter)
+            for (const fieldId of ["sn-codigo-manual", "sn-multicod-input"]) {
+                const val = (document.getElementById(fieldId)?.value || "").trim().toUpperCase();
+                if (val && /T\d+(\.\d+)?$/.test(val) && !_snMultiCodigos.find(c => c.codigo === val)) {
+                    const m2 = val.match(/^(.+?)T(\d+(?:\.\d+)?)$/i);
+                    const entry = { codigo: val, talla: m2 ? m2[2] : "", codigoBase: m2 ? m2[1] : val, qty: 1 };
+                    if (fieldId === "sn-codigo-manual") _snMultiCodigos.unshift(entry); // primero
+                    else _snMultiCodigos.push(entry);
+                }
+            }
+            const primerBase = _snMultiCodigos[0]?.codigoBase || nombreVal;
+            let fotoUrlMulti = window._snFotoUrl || "";
+            if (_snFotoBase64) {
+                const url = await subirFotoImageKit(_snFotoBase64, primerBase);
+                if (url) fotoUrlMulti = url;
+            }
+            let guardados = 0;
+            for (const { codigo, talla, codigoBase: cb, qty } of _snMultiCodigos) {
+                const res = await apiPost({
+                    accion: "STOCK_REGISTRAR",
+                    codigo, codigoBase: cb, talla,
+                    nombre:      talla ? `${nombreVal} T${talla}` : nombreVal,
+                    nombre_base: nombreVal,
+                    categoria, precio: precioNum,
+                    foto: fotoUrlMulti, cantidad: qty || 1,
+                    material: _snMaterial || "",
+                    descripcion: desc, descripcionTienda: descTienda
+                });
+                if (res.ok) guardados++;
+            }
+            const codigosGuardados = _snMultiCodigos.filter((_, i) => i < guardados).map(x => x.codigo);
+            toast(`✅ ${guardados} pieza${guardados > 1 ? "s" : ""} guardada${guardados > 1 ? "s" : ""} en stock`);
+            _snMultiCodigos = [];
+            cerrarModal("modal-stock-nuevo");
+            await cargarStock();
+            btn.textContent = "✅ Guardar en Stock"; btn.disabled = false;
+            ofrecerEtiquetaRapida(codigosGuardados);
+            return;
+        }
+
+        // ── Flujo normal (código único o tallas con selector) ────────────────
+        const codigoManual = document.getElementById("sn-codigo-manual").value.trim().toUpperCase();
+        let codigoBase = codigoManual;
+        if (!codigoBase) {
+            const resC = await fetch(API_URL, {
+                method: "POST",
+                body: JSON.stringify({ accion: "GENERAR_CODIGO", _pass: _sessionPass, categoria })
+            });
+            const dataC = await resC.json();
+            codigoBase = dataC.ok ? dataC.codigo : (categoria + Date.now());
+        } else {
+            const existe = stockData.find(p => String(p.codigo).toUpperCase() === codigoBase);
+            if (existe) {
+                btn.textContent = "✅ Guardar en Stock"; btn.disabled = false;
+                toast(`⚠️ Código ${codigoBase} ya existe — "${existe.nombre}"`);
+                return;
+            }
+        }
+
+        let fotoUrl = window._snFotoUrl || "";
         if (_snFotoBase64) {
             const url = await subirFotoImageKit(_snFotoBase64, codigoBase);
             if (url) fotoUrl = url;
         }
 
-        const desc         = document.getElementById("sn-desc").value.trim();
-        const descTienda   = document.getElementById("sn-desc-tienda").value.trim();
-        const precioNum    = parseFloat(precio);
+        // Si el código manual ya trae talla (SA18509JT7), guardarlo como pieza única
+        const codigoYaTieneTalla = /T\d+(\.\d+)?$/.test(codigoBase);
 
-        if (esAnillo) {
-            // Crear un producto por cada talla seleccionada
+        if (esAnillo && !codigoYaTieneTalla && Object.keys(_snTallasQty).length > 0) {
+            // Anillo con selector de tallas — crear una entrada por talla
             const tallas = Object.entries(_snTallasQty);
             let guardados = 0;
             for (const [talla, qty] of tallas) {
-                const codigo = `${codigoBase}T${talla}`;
+                const codigo    = aplicarTalla(codigoBase, talla);
+                const tallaReal = codigo === codigoBase ? "" : talla;
                 const res = await apiPost({
                     accion: "STOCK_REGISTRAR",
-                    codigo, codigoBase, talla,
-                    nombre:            `${nombreVal} T${talla}`,
-                    nombre_base:       nombreVal,
+                    codigo, codigoBase, talla: tallaReal,
+                    nombre:      aplicarTallaNombre(nombreVal, talla),
+                    nombre_base: nombreVal,
                     categoria, precio: precioNum,
                     foto: fotoUrl, cantidad: qty,
                     material: _snMaterial || "",
@@ -4031,13 +4472,24 @@ async function guardarStockNuevo() {
                 });
                 if (res.ok) guardados++;
             }
+            const codigosTallas = Object.keys(_snTallasQty).map(t => aplicarTalla(codigoBase, t));
             toast(`✅ ${guardados} talla${guardados > 1 ? 's' : ''} guardada${guardados > 1 ? 's' : ''} en stock`);
+            cerrarModal("modal-stock-nuevo");
+            btn.textContent = "✅ Guardar en Stock"; btn.disabled = false;
+            await cargarStock();
+            ofrecerEtiquetaRapida(codigosTallas);
         } else {
-            // Producto sin talla (pulsera, collar, etc.)
+            // Producto sin talla, o anillo con código físico ya impreso (SA18509JT7)
+            const m = codigoBase.match(/^(.+?)T(\d+(?:\.\d+)?)$/i);
+            const tallaExtraida = m ? m[2] : "";
+            const baseExtraida  = m ? m[1] : codigoBase;
             const res = await apiPost({
-                accion: "STOCK_REGISTRAR",
-                codigo: codigoBase, codigoBase, talla: "",
-                nombre: nombreVal, nombre_base: nombreVal,
+                accion:      "STOCK_REGISTRAR",
+                codigo:      codigoBase,
+                codigoBase:  baseExtraida,
+                talla:       tallaExtraida,
+                nombre:      tallaExtraida ? `${nombreVal} T${tallaExtraida}` : nombreVal,
+                nombre_base: nombreVal,
                 categoria, precio: precioNum,
                 foto: fotoUrl, cantidad,
                 material: _snMaterial || "",
@@ -4045,13 +4497,486 @@ async function guardarStockNuevo() {
             });
             if (!res.ok) { toast("⚠️ " + (res.error || "Error al guardar")); btn.textContent = "✅ Guardar en Stock"; btn.disabled = false; return; }
             toast("✅ Producto guardado en stock");
+            cerrarModal("modal-stock-nuevo");
+            btn.textContent = "✅ Guardar en Stock"; btn.disabled = false;
+            await cargarStock();
+            ofrecerEtiquetaRapida([codigoBase]);
         }
-
-        cerrarModal("modal-stock-nuevo");
-        await cargarStock();
+        return;
     } catch(e) { toast("⚠️ Error de conexión"); }
 
     btn.textContent = "✅ Guardar en Stock"; btn.disabled = false;
+}
+
+// ── COLA DE ETIQUETAS (sesión) ────────────────────────────────────────
+let _colaEtiquetas = []; // codigos acumulados durante la sesión
+
+function ofrecerEtiquetaRapida(codigos) {
+    if (!codigos || !codigos.length) return;
+    // Agregar a la cola (sin duplicados)
+    codigos.forEach(c => { if (!_colaEtiquetas.includes(c)) _colaEtiquetas.push(c); });
+    renderBotonCola();
+}
+
+function renderBotonCola() {
+    let btn = document.getElementById("btn-cola-etiquetas");
+    if (!_colaEtiquetas.length) { if (btn) btn.remove(); return; }
+
+    const n = _colaEtiquetas.length;
+    const multiplo6 = Math.floor(n / 6) * 6;
+    const resto = n % 6;
+    let subtexto = "";
+    if (multiplo6 > 0 && resto > 0) subtexto = `<div style="font-size:10px;color:#888;margin-top:2px;">${multiplo6} completas + ${resto} pendiente${resto>1?"s":""}</div>`;
+    else if (multiplo6 > 0) subtexto = `<div style="font-size:10px;color:#22c55e;margin-top:2px;">¡Listo para imprimir!</div>`;
+    else subtexto = `<div style="font-size:10px;color:#888;margin-top:2px;">${6-resto} más para completar hoja</div>`;
+
+    if (!btn) {
+        btn = document.createElement("div");
+        btn.id = "btn-cola-etiquetas";
+        btn.style.cssText = `
+            position:fixed; bottom:20px; right:20px; z-index:9998;
+            background:#1a1a1a; border:1px solid #C9A84C; border-radius:14px;
+            padding:10px 14px; box-shadow:0 4px 20px rgba(0,0,0,.7);
+            animation: slideUpIn .25s ease; cursor:pointer; text-align:center;
+            min-width:130px;
+        `;
+        document.body.appendChild(btn);
+    }
+
+    btn.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <button onclick="imprimirCola()" style="background:#C9A84C;color:#111;border:none;border-radius:8px;
+                padding:7px 12px;font-size:13px;font-weight:700;cursor:pointer;flex:1;">
+                🖨️ ${n} etiqueta${n>1?"s":""}
+            </button>
+            <button onclick="limpiarCola()" title="Limpiar cola"
+                style="background:none;border:none;color:#555;font-size:16px;cursor:pointer;padding:0 2px;line-height:1;">×</button>
+        </div>
+        ${subtexto}
+    `;
+}
+
+function limpiarCola() {
+    _colaEtiquetas = [];
+    const btn = document.getElementById("btn-cola-etiquetas");
+    if (btn) btn.remove();
+}
+
+async function imprimirCola() {
+    if (!_colaEtiquetas.length) return;
+    // Verificar si el Print Server local está vivo
+    let serverVivo = false;
+    try {
+        const res = await Promise.race([
+            fetch('http://127.0.0.1:5000/ping'),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 1200))
+        ]);
+        serverVivo = res.ok;
+    } catch(e) { serverVivo = false; }
+
+    if (serverVivo) {
+        abrirModalImpresion();
+    } else {
+        // Fallback: descargar PDF como antes
+        await generarEtiquetaRapida([..._colaEtiquetas]);
+        limpiarCola();
+    }
+}
+
+// ── MODAL DE IMPRESIÓN DIRECTA ────────────────────────────────────────────
+let _formatoImpresion = 'etiqueta';
+let _rolloImpresion = localStorage.getItem('verex_rollo_impresion') || 'mono';
+
+function abrirModalImpresion() {
+    let m = document.getElementById('modal-print-server');
+    if (!m) {
+        m = document.createElement('div');
+        m.id = 'modal-print-server';
+        m.style.cssText = `
+            position:fixed;inset:0;z-index:10000;
+            background:rgba(0,0,0,0.82);display:flex;
+            align-items:center;justify-content:center;
+        `;
+        m.innerHTML = `
+            <div style="background:#111;border:1px solid #C9A84C;border-radius:16px;
+                        padding:24px;width:340px;max-width:95vw;font-family:'DM Sans',sans-serif;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+                    <span style="color:#C9A84C;font-size:15px;font-weight:700;">🖨️ Imprimir etiquetas</span>
+                    <button onclick="cerrarModalImpresion()" style="background:none;border:none;color:#666;font-size:20px;cursor:pointer;line-height:1;">×</button>
+                </div>
+
+                <p style="color:#888;font-size:12px;margin-bottom:14px;">
+                    Servidor de impresión <span style="color:#22c55e;font-weight:700;">● conectado</span>
+                </p>
+
+                <p style="color:#ccc;font-size:12px;margin-bottom:10px;font-weight:600;">Formato de etiqueta:</p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;" id="print-format-grid">
+                    <button onclick="selFormatoImpresion('mini',this)"
+                        style="background:#C9A84C;color:#111;border:none;border-radius:10px;
+                               padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
+                        📎 Mini<br><span style="font-size:10px;font-weight:400;">½×¾ — joyería</span>
+                    </button>
+                    <button onclick="selFormatoImpresion('producto',this)"
+                        style="background:#222;color:#aaa;border:1px solid #333;border-radius:10px;
+                               padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
+                        🏷️ Producto<br><span style="font-size:10px;font-weight:400;">5×1.5cm</span>
+                    </button>
+                    <button onclick="selFormatoImpresion('guia',this)"
+                        style="background:#222;color:#aaa;border:1px solid #333;border-radius:10px;
+                               padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
+                        📦 Guía<br><span style="font-size:10px;font-weight:400;">9cm envíos</span>
+                    </button>
+                    <button onclick="selFormatoImpresion('recibo',this)"
+                        style="background:#222;color:#aaa;border:1px solid #333;border-radius:10px;
+                               padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
+                        🧾 Recibo<br><span style="font-size:10px;font-weight:400;">dinámico</span>
+                    </button>
+                </div>
+
+                <p style="color:#ccc;font-size:12px;margin-bottom:8px;font-weight:600;">🎞️ Tipo de rollo instalado:</p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px;" id="print-rollo-grid">
+                    <button onclick="selRolloImpresion('mono',this)"
+                        style="background:#161616;color:#C9A84C;border:1px solid #C9A84C;border-radius:8px;
+                               padding:10px 8px;font-size:12px;font-weight:700;cursor:pointer;">
+                        ⬜ Monocromo
+                    </button>
+                    <button onclick="selRolloImpresion('rojo',this)"
+                        style="background:#161616;color:#666;border:1px solid #333;border-radius:8px;
+                               padding:10px 8px;font-size:12px;font-weight:700;cursor:pointer;">
+                        🔴 Negro/Rojo
+                    </button>
+                </div>
+
+                <div id="print-server-status" style="font-size:12px;color:#888;margin-bottom:12px;min-height:16px;text-align:center;"></div>
+
+                <button onclick="enviarImpresionServidor()"
+                    style="width:100%;background:linear-gradient(135deg,#C9A84C,#a87d20);
+                           color:#111;border:none;border-radius:10px;padding:13px;
+                           font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px;">
+                    🖨️ Imprimir en Brother QL
+                </button>
+                <button onclick="descargarSoloPDF()"
+                    style="width:100%;background:none;color:#666;border:1px solid #333;
+                           border-radius:10px;padding:9px;font-size:12px;cursor:pointer;">
+                    ⬇️ Solo descargar PDF
+                </button>
+            </div>
+        `;
+        document.body.appendChild(m);
+    }
+    m.style.display = 'flex';
+    _formatoImpresion = 'mini';
+    // Resetear selección de formato visual
+    document.querySelectorAll('#print-format-grid button').forEach((b,i) => {
+        if (i === 0) { b.style.background='#C9A84C'; b.style.color='#111'; b.style.border='none'; }
+        else         { b.style.background='#222';    b.style.color='#aaa'; b.style.border='1px solid #333'; }
+    });
+    // Aplicar selección de rollo persistida
+    document.querySelectorAll('#print-rollo-grid button').forEach((b, i) => {
+        const esRollo = (i === 0 ? 'mono' : 'rojo');
+        const activo = (esRollo === _rolloImpresion);
+        const colorOn = (esRollo === 'rojo') ? '#ef4444' : '#C9A84C';
+        b.style.background = activo ? (esRollo === 'rojo' ? 'rgba(239,68,68,.1)' : 'rgba(201,168,76,.1)') : '#161616';
+        b.style.color      = activo ? colorOn : '#666';
+        b.style.border     = '1px solid ' + (activo ? colorOn : '#333');
+    });
+    document.getElementById('print-server-status').textContent = '';
+}
+
+function selRolloImpresion(rollo, btn) {
+    _rolloImpresion = rollo;
+    localStorage.setItem('verex_rollo_impresion', rollo);
+    document.querySelectorAll('#print-rollo-grid button').forEach(b => {
+        b.style.background = '#161616';
+        b.style.color      = '#666';
+        b.style.border     = '1px solid #333';
+    });
+    const esRojo = (rollo === 'rojo');
+    btn.style.background = esRojo ? 'rgba(239,68,68,.1)' : 'rgba(201,168,76,.1)';
+    btn.style.color      = esRojo ? '#ef4444' : '#C9A84C';
+    btn.style.border     = '1px solid ' + (esRojo ? '#ef4444' : '#C9A84C');
+}
+
+function cerrarModalImpresion() {
+    const m = document.getElementById('modal-print-server');
+    if (!m) return;
+    if (typeof m._onclose === 'function') { m._onclose(); m._onclose = null; }
+    m.style.display = 'none';
+}
+
+function selFormatoImpresion(fmt, btn) {
+    _formatoImpresion = fmt;
+    document.querySelectorAll('#print-format-grid button').forEach(b => {
+        b.style.background = '#222';
+        b.style.color      = '#aaa';
+        b.style.border     = '1px solid #333';
+    });
+    btn.style.background = '#C9A84C';
+    btn.style.color      = '#111';
+    btn.style.border     = 'none';
+}
+
+async function enviarImpresionServidor() {
+    const status = document.getElementById('print-server-status');
+    status.style.color = '#C9A84C';
+    status.textContent = '⏳ Generando PDF…';
+
+    // Generar PDF con 1 etiqueta por página (para el servidor)
+    const codigos = [..._colaEtiquetas];
+    let pdfBase64 = null;
+    try {
+        pdfBase64 = await generarPDFParaServidor(codigos);
+    } catch(err) {
+        console.error('generarPDFParaServidor error:', err);
+        status.style.color = '#ef4444';
+        status.textContent = '⚠️ Error PDF: ' + (err.message || err);
+        return;
+    }
+    if (!pdfBase64) { status.style.color='#ef4444'; status.textContent='⚠️ Error generando PDF (null)'; return; }
+
+    status.textContent = '📡 Enviando a impresora…';
+    try {
+        const res = await fetch('http://127.0.0.1:5000/imprimir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ formato: _formatoImpresion, rollo: _rolloImpresion, pdf_base64: pdfBase64, rotar: true })
+        });
+        const json = await res.json();
+        if (json.ok) {
+            status.style.color = '#22c55e';
+            status.textContent = `✅ ${json.etiquetas} etiqueta(s) enviadas a Brother QL`;
+            setTimeout(() => { cerrarModalImpresion(); limpiarCola(); }, 1800);
+        } else {
+            status.style.color = '#ef4444';
+            status.textContent = '⚠️ ' + (json.error || 'Error en impresora');
+        }
+    } catch(e) {
+        status.style.color = '#ef4444';
+        status.textContent = '⚠️ No se pudo conectar al servidor';
+    }
+}
+
+async function descargarSoloPDF() {
+    const codigos = [..._colaEtiquetas];
+    cerrarModalImpresion();
+    await generarEtiquetaRapida(codigos);
+    limpiarCola();
+}
+
+// Busca un producto por código en stockData y, como fallback, en productosDisponibles
+function _buscarProducto(codigo) {
+    return (typeof stockData !== 'undefined' && stockData.find(s => s.codigo === codigo))
+        || (typeof productosDisponibles !== 'undefined' && productosDisponibles.find(p => p.codigo === codigo))
+        || null;
+}
+
+// Genera PDF con 1 etiqueta por página (para enviar al print server)
+// Usa el mismo formato de página que generarEtiquetaRapida pero 1 label por página
+async function generarPDFParaServidor(codigos) {
+    if (!window.jspdf || !window.jspdf.jsPDF) throw new Error('jsPDF no cargado');
+    const prods = codigos.map(_buscarProducto).filter(Boolean);
+    if (!prods.length) throw new Error('Productos no encontrados. Códigos: ' + codigos.join(','));
+    if (prods.length < codigos.length) {
+        const faltantes = codigos.filter(c => !_buscarProducto(c));
+        console.warn('Códigos sin datos (se omitirán):', faltantes);
+    }
+
+    // Generar QR images (mismo código que generarEtiquetaRapida)
+    const qrImages = {};
+    await Promise.all(prods.map(p => new Promise(resolve => {
+        const div = document.createElement("div");
+        div.style.display = "none";
+        document.body.appendChild(div);
+        try {
+            new QRCode(div, { text: p.codigo, width: 120, height: 120,
+                colorDark: "#000000", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+            setTimeout(() => {
+                const img = div.querySelector("img") || div.querySelector("canvas");
+                if (img) qrImages[p.codigo] = img.tagName === "CANVAS" ? img.toDataURL("image/png") : img.src;
+                document.body.removeChild(div); resolve();
+            }, 100);
+        } catch(e) { document.body.removeChild(div); resolve(); }
+    })));
+
+    const { jsPDF } = window.jspdf;
+    // Etiqueta colgante 60mm × 15mm — dobla por el centro (3cm cada mitad)
+    const lW = 60, lH = 15;
+    const doc = new jsPDF({ unit: 'mm', format: [lW, lH], orientation: 'landscape' });
+
+    const B      = [0, 0, 0];
+    // Lado izquierdo: QR + datos del producto
+    const QR_X  = 4.0;   // 0.4cm margen izquierdo
+    const QR_Y  = 2.5;   // centrado vertical: (15-10)/2
+    const QR_MM = 10;
+    const TX    = 19.0;  // texto: QR_X + QR_MM + 5mm gap
+    const TW    = 9.5;   // ancho disponible hasta x=28.5mm
+    // Lado derecho: branding VEREX
+    const CX    = 45;    // centro del lado derecho (30+15)
+
+    prods.forEach((p, idx) => {
+        if (idx > 0) doc.addPage([lW, lH], 'landscape');
+
+        // — QR (lado izquierdo) —
+        if (qrImages[p.codigo]) {
+            try { doc.addImage(qrImages[p.codigo], "PNG", QR_X, QR_Y, QR_MM, QR_MM); } catch(e) {}
+        }
+
+        // — VEREX STORE branding (lado derecho) —
+        doc.setFont("times", "bold"); doc.setFontSize(11); doc.setTextColor(...B);
+        doc.text("VEREX", CX, 5.5, { align: "center" });
+
+        doc.setDrawColor(...B); doc.setLineWidth(0.2);
+        doc.line(CX - 6, 7.0, CX + 6, 7.0);
+
+        doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); doc.setTextColor(30,30,30);
+        doc.text("S T O R E", CX, 9.5, { align: "center" });
+
+        doc.setFont("times", "bolditalic"); doc.setFontSize(5.0); doc.setTextColor(60,60,60);
+        const sl = doc.splitTextToSize("La expresión de tu mejor versión", 22);
+        const ySlogan = sl.length === 1 ? [12.5] : [11.8, 13.8];
+        sl.slice(0,2).forEach((l, i) => doc.text(l, CX, ySlogan[i], { align: "center" }));
+
+        // — Precio —
+        const precio = "$ " + parseFloat(p.precio || 0).toFixed(2);
+        doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(...B);
+        doc.text(precio, TX, 5.5);
+
+        // — Código —
+        const codigo = p.codigo || "";
+        doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(30,30,30);
+        doc.text(codigo, TX, 9.5);
+
+        // — Material —
+        const material = p.material || extraerMaterial(p.nombre || "", p.descripcion || "");
+        if (material) {
+            doc.setFont("helvetica", "bold"); doc.setTextColor(...B);
+            let sz = 6.5;
+            doc.setFontSize(sz);
+            let lineas = doc.splitTextToSize(material, TW);
+            while (lineas.length > 2 && sz > 5.0) { sz -= 0.3; doc.setFontSize(sz); lineas = doc.splitTextToSize(material, TW); }
+            const yMat = lineas.length <= 1 ? [13.0] : [12.2, 14.2];
+            lineas.slice(0,2).forEach((l, i) => doc.text(l, TX, yMat[i]));
+        }
+    });
+
+    const raw = doc.output('datauristring');
+    return raw.split(',')[1];
+}
+
+async function generarEtiquetaRapida(codigos) {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        toast("⚠️ No se pudo cargar jsPDF — verifica conexión");
+        return;
+    }
+    const prods = codigos.map(_buscarProducto).filter(Boolean);
+    if (!prods.length) { toast("⚠️ No se encontraron los productos"); return; }
+
+    const banner = document.getElementById("banner-etiqueta-rapida");
+    if (banner) banner.remove();
+
+    // Generar QR images
+    const qrImages = {};
+    await Promise.all(prods.map(p => new Promise(resolve => {
+        const div = document.createElement("div");
+        div.style.display = "none";
+        document.body.appendChild(div);
+        try {
+            new QRCode(div, { text: p.codigo, width: 120, height: 120,
+                colorDark: "#000000", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+            setTimeout(() => {
+                const img = div.querySelector("img") || div.querySelector("canvas");
+                if (img) qrImages[p.codigo] = img.tagName === "CANVAS" ? img.toDataURL("image/png") : img.src;
+                document.body.removeChild(div); resolve();
+            }, 100);
+        } catch(e) { document.body.removeChild(div); resolve(); }
+    })));
+
+    const { jsPDF } = window.jspdf;
+    const W = 60, H = 25;
+    const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'landscape' });
+
+    prods.forEach((p, idx) => {
+        if (idx > 0) doc.addPage([W, H], 'landscape');
+        _dibujarEtiqueta60x25(doc, p, qrImages[p.codigo], W, H);
+    });
+
+    doc.save("Etiqueta_VEREX_" + prods[0].codigo + ".pdf");
+    toast("✅ " + prods.length + " etiqueta(s) generadas");
+}
+
+// ── Helper compartido: dibuja una etiqueta 60×25mm en el doc jsPDF actual ──
+function _dibujarEtiqueta60x25(doc, p, qrDataURL, W, H) {
+    // LADO IZQUIERDO (x: 0–30mm)
+    const qrSize = 10;
+    const qrX = 4;
+    const qrY = (H - qrSize) / 2; // = 7.5 centrado
+    if (qrDataURL) {
+        try { doc.addImage(qrDataURL, "PNG", qrX, qrY, qrSize, qrSize); } catch(e) {}
+    }
+
+    const textX    = qrX + qrSize + 2; // 16mm
+    const textMaxW = 28 - textX;       // 12mm disponibles
+
+    // Precio
+    const precio = "$ " + parseFloat(p.precio || 0).toFixed(2);
+    doc.setFont("helvetica", "bold");
+    let pSize = 9;
+    while (pSize > 4) { doc.setFontSize(pSize); if (doc.getTextWidth(precio) <= textMaxW) break; pSize -= 0.5; }
+    doc.setTextColor(0, 0, 0);
+    doc.text(precio, textX, 9.5);
+
+    // Código
+    const codigo = p.codigo || "";
+    doc.setFont("helvetica", "bold");
+    let cSize = 7;
+    while (cSize > 3.5) { doc.setFontSize(cSize); if (doc.getTextWidth(codigo) <= textMaxW) break; cSize -= 0.3; }
+    doc.setTextColor(60, 60, 60);
+    doc.text(codigo, textX, 14.5);
+
+    // Material — una sola línea, máx 3 palabras, sin wrap
+    const matRaw = p.material || extraerMaterial(p.nombre || "", p.descripcion || "");
+    if (matRaw) {
+        const mat = matRaw.split(/[\s,]+/).slice(0, 3).join(" ");
+        doc.setFont("helvetica", "bold");
+        let mSize = 6;
+        while (mSize > 3) { doc.setFontSize(mSize); if (doc.getTextWidth(mat) <= 22) break; mSize -= 0.3; }
+        doc.setTextColor(0, 0, 0);
+        doc.text(mat, 15, 21, { align: "center" });
+    }
+
+    // Línea de doblez punteada
+    doc.setDrawColor(210, 210, 210);
+    doc.setLineDashPattern([0.8, 0.8], 0);
+    doc.setLineWidth(0.2);
+    doc.line(30, 0, 30, H);
+    doc.setLineDashPattern([], 0);
+
+    // LADO DERECHO (x: 30–60mm)
+    const cx = 45;
+
+    // VEREX
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(80, 35, 35);
+    doc.text("V E R E X", cx, 10, { align: "center" });
+
+    // Línea decorativa
+    doc.setDrawColor(150, 100, 40);
+    doc.setLineWidth(0.4);
+    doc.line(33, 11.8, 57, 11.8);
+
+    // STORE
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.5);
+    doc.setTextColor(80, 35, 35);
+    doc.text("S T O R E", cx, 14.8, { align: "center" });
+
+    // Slogan
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(5);
+    doc.setTextColor(110, 85, 55);
+    doc.text("La expresión de tu", cx, 18.5, { align: "center" });
+    doc.text("mejor versión", cx, 21.5, { align: "center" });
 }
 
 function abrirStockNuevoLote() {
@@ -4069,10 +4994,31 @@ function toast(msg, bg) {
     setTimeout(() => t.classList.remove("show"), 2800);
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("pantalla-login").style.display = "flex";
+window.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("inp-foto").addEventListener("change", function() { cargarFoto(this); });
     cargarCategoriasPersonalizadas();
+
+    // Auto-login si hay sesión guardada (válida por 8 horas)
+    const saved = localStorage.getItem("vx_consig_session");
+    const exp   = parseInt(localStorage.getItem("vx_consig_session_exp") || "0");
+    if (saved && Date.now() <= exp) {
+        const hash = await hashStr(saved);
+        if (hash === PASS_HASH) {
+            _sessionPass = saved;
+            document.getElementById("pantalla-login").style.display = "none";
+            document.getElementById("app").style.display = "block";
+            cargarDatos();
+            iniciarAutoSync();
+            document.querySelectorAll('.menu-btn[data-color]').forEach(btn => {
+                btn.style.setProperty('--mc', btn.dataset.color);
+            });
+            return;
+        }
+        localStorage.removeItem("vx_consig_session");
+        localStorage.removeItem("vx_consig_session_exp");
+    }
+    // Sin sesión válida → mostrar login
+    document.getElementById("pantalla-login").style.display = "flex";
 });
 
 // ── FUNCIONES COMPLEMENTARIAS ────────────────────────────────────────
@@ -4091,21 +5037,77 @@ function seleccionarMaterialSingle(btn) {
     window._materialProducto = btn.dataset.mat;
 }
 
-function seleccionarTalla(talla) {
-    window._tallaSeleccionada = talla;
-    document.querySelectorAll(".talla-btn").forEach(b => {
-        const sel = parseInt(b.dataset.talla) === talla;
-        b.style.background = sel ? "var(--dorado)" : "var(--gris2)";
-        b.style.color = sel ? "var(--negro)" : "var(--blanco)";
-        b.style.borderColor = sel ? "var(--dorado)" : "var(--borde)";
-    });
+// ── Tallas múltiples para Agregar individual ─────────────────────────
+window._tallasQtyIndividual = {}; // { 7: 2, 8: 1 }
+
+function renderTallasIndividual() {
+    const wrap = document.getElementById("np-tallas-wrap");
+    if (!wrap) return;
+    const tqs = window._tallasQtyIndividual;
+    const tallasBtns = [5,6,7,8,9,10,11,12,13,14];
+    wrap.innerHTML = tallasBtns.map(t => {
+        const sel = tqs[t] !== undefined;
+        const qty = tqs[t] || 1;
+        if (sel) {
+            return '<div style="display:inline-flex;align-items:center;gap:2px;background:var(--dorado);border-radius:6px;padding:2px 4px;">' +
+                '<button type="button" onclick="cambiarQtyTallaInd(' + t + ',-1)" style="background:rgba(0,0,0,0.2);border:none;color:var(--negro);border-radius:4px;width:18px;height:18px;font-size:12px;font-weight:700;cursor:pointer;line-height:1;">−</button>' +
+                '<span style="font-size:11px;font-weight:700;color:var(--negro);min-width:28px;text-align:center;">T' + t + '<br><span style="font-size:10px;">×' + qty + '</span></span>' +
+                '<button type="button" onclick="cambiarQtyTallaInd(' + t + ',1)" style="background:rgba(0,0,0,0.2);border:none;color:var(--negro);border-radius:4px;width:18px;height:18px;font-size:12px;font-weight:700;cursor:pointer;line-height:1;">+</button>' +
+                '<button type="button" onclick="toggleTallaInd(' + t + ')" style="background:rgba(0,0,0,0.2);border:none;color:var(--negro);border-radius:4px;width:18px;height:18px;font-size:10px;cursor:pointer;line-height:1;">✕</button>' +
+                '</div>';
+        } else {
+            return '<button type="button" onclick="toggleTallaInd(' + t + ')" style="padding:5px 8px;border:1px solid var(--borde);border-radius:6px;background:var(--gris);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">T' + t + '</button>';
+        }
+    }).join('');
+    const total = Object.values(tqs).reduce((s, q) => s + q, 0);
+    const totalDiv = document.getElementById("np-tallas-total");
+    const totalNum = document.getElementById("np-tallas-total-num");
+    if (totalDiv) totalDiv.style.display = total > 0 ? "block" : "none";
+    if (totalNum) totalNum.textContent = total;
+    // Mostrar/ocultar campo cantidad según si hay tallas
+    const qtyEl = document.getElementById("np-qty");
+    if (qtyEl) qtyEl.style.display = total > 0 ? "none" : "block";
 }
+
+function toggleTallaInd(t) {
+    if (window._tallasQtyIndividual[t] !== undefined) {
+        delete window._tallasQtyIndividual[t];
+    } else {
+        window._tallasQtyIndividual[t] = 1;
+    }
+    renderTallasIndividual();
+}
+
+function cambiarQtyTallaInd(t, delta) {
+    const actual = window._tallasQtyIndividual[t] || 1;
+    const nuevo = actual + delta;
+    if (nuevo <= 0) { delete window._tallasQtyIndividual[t]; }
+    else { window._tallasQtyIndividual[t] = nuevo; }
+    renderTallasIndividual();
+}
+
+function agregarTallaEspecialInd() {
+    const inp = document.getElementById("np-talla-especial");
+    const val = parseFloat(inp.value);
+    if (!val || val < 4 || val > 15) { toast("⚠️ Ingresa una talla válida (4–15)"); return; }
+    const key = String(val); // ej: "7.5"
+    if (window._tallasQtyIndividual[key] !== undefined) { toast("⚠️ Esa talla ya está agregada"); inp.value = ""; return; }
+    window._tallasQtyIndividual[key] = 1;
+    inp.value = "";
+    renderTallasIndividual();
+}
+
+// Compatibilidad legacy (ya no se usa pero evita errores)
+function seleccionarTalla(talla) { toggleTallaInd(talla); }
 
 function mostrarSelectorTalla(cat) {
     const container = document.getElementById("np-talla-container");
     if (container) container.style.display = (cat === "AN" || cat === "CJ") ? "block" : "none";
     const matContainer = document.getElementById("material-single-container");
     if (matContainer) matContainer.style.display = cat ? "block" : "none";
+    // Resetear tallas al cambiar categoría
+    window._tallasQtyIndividual = {};
+    renderTallasIndividual();
 }
 
 function toggleTallaLote(i, cat) {
@@ -4114,6 +5116,20 @@ function toggleTallaLote(i, cat) {
 }
 
 // tallasQty = { 7: 2, 8: 1, 9: 2 } — cantidad individual por talla
+function agregarTallaEspecialLote(i) {
+    const inp = document.getElementById("talla-esp-lote-" + i);
+    if (!inp) return;
+    const val = parseFloat(inp.value);
+    if (!val || val < 4 || val > 15) { toast("⚠️ Ingresa una talla válida (4–15)"); return; }
+    const key = String(val); // ej: "7.5"
+    if (!loteProductos[i].tallasQty) loteProductos[i].tallasQty = {};
+    if (loteProductos[i].tallasQty[key] !== undefined) { toast("⚠️ Esa talla ya está agregada"); inp.value = ""; return; }
+    loteProductos[i].tallasQty[key] = 1;
+    loteProductos[i].tallas = Object.keys(loteProductos[i].tallasQty);
+    inp.value = "";
+    renderLoteProductos();
+}
+
 function toggleTallaLoteMulti(i, talla) {
     if (!loteProductos[i].tallasQty) loteProductos[i].tallasQty = {};
     if (loteProductos[i].tallasQty[talla] !== undefined) {
@@ -4289,21 +5305,6 @@ function asignarAVendedor() {
     abrirAsignarVendedor();
 }
 
-// Auto-login si hay sesión guardada
-(async () => {
-    const saved = sessionStorage.getItem("vx_consig_session");
-    if (!saved) return;
-    const hash = await hashStr(saved);
-    if (hash !== PASS_HASH) { sessionStorage.removeItem("vx_consig_session"); return; }
-    _sessionPass = saved;
-    document.getElementById("pantalla-login").style.display = "none";
-    document.getElementById("app").style.display = "block";
-    cargarDatos();
-    iniciarAutoSync();
-    document.querySelectorAll('.menu-btn[data-color]').forEach(btn => {
-        btn.style.setProperty('--mc', btn.dataset.color);
-    });
-})();
 
 // ── VENTA DIRECTA ────────────────────────────────────────────────────
 let _vdCarrito    = {};   // { codigo: { prod, qty } }
@@ -5274,6 +6275,10 @@ function enviarWAEstadoCuenta(ventaId) {
         </div>
         <button class="btn btn-gris btn-full" id="sn-btn-ia" onclick="analizarFotoStockNuevo()" style="display:none;margin-bottom:12px;">✨ Analizar con IA</button>
         <div id="sn-ia-estado" style="font-size:12px;color:var(--dorado);margin-bottom:8px;display:none;">⏳ Analizando...</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+            <input type="text" id="sn-codigo-manual" placeholder="Código (se genera auto — o escanea QR)" style="flex:1;margin:0;text-transform:uppercase;" oninput="this.value=this.value.toUpperCase();onCodigoSNInput();" onkeydown="onCodigoSNEnter(event)"
+            <button type="button" onclick="escanearCodigoSN()" style="padding:8px 12px;background:var(--gris2);border:1px solid var(--borde);border-radius:8px;color:var(--plateado);font-size:18px;cursor:pointer;" title="Escanear QR">📷</button>
+        </div>
         <input type="text" id="sn-nombre" placeholder="Nombre del producto">
         <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
             <select id="sn-categoria" style="flex:1;margin:0;" onchange="mostrarTallaSN(this.value)">
@@ -5296,7 +6301,7 @@ function enviarWAEstadoCuenta(ventaId) {
                 + Nueva
             </button>
         </div>
-        <!-- Tallas para anillos/conjuntos -->
+        <!-- Tallas para anillos/conjuntos SIN código físico -->
         <div id="sn-talla-container" style="display:none;margin-top:8px;">
             <label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:6px;">Talla americana: <span style="color:#888;">(selecciona una o varias)</span></label>
             <div style="display:flex;flex-wrap:wrap;gap:6px;">
@@ -5314,10 +6319,32 @@ function enviarWAEstadoCuenta(ventaId) {
         </div>
         <!-- Resumen de tallas seleccionadas con qty -->
         <div id="sn-tallas-resumen" style="margin-top:10px;background:rgba(201,168,76,0.08);border-radius:8px;padding:0;"></div>
-        <input type="number" id="sn-precio" placeholder="Precio $" step="0.01" style="margin-top:8px;">
+
+        <!-- Talla especial (decimales como 7.5) — visible siempre que sea anillo -->
+        <div id="sn-talla-especial-wrap" style="display:none;margin-top:8px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <label style="font-size:11px;color:var(--plateado);white-space:nowrap;">Talla especial:</label>
+                <input type="number" id="sn-talla-especial" placeholder="ej: 7.5" step="0.5" min="1" max="20"
+                    style="width:90px;margin:0;font-size:13px;text-align:center;"
+                    oninput="agregarTallaEspecialSN(this.value)"
+                    onkeydown="if(event.key==='Enter')event.preventDefault()">
+                <span id="sn-talla-especial-chip" style="display:none;background:var(--dorado);color:#111;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;" onclick="quitarTallaEspecialSN()">T— ✕</span>
+            </div>
+        </div>
+
+        <!-- Multi-código: para anillos con código físico impreso -->
+        <div id="sn-multicod-container" style="display:none;margin-top:10px;">
+            <label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:6px;">📋 Códigos escaneados: <span style="color:#888;font-size:10px;">escanea cada pieza — se crean entradas separadas</span></label>
+            <div id="sn-multicod-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;min-height:28px;"></div>
+            <div style="display:flex;gap:8px;">
+                <input type="text" id="sn-multicod-input" placeholder="Escanea el siguiente código" style="flex:1;margin:0;text-transform:uppercase;font-size:12px;" oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter'){event.preventDefault();agregarCodigoMulti();this.focus();}">
+                <button type="button" onclick="agregarCodigoMulti()" style="padding:8px 12px;background:var(--dorado);border:none;border-radius:8px;color:#111;font-weight:700;font-size:12px;cursor:pointer;">+ Agregar</button>
+            </div>
+        </div>
+        <input type="number" id="sn-precio" placeholder="Precio $" step="0.01" style="margin-top:8px;" onkeydown="if(event.key==='Enter')event.preventDefault()">
         <div id="sn-cantidad-wrap">
             <label style="font-size:11px;color:var(--dorado);display:block;margin-top:10px;margin-bottom:4px;font-weight:600;">📦 Cantidad en existencia:</label>
-            <input type="number" id="sn-cantidad" placeholder="Cantidad de piezas" value="1" min="1" style="margin-top:0;border-color:var(--dorado);">
+            <input type="number" id="sn-cantidad" placeholder="Cantidad de piezas" value="1" min="1" style="margin-top:0;border-color:var(--dorado);" onkeydown="if(event.key==='Enter')event.preventDefault()">
         </div>
         <input type="text" id="sn-desc" placeholder="Descripción corta" style="margin-top:8px;">
         <input type="text" id="sn-desc-tienda" placeholder="Descripción para tienda" style="margin-top:8px;">
@@ -5573,10 +6600,21 @@ async function confirmarImportacion() {
     const txt   = document.getElementById("excel-progreso-txt");
     let ok = 0, err = 0;
 
+    let omitidos = 0;
     for (let i = 0; i < _excelProductos.length; i++) {
         const p = _excelProductos[i];
         txt.textContent = `Importando ${i+1} de ${_excelProductos.length}...`;
         barra.style.width = Math.round((i+1)/_excelProductos.length*100) + "%";
+
+        // Validar duplicado antes de importar
+        if (p.codigo) {
+            const existeDup = stockData.find(s => String(s.codigo).toUpperCase() === String(p.codigo).toUpperCase());
+            if (existeDup) {
+                omitidos++;
+                continue; // saltar este producto
+            }
+        }
+
         try {
             const res = await apiPost({
                 accion:      "STOCK_REGISTRAR",
@@ -5596,10 +6634,10 @@ async function confirmarImportacion() {
         } catch(_) { err++; }
     }
 
-    txt.textContent = `✅ ${ok} importados${err > 0 ? ` · ⚠️ ${err} errores` : ""}`;
+    txt.textContent = `✅ ${ok} importados${omitidos > 0 ? ` · ⚠️ ${omitidos} código(s) duplicados omitidos` : ""}${err > 0 ? ` · ❌ ${err} errores` : ""}`;
     barra.style.width = "100%";
     barra.style.background = err > 0 ? "#e74c3c" : "#27ae60";
-    toast(`✅ Importación completa: ${ok} productos`);
+    toast(`✅ Importación: ${ok} nuevos${omitidos > 0 ? `, ${omitidos} omitidos por código duplicado` : ""}`);
     setTimeout(async () => {
         cerrarModal("modal-importar-excel");
         await cargarStock();
