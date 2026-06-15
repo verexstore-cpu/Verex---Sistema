@@ -5383,22 +5383,28 @@ function toast(msg, bg) {
 ;(function() {
     let _scanBuf = "", _scanT = 0;
     document.addEventListener("keydown", function(e) {
-        // Ignorar si el foco está en un input/textarea que no sea de búsqueda
-        const tag = document.activeElement?.tagName;
-        const id  = document.activeElement?.id || "";
-        const esBusqueda = id === "bus-stock" || id === "bus-etiquetas";
-        if ((tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") && !esBusqueda) return;
+        const activeId = document.activeElement?.id || "";
+        // Solo ignorar si el foco está en un input de otro módulo (modal, precio, etc.)
+        // Los campos de búsqueda de stock/etiquetas SÍ deben pasar
+        const inputsExcluidos = ["sn-multicod-input","sn-codigo-manual","sn-nombre","sn-precio",
+            "sn-cantidad","sn-desc","sn-desc-tienda","sn-caract","inp-pass",
+            "np-nombre","np-desc","np-precio","np-codigo","np-qty","np-caract",
+            "ep-codigo","ep-nombre","ep-desc","ep-precio","ep-caract","ep-existencia",
+            "lote-precio-global"];
+        if (inputsExcluidos.includes(activeId)) return;
+        // Ignorar si hay un modal visible con un textarea/input activo
+        const modalAbierto = document.querySelector(".modal-overlay.active input:focus, .modal-overlay[style*='flex'] input:focus");
+        if (modalAbierto) return;
 
         const now = Date.now();
-        if (now - _scanT > 80) _scanBuf = ""; // reset si pasó mucho tiempo
+        if (now - _scanT > 150) _scanBuf = "";
         _scanT = now;
 
         if (e.key === "Enter") {
-            const cod = _scanBuf.trim();
+            const cod = _scanBuf.trim().toUpperCase();
             _scanBuf = "";
             if (cod.length < 3) return;
 
-            // Determinar qué tab está visible
             const tabStock = document.getElementById("tab-content-stock");
             const tabEtiq  = document.getElementById("tab-content-etiquetas");
             const stockVis = tabStock && tabStock.style.display !== "none";
