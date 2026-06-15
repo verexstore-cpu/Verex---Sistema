@@ -4272,9 +4272,16 @@ function agregarCodigoMultiDesde(cod) {
     // Si ya está en la lista, sumar 1 a la cantidad en lugar de rechazar
     const yaEnLista = _snMultiCodigos.find(c => c.codigo === cod);
     if (yaEnLista) { yaEnLista.qty = (yaEnLista.qty || 1) + 1; renderMultiCodigos(); toast(`+1 — ${cod} ahora ×${yaEnLista.qty}`); return; }
-    // Verificar duplicado en stock
+    // Si ya existe en stock, agregar como reabastecimiento (suma a stock_bodega)
     const existeDup = stockData.find(s => String(s.codigo).toUpperCase() === cod);
-    if (existeDup) { toast(`⚠️ ${cod} ya existe en stock — "${existeDup.nombre}"`); return; }
+    if (existeDup) {
+        const m2 = cod.match(/^(.+?)T(\d+(?:\.\d+)?)$/i);
+        _snMultiCodigos.push({ codigo: cod, talla: m2?m2[2]:"", codigoBase: m2?m2[1]:cod, qty: 1, esRestock: true, nombreExistente: existeDup.nombre });
+        renderMultiCodigos();
+        toast(`+1 a bodega — ${existeDup.nombre}`);
+        setTimeout(() => document.getElementById("sn-multicod-input")?.focus(), 80);
+        return;
+    }
     // Extraer talla y base
     const m = cod.match(/^(.+?)T(\d+(?:\.\d+)?)$/i);
     const talla = m ? m[2] : "";
@@ -4313,9 +4320,11 @@ function renderMultiCodigos() {
     const wrap = document.getElementById("sn-multicod-chips");
     if (!wrap) return;
     wrap.innerHTML = _snMultiCodigos.map(c => `
-        <div style="display:flex;align-items:center;gap:6px;background:rgba(201,168,76,0.08);border:1px solid var(--dorado);border-radius:10px;padding:6px 10px;font-size:12px;margin-bottom:4px;">
-            <span style="font-weight:700;color:var(--dorado);flex:1;">${c.codigo}</span>
-            <span style="color:#888;font-size:10px;margin-right:4px;">${c.talla ? "T"+c.talla : ""}</span>
+        <div style="display:flex;align-items:center;gap:6px;background:${c.esRestock ? 'rgba(46,204,113,0.08)' : 'rgba(201,168,76,0.08)'};border:1px solid ${c.esRestock ? '#2ecc71' : 'var(--dorado)'};border-radius:10px;padding:6px 10px;font-size:12px;margin-bottom:4px;">
+            <div style="flex:1;min-width:0;">
+                <span style="font-weight:700;color:${c.esRestock ? '#2ecc71' : 'var(--dorado)'};">${c.codigo}</span>
+                ${c.esRestock ? `<span style="display:block;font-size:10px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📦 +bodega: ${c.nombreExistente||''}</span>` : ''}
+            </div>
             <button onclick="cambiarQtyMulti('${c.codigo}',-1)" style="width:22px;height:22px;border-radius:50%;border:1px solid #555;background:#2a2a2a;color:#fff;cursor:pointer;font-size:13px;line-height:1;">−</button>
             <span style="min-width:20px;text-align:center;font-weight:700;">${c.qty || 1}</span>
             <button onclick="cambiarQtyMulti('${c.codigo}',1)"  style="width:22px;height:22px;border-radius:50%;border:1px solid #555;background:#2a2a2a;color:#fff;cursor:pointer;font-size:13px;line-height:1;">+</button>
@@ -4415,7 +4424,10 @@ async function guardarStockNuevo() {
                 if (url) fotoUrlMulti = url;
             }
             let guardados = 0;
-            for (const { codigo, talla, codigoBase: cb, qty } of _snMultiCodigos) {
+            const nuevos   = _snMultiCodigos.filter(c => !c.esRestock);
+            const restock  = _snMultiCodigos.filter(c =>  c.esRestock);
+            // Registrar productos nuevos
+            for (const { codigo, talla, codigoBase: cb, qty } of nuevos) {
                 const res = await apiPost({
                     accion: "STOCK_REGISTRAR",
                     codigo, codigoBase: cb, talla,
@@ -4429,8 +4441,19 @@ async function guardarStockNuevo() {
                 });
                 if (res.ok) guardados++;
             }
+            // Sumar unidades a productos existentes
+            if (restock.length > 0) {
+                const itemsRestock = restock.map(c => {
+                    const prod = stockData.find(s => String(s.codigo).toUpperCase() === c.codigo);
+                    return { codigo: c.codigo, stock_bodega: (parseInt(prod?.stock_bodega) || 0) + (c.qty || 1) };
+                });
+                const res = await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: itemsRestock });
+                if (res.ok) guardados += restock.length;
+            }
             const codigosGuardados = _snMultiCodigos.filter((_, i) => i < guardados).map(x => x.codigo);
-            toast(`✅ ${guardados} pieza${guardados > 1 ? "s" : ""} guardada${guardados > 1 ? "s" : ""} en stock`);
+            const msgNuevos  = nuevos.length  ? `${nuevos.length} nueva${nuevos.length>1?"s":""}` : "";
+            const msgRestock = restock.length ? `${restock.length} reabastecida${restock.length>1?"s":""}` : "";
+            toast(`✅ ${[msgNuevos, msgRestock].filter(Boolean).join(" + ")} en bodega`);
             _snMultiCodigos = [];
             cerrarModal("modal-stock-nuevo");
             await cargarStock();
