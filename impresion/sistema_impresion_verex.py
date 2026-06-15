@@ -267,10 +267,11 @@ class SistemaImpresionVerex(TkinterDnDApp):
 
     def imprimir_desde_web(self, pdf_path, formato, rotar=True):
         """Llamado desde el servidor HTTP. Retorna dict {ok, etiquetas/error}."""
+        import traceback
         try:
             imagenes = self.procesar_pdf_a_imagenes(pdf_path, formato, rotar)
             if not imagenes:
-                return {'ok': False, 'error': 'No se generaron imágenes del PDF'}
+                return {'ok': False, 'error': f'Imágenes vacías — formato={formato} pdf={pdf_path}'}
 
             qlr = BrotherQLRaster(MODELO_IMPRESORA)
             qlr.exception_on_warning = True
@@ -285,7 +286,7 @@ class SistemaImpresionVerex(TkinterDnDApp):
             send(instrucciones, IP_IMPRESORA)
             return {'ok': True, 'etiquetas': len(imagenes)}
         except Exception as e:
-            return {'ok': False, 'error': str(e)}
+            return {'ok': False, 'error': traceback.format_exc()[-400:]}
 
 
 # ── Servidor HTTP en puerto 5000 ─────────────────────────────────────────────
