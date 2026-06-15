@@ -3824,7 +3824,7 @@ function renderStock(items) {
         const estadoNorm = normalizar(item.estado);
         const est = estadoColor[estadoNorm] || estadoColor["bodega"];
         const sel = stockSeleccionados.includes(item.codigo);
-        return `<div class="inv-item" style="border-color:${sel ? "var(--dorado)" : "#333"};cursor:pointer;" onclick="toggleSeleccionStock(${jsArg(item.codigo)})">
+        return `<div class="inv-item" data-codigo="${sanitizar(item.codigo)}" style="border-color:${sel ? "var(--dorado)" : "#333"};cursor:pointer;" onclick="toggleSeleccionStock(${jsArg(item.codigo)})">
             <div style="display:flex;align-items:center;gap:4px;margin-right:8px;">
                 <div style="width:18px;height:18px;border:2px solid ${sel?"var(--dorado)":"#555"};border-radius:4px;background:${sel?"var(--dorado)":"transparent"};display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">
                     ${sel ? "✓" : ""}
@@ -3915,6 +3915,61 @@ function toggleSeleccionStock(codigo) {
         accionesDiv.style.display = "none";
     }
     filtrarStock();
+}
+
+function buscarStockPorScanner(cod) {
+    const inp = document.getElementById("bus-stock");
+    if (inp) inp.value = cod;
+    filtrarStock();
+    // Resaltar tarjeta encontrada en verde
+    setTimeout(() => {
+        const lista = document.getElementById("lista-stock");
+        const cards = lista ? lista.querySelectorAll(".inv-item") : [];
+        let encontrada = null;
+        cards.forEach(card => {
+            const c = (card.dataset.codigo || "").toUpperCase();
+            if (c === cod.toUpperCase()) { encontrada = card; }
+            else { card.style.borderColor = "#333"; card.style.boxShadow = ""; }
+        });
+        if (encontrada) {
+            encontrada.style.borderColor = "#2ecc71";
+            encontrada.style.boxShadow = "0 0 0 2px #2ecc71, 0 0 16px rgba(46,204,113,0.3)";
+            encontrada.scrollIntoView({ behavior: "smooth", block: "center" });
+            // Quitar highlight después de 4 segundos
+            setTimeout(() => {
+                encontrada.style.borderColor = "#333";
+                encontrada.style.boxShadow = "";
+            }, 4000);
+        } else if (cards.length === 1) {
+            // Si solo hay un resultado (búsqueda parcial), resaltarlo igual
+            cards[0].style.borderColor = "#2ecc71";
+            cards[0].style.boxShadow = "0 0 0 2px #2ecc71, 0 0 16px rgba(46,204,113,0.3)";
+            cards[0].scrollIntoView({ behavior: "smooth", block: "center" });
+            setTimeout(() => {
+                cards[0].style.borderColor = "#333";
+                cards[0].style.boxShadow = "";
+            }, 4000);
+        }
+    }, 80);
+}
+
+function buscarEtiquetasPorScanner(cod) {
+    const inp = document.getElementById("bus-etiquetas");
+    if (inp) inp.value = cod;
+    filtrarProductosEtiquetas();
+    setTimeout(() => {
+        const grid = document.getElementById("grid-etiquetas");
+        const cards = grid ? grid.querySelectorAll("div[id^='etqcard-']") : [];
+        // Buscar coincidencia exacta por código
+        const idEsperado = "etqcard-" + cod.replace(/[^a-zA-Z0-9]/g, '-');
+        let card = document.getElementById(idEsperado) || (cards.length === 1 ? cards[0] : null);
+        if (card) {
+            card.style.outline = "2px solid #2ecc71";
+            card.style.boxShadow = "0 0 12px rgba(46,204,113,0.4)";
+            card.scrollIntoView({ behavior: "smooth", block: "center" });
+            setTimeout(() => { card.style.outline = ""; card.style.boxShadow = ""; }, 4000);
+        }
+    }, 80);
 }
 
 function filtrarStock() {
@@ -5411,11 +5466,9 @@ function toast(msg, bg) {
             const etiqVis  = tabEtiq  && tabEtiq.style.display  !== "none";
 
             if (stockVis) {
-                const inp = document.getElementById("bus-stock");
-                if (inp) { inp.value = cod; filtrarStock(); inp.focus(); }
+                buscarStockPorScanner(cod);
             } else if (etiqVis) {
-                const inp = document.getElementById("bus-etiquetas");
-                if (inp) { inp.value = cod; filtrarProductosEtiquetas(); inp.focus(); }
+                buscarEtiquetasPorScanner(cod);
             }
         } else if (e.key.length === 1) {
             _scanBuf += e.key;
