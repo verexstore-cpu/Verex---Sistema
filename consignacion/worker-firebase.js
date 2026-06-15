@@ -178,6 +178,7 @@ export default {
               stock_vendido:      item.stock_vendido       !== undefined ? parseInt(item.stock_vendido)       : 0,
               stock_total:        item.stock_total         !== undefined ? parseInt(item.stock_total)         : qty,
               estado:             item.estado || "bodega",
+              fechaRegistro:      item.fechaRegistro || new Date().toISOString(),
             };
             await sb.set("stock", codigo, doc);
             codigos.push(codigo);
@@ -675,6 +676,50 @@ export default {
             await sb.update("pedidos", d.numeroPedido, { stockLiberado: true });
           }
 
+          // ── Notificar al cliente si fue Despachado, ordenó por correo y tiene correo ──
+          if (d.estado === "Despachado" && pedidoActual.canal === "correo" && pedidoActual.correo) {
+            try {
+              const RESEND_KEY = env.RESEND_KEY;
+              if (RESEND_KEY) {
+                await fetch("https://api.resend.com/emails", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
+                  body: JSON.stringify({
+                    from: "VEREX Store <hola@verexstore.com>",
+                    to:   [pedidoActual.correo],
+                    subject: `🚚 Tu pedido ${pedidoActual.numeroPedido} está en camino — VEREX Store`,
+                    html: `
+                      <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#fff;border:2px solid #C9A84C;border-radius:12px;overflow:hidden;">
+                        <div style="background:linear-gradient(135deg,#aaa,#d0d0d0);padding:24px;text-align:center;">
+                          <h1 style="margin:0;font-size:22px;letter-spacing:3px;color:#111;">VEREX STORE</h1>
+                          <p style="margin:6px 0 0;font-size:13px;color:#444;">🚚 Tu pedido está en camino</p>
+                        </div>
+                        <div style="padding:24px;">
+                          <p style="margin:0 0 16px;font-size:15px;color:#111;">¡Hola, <strong>${pedidoActual.cliente}</strong>! 💛</p>
+                          <p style="margin:0 0 16px;font-size:14px;color:#333;">¡Tenemos excelentes noticias! Tu pedido <strong>${pedidoActual.numeroPedido}</strong> ha sido despachado y ya está en camino hacia ti.</p>
+                          <h2 style="color:#C9A84C;margin:0 0 16px;">${pedidoActual.numeroPedido}</h2>
+                          <table style="width:100%;border-collapse:collapse;font-size:14px;">
+                            <tr><td style="padding:6px 0;color:#555;">Productos</td><td style="font-weight:700;color:#111;">${pedidoActual.productos || "—"}</td></tr>
+                            <tr><td style="padding:6px 0;color:#555;">Destino</td><td style="color:#111;">${pedidoActual.departamento || ""} ${pedidoActual.municipio || ""}</td></tr>
+                            <tr><td style="padding:6px 0;color:#555;font-weight:700;">Total</td><td style="font-size:18px;font-weight:800;color:#C9A84C;">${pedidoActual.total}</td></tr>
+                          </table>
+                          <div style="margin:20px 0 0;padding:14px 16px;background:#b0b0b0;border-left:4px solid #C9A84C;border-radius:6px;font-size:13px;color:#333;">
+                            🕐 <strong>Tiempos estimados de entrega:</strong><br><br>
+                            Para el <strong>área metropolitana de San Salvador</strong>, tu pedido llegará en un máximo de <strong>24 horas</strong> a partir del despacho.<br><br>
+                            Para el <strong>resto del país</strong>, el tiempo estimado es de máximo <strong>48 horas</strong>.
+                          </div>
+                          <p style="margin:16px 0 0;font-size:13px;color:#444;">Si tienes alguna consulta no dudes en escribirnos a <a href="mailto:hola@verexstore.com" style="color:#7a5500;">hola@verexstore.com</a></p>
+                        </div>
+                        <div style="padding:16px 24px;background:#f5f5f5;border-top:2px solid #C9A84C;text-align:center;font-size:12px;color:#888;">
+                          El mundo es mejor cuando brillas tú ✨ — <a href="https://verexstore.com" style="color:#C9A84C;text-decoration:none;">verexstore.com</a>
+                        </div>
+                      </div>`
+                  })
+                });
+              }
+            } catch(dispatchEmailErr) { console.error("Dispatch email error:", dispatchEmailErr); }
+          }
+
           result = { ok: true };
           break;
         }
@@ -803,11 +848,14 @@ export default {
           let codigoCliente = "";
           if (cliExist) {
             codigoCliente = cliExist.codigo;
-            await sb.update("clientes", codigoCliente, { totalPedidos: (parseInt(cliExist.totalPedidos)||0) + 1 });
+            const updCli = { totalPedidos: (parseInt(cliExist.totalPedidos)||0) + 1 };
+            if (d.correo && !cliExist.correo) updCli.correo = d.correo;
+            await sb.update("clientes", codigoCliente, updCli);
           } else {
             codigoCliente = `CVX-${String(clientes.length + 1).padStart(3, "0")}`;
             await sb.set("clientes", codigoCliente, {
               codigo: codigoCliente, nombre: d.cliente, telefono: d.telefono,
+              correo: d.correo || "",
               municipio: d.municipio || "", direccion: d.direccion || "",
               departamento: d.departamento || "", totalPedidos: 1,
               fechaRegistro: new Date().toISOString()
@@ -821,7 +869,8 @@ export default {
             productos: d.productos || "", total: d.total || 0,
             estado: "Pendiente", metodoPago: d.metodoPago || "",
             items: d.items || "", cuponUsado: d.cuponUsado || "",
-            descMonto: d.descMonto || 0, envio: d.envio || 0
+            descMonto: d.descMonto || 0, envio: d.envio || 0,
+            codigoCliente: codigoCliente || "", canal: d.canal || "whatsapp"
           });
 
           // ── Reservar stock inmediatamente ──────────────────────────
@@ -848,32 +897,72 @@ export default {
               body: JSON.stringify({
                 from: "VEREX Store <hola@verexstore.com>",
                 to:   ["hola@verexstore.com"],
-                subject: `🛍️ Nuevo Pedido ${numeroPedido} — $${d.total}`,
+                subject: `🛍️ Nuevo Pedido ${numeroPedido} — ${d.total}`,
                 html: `
-                  <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#0a0a0a;color:#fff;border-radius:12px;overflow:hidden;">
-                    <div style="background:linear-gradient(135deg,#7a5500,#C9A84C);padding:24px;text-align:center;">
-                      <h1 style="margin:0;font-size:22px;letter-spacing:3px;">VEREX STORE</h1>
-                      <p style="margin:6px 0 0;opacity:0.8;font-size:13px;">Nuevo pedido recibido</p>
+                  <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#fff;border:2px solid #C9A84C;border-radius:12px;overflow:hidden;">
+                    <div style="background:linear-gradient(135deg,#aaa,#d0d0d0);padding:24px;text-align:center;">
+                      <h1 style="margin:0;font-size:22px;letter-spacing:3px;color:#111;">VEREX STORE</h1>
+                      <p style="margin:6px 0 0;font-size:13px;color:#444;">Nuevo pedido recibido</p>
                     </div>
                     <div style="padding:24px;">
                       <h2 style="color:#C9A84C;margin:0 0 16px;">${numeroPedido}</h2>
                       <table style="width:100%;border-collapse:collapse;font-size:14px;">
-                        <tr><td style="padding:6px 0;color:#aaa;">Cliente</td><td style="font-weight:700;">${d.cliente}</td></tr>
-                        <tr><td style="padding:6px 0;color:#aaa;">Teléfono</td><td>${d.telefono}</td></tr>
-                        <tr><td style="padding:6px 0;color:#aaa;">Ubicación</td><td>${d.departamento || ""} ${d.municipio || ""}</td></tr>
-                        <tr><td style="padding:6px 0;color:#aaa;">Dirección</td><td>${d.direccion || "—"}</td></tr>
-                        <tr><td style="padding:6px 0;color:#aaa;">Productos</td><td>${d.productos || "—"}</td></tr>
-                        <tr><td style="padding:6px 0;color:#aaa;">Pago</td><td>${d.metodoPago || "—"}</td></tr>
-                        <tr><td style="padding:6px 0;color:#aaa;font-weight:700;">Total</td><td style="font-size:18px;font-weight:800;color:#C9A84C;">$${d.total}</td></tr>
+                        <tr><td style="padding:6px 0;color:#888;">Cliente</td><td style="font-weight:700;color:#111;">${d.cliente}</td></tr>
+                        <tr><td style="padding:6px 0;color:#888;">Teléfono</td><td style="color:#111;">${d.telefono}</td></tr>
+                        <tr><td style="padding:6px 0;color:#888;">Ubicación</td><td style="color:#111;">${d.departamento || ""} ${d.municipio || ""}</td></tr>
+                        <tr><td style="padding:6px 0;color:#888;">Dirección</td><td style="color:#111;">${d.direccion || "—"}</td></tr>
+                        <tr><td style="padding:6px 0;color:#888;">Productos</td><td style="color:#111;">${d.productos || "—"}</td></tr>
+                        <tr><td style="padding:6px 0;color:#888;">Pago</td><td style="color:#111;">${d.metodoPago || "—"}</td></tr>
+                        <tr><td style="padding:6px 0;color:#888;font-weight:700;">Total</td><td style="font-size:18px;font-weight:800;color:#C9A84C;">${d.total}</td></tr>
                       </table>
                     </div>
-                    <div style="padding:16px 24px;background:#111;text-align:center;font-size:12px;color:#666;">
-                      El mundo es mejor cuando tu brillas ✨
+                    <div style="padding:16px 24px;background:#f5f5f5;border-top:2px solid #C9A84C;text-align:center;font-size:12px;color:#888;">
+                      El mundo es mejor cuando brillas tú ✨
                     </div>
                   </div>`
               })
             });
           } catch(emailErr) { console.error("Email error:", emailErr); }
+
+          // ── Confirmación al cliente (solo si dejó correo) ──────────
+          if (d.correo) {
+            try {
+              const RESEND_KEY = env.RESEND_KEY;
+              if (RESEND_KEY) {
+                await fetch("https://api.resend.com/emails", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
+                  body: JSON.stringify({
+                    from: "VEREX Store <hola@verexstore.com>",
+                    to:   [d.correo],
+                    subject: `✅ Confirmación de tu pedido ${numeroPedido} — VEREX Store — ${d.total}`,
+                    html: `
+                      <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#fff;border:2px solid #C9A84C;border-radius:12px;overflow:hidden;">
+                        <div style="background:linear-gradient(135deg,#aaa,#d0d0d0);padding:24px;text-align:center;">
+                          <h1 style="margin:0;font-size:22px;letter-spacing:3px;color:#111;">VEREX STORE</h1>
+                          <p style="margin:6px 0 0;font-size:13px;color:#444;">Confirmación de pedido</p>
+                        </div>
+                        <div style="padding:24px;">
+                          <p style="margin:0 0 16px;font-size:15px;color:#111;">Hola <strong>${d.cliente}</strong>, ¡gracias por tu compra! 💛</p>
+                          <p style="margin:0 0 16px;font-size:14px;color:#444;">Tu pedido ha sido recibido y está siendo procesado.</p>
+                          <h2 style="color:#C9A84C;margin:0 0 16px;">${numeroPedido}</h2>
+                          <table style="width:100%;border-collapse:collapse;font-size:14px;">
+                            <tr><td style="padding:6px 0;color:#555;">Productos</td><td style="font-weight:700;color:#111;">${d.productos || "—"}</td></tr>
+                            <tr><td style="padding:6px 0;color:#555;">Pago</td><td style="color:#111;">${d.metodoPago || "—"}</td></tr>
+                            <tr><td style="padding:6px 0;color:#555;">Envío a</td><td style="color:#111;">${d.departamento || ""} ${d.municipio || ""}</td></tr>
+                            <tr><td style="padding:6px 0;color:#555;font-weight:700;">Total</td><td style="font-size:18px;font-weight:800;color:#C9A84C;">${d.total}</td></tr>
+                          </table>
+                          <p style="margin:20px 0 0;font-size:13px;color:#444;">Nos pondremos en contacto contigo pronto para coordinar la entrega.</p>
+                        </div>
+                        <div style="padding:16px 24px;background:#f5f5f5;border-top:2px solid #C9A84C;text-align:center;font-size:12px;color:#888;">
+                          El mundo es mejor cuando tú brillas ✨ — <a href="https://verexstore.com" style="color:#C9A84C;text-decoration:none;">verexstore.com</a>
+                        </div>
+                      </div>`
+                  })
+                });
+              }
+            } catch(clientEmailErr) { console.error("Client email error:", clientEmailErr); }
+          }
 
           result = { ok: true, numeroPedido, codigoCliente };
           break;
@@ -1071,15 +1160,28 @@ export default {
         case "EDITAR_PRODUCTO": {
           if (!esAdmin) return forbidden();
           const upd = {};
-          if (d.nombre        !== undefined) upd.nombre            = d.nombre;
-          if (d.precio        !== undefined) upd.precio            = Math.round((parseFloat(d.precio) || 0) * 100) / 100;
-          if (d.img           !== undefined) upd.foto              = d.img;
-          if (d.descripcion   !== undefined) upd.descripcionTienda = d.descripcion;
-          if (d.destacado     !== undefined) upd.destacado         = d.destacado;
-          if (d.enCatalogo    !== undefined) upd.enCatalogo        = Boolean(d.enCatalogo);
-          if (d.stock_bodega  !== undefined) upd.stock_bodega      = Math.max(0, parseInt(d.stock_bodega) || 0);
-          if (d.caracteristicas !== undefined) upd.caracteristicas = d.caracteristicas;
-          await sb.update("stock", d.codigo, upd);
+          if (d.nombre          !== undefined) upd.nombre            = d.nombre;
+          if (d.precio          !== undefined) upd.precio            = Math.round((parseFloat(d.precio) || 0) * 100) / 100;
+          if (d.img             !== undefined) upd.foto              = d.img;
+          if (d.descripcion     !== undefined) upd.descripcionTienda = d.descripcion;
+          if (d.destacado       !== undefined) upd.destacado         = d.destacado;
+          if (d.enCatalogo      !== undefined) upd.enCatalogo        = Boolean(d.enCatalogo);
+          if (d.stock_bodega    !== undefined) upd.stock_bodega      = Math.max(0, parseInt(d.stock_bodega) || 0);
+          if (d.caracteristicas !== undefined) upd.caracteristicas   = d.caracteristicas;
+          if (d.material        !== undefined) upd.material          = d.material;
+          if (d.caracterEspecial !== undefined) upd.caracterEspecial = d.caracterEspecial;
+          // Cambio de código: copiar fila con nuevo código y marcar vieja inactiva
+          if (d.nuevo_codigo && d.nuevo_codigo !== d.codigo) {
+            const viejo = await sb.get("stock", d.codigo);
+            if (viejo) {
+              const nueva = { ...viejo, ...upd, codigo: d.nuevo_codigo };
+              delete nueva.id;
+              await sb.set("stock", d.nuevo_codigo, nueva);
+              await sb.update("stock", d.codigo, { estado: "inactivo" });
+            }
+          } else {
+            await sb.update("stock", d.codigo, upd);
+          }
           result = { ok: true };
           break;
         }
@@ -1273,7 +1375,9 @@ export default {
         }
 
         case "SUBIR_FOTO": {
-          if (!esAdmin) return forbidden();
+          // Permitir subida con key pública (desde celular) o con pass admin
+          const keyOk = d.key === "VEREX_2026_PRO" || esAdmin;
+          if (!keyOk) return forbidden();
           const ikKey = env.IMAGEKIT_PRIVATE_KEY;
           if (!ikKey) { result = { ok: false, error: "ImageKit no configurado en secrets" }; break; }
           const authHeader = "Basic " + btoa(ikKey + ":");
@@ -1369,30 +1473,33 @@ export default {
             const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
 
             const promptGemini =
-              `Eres un experto catalogador de joyería fina latinoamericana. Analiza esta foto detalladamente y responde ÚNICAMENTE con JSON válido, sin texto antes ni después.\n\n` +
+              `Eres el catalogador de una joyería fina latinoamericana de alto nivel. Tu misión es dar nombres EVOCADORES y SOFISTICADOS a cada pieza. Responde ÚNICAMENTE con JSON válido, sin texto antes ni después.\n\n` +
               `MATERIAL CONFIRMADO (no lo detectes, úsalo tal cual): ${material}\n\n` +
-              `PASO 1 — TIPO de joya (elige según lo que VES):\n` +
+              `PASO 1 — TIPO de joya:\n` +
               `AN=anillo PU=pulsera CO=collar CD=collar+dije AR=aretes DJ=dije CJ=conjunto TB=tobillera RS=rosario CA=cadena\n\n` +
-              `PASO 2 — Describe con MÁXIMO DETALLE lo que ves:\n` +
-              `• Forma/motivo ESPECÍFICO: no digas "abstracto" — di exactamente qué ves: corazón, lazo, mariposa, hoja, luna, estrella, serpiente, infinito, flor, cruz, ángel, elefante, llave, corona, gota, ola, espiral, geométrico, etc.\n` +
-              `• Piedras: zirconia blanca, zirconia roja, zirconia azul, cristal, ópalo, perla, rubí, esmeralda, amatista, o sin piedras\n` +
-              `• Acabado: pulido brillante, mate, esmaltado (color), enchapado oro, enchapado oro rosa, bicolor plata-oro, texturizado, filigrana\n` +
-              `• Cantidad si aplica: solitario, trío, pavé, etc.\n\n` +
+              `PASO 2 — Identifica con PRECISIÓN lo que ves:\n` +
+              `• Motivo: corazón, lazo, mariposa, hoja, luna creciente, media luna, sol, estrella fugaz, serpiente, infinito, flor sakura, flor de lis, rosa, loto, trebol, cruz calada, ángel, querubín, elefante, llave antigua, corona, gota, ola, espiral, nudo celta, rombo calado, óvalo, solitario, pavé, baguette, banda, entrelazado, canasta, marquesa, gota invertida, pétalo, arco iris, pluma, hoja de olivo, vid, concha, estrella de mar, delfín, golondrina, colibri, abeja, libélula, cactus, palmera, montaña, ola marina\n` +
+              `• Piedras: zirconia blanca, zirconia champagne, zirconia negra, zirconia azul zafiro, zirconia rojo rubí, zirconia verde esmeralda, zirconia morada amatista, zirconia rosa, ópalo sintético, perla cultivada, cristal, sin piedra\n` +
+              `• Acabado: pulido espejo, acabado satinado, textura martillada, filigrana, calado, esmaltado blanco/negro/colorido, enchapado oro amarillo, enchapado oro rosa, bicolor plata-oro, micro pavé\n\n` +
+              `VOCABULARIO SOFISTICADO para nombres — usa estas palabras cuando aplique:\n` +
+              `solitario · pavé · calado · entrelazado · facetado · engastado · trenzado · apilable · abierto · minimalista · eterno · celestial · halo · vintage · art déco · baguette · marquesa · pétalo · canasta · banda · bisel · pronged · cluster · infinity · crepuscular · nacarado · tornasolado\n\n` +
               `REGLAS PARA EL NOMBRE:\n` +
-              `- Formato: [Tipo] + [motivo ESPECÍFICO] + [detalle piedra/color si hay]\n` +
+              `- Formato: [Tipo] + [adjetivo sofisticado o motivo] + [detalle piedra si hay]\n` +
+              `- Ejemplos BUENOS: "Anillo solitario zirconia oval", "Anillo pavé corazón", "Aretes luna creciente calada", "Collar mariposa nacarada", "Anillo entrelazado bicolor", "Anillo halo zirconia champagne"\n` +
+              `- Ejemplos MALOS (PROHIBIDOS): "Anillo geométrico", "Anillo decorativo", "Anillo abstracto", "Anillo elegante", "Anillo moderno", "Anillo bonito", "Anillo con diseño"\n` +
+              `- PROHIBIDO usar: geométrico, decorativo, abstracto, elegante, moderno, bonito, clásico, simple, diseño\n` +
               `- PRIMERA letra en MAYÚSCULA, el resto en minúsculas\n` +
-              `- NO incluyas el material en el nombre (se guarda por separado)\n` +
-              `- NUNCA uses palabras vagas como: abstracto, decorativo, elegante, bonito, diseño\n` +
-              `- SÍ usa términos específicos: corazón, lazo, mariposa, luna creciente, estrella, etc.\n` +
+              `- NO incluyas el material\n` +
               `- Máximo 5 palabras\n\n` +
               `REGLAS PARA DESCRIPCION:\n` +
-              `- Menciona el tipo, motivo exacto y piedras/acabado. NO menciones el material ${material} (va en campo aparte)\n` +
-              `- Máximo 12 palabras, en español\n\n` +
+              `- Específica: menciona el motivo exacto, tipo de piedra y acabado. Sin mencionar ${material}\n` +
+              `- Máximo 12 palabras\n\n` +
               `REGLAS PARA DESCRIPCION_TIENDA:\n` +
-              `- Frase elegante de marketing enfocada en diseño y acabado\n` +
+              `- Frase poética de marketing: evoca emoción, sofisticación, ocasión de uso\n` +
+              `- Ejemplos: "Delicado pavé que captura la luz en cada movimiento", "Luna creciente que ilumina tu elegancia natural"\n` +
               `- Máximo 18 palabras\n\n` +
               `Responde SOLO con este JSON:\n` +
-              `{"categoria":"XX","nombre":"[tipo] [motivo específico] [piedra si aplica]","descripcion":"texto específico sin material","descripcion_tienda":"frase elegante de marketing"}`;
+              `{"categoria":"XX","nombre":"nombre sofisticado máx 5 palabras","descripcion":"descripción específica","descripcion_tienda":"frase poética de marketing"}`;
 
             // ── Usar Groq (gratis, llama-3.2-11b-vision) ─────────────────
             const groqKey = env.GROQ_KEY;
@@ -1414,7 +1521,7 @@ export default {
                   ]
                 }],
                 max_tokens: 400,
-                temperature: 0.1
+                temperature: 0.4
               })
             });
 
@@ -1442,6 +1549,64 @@ export default {
           } catch(eIA) {
             result = { ok: false, error: "Error IA: " + eIA.message };
           }
+          break;
+        }
+
+        case "GUARDAR_FOTO_PENDIENTE": {
+          // Guarda URL de foto subida desde celular para usarla en el sistema
+          const id = `foto_${Date.now()}`;
+          await sb.set("fotos_pendientes", id, {
+            id, url: d.url, fecha: new Date().toISOString(), usada: false
+          });
+          result = { ok: true, id };
+          break;
+        }
+
+        case "GET_FOTOS_PENDIENTES": {
+          if (!esAdmin) return forbidden();
+          const fotos = await sb.getAll("fotos_pendientes");
+          // Devolver solo las no usadas, más recientes primero, máx 20
+          const recientes = fotos
+            .filter(f => !f.usada)
+            .sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+            .slice(0, 20);
+          result = { ok: true, fotos: recientes };
+          break;
+        }
+
+        case "MARCAR_FOTO_USADA": {
+          if (!esAdmin) return forbidden();
+          await sb.update("fotos_pendientes", d.id, { usada: true });
+          result = { ok: true };
+          break;
+        }
+
+        case "REGISTRAR_VISITA": {
+          // Público — se llama desde el catálogo en cada visita
+          const hoy = new Date().toISOString().slice(0, 10); // "2026-06-08"
+          let vis = await sb.get("config", "visitas_catalogo");
+          if (!vis) vis = { total: 0, porDia: {} };
+          vis.total = (vis.total || 0) + 1;
+          vis.porDia = vis.porDia || {};
+          vis.porDia[hoy] = (vis.porDia[hoy] || 0) + 1;
+          // Mantener solo los últimos 30 días para no inflar el registro
+          const dias = Object.keys(vis.porDia).sort();
+          if (dias.length > 30) dias.slice(0, dias.length - 30).forEach(d => delete vis.porDia[d]);
+          await sb.set("config", "visitas_catalogo", vis);
+          result = { ok: true };
+          break;
+        }
+
+        case "GET_VISITAS": {
+          if (!esAdmin) return forbidden();
+          const vis = await sb.get("config", "visitas_catalogo") || { total: 0, porDia: {} };
+          const hoy = new Date().toISOString().slice(0, 10);
+          const hace7 = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+          const visitasHoy    = vis.porDia?.[hoy] || 0;
+          const visitasSemana = Object.entries(vis.porDia || {})
+            .filter(([dia]) => dia >= hace7)
+            .reduce((s, [, n]) => s + n, 0);
+          result = { ok: true, total: vis.total || 0, hoy: visitasHoy, semana: visitasSemana, porDia: vis.porDia || {} };
           break;
         }
 

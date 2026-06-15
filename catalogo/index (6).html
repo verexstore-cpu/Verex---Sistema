@@ -610,6 +610,7 @@
                 </div>
                 <h3>${nombre}</h3>
                 <span class="ref">Ref: ${p.codigo || '—'}</span>
+                ${p.caracterEspecial ? `<span style="display:inline-block;margin:4px 0 2px;background:rgba(201,168,76,0.15);color:#C9A84C;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;border:1px solid rgba(201,168,76,0.3);">✦ ${p.caracterEspecial}</span>` : ''}
                 ${agotado ? '<span class="badge-agotado">Agotado</span>' : selectTallas}
                 <span class="precio">${precioStr}</span>
                 ${agotado ? '<button class="btn" disabled style="opacity:.4;cursor:not-allowed;">Sin Stock</button>' : `<button class="btn" onclick="agregar(${i})">Agregar al carrito</button>`}`;
@@ -878,6 +879,7 @@
         const dir    = document.getElementById("f-dir").value.trim();
         const correo = document.getElementById("f-correo").value.trim();
         if (!nom) return alert("Por favor ingresa tu nombre completo.");
+        if (!tel) return alert("Por favor ingresa tu teléfono. Es necesario para coordinar la entrega.");
         if (!correo || !correo.includes("@")) return alert("Por favor ingresa un correo electrónico válido para enviarte la confirmación.");
         if (!depto) return alert("Por favor selecciona tu departamento.");
         if (!ubi) return alert("Por favor ingresa tu municipio.");
@@ -914,7 +916,7 @@
         if (!cfg.carrusel || !cfg.carrusel.activo || !cfg.carrusel.slides.length) return;
         const slides = cfg.carrusel.slides; slideTotal = slides.length;
         const wrap = document.getElementById("carrusel-wrap"), cont = document.getElementById("carrusel-slides"), dots = document.getElementById("carrusel-dots");
-        cont.innerHTML = slides.map(s => `<div style="min-width:100%;position:relative;"><img src="${s.url}" style="width:100%;height:220px;object-fit:cover;display:block;">${s.titulo ? `<div style="position:absolute;bottom:0;left:0;right:0;padding:18px 16px;background:linear-gradient(transparent,rgba(0,0,0,0.7));"><div style="color:#fff;font-size:17px;font-weight:700;">${s.titulo}</div>${s.subtitulo ? `<div style="color:#ddd;font-size:13px;">${s.subtitulo}</div>` : ""}</div>` : ""}</div>`).join('');
+        cont.innerHTML = slides.map(s => `<div style="min-width:100%;position:relative;"><img src="${s.url}" style="width:100%;height:260px;object-fit:cover;display:block;">${s.titulo ? `<div style="position:absolute;bottom:0;left:0;right:0;padding:18px 16px;background:linear-gradient(transparent,rgba(0,0,0,0.7));"><div style="color:#fff;font-size:17px;font-weight:700;">${s.titulo}</div>${s.subtitulo ? `<div style="color:#ddd;font-size:13px;">${s.subtitulo}</div>` : ""}</div>` : ""}</div>`).join('');
         dots.innerHTML = slides.map((_,i) => `<div onclick="irASlide(${i})" style="width:8px;height:8px;border-radius:50%;background:${i===0?'#fff':'rgba(255,255,255,0.4)'};cursor:pointer;"></div>`).join('');
         wrap.style.display = "block";
         autoSlide = setInterval(() => moverSlide(1), 4000);

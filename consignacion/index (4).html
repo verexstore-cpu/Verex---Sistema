@@ -1000,6 +1000,7 @@
         <input type="text" id="np-nombre"  placeholder="Nombre del producto">
         <input type="text" id="np-desc"    placeholder="Descripción">
         <input type="number" id="np-precio" placeholder="Precio $" step="0.01">
+        <input type="text" id="np-caract"  placeholder="Características especiales (ej: hipoalergénico, ajustable…)">
         <input type="number" id="np-qty"    placeholder="Cantidad" value="1" min="1" id="np-qty">
         <div id="estado-ia" style="font-size:12px;color:var(--dorado);margin-bottom:10px;display:none;"></div>
         <button class="btn btn-dorado btn-full" onclick="agregarProductoNuevo()">Agregar a Entrega</button>
@@ -2627,6 +2628,7 @@ function abrirModalProductoNuevo() {
     document.getElementById("np-precio").value = "";
     document.getElementById("np-qty").value = "1";
     document.getElementById("np-categoria").value = "";
+    const npCaract = document.getElementById("np-caract"); if (npCaract) npCaract.value = "";
     document.getElementById("np-talla-container").style.display = "none";
     const tallaEsp = document.getElementById("np-talla-especial");
     if (tallaEsp) tallaEsp.value = "";
@@ -2814,6 +2816,7 @@ async function agregarProductoNuevo() {
     const nombre    = document.getElementById("np-nombre").value.trim();
     const precio    = parseFloat(document.getElementById("np-precio").value) || 0;
     const descripcion = document.getElementById("np-desc").value.trim();
+    const caracterEspecial = (document.getElementById("np-caract")?.value || "").trim();
     if (!categoria || !nombre || !precio) { toast("⚠️ Completa categoría, nombre y precio"); return; }
 
     const esAnillo = (categoria === "AN" || categoria === "CJ");
@@ -2880,7 +2883,8 @@ async function agregarProductoNuevo() {
             talla: tallaReal,
             nombre: nombreConTalla, nombre_base: nombre,
             descripcion: descripcion + (tallaReal ? ` T${tallaReal}` : ""),
-            precio, precioNum: precio, img: fotoUrl, esNuevo: true
+            precio, precioNum: precio, img: fotoUrl, esNuevo: true,
+            caracterEspecial: caracterEspecial || undefined
         };
 
         const extras = safeParseJSON(localStorage.getItem("vx_prod_extras"), []);
@@ -3306,6 +3310,7 @@ function activarEdicionProducto() {
     document.getElementById("ep-desc").value = p.descripcion || "";
     document.getElementById("ep-precio").value = p.precio || p.precioNum || "";
     document.getElementById("ep-existencia").value = 0;
+    document.getElementById("ep-caract").value = p.caracterEspecial || "";
     // Marcar material actual
     document.querySelectorAll(".ep-mat-btn").forEach(b => {
         b.style.outline = (b.dataset.mat === p.material) ? "2px solid var(--dorado)" : "";
@@ -3352,24 +3357,25 @@ async function guardarEdicionProducto() {
     }
     const matSelBtn = document.querySelector(".ep-mat-btn[style*='solid var(--dorado)']");
     const material  = matSelBtn ? matSelBtn.dataset.mat : (productoEditando.p.material || "");
-    // Update in Apps Script
-    await apiPost({ accion: "EDITAR_PRODUCTO", codigo: productoEditando.p.codigo, nombre, descripcion: desc, precio, img, material });
-    // Sumar existencia a bodega si se ingresó cantidad (sin sobreescribir foto/material)
+    const caracterEspecial = (document.getElementById("ep-caract")?.value || "").trim();
+    const codigoViejo = productoEditando.p.codigo;
+    // Update en servidor
+    await apiPost({ accion: "EDITAR_PRODUCTO", codigo: codigoViejo, nuevo_codigo: codigo !== codigoViejo ? codigo : undefined, nombre, descripcion: desc, precio, img, material, caracterEspecial });
+    // Sumar existencia a bodega si se ingresó cantidad
     const existencia = parseInt(document.getElementById("ep-existencia")?.value) || 0;
     if (existencia > 0) {
-        const stockActual = stockData.find(s => s.codigo === productoEditando.p.codigo);
+        const stockActual = stockData.find(s => s.codigo === codigoViejo);
         const bodegaActual = parseInt(stockActual?.stock_bodega || 0);
         await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo, stock_bodega: bodegaActual + existencia }] });
         toast(`✅ Producto actualizado y +${existencia} unidades sumadas a bodega`);
     } else {
         toast("✅ Producto actualizado");
     }
-    // Update local
+    // Update local — usar codigoViejo para encontrar el índice antes de sobreescribir
     const p = productoEditando.p;
+    const idx = productosDisponibles.findIndex(x => x.codigo === codigoViejo);
     p.codigo = codigo; p.nombre = nombre; p.descripcion = desc;
-    p.precio = precio; p.precioNum = precio; p.img = img;
-    // Update productosDisponibles
-    const idx = productosDisponibles.findIndex(x => x.codigo === productoEditando.p.codigo);
+    p.precio = precio; p.precioNum = precio; p.img = img; p.material = material; p.caracterEspecial = caracterEspecial;
     if (idx >= 0) productosDisponibles[idx] = p;
     btn.textContent = "💾 Guardar"; btn.disabled = false;
     cerrarModal("modal-ver-producto");
@@ -3565,6 +3571,10 @@ function renderLoteProductos() {
                 'style="margin-bottom:6px;padding:6px;font-size:12px;" ' +
                 'oninput="loteProductos[' + i + '].precio=this.value">' +
 
+                '<input type="text" value="' + (p.caracterEspecial || '') + '" placeholder="Características especiales (ej: hipoalergénico, ajustable…)" ' +
+                'style="margin-bottom:6px;padding:6px;font-size:12px;" ' +
+                'oninput="loteProductos[' + i + '].caracterEspecial=this.value">' +
+
                 // Cantidad: si hay tallas seleccionadas mostrar total automático, si no campo editable
                 (Object.keys(tqty).length > 0
                     ? '<div style="padding:6px 8px;background:var(--gris);border-radius:6px;font-size:12px;color:var(--plateado);">Total: <b style="color:var(--dorado);" id="total-tallas-' + i + '">' +
@@ -3697,7 +3707,8 @@ async function confirmarLote() {
                 foto:              p.foto,
                 cantidad,
                 descripcion:       p.descripcion,
-                descripcionTienda: p.descripcionTienda || ""
+                descripcionTienda: p.descripcionTienda || "",
+                caracterEspecial:  p.caracterEspecial || ""
             });
         }
     }
@@ -4614,22 +4625,37 @@ function abrirModalImpresion() {
                     <button onclick="selFormatoImpresion('mini',this)"
                         style="background:#C9A84C;color:#111;border:none;border-radius:10px;
                                padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
-                        📎 Mini<br><span style="font-size:10px;font-weight:400;">½×¾ — joyería</span>
+                        📎 Mini<br><span style="font-size:10px;font-weight:400;">6×1.5cm — colgante</span>
                     </button>
                     <button onclick="selFormatoImpresion('producto',this)"
                         style="background:#222;color:#aaa;border:1px solid #333;border-radius:10px;
                                padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
                         🏷️ Producto<br><span style="font-size:10px;font-weight:400;">5×1.5cm</span>
                     </button>
+                    <button onclick="selFormatoImpresion('dk1204',this)"
+                        style="background:#222;color:#aaa;border:1px solid #333;border-radius:10px;
+                               padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
+                        🏷️ DK-1204<br><span style="font-size:10px;font-weight:400;">5.4×1.7cm precortada</span>
+                    </button>
+                    <button onclick="selFormatoImpresion('producto-v',this)"
+                        style="background:#222;color:#aaa;border:1px solid #333;border-radius:10px;
+                               padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
+                        🏷️ DK Vertical<br><span style="font-size:10px;font-weight:400;">1.7×5.4cm premium</span>
+                    </button>
+                    <button onclick="selFormatoImpresion('tarjeta25',this)"
+                        style="background:#222;color:#aaa;border:1px solid #333;border-radius:10px;
+                               padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
+                        🏷️ Tarjeta<br><span style="font-size:10px;font-weight:400;">2.5×1.5cm</span>
+                    </button>
                     <button onclick="selFormatoImpresion('guia',this)"
                         style="background:#222;color:#aaa;border:1px solid #333;border-radius:10px;
                                padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
                         📦 Guía<br><span style="font-size:10px;font-weight:400;">9cm envíos</span>
                     </button>
-                    <button onclick="selFormatoImpresion('recibo',this)"
-                        style="background:#222;color:#aaa;border:1px solid #333;border-radius:10px;
+                    <button onclick="selFormatoImpresion('recibo',this)" style="grid-column: span 2;
+                        background:#222;color:#aaa;border:1px solid #333;border-radius:10px;
                                padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
-                        🧾 Recibo<br><span style="font-size:10px;font-weight:400;">dinámico</span>
+                        🧾 Recibo<br><span style="font-size:10px;font-weight:400;">62mm × dinámico</span>
                     </button>
                 </div>
 
@@ -4646,6 +4672,8 @@ function abrirModalImpresion() {
                         🔴 Negro/Rojo
                     </button>
                 </div>
+
+                <div id="print-preview-area" style="margin-bottom:14px;border-radius:8px;overflow:hidden;min-height:0;"></div>
 
                 <div id="print-server-status" style="font-size:12px;color:#888;margin-bottom:12px;min-height:16px;text-align:center;"></div>
 
@@ -4665,10 +4693,10 @@ function abrirModalImpresion() {
         document.body.appendChild(m);
     }
     m.style.display = 'flex';
-    _formatoImpresion = 'mini';
-    // Resetear selección de formato visual
+    _formatoImpresion = 'producto';
+    // Resetear selección de formato visual — activar botón "Producto" (índice 1)
     document.querySelectorAll('#print-format-grid button').forEach((b,i) => {
-        if (i === 0) { b.style.background='#C9A84C'; b.style.color='#111'; b.style.border='none'; }
+        if (i === 1) { b.style.background='#C9A84C'; b.style.color='#111'; b.style.border='none'; }
         else         { b.style.background='#222';    b.style.color='#aaa'; b.style.border='1px solid #333'; }
     });
     // Aplicar selección de rollo persistida
@@ -4681,6 +4709,7 @@ function abrirModalImpresion() {
         b.style.border     = '1px solid ' + (activo ? colorOn : '#333');
     });
     document.getElementById('print-server-status').textContent = '';
+    setTimeout(actualizarPreviewImpresion, 50);
 }
 
 function selRolloImpresion(rollo, btn) {
@@ -4714,6 +4743,26 @@ function selFormatoImpresion(fmt, btn) {
     btn.style.background = '#C9A84C';
     btn.style.color      = '#111';
     btn.style.border     = 'none';
+    actualizarPreviewImpresion();
+}
+
+async function actualizarPreviewImpresion() {
+    const area = document.getElementById('print-preview-area');
+    if (!area) return;
+    area.innerHTML = '<p style="color:#555;font-size:11px;text-align:center;padding:8px;">Generando vista previa…</p>';
+    try {
+        const codigos = [..._colaEtiquetas];
+        if (!codigos.length) { area.innerHTML = ''; return; }
+        const pdfBase64 = await generarPDFParaServidor(codigos, _formatoImpresion);
+        if (!pdfBase64) { area.innerHTML = ''; return; }
+        area.innerHTML = `
+            <p style="color:#666;font-size:10px;text-align:center;margin-bottom:4px;">Vista previa</p>
+            <iframe src="data:application/pdf;base64,${pdfBase64}"
+                style="width:100%;height:130px;border:1px solid #333;border-radius:6px;background:#fff;"
+                scrolling="no"></iframe>`;
+    } catch(e) {
+        area.innerHTML = '<p style="color:#444;font-size:11px;text-align:center;padding:8px;">Vista previa no disponible</p>';
+    }
 }
 
 async function enviarImpresionServidor() {
@@ -4725,7 +4774,7 @@ async function enviarImpresionServidor() {
     const codigos = [..._colaEtiquetas];
     let pdfBase64 = null;
     try {
-        pdfBase64 = await generarPDFParaServidor(codigos);
+        pdfBase64 = await generarPDFParaServidor(codigos, _formatoImpresion);
     } catch(err) {
         console.error('generarPDFParaServidor error:', err);
         status.style.color = '#ef4444';
@@ -4771,8 +4820,8 @@ function _buscarProducto(codigo) {
 }
 
 // Genera PDF con 1 etiqueta por página (para enviar al print server)
-// Usa el mismo formato de página que generarEtiquetaRapida pero 1 label por página
-async function generarPDFParaServidor(codigos) {
+// Soporta formato 'producto' (rollo continuo 6×1.5cm) y 'dk1204' (precortada 5.43×1.7cm)
+async function generarPDFParaServidor(codigos, formato) {
     if (!window.jspdf || !window.jspdf.jsPDF) throw new Error('jsPDF no cargado');
     const prods = codigos.map(_buscarProducto).filter(Boolean);
     if (!prods.length) throw new Error('Productos no encontrados. Códigos: ' + codigos.join(','));
@@ -4781,7 +4830,7 @@ async function generarPDFParaServidor(codigos) {
         console.warn('Códigos sin datos (se omitirán):', faltantes);
     }
 
-    // Generar QR images (mismo código que generarEtiquetaRapida)
+    // Generar QR images
     const qrImages = {};
     await Promise.all(prods.map(p => new Promise(resolve => {
         const div = document.createElement("div");
@@ -4799,69 +4848,367 @@ async function generarPDFParaServidor(codigos) {
     })));
 
     const { jsPDF } = window.jspdf;
-    // Etiqueta colgante 60mm × 15mm — dobla por el centro (3cm cada mitad)
-    const lW = 60, lH = 15;
+    const B = [0, 0, 0];
+
+    // ── FORMATO TARJETA 25×15mm ───────────────────────────────────────────────
+    if (formato === 'tarjeta25') {
+        const doc = await _generarPDFTarjeta25(prods, qrImages);
+        const raw = doc.output('datauristring');
+        return raw.split(',')[1];
+    }
+
+    // ── FORMATO VERTICAL DK-1204 (Propuesta 3 premium) ───────────────────────
+    if (formato === 'producto-v') {
+        const W = 17, H = 54.3, FOLD = H / 2; // 17×54.3mm portrait, doblez en 27.15mm
+        const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'portrait' });
+
+        prods.forEach((p, idx) => {
+            if (idx > 0) doc.addPage([W, H], 'portrait');
+
+            // — QR (parte superior, cara datos) —
+            if (qrImages[p.codigo]) {
+                try { doc.addImage(qrImages[p.codigo], "PNG", 1.5, 1.0, 13, 13); } catch(e) {}
+            }
+
+            // — Código vertical (borde izquierdo, 4pt) —
+            const codigo = p.codigo || "";
+            if (codigo) {
+                doc.setFont("helvetica", "bold"); doc.setFontSize(4); doc.setTextColor(...B);
+                doc.text(codigo, 0.8, FOLD - 0.5, { angle: 90 });
+            }
+
+            // — Línea dorada separadora —
+            doc.setDrawColor(180, 140, 50); doc.setLineWidth(0.3);
+            doc.line(1.5, 15.0, 15.5, 15.0);
+
+            // — Material (centrado, debajo de línea) —
+            const material = p.material || extraerMaterial(p.nombre || "", p.descripcion || "");
+            if (material) {
+                doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); doc.setTextColor(...B);
+                const matLines = doc.splitTextToSize(material, 13);
+                matLines.slice(0, 3).forEach((l, i) => doc.text(l, 8.5, 17.0 + i * 2.8, { align: 'center' }));
+            }
+
+            // — Precio (fondo cara datos) —
+            const precio = "$ " + parseFloat(p.precio || 0).toFixed(2);
+            doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(...B);
+            doc.text(precio, 8.5, 25.5, { align: 'center' });
+
+            // — VEREX letra por letra vertical (cara marca) —
+            doc.setFont("times", "bold"); doc.setFontSize(16); doc.setTextColor(...B);
+            "VEREX".split("").forEach((l, i) => doc.text(l, 8.5, 31.5 + i * 4.8, { align: 'center' }));
+
+            // — Estrella (bajo VEREX) —
+            const sx = 8.5, sy = 53.0, Rs = 1.4, rs = 0.55;
+            const sp = []; let px = null, py = null, sx0 = 0, sy0 = 0;
+            for (let i = 0; i < 10; i++) {
+                const r = (i % 2 === 0) ? Rs : rs;
+                const a = -Math.PI/2 + i * Math.PI/5;
+                const cx = sx + r * Math.cos(a), cy = sy + r * Math.sin(a);
+                if (px !== null) sp.push([cx - px, cy - py]);
+                else { sx0 = cx; sy0 = cy; }
+                px = cx; py = cy;
+            }
+            doc.setFillColor(0,0,0);
+            doc.lines(sp, sx0, sy0, [1,1], 'F', true);
+        });
+
+        const raw = doc.output('datauristring');
+        return raw.split(',')[1];
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Configuración del PDF según formato
+    // — 'dk1204': etiqueta precortada Brother 5.4×1.7cm
+    // — 'producto' (default): etiqueta colgante 6×1.5cm con doblez
+    const isDK   = (formato === 'dk1204');
+    const isProd = (formato === 'producto');
+    const lW = isDK ? 54.3 : 60;
+    const lH = isDK ? 17 : 15;
     const doc = new jsPDF({ unit: 'mm', format: [lW, lH], orientation: 'landscape' });
 
-    const B      = [0, 0, 0];
-    // Lado izquierdo: QR + datos del producto
-    const QR_X  = 4.0;   // 0.4cm margen izquierdo
-    const QR_Y  = 2.5;   // centrado vertical: (15-10)/2
-    const QR_MM = 10;
-    const TX    = 19.0;  // texto: QR_X + QR_MM + 5mm gap
-    const TW    = 9.5;   // ancho disponible hasta x=28.5mm
-    // Lado derecho: branding VEREX
-    const CX    = 45;    // centro del lado derecho (30+15)
+    const FOLD = lW / 2;
+    // Producto: CX=48 con verexSize=18pt → right edge≈58.9mm < 60mm, left edge≈37mm (7mm del fold)
+    const CX = isDK ? (FOLD + (lW - FOLD)/2) : isProd ? 48 : 47;
+
+    // QR + código vertical
+    // Produto: QR=8mm subido (y=0.5), precio a la DERECHA del QR, material DEBAJO del QR (ancho completo)
+    const QR_MM  = isDK ? 14 : 10;
+    const QR_X   = isDK ? 1.0 : isProd ? 4.5 : 1.5;
+    const QR_Y   = isProd ? 0.0 : (lH - QR_MM) / 2;
+    const TX     = isDK ? (QR_X + QR_MM + 4.5) : isProd ? (QR_X + QR_MM + 1.0) : (QR_X + QR_MM + 2.0);
+    const TW     = FOLD - TX - 0.5;
+    const CX_L   = TX;
+
+    const FT = isDK ? {
+        verexSize: 15, verexY: 8.0,
+        lineY: 10.5, starR: 1.2,
+        sloganSize: 7, sloganY1: 13.0, sloganY2: 15.5, sloganY3: null,
+        precioSize: 10, precioY: 7.0,
+        matSizeMax: 7, matY1: [11.5], matY2: [10.5, 13.5], matY3: [9.5, 12.0, 14.5]
+    } : isProd ? {
+        verexSize: 20, verexY: 5.0,
+        lineY: 7.3, starR: 1.3,
+        sloganSize: 9.0, sloganY1: 10.5, sloganY2: 13.0, sloganY3: null,
+        precioSize: 10, precioY: 5.0,
+        goldLineY: 10.7,
+        matSizeMax: 7.5, matY1: [14.8], matY2: [13.0, 14.9], matY3: [12.0, 13.3, 14.6]
+    } : {
+        verexSize: 20, verexY: 5.5,
+        lineY: 7.8, starR: 1.4,
+        sloganSize: 5.0, sloganY1: 11.2, sloganY2: 13.7,
+        precioSize: 9,  precioY: 5.5,
+        matSizeMax: 6.5, matY1: [13.0], matY2: [11.5, 13.5], matY3: [10.0, 12.0, 14.0]
+    };
 
     prods.forEach((p, idx) => {
         if (idx > 0) doc.addPage([lW, lH], 'landscape');
 
-        // — QR (lado izquierdo) —
-        if (qrImages[p.codigo]) {
-            try { doc.addImage(qrImages[p.codigo], "PNG", QR_X, QR_Y, QR_MM, QR_MM); } catch(e) {}
+        // — CARA DATOS (izquierda, 0..FOLD) — layout igual que tarjeta25 ──
+        if (isProd) {
+            const dQR_MM = 8.5;
+            const dQR_X  = 2.5;
+            const dQR_Y  = 5.5;
+            const dDivX  = dQR_X + dQR_MM + 0.5;
+            const dMatW  = FOLD - dDivX - 0.3;
+            const dPrecioY = 4.0;
+
+            // Precio
+            const precioT = "$ " + parseFloat(p.precio || 0).toFixed(2);
+            doc.setFont("helvetica", "bold"); doc.setTextColor(...B);
+            let dPSize = 12.0;
+            while (dPSize > 5.0) { doc.setFontSize(dPSize); if (doc.getTextWidth(precioT) <= FOLD - 1.5) break; dPSize -= 0.3; }
+            doc.text(precioT, dQR_X, dPrecioY);
+
+            // QR
+            if (qrImages[p.codigo]) {
+                try { doc.addImage(qrImages[p.codigo], "PNG", dQR_X, dQR_Y, dQR_MM, dQR_MM); } catch(e) {}
+            }
+
+            // Material
+            const matT = (p.material || extraerMaterial(p.nombre || "", p.descripcion || ""))
+                           .replace(/Laminado/gi, "Lam.");
+            if (matT) {
+                doc.setFont("helvetica", "bold"); doc.setTextColor(...B);
+                doc.setFontSize(6.5);
+                const lineas = doc.splitTextToSize(matT, dMatW);
+                const n = Math.min(lineas.length, 2);
+                const yMat = n === 1 ? [dQR_Y + 3.5] : [dQR_Y + 1.8, dQR_Y + 4.5];
+                for (let i = 0; i < n; i++) doc.text(lineas[i], dDivX, yMat[i]);
+            }
+
+            // SKU
+            const codigoT = p.codigo || "";
+            if (codigoT) {
+                doc.setFont("helvetica", "bold"); doc.setTextColor(...B);
+                doc.setFontSize(5.5);
+                const skuMaxW = FOLD - dDivX - 0.2;
+                const skuW = doc.getTextWidth(codigoT);
+                if (skuW > skuMaxW) {
+                    doc.text(codigoT, dDivX, dQR_Y + dQR_MM - 1.0, { charSpace: -((skuW - skuMaxW) / codigoT.length) });
+                } else {
+                    doc.text(codigoT, dDivX, dQR_Y + dQR_MM - 1.0);
+                }
+            }
+        } else {
+            // — QR (otros formatos, cara izquierda) —
+            if (qrImages[p.codigo]) {
+                try { doc.addImage(qrImages[p.codigo], "PNG", QR_X, QR_Y, QR_MM, QR_MM); } catch(e) {}
+            }
+            // — Código —
+            const codigo = p.codigo || "";
+            if (codigo) {
+                doc.setFont("helvetica", "bold"); doc.setTextColor(...B);
+                doc.setFontSize(isDK ? 5 : 4.5);
+                doc.text(codigo, QR_X + QR_MM + 1.5, lH - 1.0, { angle: 90 });
+            }
         }
 
-        // — VEREX STORE branding (lado derecho) —
-        doc.setFont("times", "bold"); doc.setFontSize(11); doc.setTextColor(...B);
-        doc.text("VEREX", CX, 5.5, { align: "center" });
+        // — VEREX (cara derecha, times bold, negro) —
+        const GOLD = [212, 175, 55];
+        doc.setFont("times", "bold"); doc.setFontSize(FT.verexSize); doc.setTextColor(...B);
+        doc.text("VEREX", CX, FT.verexY, { align: "center" });
 
-        doc.setDrawColor(...B); doc.setLineWidth(0.2);
-        doc.line(CX - 6, 7.0, CX + 6, 7.0);
+        // — Línea decorativa + ESTRELLA (negro) —
+        const lnHalf = isDK ? 8 : 6;
+        doc.setDrawColor(...B);
+        doc.setLineWidth(0.3);
+        doc.line(CX - lnHalf, FT.lineY, CX - 1.8, FT.lineY);
+        doc.line(CX + 1.8, FT.lineY, CX + lnHalf, FT.lineY);
+        const Rs = FT.starR, rs = Rs * 0.4;
+        const starPath = [];
+        let prevX = null, prevY = null, starStartX = 0, starStartY = 0;
+        for (let i = 0; i < 10; i++) {
+            const radius = (i % 2 === 0) ? Rs : rs;
+            const ang = -Math.PI/2 + i * Math.PI/5;
+            const x = CX + radius * Math.cos(ang);
+            const y = FT.lineY + radius * Math.sin(ang);
+            if (prevX !== null) starPath.push([x - prevX, y - prevY]);
+            else { starStartX = x; starStartY = y; }
+            prevX = x; prevY = y;
+        }
+        doc.setFillColor(...B);
+        doc.lines(starPath, starStartX, starStartY, [1,1], 'F', true);
 
-        doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); doc.setTextColor(30,30,30);
-        doc.text("S T O R E", CX, 9.5, { align: "center" });
+        // — Slogan —
+        const sloganW = isDK ? 22 : isProd ? 23 : 26;
+        doc.setFont("times", "bolditalic");
+        doc.setFontSize(FT.sloganSize); doc.setTextColor(...B);
+        const sl = doc.splitTextToSize("La expresión de tu mejor versión", sloganW);
+        const maxSlLines = FT.sloganY3 ? 3 : 2;
+        const ySlogan = sl.length === 1 ? [FT.sloganY1] : sl.length === 2 ? [FT.sloganY1, FT.sloganY2] : [FT.sloganY1, FT.sloganY2, FT.sloganY3];
+        sl.slice(0, maxSlLines).forEach((l, i) => doc.text(l, CX, ySlogan[i], { align: "center" }));
 
-        doc.setFont("times", "bolditalic"); doc.setFontSize(5.0); doc.setTextColor(60,60,60);
-        const sl = doc.splitTextToSize("La expresión de tu mejor versión", 22);
-        const ySlogan = sl.length === 1 ? [12.5] : [11.8, 13.8];
-        sl.slice(0,2).forEach((l, i) => doc.text(l, CX, ySlogan[i], { align: "center" }));
+        // — Precio y Material (solo formatos distintos a producto — producto ya los dibuja arriba) —
+        if (!isProd) {
+            const precio = "$ " + parseFloat(p.precio || 0).toFixed(2);
+            doc.setFont("helvetica", "bold"); doc.setFontSize(FT.precioSize); doc.setTextColor(...B);
+            doc.text(precio, TX, FT.precioY, { align: "left" });
 
-        // — Precio —
-        const precio = "$ " + parseFloat(p.precio || 0).toFixed(2);
-        doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(...B);
-        doc.text(precio, TX, 5.5);
-
-        // — Código —
-        const codigo = p.codigo || "";
-        doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(30,30,30);
-        doc.text(codigo, TX, 9.5);
-
-        // — Material —
-        const material = p.material || extraerMaterial(p.nombre || "", p.descripcion || "");
-        if (material) {
-            doc.setFont("helvetica", "bold"); doc.setTextColor(...B);
-            let sz = 6.5;
-            doc.setFontSize(sz);
-            let lineas = doc.splitTextToSize(material, TW);
-            while (lineas.length > 2 && sz > 5.0) { sz -= 0.3; doc.setFontSize(sz); lineas = doc.splitTextToSize(material, TW); }
-            const yMat = lineas.length <= 1 ? [13.0] : [12.2, 14.2];
-            lineas.slice(0,2).forEach((l, i) => doc.text(l, TX, yMat[i]));
+            const material = p.material || extraerMaterial(p.nombre || "", p.descripcion || "");
+            if (material) {
+                doc.setFont("helvetica", "bold"); doc.setTextColor(...B);
+                let sz = FT.matSizeMax; doc.setFontSize(sz);
+                let lineas = doc.splitTextToSize(material, TW);
+                while (lineas.length > 3 && sz > 5.0) { sz -= 0.3; doc.setFontSize(sz); lineas = doc.splitTextToSize(material, TW); }
+                const n = Math.min(lineas.length, 3);
+                const yMat = n === 1 ? FT.matY1 : n === 2 ? FT.matY2 : FT.matY3;
+                for (let i = 0; i < n; i++) doc.text(lineas[i], CX_L, yMat[i], { align: "left" });
+            }
         }
     });
 
     const raw = doc.output('datauristring');
     return raw.split(',')[1];
 }
+
+// ── FORMATO TARJETA 2.5×1.5cm — dos caras iguales de datos ──────────────────
+// PDF 50×15mm: cara-datos (25mm) + cara-datos (25mm)
+async function _generarPDFTarjeta25(prods, qrImages) {
+    const { jsPDF } = window.jspdf;
+    const W = 50, H = 15;
+    const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'landscape' });
+    // Agrupar de a 2: cada página = 2 productos distintos
+    for (let i = 0; i < prods.length; i += 2) {
+        if (i > 0) doc.addPage([W, H], 'landscape');
+        const p1 = prods[i];
+        const p2 = prods[i + 1] || null;
+        // Pre-calcular tamaños mínimos entre ambas caras para que sean iguales
+        const fs = _calcFontSizesTarjeta25(doc, p1, p2);
+        _dibujarCaraDatos(doc, p1, qrImages[p1.codigo], 0,  H, fs);
+        if (p2) _dibujarCaraDatos(doc, p2, qrImages[p2.codigo], 25, H, fs);
+    }
+    return doc;
+}
+
+// Calcula el font size mínimo de material y SKU mirando ambos productos
+function _calcFontSizesTarjeta25(doc, p1, p2) {
+    const QR_MM  = 8.5;
+    const QR_X   = 0.5;
+    const P_ZONE = 12.0;
+    const divX   = QR_X + P_ZONE + 0.5;
+    const matW   = 25 - divX - 1.0;  // ~11mm, igual en ambas caras
+
+    function calcMat(p) {
+        const raw = (p.material || extraerMaterial(p.nombre || "", p.descripcion || ""))
+                     .replace(/Laminado/gi, "Lam.");
+        if (!raw) return 8.5;
+        doc.setFont("helvetica", "bold");
+        let sz = 8.5;
+        doc.setFontSize(sz);
+        let lineas = doc.splitTextToSize(raw, matW);
+        while (lineas.length > 2 && sz > 4.0) { sz -= 0.2; doc.setFontSize(sz); lineas = doc.splitTextToSize(raw, matW); }
+        return sz;
+    }
+    function calcSku(p) {
+        const cod = p.codigo || "";
+        if (!cod) return 7.5;
+        doc.setFont("helvetica", "bold");
+        let cSize = 7.5;
+        doc.setFontSize(cSize);
+        while (cSize > 3.5) { doc.setFontSize(cSize); if (doc.getTextWidth(cod) <= matW) break; cSize -= 0.2; }
+        return cSize;
+    }
+
+    const matSz1 = calcMat(p1);
+    const matSz2 = p2 ? calcMat(p2) : 8.5;
+    const skuSz1 = calcSku(p1);
+    const skuSz2 = p2 ? calcSku(p2) : 7.5;
+    return {
+        mat: Math.min(matSz1, matSz2),
+        sku: Math.min(skuSz1, skuSz2)
+    };
+}
+
+// Dibuja una cara de datos de 25mm en el eje X a partir de offsetX
+function _dibujarCaraDatos(doc, p, qrDataURL, offsetX, H, fs) {
+    const FACE_W = 25;
+    const B = [0, 0, 0];
+
+    doc.setFillColor(255, 255, 255);
+    doc.rect(offsetX, 0, FACE_W, H, 'F');
+
+    const QR_MM    = 8.5;
+    const QR_X     = offsetX + 0.5;
+    const QR_Y     = 5.5;
+    const divX     = QR_X + QR_MM + 0.5;   // texto pegado al QR
+    const matW     = offsetX + FACE_W - divX - 0.3;
+    const PRECIO_Y = 4.0;
+
+    // ── Separador entre caras — banda gris de 2mm centrada en el límite ──
+    if (offsetX > 0) {
+        doc.setFillColor(210, 210, 210);
+        doc.rect(offsetX - 1, 0, 2, H, 'F');
+    }
+
+    // ── Precio (col izq, arriba) ──────────────────────────────────────────
+    const precio = "$ " + parseFloat(p.precio || 0).toFixed(2);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...B);
+    let pSize = 12.0;
+    while (pSize > 5.0) { doc.setFontSize(pSize); if (doc.getTextWidth(precio) <= FACE_W - 1.5) break; pSize -= 0.3; }
+    doc.text(precio, QR_X, PRECIO_Y);
+
+    // ── QR (col izq, abajo) ───────────────────────────────────────────────
+    if (qrDataURL) {
+        try { doc.addImage(qrDataURL, "PNG", QR_X, QR_Y, QR_MM, QR_MM); } catch(e) {}
+    }
+
+    // ── Material (col der) ────────────────────────────────────────────────
+    const matRaw = (p.material || extraerMaterial(p.nombre || "", p.descripcion || ""))
+                     .replace(/Laminado/gi, "Lam.");
+    if (matRaw) {
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...B);
+        doc.setFontSize(6.5);
+        const lineas = doc.splitTextToSize(matRaw, matW);
+        const n = Math.min(lineas.length, 2);
+        const yMat = n === 1 ? [QR_Y + 3.5] : [QR_Y + 1.8, QR_Y + 4.5];
+        for (let i = 0; i < n; i++) doc.text(lineas[i], divX, yMat[i]);
+    }
+
+    // ── SKU (col der — usa todo el ancho disponible hasta el borde) ──────
+    const codigo = p.codigo || "";
+    if (codigo) {
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...B);
+        doc.setFontSize(5.5);
+        const skuMaxW = offsetX + FACE_W - divX - 0.2;
+        // Si no cabe, reducir espaciado entre caracteres comprimiendo con charSpace
+        const skuW = doc.getTextWidth(codigo);
+        if (skuW > skuMaxW) {
+            doc.text(codigo, divX, QR_Y + QR_MM - 1.0, { maxWidth: skuMaxW, charSpace: -((skuW - skuMaxW) / codigo.length) });
+        } else {
+            doc.text(codigo, divX, QR_Y + QR_MM - 1.0);
+        }
+    }
+}
+
+// alias para compatibilidad con llamadas existentes
+function _dibujarEtiqueta25x15(doc, p, qrDataURL, W, H) {
+    _dibujarCaraDatos(doc, p, qrDataURL, 0, H);
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function generarEtiquetaRapida(codigos) {
     if (!window.jspdf || !window.jspdf.jsPDF) {
@@ -4892,6 +5239,14 @@ async function generarEtiquetaRapida(codigos) {
     })));
 
     const { jsPDF } = window.jspdf;
+
+    if (_formatoImpresion === 'tarjeta25') {
+        const doc = await _generarPDFTarjeta25(prods, qrImages);
+        doc.save("Etiqueta_VEREX_" + prods[0].codigo + ".pdf");
+        toast("✅ " + prods.length + " etiqueta(s) 2.5×1.5cm generadas");
+        return;
+    }
+
     const W = 60, H = 25;
     const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'landscape' });
 
@@ -6088,6 +6443,7 @@ function enviarWAEstadoCuenta(ventaId) {
             <input type="text" id="ep-nombre" placeholder="Nombre">
             <input type="text" id="ep-desc" placeholder="Descripción">
             <input type="number" id="ep-precio" placeholder="Precio $" step="0.01">
+            <input type="text" id="ep-caract" placeholder="Características especiales (ej: hipoalergénico, ajustable…)">
             <label style="font-size:11px;color:var(--plateado);display:block;margin:8px 0 4px;font-weight:600;">Material</label>
             <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;" id="ep-mat-btns">
                 <button type="button" class="ep-mat-btn" data-mat="Plata Fina 925"        onclick="selMatEdit(this)" style="padding:5px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">Plata 925</button>
