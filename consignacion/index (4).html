@@ -539,7 +539,8 @@
 
                 <!-- Barra de acciones -->
                 <div class="search-bar" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-                    <input type="text" id="bus-stock" placeholder="Buscar por código o nombre..." oninput="filtrarStock()" onchange="buscarStockPorScanner(this.value.trim().toUpperCase())" onkeydown="if(event.key==='Enter'||event.keyCode===13){buscarStockPorScanner(this.value.trim().toUpperCase());event.preventDefault();}" onpaste="setTimeout(()=>buscarStockPorScanner(this.value.trim().toUpperCase()),50)" style="flex:1;min-width:160px;">
+                    <input type="text" id="bus-stock" placeholder="Buscar por código o nombre..." oninput="filtrarStock()" onchange="buscarStockPorScanner(this.value.trim().toUpperCase())" onkeydown="if(event.key==='Enter'||event.keyCode===13){buscarStockPorScanner(this.value.trim().toUpperCase());event.preventDefault();}" onpaste="setTimeout(()=>buscarStockPorScanner(this.value.trim().toUpperCase()),50)" onblur="if(window._modoScannerStock)setTimeout(()=>this.focus(),50)" style="flex:1;min-width:160px;">
+                    <button id="btn-scanner-stock" onclick="toggleModoScanner()" style="padding:8px 12px;font-size:13px;background:#222;color:#888;border:1px solid #444;border-radius:8px;cursor:pointer;white-space:nowrap;">📡 Scanner</button>
                     <select id="fil-stock-estado" onchange="filtrarStock()" style="width:130px;">
                         <option value="">Todos</option>
                         <option value="bodega">🏠 Bodega</option>
@@ -3915,6 +3916,31 @@ function toggleSeleccionStock(codigo) {
         accionesDiv.style.display = "none";
     }
     filtrarStock();
+}
+
+let _modoScannerStock = false;
+window._modoScannerStock = false;
+
+function toggleModoScanner() {
+    _modoScannerStock = !_modoScannerStock;
+    window._modoScannerStock = _modoScannerStock;
+    const btn = document.getElementById("btn-scanner-stock");
+    const inp = document.getElementById("bus-stock");
+    if (_modoScannerStock) {
+        btn.style.background = "#2ecc71";
+        btn.style.color = "#111";
+        btn.style.border = "1px solid #27ae60";
+        btn.textContent = "📡 Scanner ON";
+        inp.placeholder = "Listo para escanear...";
+        inp.value = "";
+        inp.focus();
+    } else {
+        btn.style.background = "#222";
+        btn.style.color = "#888";
+        btn.style.border = "1px solid #444";
+        btn.textContent = "📡 Scanner";
+        inp.placeholder = "Buscar por código o nombre...";
+    }
 }
 
 function buscarStockPorScanner(cod) {
