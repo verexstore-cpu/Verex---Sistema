@@ -510,7 +510,7 @@
             <div class="card">
                 <h2>🏷️ Generar Etiquetas Avery</h2>
                 <div class="search-bar">
-                    <input type="text" id="bus-etiquetas" placeholder="Buscar producto..." oninput="filtrarProductosEtiquetas()" onchange="buscarEtiquetasPorScanner(this.value.trim().toUpperCase())" onkeydown="if(event.key==='Enter'||event.keyCode===13){buscarEtiquetasPorScanner(this.value.trim().toUpperCase());event.preventDefault();}">
+                    <input type="text" id="bus-etiquetas" placeholder="Buscar producto..." oninput="filtrarProductosEtiquetas()" onchange="buscarEtiquetasPorScanner(this.value.trim().toUpperCase())" onkeydown="if(event.key==='Enter'||event.keyCode===13){buscarEtiquetasPorScanner(this.value.trim().toUpperCase());event.preventDefault();}" onpaste="setTimeout(()=>buscarEtiquetasPorScanner(this.value.trim().toUpperCase()),50)">
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                     <span style="font-size:12px;color:var(--plateado);" id="etiq-count">0 productos seleccionados</span>
@@ -539,7 +539,7 @@
 
                 <!-- Barra de acciones -->
                 <div class="search-bar" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-                    <input type="text" id="bus-stock" placeholder="Buscar por código o nombre..." oninput="filtrarStock()" onchange="buscarStockPorScanner(this.value.trim().toUpperCase())" onkeydown="if(event.key==='Enter'||event.keyCode===13){buscarStockPorScanner(this.value.trim().toUpperCase());event.preventDefault();}" style="flex:1;min-width:160px;">
+                    <input type="text" id="bus-stock" placeholder="Buscar por código o nombre..." oninput="filtrarStock()" onchange="buscarStockPorScanner(this.value.trim().toUpperCase())" onkeydown="if(event.key==='Enter'||event.keyCode===13){buscarStockPorScanner(this.value.trim().toUpperCase());event.preventDefault();}" onpaste="setTimeout(()=>buscarStockPorScanner(this.value.trim().toUpperCase()),50)" style="flex:1;min-width:160px;">
                     <select id="fil-stock-estado" onchange="filtrarStock()" style="width:130px;">
                         <option value="">Todos</option>
                         <option value="bodega">🏠 Bodega</option>
@@ -1244,8 +1244,8 @@ function cambiarTab(tab) {
         btn.style.filter      = t === tab ? 'none' : 'brightness(0.7)';
     });
     if (tab === 'dashboard')    renderDashboard();
-    if (tab === 'etiquetas')    renderGridEtiquetas(productosDisponibles);
-    if (tab === 'stock')        cargarStock();
+    if (tab === 'etiquetas')  { renderGridEtiquetas(productosDisponibles); setTimeout(()=>{ const f=document.getElementById('bus-etiquetas'); if(f)f.focus(); },300); }
+    if (tab === 'stock')      { cargarStock(); setTimeout(()=>{ const f=document.getElementById('bus-stock'); if(f)f.focus(); },300); }
     if (tab === 'ventadirecta')    iniciarVentaDirecta();
     if (tab === 'historialventas') cargarHistorialVentas();
 }
