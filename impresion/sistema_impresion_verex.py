@@ -1,4 +1,8 @@
 import os
+import threading
+import json
+import base64
+import tempfile
 import customtkinter as ctk
 from tkinterdnd2 import TkinterDnD, DND_FILES
 import fitz
@@ -6,12 +10,15 @@ from PIL import Image, ImageTk, ImageChops, ImageDraw, ImageEnhance
 from brother_ql.conversion import convert
 from brother_ql.backends.helpers import send
 from brother_ql.raster import BrotherQLRaster
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # --- Configuración de la Impresora ---
 MODELO_IMPRESORA = 'QL-810W'
 TIPO_ETIQUETA      = '62red'    # guias y recibos
 TIPO_ETIQUETA_MINI = '29x90'   # DK-1201: 29mm × 90mm die-cut — 306×991px exactos
 IP_IMPRESORA = 'tcp://192.168.0.10'
+
+_app_instance = None  # referencia global para el servidor HTTP
 
 class TkinterDnDApp(ctk.CTk, TkinterDnD.DnDWrapper):
     def __init__(self, *args, **kwargs):
@@ -23,19 +30,19 @@ class SistemaImpresionVerex(TkinterDnDApp):
         super().__init__()
 
         self.title("SISTEMA DE IMPRESIÓN VEREX")
-        self.geometry("750x850") 
+        self.geometry("750x850")
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
 
         self.pdf_actual = None
-        self.imagenes_impresion = [] 
-        
+        self.imagenes_impresion = []
+
         self.tipo_seleccionado = ctk.StringVar(value="guia")
         self.rotar_var = ctk.BooleanVar(value=True)
 
-        self.color_activo = "#2B78E4" 
-        self.color_inactivo = "#333333" 
-        self.color_hover = "#3A8DF5" 
+        self.color_activo = "#2B78E4"
+        self.color_inactivo = "#333333"
+        self.color_hover = "#3A8DF5"
 
         self.construir_interfaz()
 
@@ -72,8 +79,8 @@ class SistemaImpresionVerex(TkinterDnDApp):
         self.frame_drop = ctk.CTkFrame(self, height=120, corner_radius=10, fg_color="#2b2b2b", border_width=2, border_color="#555555")
         self.frame_drop.pack(pady=10, padx=40, fill="x")
         self.frame_drop.pack_propagate(False)
-        
-        self.lbl_drop = ctk.CTkLabel(self.frame_drop, text="Arrastra y suelta tu PDF aquí", font=("Arial", 16, "bold")) 
+
+        self.lbl_drop = ctk.CTkLabel(self.frame_drop, text="Arrastra y suelta tu PDF aquí", font=("Arial", 16, "bold"))
         self.lbl_drop.pack(expand=True)
 
         self.frame_drop.drop_target_register(DND_FILES)
@@ -82,8 +89,8 @@ class SistemaImpresionVerex(TkinterDnDApp):
         self.lbl_preview = ctk.CTkLabel(self, text="Vista Previa", text_color="gray")
         self.lbl_preview.pack(pady=10, expand=True)
 
-        self.btn_imprimir = ctk.CTkButton(self, text="IMPRIMIR ETIQUETA", font=("Arial", 16, "bold"), 
-                                          fg_color="#28a745", hover_color="#218838", height=50, corner_radius=8, 
+        self.btn_imprimir = ctk.CTkButton(self, text="IMPRIMIR ETIQUETA", font=("Arial", 16, "bold"),
+                                          fg_color="#28a745", hover_color="#218838", height=50, corner_radius=8,
                                           state="disabled", command=self.imprimir_etiqueta)
         self.btn_imprimir.pack(pady=15, ipadx=20)
 
@@ -121,89 +128,112 @@ class SistemaImpresionVerex(TkinterDnDApp):
         if self.pdf_actual:
             self.generar_vista_previa()
 
+    def procesar_pdf_a_imagenes(self, pdf_path, tipo, rotar=True):
+        """
+        Convierte un PDF a lista de imágenes listas para imprimir.
+        Soporta: guia, producto, recibo, mini, tarjeta25, dk1204, producto-v
+        Retorna lista de PIL.Image.
+        """
+        imagenes = []
+        doc = fitz.open(pdf_path)
+        ANCHO_IMPRESORA = 696
+        mini_buffer = []
+
+        for num_pag in range(len(doc)):
+            pagina = doc.load_page(num_pag)
+            matriz = fitz.Matrix(4.0, 4.0)
+            pix = pagina.get_pixmap(matrix=matriz, alpha=False)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+            img_busqueda = img.convert("L").point(lambda x: 0 if x > 240 else 255, '1')
+            bbox = img_busqueda.getbbox()
+            if bbox:
+                img = img.crop((max(0, bbox[0]-2), max(0, bbox[1]-2),
+                                min(img.width, bbox[2]+2), min(img.height, bbox[3]+2)))
+
+            if tipo == "guia":
+                if rotar:
+                    img = img.rotate(90, expand=True)
+                img = img.resize((ANCHO_IMPRESORA, 1063), Image.Resampling.LANCZOS)
+                imagenes.append(img)
+
+            elif tipo == "producto":
+                if img.height > img.width:
+                    img = img.rotate(90, expand=True)
+                target_w = int(54 * 696 / 62)
+                target_h = 117
+                img_resized = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+                canvas = Image.new("RGB", (ANCHO_IMPRESORA, target_h), "white")
+                canvas.paste(img_resized, ((ANCHO_IMPRESORA - target_w) // 2, 0))
+                imagenes.append(canvas)
+
+            elif tipo == "mini":
+                px_mm = 696 / 62.0
+                target_w = int(60 * px_mm)
+                target_h = int(15 * px_mm)
+                if img.height > img.width:
+                    img = img.rotate(90, expand=True)
+                prop = min(target_w / float(img.width), target_h / float(img.height))
+                nw = int(img.width * prop)
+                nh = int(img.height * prop)
+                img_sc = img.resize((nw, nh), Image.Resampling.LANCZOS)
+                canvas_mini = Image.new("RGB", (ANCHO_IMPRESORA, target_h), "white")
+                canvas_mini.paste(img_sc, ((ANCHO_IMPRESORA - nw) // 2, (target_h - nh) // 2))
+                mini_buffer.append(canvas_mini)
+
+            elif tipo == "tarjeta25":
+                # Etiqueta 25×15mm — todo el contenido en una sola cara
+                px_mm = 696 / 62.0          # 11.226 px/mm
+                target_w = int(25 * px_mm)  # 281px
+                target_h = int(15 * px_mm)  # 168px
+                if img.height > img.width:
+                    img = img.rotate(90, expand=True)
+                img_sc = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+                canvas = Image.new("RGB", (ANCHO_IMPRESORA, target_h), "white")
+                x_off = (ANCHO_IMPRESORA - target_w) // 2
+                canvas.paste(img_sc, (x_off, 0))
+                mini_buffer.append(canvas)
+
+            elif tipo == "recibo":
+                proporcion = ANCHO_IMPRESORA / float(img.width)
+                nuevo_alto = int(float(img.height) * float(proporcion))
+                img = img.resize((ANCHO_IMPRESORA, nuevo_alto), Image.Resampling.LANCZOS)
+                margen_seguridad = 250
+                imagen_con_margen = Image.new("RGB", (ANCHO_IMPRESORA, nuevo_alto + margen_seguridad), "white")
+                imagen_con_margen.paste(img, (0, 0))
+                imagenes.append(imagen_con_margen)
+
+            else:
+                # Fallback: escalar proporcional al ancho
+                proporcion = ANCHO_IMPRESORA / float(img.width)
+                nuevo_alto = int(float(img.height) * float(proporcion))
+                img = img.resize((ANCHO_IMPRESORA, nuevo_alto), Image.Resampling.LANCZOS)
+                imagenes.append(img)
+
+        if (tipo in ("mini", "tarjeta25")) and mini_buffer:
+            imagenes.extend(mini_buffer)
+
+        return imagenes
+
     def generar_vista_previa(self):
         try:
             self.imagenes_impresion.clear()
-            doc = fitz.open(self.pdf_actual)
-            total_paginas = len(doc)
-            ANCHO_IMPRESORA = 696
             tipo = self.tipo_seleccionado.get()
-            mini_buffer = []  # acumula etiquetas mini individuales
+            rotar = self.rotar_var.get()
 
-            for num_pag in range(total_paginas):
-                pagina = doc.load_page(num_pag)
-                matriz = fitz.Matrix(4.0, 4.0)
-                pix = pagina.get_pixmap(matrix=matriz, alpha=False)
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            self.imagenes_impresion = self.procesar_pdf_a_imagenes(self.pdf_actual, tipo, rotar)
 
-                img_busqueda = img.convert("L").point(lambda x: 0 if x > 240 else 255, '1')
-                bbox = img_busqueda.getbbox()
-                if bbox:
-                    img = img.crop((max(0, bbox[0]-2), max(0, bbox[1]-2), min(img.width, bbox[2]+2), min(img.height, bbox[3]+2)))
+            if not self.imagenes_impresion:
+                self.lbl_drop.configure(text="No se generaron imágenes del PDF", text_color="red")
+                return
 
-                if tipo == "guia" and self.rotar_var.get():
-                    img = img.rotate(90, expand=True)
-                elif tipo == "producto":
-                    if img.height > img.width:
-                        img = img.rotate(90, expand=True)
-
-                if tipo == "guia":
-                    img = img.resize((ANCHO_IMPRESORA, 1063), Image.Resampling.LANCZOS)
-
-                elif tipo == "producto":
-                    target_w = int(54 * 696 / 62)
-                    target_h = 117
-                    img_resized = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
-                    canvas = Image.new("RGB", (ANCHO_IMPRESORA, target_h), "white")
-                    canvas.paste(img_resized, ((ANCHO_IMPRESORA - target_w) // 2, 0))
-                    img = canvas
-
-                elif tipo == "mini":
-                    # PDF landscape 60×15mm → cinta continua 62mm, corte a 15mm
-                    px_mm = 696 / 62.0          # 11.226 px/mm
-                    target_w = int(60 * px_mm)  # 674px
-                    target_h = int(15 * px_mm)  # 168px
-                    if img.height > img.width:
-                        img = img.rotate(90, expand=True)
-                    prop = min(target_w / float(img.width), target_h / float(img.height))
-                    nw = int(img.width * prop)
-                    nh = int(img.height * prop)
-                    img_sc = img.resize((nw, nh), Image.Resampling.LANCZOS)
-                    canvas_mini = Image.new("RGB", (ANCHO_IMPRESORA, target_h), "white")
-                    canvas_mini.paste(img_sc, ((ANCHO_IMPRESORA - nw) // 2, (target_h - nh) // 2))
-                    mini_buffer.append(canvas_mini)
-                    continue
-
-                elif tipo == "recibo":
-                    proporcion = ANCHO_IMPRESORA / float(img.width)
-                    nuevo_alto = int(float(img.height) * float(proporcion))
-                    img = img.resize((ANCHO_IMPRESORA, nuevo_alto), Image.Resampling.LANCZOS)
-                    margen_seguridad = 250
-                    imagen_con_margen = Image.new("RGB", (ANCHO_IMPRESORA, nuevo_alto + margen_seguridad), "white")
-                    imagen_con_margen.paste(img, (0, 0))
-                    img = imagen_con_margen
-
-                self.imagenes_impresion.append(img)
-
-                if num_pag == 0 and tipo != "mini":
-                    img_preview = img.copy()
-                    img_preview.thumbnail((300, 350))
-                    ctk_img = ctk.CTkImage(light_image=img_preview, dark_image=img_preview, size=(img_preview.width, img_preview.height))
-                    texto_preview = "" if total_paginas == 1 else f"Mostrando 1 de {total_paginas} etiquetas"
-                    self.lbl_preview.configure(image=ctk_img, text=texto_preview, compound="bottom")
-
-            # ── Etiquetas mini: cinta continua 62mm, cada página = 1 etiqueta ──
-            if tipo == "mini" and mini_buffer:
-                for i, lbl in enumerate(mini_buffer):
-                    self.imagenes_impresion.append(lbl)
-                    if i == 0:
-                        prev = lbl.copy()
-                        prev.thumbnail((300, 350))
-                        ctk_img = ctk.CTkImage(light_image=prev, dark_image=prev, size=(prev.width, prev.height))
-                        self.lbl_preview.configure(image=ctk_img,
-                            text=f"{len(mini_buffer)} etiqueta(s) — cinta 62mm",
-                            compound="bottom")
-
+            img_preview = self.imagenes_impresion[0].copy()
+            img_preview.thumbnail((300, 350))
+            ctk_img = ctk.CTkImage(light_image=img_preview, dark_image=img_preview,
+                                   size=(img_preview.width, img_preview.height))
+            n = len(self.imagenes_impresion)
+            texto = "" if n == 1 else f"Mostrando 1 de {n} etiquetas"
+            self.lbl_preview.configure(image=ctk_img, text=texto, compound="bottom")
             self.btn_imprimir.configure(state="normal")
 
         except Exception as e:
@@ -227,14 +257,128 @@ class SistemaImpresionVerex(TkinterDnDApp):
             )
 
             send(instrucciones, IP_IMPRESORA)
-            
+
             total_etiquetas = len(self.imagenes_impresion)
             mensaje_exito = f"¡Se enviaron {total_etiquetas} etiquetas a imprimir!"
             self.lbl_drop.configure(text=mensaje_exito, text_color="#28a745")
-            
+
         except Exception as e:
             self.lbl_drop.configure(text=f"Error: {e}", text_color="red")
 
+    def imprimir_desde_web(self, pdf_path, formato, rotar=True):
+        """Llamado desde el servidor HTTP. Retorna dict {ok, etiquetas/error}."""
+        try:
+            imagenes = self.procesar_pdf_a_imagenes(pdf_path, formato, rotar)
+            if not imagenes:
+                return {'ok': False, 'error': 'No se generaron imágenes del PDF'}
+
+            qlr = BrotherQLRaster(MODELO_IMPRESORA)
+            qlr.exception_on_warning = True
+            instrucciones = convert(
+                qlr=qlr,
+                images=imagenes,
+                label=TIPO_ETIQUETA,
+                dither=True,
+                compress=False,
+                red=True
+            )
+            send(instrucciones, IP_IMPRESORA)
+            return {'ok': True, 'etiquetas': len(imagenes)}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+
+# ── Servidor HTTP en puerto 5000 ─────────────────────────────────────────────
+
+class VerexHTTPHandler(BaseHTTPRequestHandler):
+
+    def log_message(self, format, *args):
+        pass  # silenciar logs de consola
+
+    def _cors(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self._cors()
+        self.end_headers()
+
+    def do_GET(self):
+        if self.path == '/ping':
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self._cors()
+            self.end_headers()
+            self.wfile.write(json.dumps({'ok': True, 'app': 'VEREX Impresión'}).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        if self.path != '/imprimir':
+            self.send_response(404)
+            self.end_headers()
+            return
+
+        length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(length)
+        try:
+            data = json.loads(body)
+        except Exception:
+            self._responder({'ok': False, 'error': 'JSON inválido'})
+            return
+
+        formato   = data.get('formato', 'mini')
+        pdf_b64   = data.get('pdf_base64', '')
+        rotar     = data.get('rotar', True)
+
+        if not pdf_b64:
+            self._responder({'ok': False, 'error': 'pdf_base64 vacío'})
+            return
+
+        try:
+            pdf_bytes = base64.b64decode(pdf_b64)
+        except Exception:
+            self._responder({'ok': False, 'error': 'pdf_base64 inválido'})
+            return
+
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as f:
+            f.write(pdf_bytes)
+            tmp_path = f.name
+
+        try:
+            result = _app_instance.imprimir_desde_web(tmp_path, formato, rotar)
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+        self._responder(result)
+
+    def _responder(self, data):
+        body = json.dumps(data).encode()
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self._cors()
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def iniciar_servidor_http():
+    server = HTTPServer(('127.0.0.1', 5000), VerexHTTPHandler)
+    print('VEREX HTTP Print Server → http://127.0.0.1:5000')
+    server.serve_forever()
+
+
 if __name__ == "__main__":
     app = SistemaImpresionVerex()
+    _app_instance = app
+
+    hilo = threading.Thread(target=iniciar_servidor_http, daemon=True)
+    hilo.start()
+
     app.mainloop()
