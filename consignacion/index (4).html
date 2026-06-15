@@ -510,7 +510,7 @@
             <div class="card">
                 <h2>🏷️ Generar Etiquetas Avery</h2>
                 <div class="search-bar">
-                    <input type="text" id="bus-etiquetas" placeholder="Buscar producto..." oninput="filtrarProductosEtiquetas()">
+                    <input type="text" id="bus-etiquetas" placeholder="Buscar producto..." oninput="filtrarProductosEtiquetas()" onchange="buscarEtiquetasPorScanner(this.value.trim().toUpperCase())" onkeydown="if(event.key==='Enter'||event.keyCode===13){buscarEtiquetasPorScanner(this.value.trim().toUpperCase());event.preventDefault();}">
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                     <span style="font-size:12px;color:var(--plateado);" id="etiq-count">0 productos seleccionados</span>
@@ -539,7 +539,7 @@
 
                 <!-- Barra de acciones -->
                 <div class="search-bar" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-                    <input type="text" id="bus-stock" placeholder="Buscar por código o nombre..." oninput="filtrarStock()" style="flex:1;min-width:160px;">
+                    <input type="text" id="bus-stock" placeholder="Buscar por código o nombre..." oninput="filtrarStock()" onchange="buscarStockPorScanner(this.value.trim().toUpperCase())" onkeydown="if(event.key==='Enter'||event.keyCode===13){buscarStockPorScanner(this.value.trim().toUpperCase());event.preventDefault();}" style="flex:1;min-width:160px;">
                     <select id="fil-stock-estado" onchange="filtrarStock()" style="width:130px;">
                         <option value="">Todos</option>
                         <option value="bodega">🏠 Bodega</option>
@@ -5464,6 +5464,9 @@ function toast(msg, bg) {
             const tabEtiq  = document.getElementById("tab-content-etiquetas");
             const stockVis = tabStock && tabStock.style.display !== "none";
             const etiqVis  = tabEtiq  && tabEtiq.style.display  !== "none";
+
+            // DEBUG: mostrar qué captó el scanner
+            toast(`🔍 Scanner: "${cod}" | stock:${stockVis} etiq:${etiqVis}`);
 
             if (stockVis) {
                 buscarStockPorScanner(cod);
