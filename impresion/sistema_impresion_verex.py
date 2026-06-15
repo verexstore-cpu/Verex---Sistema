@@ -3,6 +3,7 @@ import threading
 import json
 import base64
 import tempfile
+import socketserver
 import customtkinter as ctk
 from tkinterdnd2 import TkinterDnD, DND_FILES
 import fitz
@@ -291,10 +292,14 @@ class SistemaImpresionVerex(TkinterDnDApp):
 
 # ── Servidor HTTP en puerto 5000 ─────────────────────────────────────────────
 
+class ThreadingHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
+    daemon_threads = True
+
+
 class VerexHTTPHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
-        pass  # silenciar logs de consola
+        pass
 
     def _cors(self):
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -307,70 +312,80 @@ class VerexHTTPHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        if self.path == '/ping':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self._cors()
-            self.end_headers()
-            self.wfile.write(json.dumps({'ok': True, 'app': 'VEREX Impresión'}).encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
+        try:
+            if self.path.startswith('/ping'):
+                self._enviar({'ok': True, 'app': 'VEREX Impresión'})
+            else:
+                self.send_response(404)
+                self.end_headers()
+        except Exception:
+            pass
 
     def do_POST(self):
-        if self.path != '/imprimir':
-            self.send_response(404)
-            self.end_headers()
-            return
-
-        length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(length)
         try:
-            data = json.loads(body)
-        except Exception:
-            self._responder({'ok': False, 'error': 'JSON inválido'})
-            return
+            if not self.path.startswith('/imprimir'):
+                self.send_response(404)
+                self.end_headers()
+                return
 
-        formato   = data.get('formato', 'mini')
-        pdf_b64   = data.get('pdf_base64', '')
-        rotar     = data.get('rotar', True)
+            raw_len = self.headers.get('Content-Length')
+            length = int(raw_len) if raw_len else 0
+            body = b''
+            if length > 0:
+                body = self.rfile.read(length)
 
-        if not pdf_b64:
-            self._responder({'ok': False, 'error': 'pdf_base64 vacío'})
-            return
-
-        try:
-            pdf_bytes = base64.b64decode(pdf_b64)
-        except Exception:
-            self._responder({'ok': False, 'error': 'pdf_base64 inválido'})
-            return
-
-        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as f:
-            f.write(pdf_bytes)
-            tmp_path = f.name
-
-        try:
-            result = _app_instance.imprimir_desde_web(tmp_path, formato, rotar)
-        finally:
             try:
-                os.unlink(tmp_path)
+                data = json.loads(body.decode('utf-8'))
+            except Exception as e:
+                self._enviar({'ok': False, 'error': f'JSON error: {e} body_len={len(body)}'})
+                return
+
+            formato = data.get('formato', 'mini')
+            pdf_b64 = data.get('pdf_base64', '')
+            rotar   = data.get('rotar', True)
+
+            if not pdf_b64:
+                self._enviar({'ok': False, 'error': 'pdf_base64 vacío'})
+                return
+
+            try:
+                pdf_bytes = base64.b64decode(pdf_b64)
+            except Exception as e:
+                self._enviar({'ok': False, 'error': f'base64 decode error: {e}'})
+                return
+
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as f:
+                f.write(pdf_bytes)
+                tmp_path = f.name
+
+            try:
+                result = _app_instance.imprimir_desde_web(tmp_path, formato, rotar)
+            finally:
+                try: os.unlink(tmp_path)
+                except: pass
+
+            self._enviar(result)
+
+        except Exception as e:
+            import traceback
+            try:
+                self._enviar({'ok': False, 'error': traceback.format_exc()[-500:]})
             except Exception:
                 pass
 
-        self._responder(result)
-
-    def _responder(self, data):
-        body = json.dumps(data).encode()
+    def _enviar(self, data):
+        body = json.dumps(data, ensure_ascii=False).encode('utf-8')
         self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
         self._cors()
         self.end_headers()
         self.wfile.write(body)
+        self.wfile.flush()
 
 
 def iniciar_servidor_http():
-    server = HTTPServer(('127.0.0.1', 5000), VerexHTTPHandler)
+    server = ThreadingHTTPServer(('127.0.0.1', 5000), VerexHTTPHandler)
     print('VEREX HTTP Print Server → http://127.0.0.1:5000')
     server.serve_forever()
 
