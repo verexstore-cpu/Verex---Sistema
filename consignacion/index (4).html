@@ -5377,6 +5377,46 @@ function toast(msg, bg) {
     setTimeout(() => t.classList.remove("show"), 2800);
 }
 
+// ── DETECTOR GLOBAL DE SCANNER ───────────────────────────────────────
+// Captura el patrón scanner (ráfaga rápida + Enter) y lo dirige al campo
+// de búsqueda activo (stock o etiquetas) sin necesidad de tenerlo enfocado
+;(function() {
+    let _scanBuf = "", _scanT = 0;
+    document.addEventListener("keydown", function(e) {
+        // Ignorar si el foco está en un input/textarea que no sea de búsqueda
+        const tag = document.activeElement?.tagName;
+        const id  = document.activeElement?.id || "";
+        const esBusqueda = id === "bus-stock" || id === "bus-etiquetas";
+        if ((tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") && !esBusqueda) return;
+
+        const now = Date.now();
+        if (now - _scanT > 80) _scanBuf = ""; // reset si pasó mucho tiempo
+        _scanT = now;
+
+        if (e.key === "Enter") {
+            const cod = _scanBuf.trim();
+            _scanBuf = "";
+            if (cod.length < 3) return;
+
+            // Determinar qué tab está visible
+            const tabStock = document.getElementById("tab-content-stock");
+            const tabEtiq  = document.getElementById("tab-content-etiquetas");
+            const stockVis = tabStock && tabStock.style.display !== "none";
+            const etiqVis  = tabEtiq  && tabEtiq.style.display  !== "none";
+
+            if (stockVis) {
+                const inp = document.getElementById("bus-stock");
+                if (inp) { inp.value = cod; filtrarStock(); inp.focus(); }
+            } else if (etiqVis) {
+                const inp = document.getElementById("bus-etiquetas");
+                if (inp) { inp.value = cod; filtrarProductosEtiquetas(); inp.focus(); }
+            }
+        } else if (e.key.length === 1) {
+            _scanBuf += e.key;
+        }
+    });
+})();
+
 window.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("inp-foto").addEventListener("change", function() { cargarFoto(this); });
     cargarCategoriasPersonalizadas();
