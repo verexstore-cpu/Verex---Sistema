@@ -4269,8 +4269,9 @@ function onCodigoSNEnter(e) {
 function agregarCodigoMultiDesde(cod) {
     cod = cod.trim().toUpperCase();
     if (!cod) return;
-    // Verificar duplicado en la lista actual
-    if (_snMultiCodigos.find(c => c.codigo === cod)) { toast(`⚠️ ${cod} ya está en la lista`); return; }
+    // Si ya está en la lista, sumar 1 a la cantidad en lugar de rechazar
+    const yaEnLista = _snMultiCodigos.find(c => c.codigo === cod);
+    if (yaEnLista) { yaEnLista.qty = (yaEnLista.qty || 1) + 1; renderMultiCodigos(); toast(`+1 — ${cod} ahora ×${yaEnLista.qty}`); return; }
     // Verificar duplicado en stock
     const existeDup = stockData.find(s => String(s.codigo).toUpperCase() === cod);
     if (existeDup) { toast(`⚠️ ${cod} ya existe en stock — "${existeDup.nombre}"`); return; }
