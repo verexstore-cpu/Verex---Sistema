@@ -4390,8 +4390,9 @@ async function guardarStockNuevo() {
     btn.textContent = "⏳ Guardando..."; btn.disabled = true;
 
     try {
-        const desc       = document.getElementById("sn-desc").value.trim();
-        const descTienda = document.getElementById("sn-desc-tienda").value.trim();
+        const desc          = document.getElementById("sn-desc").value.trim();
+        const descTienda    = document.getElementById("sn-desc-tienda").value.trim();
+        const caractEspecial = (document.getElementById("sn-caract")?.value || "").trim();
         const precioNum  = parseFloat(precio);
 
         // ── Modo multi-código: salida temprana ───────────────────────────────
@@ -4422,7 +4423,8 @@ async function guardarStockNuevo() {
                     categoria, precio: precioNum,
                     foto: fotoUrlMulti, cantidad: qty || 1,
                     material: _snMaterial || "",
-                    descripcion: desc, descripcionTienda: descTienda
+                    descripcion: desc, descripcionTienda: descTienda,
+                    caracterEspecial: caractEspecial
                 });
                 if (res.ok) guardados++;
             }
@@ -4479,7 +4481,8 @@ async function guardarStockNuevo() {
                     categoria, precio: precioNum,
                     foto: fotoUrl, cantidad: qty,
                     material: _snMaterial || "",
-                    descripcion: desc, descripcionTienda: descTienda
+                    descripcion: desc, descripcionTienda: descTienda,
+                    caracterEspecial: caractEspecial
                 });
                 if (res.ok) guardados++;
             }
@@ -4504,7 +4507,8 @@ async function guardarStockNuevo() {
                 categoria, precio: precioNum,
                 foto: fotoUrl, cantidad,
                 material: _snMaterial || "",
-                descripcion: desc, descripcionTienda: descTienda
+                descripcion: desc, descripcionTienda: descTienda,
+                caracterEspecial: caractEspecial
             });
             if (!res.ok) { toast("⚠️ " + (res.error || "Error al guardar")); btn.textContent = "✅ Guardar en Stock"; btn.disabled = false; return; }
             toast("✅ Producto guardado en stock");
@@ -6704,6 +6708,7 @@ function enviarWAEstadoCuenta(ventaId) {
         </div>
         <input type="text" id="sn-desc" placeholder="Descripción corta" style="margin-top:8px;">
         <input type="text" id="sn-desc-tienda" placeholder="Descripción para tienda" style="margin-top:8px;">
+        <input type="text" id="sn-caract" placeholder="Características especiales (ej: hipoalergénico, ajustable…)" style="margin-top:8px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;">
             <button class="btn btn-gris" onclick="cerrarModal('modal-stock-nuevo')">Cancelar</button>
             <button class="btn btn-dorado" onclick="guardarStockNuevo()">✅ Guardar en Stock</button>
