@@ -2756,7 +2756,7 @@ function procesarFotoJoya(file) {
                 const bgR = Math.round(muestras.reduce((s,m)=>s+m[0],0)/muestras.length);
                 const bgG = Math.round(muestras.reduce((s,m)=>s+m[1],0)/muestras.length);
                 const bgB = Math.round(muestras.reduce((s,m)=>s+m[2],0)/muestras.length);
-                const TOL = 50;
+                const TOL = 35;
                 const esFondo = (i) =>
                     Math.abs(data[i]-bgR)<TOL && Math.abs(data[i+1]-bgG)<TOL && Math.abs(data[i+2]-bgB)<TOL;
                 let top=H, bottom=0, left=W, right=0;
