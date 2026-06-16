@@ -2639,15 +2639,14 @@ function abrirModalProductoNuevo() {
 }
 
 // ── CARGA DE IMAGEN ─────────────────────────────────
-let _fotoOriginalBase64 = ""; // original sin procesar → sube a ImageKit
+let _fotoOriginalBase64 = "";
+let _fotoCropCoords = null;
 async function cargarFoto(input) {
     const file = input.files[0]; if (!file) return;
-    // Leer original para subir (sin canvas, sin alteraciones)
-    _fotoOriginalBase64 = await new Promise((res, rej) => {
-        const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file);
-    });
-    // Preview centrada (solo visual, no se sube)
-    fotoBase64 = await procesarFotoJoya(file);
+    const r = await procesarFotoJoya(file);
+    _fotoOriginalBase64 = r.original;
+    _fotoCropCoords = r.crop;
+    fotoBase64 = r.preview;
     document.getElementById("preview-foto").src = fotoBase64;
     document.getElementById("preview-foto").style.display = "block";
     document.getElementById("foto-placeholder").style.display = "none";
@@ -2736,12 +2735,13 @@ function generarCodigo(categoria, material) {
 }
 
 // ── PROCESAMIENTO DE FOTO COMPARTIDO ────────────────────────────────
-// Recorta el fondo claro automáticamente y redimensiona a MAX px.
-// Lee el archivo original sin procesamiento — ImageKit aplica el recorte cuadrado via URL
+// Calcula coordenadas de recorte + devuelve preview canvas y original
+// El recorte real lo aplica ImageKit en su servidor (sin pérdida de calidad)
 function procesarFotoJoya(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = e => {
+            const original = e.target.result;
             const img = new Image();
             img.onload = () => {
                 const w = img.width, h = img.height;
@@ -2751,7 +2751,6 @@ function procesarFotoJoya(file) {
                 ctx.drawImage(img, 0, 0, w, h);
                 const data = ctx.getImageData(0, 0, w, h).data;
 
-                // Detectar bounding box de píxeles no-blancos (la joya)
                 const UMBRAL = 232;
                 let minX = w, maxX = 0, minY = h, maxY = 0;
                 for (let y = 0; y < h; y++) {
@@ -2766,35 +2765,35 @@ function procesarFotoJoya(file) {
                     }
                 }
 
-                // Si no detectó nada, devolver original sin procesar
-                if (minX >= maxX || minY >= maxY) { resolve(e.target.result); return; }
+                let crop = null;
+                if (minX < maxX && minY < maxY) {
+                    const objW = maxX - minX, objH = maxY - minY;
+                    const pad = Math.round(Math.max(objW, objH) * 0.12);
+                    minX = Math.max(0, minX - pad);
+                    maxX = Math.min(w - 1, maxX + pad);
+                    minY = Math.max(0, minY - pad);
+                    maxY = Math.min(h - 1, maxY + pad);
+                    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+                    const side = Math.max(maxX - minX, maxY - minY);
+                    let sx = Math.max(0, Math.min(w - side, Math.round(cx - side / 2)));
+                    let sy = Math.max(0, Math.min(h - side, Math.round(cy - side / 2)));
+                    crop = { x: sx, y: sy, side: Math.min(side, w - sx, h - sy) };
+                }
 
-                // Padding 12% alrededor de la joya
-                const objW = maxX - minX, objH = maxY - minY;
-                const pad = Math.round(Math.max(objW, objH) * 0.12);
-                minX = Math.max(0, minX - pad);
-                maxX = Math.min(w - 1, maxX + pad);
-                minY = Math.max(0, minY - pad);
-                maxY = Math.min(h - 1, maxY + pad);
-
-                // Cuadrado centrado en la joya
-                const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-                const side = Math.max(maxX - minX, maxY - minY);
-                let sx = Math.max(0, Math.min(w - side, Math.round(cx - side / 2)));
-                let sy = Math.max(0, Math.min(h - side, Math.round(cy - side / 2)));
-                const realSide = Math.min(side, w - sx, h - sy);
-
-                // Dibujar recorte sin filtros ni ajustes de color
+                // Preview canvas solo para mostrar en modal (baja calidad, no se sube)
                 const out = document.createElement("canvas");
-                out.width = 900; out.height = 900;
+                out.width = 600; out.height = 600;
                 const octx = out.getContext("2d");
-                octx.fillStyle = "#ffffff";
-                octx.fillRect(0, 0, 900, 900);
-                octx.drawImage(img, sx, sy, realSide, realSide, 0, 0, 900, 900);
-                resolve(out.toDataURL("image/jpeg", 0.95));
+                octx.fillStyle = "#f0f0f0";
+                octx.fillRect(0, 0, 600, 600);
+                if (crop) octx.drawImage(img, crop.x, crop.y, crop.side, crop.side, 0, 0, 600, 600);
+                else octx.drawImage(img, 0, 0, w, h, 0, 0, 600, 600);
+                const preview = out.toDataURL("image/jpeg", 0.75);
+
+                resolve({ preview, original, crop });
             };
-            img.onerror = reject;
-            img.src = e.target.result;
+            img.onerror = () => resolve({ preview: original, original, crop: null });
+            img.src = original;
         };
         reader.onerror = reject;
         reader.readAsDataURL(file);
@@ -2826,14 +2825,21 @@ function ikFoto(url, size) {
     return url; // transforms aplicados al subir en el worker
 }
 
-async function subirFotoImageKit(base64, nombre) {
+async function subirFotoImageKit(base64, nombre, crop) {
     try {
         const res  = await fetch(API_URL, {
             method: "POST",
             body: JSON.stringify({ accion: "SUBIR_FOTO", _pass: _sessionPass, imagen: base64, nombre })
         });
         const data = await res.json();
-        if (data.ok && data.url) return data.url;
+        if (data.ok && data.url) {
+            const base = data.url.split("?")[0];
+            if (crop) {
+                const { x, y, side } = crop;
+                return `${base}?tr=cm-extract,x-${Math.round(x)},y-${Math.round(y)},w-${Math.round(side)},h-${Math.round(side)}`;
+            }
+            return base;
+        }
         return null;
     } catch(e) { return null; }
 }
@@ -2897,7 +2903,7 @@ async function agregarProductoNuevo() {
     let fotoUrl = fotoBase64;
     const _fotoParaSubir = _fotoOriginalBase64 || fotoBase64;
     if (_fotoParaSubir) {
-        const url = await subirFotoImageKit(_fotoParaSubir, codigoBase);
+        const url = await subirFotoImageKit(_fotoParaSubir, codigoBase, _fotoCropCoords);
         if (url) fotoUrl = url;
     }
 
@@ -3357,11 +3363,11 @@ function activarEdicionProducto() {
     // foto change listener
     document.getElementById("ep-foto").onchange = async function() {
         const file = this.files[0]; if (!file) return;
-        productoEditando.nuevaFotoOriginal = await new Promise((res, rej) => {
-            const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file);
-        });
-        productoEditando.nuevaFoto = await procesarFotoJoya(file);
-        prev.innerHTML = `<img src="${productoEditando.nuevaFoto}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">`;
+        const r = await procesarFotoJoya(file);
+        productoEditando.nuevaFotoOriginal = r.original;
+        productoEditando.nuevaFotoCrop = r.crop;
+        productoEditando.nuevaFoto = r.preview;
+        prev.innerHTML = `<img src="${r.preview}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">`;
     };
 }
 
@@ -3382,7 +3388,7 @@ async function guardarEdicionProducto() {
     if (!nombre || !precio) { toast("⚠️ Completa nombre y precio"); btn.textContent = "💾 Guardar"; btn.disabled = false; return; }
     let img = productoEditando.p.img || "";
     if (productoEditando.nuevaFoto) {
-        const url = await subirFotoImageKit(productoEditando.nuevaFotoOriginal || productoEditando.nuevaFoto, codigo);
+        const url = await subirFotoImageKit(productoEditando.nuevaFotoOriginal || productoEditando.nuevaFoto, codigo, productoEditando.nuevaFotoCrop);
         if (url) img = url;
         else img = productoEditando.nuevaFoto;
     }
@@ -3415,29 +3421,26 @@ async function guardarEdicionProducto() {
 }
 
 // ── NUEVO LOTE ───────────────────────────────────────────────────────
-let loteFotos = [];        // preview centradas (para IA y visual)
-let loteFotosOriginales = []; // originales sin procesar (para subir a ImageKit)
+let loteFotos = [];
+let loteFotosOriginales = [];
+let loteCropCoords = [];
 let loteProductos = [];
 
 function cargarFotosLote(input) {
     const files = Array.from(input.files).slice(0, 20);
-    loteFotos = [];
-    loteFotosOriginales = [];
+    loteFotos = []; loteFotosOriginales = []; loteCropCoords = [];
     const preview = document.getElementById("lote-preview");
     preview.innerHTML = "";
     let processed = 0;
 
     files.forEach((file, i) => {
-        // Leer original para subir
-        new Promise((res, rej) => {
-            const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file);
-        }).then(orig => { loteFotosOriginales[i] = orig; });
-
-        procesarFotoJoya(file).then(compressed => {
-            loteFotos[i] = compressed;
+        procesarFotoJoya(file).then(r => {
+            loteFotos[i] = r.preview;
+            loteFotosOriginales[i] = r.original;
+            loteCropCoords[i] = r.crop;
             const div = document.createElement("div");
             div.style.cssText = "position:relative;border-radius:8px;overflow:hidden;aspect-ratio:1;";
-            div.innerHTML = `<img src="${compressed}" style="width:100%;height:100%;object-fit:cover;">
+            div.innerHTML = `<img src="${r.preview}" style="width:100%;height:100%;object-fit:cover;">
                 <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.6);font-size:10px;color:#fff;padding:2px;text-align:center;">${i+1}</div>`;
             preview.appendChild(div);
             processed++;
@@ -3470,7 +3473,7 @@ async function analizarLote() {
     if (!loteFotos.length) return;
     document.getElementById("lote-paso1").style.display = "none";
     document.getElementById("lote-paso2").style.display = "block";
-    loteProductos = loteFotos.map((foto, i) => ({ foto, fotoOriginal: loteFotosOriginales[i] || foto, nombre: "", descripcion: "", precio: "", categoria: "", analizando: true, errorIA: false, idx: i }));
+    loteProductos = loteFotos.map((foto, i) => ({ foto, fotoOriginal: loteFotosOriginales[i] || foto, fotoCrop: loteCropCoords[i] || null, nombre: "", descripcion: "", precio: "", categoria: "", analizando: true, errorIA: false, idx: i }));
     renderLoteProductos();
 
     let errores = 0;
@@ -3706,7 +3709,8 @@ async function confirmarLote() {
                 img:         p.foto,   // base64 solo en memoria para preview inmediato
                 categoria,
                 esNuevo:     true,
-                _fotoBase64: p.fotoOriginal || p.foto,   // original sin procesar para subir a ImageKit
+                _fotoBase64: p.fotoOriginal || p.foto,
+                _fotoCrop:   p.fotoCrop || null,
                 cantidad
             };
 
@@ -3762,7 +3766,7 @@ async function confirmarLote() {
         toast("☁️ Subiendo fotos...");
         const uploadResults = await Promise.allSettled(
             productosGenerados.map(prod =>
-                subirFotoImageKit(prod._fotoBase64, prod.codigo)
+                subirFotoImageKit(prod._fotoBase64, prod.codigo, prod._fotoCrop)
                     .then(url => ({ prod, url: url || null }))
                     .catch(() => ({ prod, url: null }))
             )
@@ -4467,14 +4471,13 @@ function onCodigoNPInput() {
 }
 
 let _snFotoOriginalBase64 = "";
+let _snFotoCropCoords = null;
 async function cargarFotoStockNuevo(input) {
     const file = input.files[0]; if (!file) return;
-    // Original para subir a ImageKit sin alteraciones
-    _snFotoOriginalBase64 = await new Promise((res, rej) => {
-        const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file);
-    });
-    // Preview centrada (solo visual)
-    _snFotoBase64 = await procesarFotoJoya(file);
+    const r = await procesarFotoJoya(file);
+    _snFotoOriginalBase64 = r.original;
+    _snFotoCropCoords = r.crop;
+    _snFotoBase64 = r.preview;
     const prev = document.getElementById("sn-foto-preview");
     prev.innerHTML = `<img src="${_snFotoBase64}" style="width:100%;height:100%;object-fit:contain;">`;
     document.getElementById("sn-btn-ia").style.display = "flex";
@@ -4543,7 +4546,7 @@ async function guardarStockNuevo() {
             const primerBase = _snMultiCodigos[0]?.codigoBase || nombreVal;
             let fotoUrlMulti = window._snFotoUrl || "";
             if (_snFotoBase64) {
-                const url = await subirFotoImageKit(_snFotoOriginalBase64 || _snFotoBase64, primerBase);
+                const url = await subirFotoImageKit(_snFotoOriginalBase64 || _snFotoBase64, primerBase, _snFotoCropCoords);
                 if (url) fotoUrlMulti = url;
             }
             let guardados = 0;
@@ -4606,7 +4609,7 @@ async function guardarStockNuevo() {
 
         let fotoUrl = window._snFotoUrl || "";
         if (_snFotoBase64) {
-            const url = await subirFotoImageKit(_snFotoOriginalBase64 || _snFotoBase64, codigoBase);
+            const url = await subirFotoImageKit(_snFotoOriginalBase64 || _snFotoBase64, codigoBase, _snFotoCropCoords);
             if (url) fotoUrl = url;
         }
 
