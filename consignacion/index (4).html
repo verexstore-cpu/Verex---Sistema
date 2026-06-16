@@ -2836,7 +2836,7 @@ async function subirFotoImageKit(base64, nombre, crop) {
             const base = data.url.split("?")[0];
             if (crop) {
                 const { x, y, side } = crop;
-                return `${base}?tr=cm-extract,x-${Math.round(x)},y-${Math.round(y)},w-${Math.round(side)},h-${Math.round(side)}`;
+                return `${base}?tr=cm-extract,x-${Math.round(x)},y-${Math.round(y)},w-${Math.round(side)},h-${Math.round(side)},q-100`;
             }
             return base;
         }
