@@ -1395,8 +1395,7 @@ export default {
           });
           const ikData = await ikRes.json();
           if (ikData.url) {
-            const urlOptimizada = ikData.url + "?tr=w-800,h-800,c-at_max,fo-auto,bg-FFFFFF,q-90,f-webp,e-usm-2-2-0.8-0.024";
-            result = { ok: true, url: urlOptimizada };
+            result = { ok: true, url: ikData.url };
           } else {
             result = { ok: false, error: ikData.message || "Error subiendo foto" };
           }
