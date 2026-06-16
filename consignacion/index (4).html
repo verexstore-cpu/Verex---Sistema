@@ -2770,7 +2770,7 @@ function procesarFotoJoya(file) {
                 let crop = null;
                 if (minX < maxX && minY < maxY) {
                     const objW = maxX - minX, objH = maxY - minY;
-                    const pad = Math.round(Math.max(objW, objH) * 0.06);
+                    const pad = Math.round(Math.max(objW, objH) * 0.15);
                     minX = Math.max(0, minX - pad);
                     maxX = Math.min(w - 1, maxX + pad);
                     minY = Math.max(0, minY - pad);
