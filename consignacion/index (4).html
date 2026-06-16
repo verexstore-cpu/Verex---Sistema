@@ -2784,39 +2784,65 @@ function procesarFotoJoya(file) {
                 minY = Math.round(minY / SCALE); maxY = Math.round(maxY / SCALE);
 
                 let crop = null;
-                let rawMinX = minX, rawMinY = minY, rawMaxX = maxX, rawMaxY = maxY;
+                let padCanvas = null; // canvas con relleno si la joya está en el borde
+
                 if (minX < maxX && minY < maxY) {
                     const objW = maxX - minX, objH = maxY - minY;
-                    const pad = Math.round(Math.max(objW, objH) * 0.30);
-                    minX = Math.max(0, minX - pad);
-                    maxX = Math.min(w - 1, maxX + pad);
-                    minY = Math.max(0, minY - pad);
-                    maxY = Math.min(h - 1, maxY + pad);
+                    const largest = Math.max(objW, objH);
+                    const pad   = Math.round(largest * 0.30);
+                    const ideal = largest + 2 * pad; // lado ideal del cuadro
+
+                    // Centro del objeto en la imagen original
                     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-                    const side = Math.max(maxX - minX, maxY - minY);
-                    let sx = Math.max(0, Math.min(w - side, Math.round(cx - side / 2)));
-                    let sy = Math.max(0, Math.min(h - side, Math.round(cy - side / 2)));
-                    const realSide = Math.min(side, w - sx, h - sy);
-                    const ocupacion = Math.max(objW, objH) / realSide;
-                    console.log(`[ikCrop] bbox=${objW}×${objH} crop=${realSide}px ocupacion=${(ocupacion*100).toFixed(1)}%`);
-                    if (ocupacion <= 0.95) {
-                        crop = { x: sx, y: sy, side: realSide };
+
+                    // Offset del objeto dentro del cuadro ideal
+                    const imgOffX = Math.round(cx - ideal / 2); // puede ser negativo
+                    const imgOffY = Math.round(cy - ideal / 2);
+
+                    // Si el cuadro ideal cabe completamente en la imagen → recorte directo
+                    if (imgOffX >= 0 && imgOffY >= 0 && imgOffX + ideal <= w && imgOffY + ideal <= h) {
+                        const ocupacion = largest / ideal;
+                        console.log(`[ikCrop] bbox=${objW}×${objH} crop=${ideal}px ocupacion=${(ocupacion*100).toFixed(1)}%`);
+                        crop = { x: imgOffX, y: imgOffY, side: ideal };
                     } else {
-                        console.log(`[ikCrop] objeto llena el frame — sin recorte`);
+                        // El cuadro se sale de la imagen — crear canvas con relleno blanco
+                        const canvSize = ideal;
+                        const pc = document.createElement("canvas");
+                        pc.width = canvSize; pc.height = canvSize;
+                        const pctx = pc.getContext("2d");
+                        pctx.fillStyle = "#f8f8f8";
+                        pctx.fillRect(0, 0, canvSize, canvSize);
+                        // Posición donde dibujar la imagen dentro del canvas
+                        const drawX = -imgOffX; // positivo cuando imgOffX era negativo
+                        const drawY = -imgOffY;
+                        pctx.drawImage(img, 0, 0, w, h, drawX, drawY, w, h);
+                        padCanvas = pc;
+                        const ocupacion = largest / canvSize;
+                        console.log(`[ikCrop] bbox=${objW}×${objH} crop=${canvSize}px (relleno) ocupacion=${(ocupacion*100).toFixed(1)}%`);
+                        // Sin crop transform — la foto ya está bien encuadrada en el canvas
+                        crop = null;
                     }
                 }
 
-                // Preview canvas para mostrar en modal (no se sube)
+                // Preview 600×600
                 const out = document.createElement("canvas");
                 out.width = 600; out.height = 600;
                 const octx = out.getContext("2d");
                 octx.fillStyle = "#f0f0f0";
                 octx.fillRect(0, 0, 600, 600);
-                if (crop) octx.drawImage(img, crop.x, crop.y, crop.side, crop.side, 0, 0, 600, 600);
-                else octx.drawImage(img, 0, 0, w, h, 0, 0, 600, 600);
+                if (padCanvas) {
+                    octx.drawImage(padCanvas, 0, 0, padCanvas.width, padCanvas.height, 0, 0, 600, 600);
+                } else if (crop) {
+                    octx.drawImage(img, crop.x, crop.y, crop.side, crop.side, 0, 0, 600, 600);
+                } else {
+                    octx.drawImage(img, 0, 0, w, h, 0, 0, 600, 600);
+                }
                 const preview = out.toDataURL("image/jpeg", 0.75);
 
-                resolve({ preview, original, crop });
+                // Si se usó canvas con relleno, el "original" para subir es ese canvas
+                const uploadOriginal = padCanvas ? padCanvas.toDataURL("image/jpeg", 0.92) : original;
+
+                resolve({ preview, original: uploadOriginal, crop });
             };
             img.onerror = () => resolve({ preview: original, original, crop: null });
             img.src = original;
