@@ -2770,7 +2770,7 @@ function procesarFotoJoya(file) {
                 let crop = null;
                 if (minX < maxX && minY < maxY) {
                     const objW = maxX - minX, objH = maxY - minY;
-                    const pad = Math.round(Math.max(objW, objH) * 0.12);
+                    const pad = Math.round(Math.max(objW, objH) * 0.06);
                     minX = Math.max(0, minX - pad);
                     maxX = Math.min(w - 1, maxX + pad);
                     minY = Math.max(0, minY - pad);
@@ -2823,8 +2823,11 @@ function comprimirParaIA(base64) {
 
 // Agrega transformación ImageKit para mostrar cuadrada y centrada
 function ikFoto(url, size) {
-    if (!url) return url;
-    return url; // transforms aplicados al subir en el worker
+    if (!url || !url.includes("imagekit.io")) return url;
+    const s = size || 600;
+    const base = url.split("?")[0];
+    const tr   = url.includes("?tr=") ? url.split("?tr=")[1] : null;
+    return tr ? `${base}?tr=${tr}:w-${s},h-${s}` : `${base}?tr=w-${s},h-${s}`;
 }
 
 const IK_PUBLIC_KEY = "public_a8ZjAHqpAb0SqJYPIYWXpAjYpIQ=";
