@@ -2638,9 +2638,15 @@ function abrirModalProductoNuevo() {
     abrirModal("modal-prod-nuevo");
 }
 
-// ── COMPRESIÓN DE IMAGEN ─────────────────────────────────
+// ── CARGA DE IMAGEN ─────────────────────────────────
+let _fotoOriginalBase64 = ""; // original sin procesar → sube a ImageKit
 async function cargarFoto(input) {
     const file = input.files[0]; if (!file) return;
+    // Leer original para subir (sin canvas, sin alteraciones)
+    _fotoOriginalBase64 = await new Promise((res, rej) => {
+        const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file);
+    });
+    // Preview centrada (solo visual, no se sube)
     fotoBase64 = await procesarFotoJoya(file);
     document.getElementById("preview-foto").src = fotoBase64;
     document.getElementById("preview-foto").style.display = "block";
@@ -2889,10 +2895,11 @@ async function agregarProductoNuevo() {
         return;
     }
 
-    // Subir foto una sola vez con el código base
+    // Subir foto una sola vez con el código base (siempre la original sin procesar)
     let fotoUrl = fotoBase64;
-    if (fotoBase64) {
-        const url = await subirFotoImageKit(fotoBase64, codigoBase);
+    const _fotoParaSubir = _fotoOriginalBase64 || fotoBase64;
+    if (_fotoParaSubir) {
+        const url = await subirFotoImageKit(_fotoParaSubir, codigoBase);
         if (url) fotoUrl = url;
     }
 
@@ -3352,6 +3359,9 @@ function activarEdicionProducto() {
     // foto change listener
     document.getElementById("ep-foto").onchange = async function() {
         const file = this.files[0]; if (!file) return;
+        productoEditando.nuevaFotoOriginal = await new Promise((res, rej) => {
+            const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file);
+        });
         productoEditando.nuevaFoto = await procesarFotoJoya(file);
         prev.innerHTML = `<img src="${productoEditando.nuevaFoto}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">`;
     };
@@ -3374,7 +3384,7 @@ async function guardarEdicionProducto() {
     if (!nombre || !precio) { toast("⚠️ Completa nombre y precio"); btn.textContent = "💾 Guardar"; btn.disabled = false; return; }
     let img = productoEditando.p.img || "";
     if (productoEditando.nuevaFoto) {
-        const url = await subirFotoImageKit(productoEditando.nuevaFoto, codigo);
+        const url = await subirFotoImageKit(productoEditando.nuevaFotoOriginal || productoEditando.nuevaFoto, codigo);
         if (url) img = url;
         else img = productoEditando.nuevaFoto;
     }
@@ -3407,19 +3417,24 @@ async function guardarEdicionProducto() {
 }
 
 // ── NUEVO LOTE ───────────────────────────────────────────────────────
-let loteFotos = [];
+let loteFotos = [];        // preview centradas (para IA y visual)
+let loteFotosOriginales = []; // originales sin procesar (para subir a ImageKit)
 let loteProductos = [];
-
-
 
 function cargarFotosLote(input) {
     const files = Array.from(input.files).slice(0, 20);
     loteFotos = [];
+    loteFotosOriginales = [];
     const preview = document.getElementById("lote-preview");
     preview.innerHTML = "";
     let processed = 0;
 
     files.forEach((file, i) => {
+        // Leer original para subir
+        new Promise((res, rej) => {
+            const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file);
+        }).then(orig => { loteFotosOriginales[i] = orig; });
+
         procesarFotoJoya(file).then(compressed => {
             loteFotos[i] = compressed;
             const div = document.createElement("div");
@@ -3457,7 +3472,7 @@ async function analizarLote() {
     if (!loteFotos.length) return;
     document.getElementById("lote-paso1").style.display = "none";
     document.getElementById("lote-paso2").style.display = "block";
-    loteProductos = loteFotos.map((foto, i) => ({ foto, nombre: "", descripcion: "", precio: "", categoria: "", analizando: true, errorIA: false, idx: i }));
+    loteProductos = loteFotos.map((foto, i) => ({ foto, fotoOriginal: loteFotosOriginales[i] || foto, nombre: "", descripcion: "", precio: "", categoria: "", analizando: true, errorIA: false, idx: i }));
     renderLoteProductos();
 
     let errores = 0;
@@ -3693,7 +3708,7 @@ async function confirmarLote() {
                 img:         p.foto,   // base64 solo en memoria para preview inmediato
                 categoria,
                 esNuevo:     true,
-                _fotoBase64: p.foto,   // guardado solo en memoria, NO en localStorage
+                _fotoBase64: p.fotoOriginal || p.foto,   // original sin procesar para subir a ImageKit
                 cantidad
             };
 
@@ -4453,8 +4468,14 @@ function onCodigoNPInput() {
     }
 }
 
+let _snFotoOriginalBase64 = "";
 async function cargarFotoStockNuevo(input) {
     const file = input.files[0]; if (!file) return;
+    // Original para subir a ImageKit sin alteraciones
+    _snFotoOriginalBase64 = await new Promise((res, rej) => {
+        const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file);
+    });
+    // Preview centrada (solo visual)
     _snFotoBase64 = await procesarFotoJoya(file);
     const prev = document.getElementById("sn-foto-preview");
     prev.innerHTML = `<img src="${_snFotoBase64}" style="width:100%;height:100%;object-fit:contain;">`;
@@ -4524,7 +4545,7 @@ async function guardarStockNuevo() {
             const primerBase = _snMultiCodigos[0]?.codigoBase || nombreVal;
             let fotoUrlMulti = window._snFotoUrl || "";
             if (_snFotoBase64) {
-                const url = await subirFotoImageKit(_snFotoBase64, primerBase);
+                const url = await subirFotoImageKit(_snFotoOriginalBase64 || _snFotoBase64, primerBase);
                 if (url) fotoUrlMulti = url;
             }
             let guardados = 0;
@@ -4587,7 +4608,7 @@ async function guardarStockNuevo() {
 
         let fotoUrl = window._snFotoUrl || "";
         if (_snFotoBase64) {
-            const url = await subirFotoImageKit(_snFotoBase64, codigoBase);
+            const url = await subirFotoImageKit(_snFotoOriginalBase64 || _snFotoBase64, codigoBase);
             if (url) fotoUrl = url;
         }
 
