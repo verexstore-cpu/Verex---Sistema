@@ -5,6 +5,7 @@
 Sistema de gestión para VEREX Store (joyería/accesorios). Incluye:
 - **Admin VEREX** — panel de administración (Cloudflare Pages → `admin-tienda` repo)
 - **Consignación VEREX** — gestión de vendedores y consignaciones (Cloudflare Pages → `verex-consignacion` repo)
+- **Catálogo VEREX** — tienda pública en `verexstore.com` (Cloudflare Pages → `verex-catalogo` repo)
 - **Inventario Sellers** — inventario para vendedores (Cloudflare Pages → `inventario-sellers` repo)
 - **Worker API** — backend en Cloudflare Workers (`worker-firebase.js`) — requiere `npx wrangler deploy` manual
 - **Sistema de Impresión** — generador de etiquetas Brother QL
@@ -25,14 +26,22 @@ Worker (worker-firebase.js) → npx wrangler deploy (manual)
 ```
 
 ### Repositorios de Deploy
-| Carpeta local | Repo GitHub | Auto-deploy |
-|---|---|---|
-| `adminverex/index (2).html` | `admin-tienda` → `_admin-repo/index.html` | ✅ Cloudflare Pages |
-| `consignacion/index (4).html` | `verex-consignacion` → `_consig-repo/index.html` | ✅ Cloudflare Pages |
-| `consignacion/worker-firebase.js` | `verex-consignacion` → `_consig-repo/worker-firebase.js` | ❌ Manual wrangler |
-| `inventario-sellers/index (5).html` | `inventario-sellers` → `_inventario-repo/index.html` | ✅ Cloudflare Pages |
+| Carpeta local | Repo GitHub | Auto-deploy | URL |
+|---|---|---|---|
+| `adminverex/index (2).html` | `admin-tienda` → `_admin-repo/index.html` | ✅ Cloudflare Pages | — |
+| `consignacion/index (4).html` | `verex-consignacion` → `_consig-repo/index.html` | ✅ Cloudflare Pages | — |
+| `consignacion/worker-firebase.js` | `verex-consignacion` → `_consig-repo/worker-firebase.js` | ❌ Manual wrangler | `verex-api.verexstore.workers.dev` |
+| `verex-catalogo/index.html` | `verex-catalogo` → `index.html` | ✅ Cloudflare Pages | `verexstore.com` |
+| `inventario-sellers/index (5).html` | `inventario-sellers` → `_inventario-repo/index.html` | ✅ Cloudflare Pages | — |
 
 **Siempre hacer push a los repos de deploy además del repo principal.**
+
+### ⚠️ Reglas críticas del catálogo
+- El archivo fuente del catálogo es **`verex-catalogo/index.html`** — es su propio repo git
+- **NUNCA** editar ni copiar desde `catalogo/index (6).html.OLD_NO_USAR` — es una versión antigua abandonada
+- Para cambiar el catálogo: editar `verex-catalogo/index.html` directamente y hacer `git push` dentro de `verex-catalogo/`
+- Google Sheets **ya no se usa** — el catálogo lee desde Supabase via `verex-api.verexstore.workers.dev`
+- El catálogo tiene diseño propio: drawer cart, tarjetas premium, filtros por material/talla — no reemplazar con versiones de otros sistemas
 
 ---
 
