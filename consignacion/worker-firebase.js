@@ -1395,7 +1395,8 @@ export default {
           });
           const ikData = await ikRes.json();
           if (ikData.url) {
-            result = { ok: true, url: ikData.url };
+            const urlBase = ikData.url.split("?")[0];
+            result = { ok: true, url: urlBase + "?tr=w-900,h-900,c-maintain_ratio" };
           } else {
             result = { ok: false, error: ikData.message || "Error subiendo foto" };
           }

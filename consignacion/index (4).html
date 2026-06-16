@@ -2822,10 +2822,8 @@ function comprimirParaIA(base64) {
 
 // Agrega transformación ImageKit para mostrar cuadrada y centrada
 function ikFoto(url, size) {
-    if (!url || !url.includes("imagekit.io")) return url;
-    const s = size || 600;
-    const base = url.split("?")[0];
-    return base;
+    if (!url) return url;
+    return url; // transforms aplicados al subir en el worker
 }
 
 async function subirFotoImageKit(base64, nombre) {
