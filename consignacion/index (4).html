@@ -2855,38 +2855,28 @@ function ikFoto(url, size) {
     return tr ? `${base}?tr=${tr},w-${s}` : `${base}?tr=w-${s}`;
 }
 
-const IK_PUBLIC_KEY = "public_a8ZjAHqpAb0SqJYPIYWXpAjYpIQ=";
-
 async function subirFotoImageKit(fileOrBase64, nombre, crop) {
     try {
-        // Obtener firma del worker
-        const authRes = await fetch(API_URL, {
-            method: "POST",
-            body: JSON.stringify({ accion: "IMAGEKIT_FIRMA", _pass: _sessionPass })
-        });
-        const auth = await authRes.json();
-        if (!auth.ok) return null;
-
-        // Construir FormData con el archivo binario original
-        const ext = (fileOrBase64 instanceof File) ? (fileOrBase64.type === "image/png" ? "png" : "jpg") : "jpg";
-        const fileName = (nombre || ("foto_" + Date.now())) + "." + ext;
-        const form = new FormData();
+        // Convertir File a base64 si es necesario
+        let base64;
         if (fileOrBase64 instanceof File) {
-            form.append("file", fileOrBase64, fileName);
+            base64 = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload  = e => resolve(e.target.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(fileOrBase64);
+            });
         } else {
-            form.append("file", fileOrBase64); // fallback base64
+            base64 = fileOrBase64;
         }
-        form.append("fileName",          fileName);
-        form.append("folder",            "/consignacion");
-        form.append("useUniqueFileName", "true");
-        form.append("publicKey",         IK_PUBLIC_KEY);
-        form.append("signature",         auth.signature);
-        form.append("token",             auth.token);
-        form.append("expire",            String(auth.expire));
 
-        const res  = await fetch("https://upload.imagekit.io/api/v1/files/upload", { method: "POST", body: form });
+        // Subir a través del worker (usa clave privada server-side — más confiable)
+        const res  = await fetch(API_URL, {
+            method: "POST",
+            body: JSON.stringify({ accion: "SUBIR_FOTO", _pass: _sessionPass, imagen: base64, nombre: nombre || ("foto_" + Date.now()) })
+        });
         const data = await res.json();
-        if (data.url) {
+        if (data.ok && data.url) {
             const base = data.url.split("?")[0];
             if (crop) {
                 const { x, y, side } = crop;
@@ -2894,8 +2884,9 @@ async function subirFotoImageKit(fileOrBase64, nombre, crop) {
             }
             return base;
         }
+        console.warn("[ikUpload] worker error:", data?.error);
         return null;
-    } catch(e) { return null; }
+    } catch(e) { console.error("[ikUpload] excepcion:", e); return null; }
 }
 
 async function agregarProductoNuevo() {
@@ -4643,8 +4634,11 @@ async function guardarStockNuevo() {
 
         let fotoUrl = window._snFotoUrl || "";
         if (_snFotoBase64) {
+            console.log("[guardar] tiene foto — file:", !!_snFotoOriginalFile, "b64:", !!_snFotoOriginalBase64, "crop:", _snFotoCropCoords);
             const url = await subirFotoImageKit(_snFotoOriginalFile || _snFotoOriginalBase64 || _snFotoBase64, codigoBase, _snFotoCropCoords);
+            console.log("[guardar] subirFotoImageKit resultado:", url);
             if (url) fotoUrl = url;
+            else toast("⚠️ Foto no se pudo subir a ImageKit");
         }
 
         // Si el código manual ya trae talla (SA18509JT7), guardarlo como pieza única
