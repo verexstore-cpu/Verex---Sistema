@@ -1374,6 +1374,20 @@ export default {
           break;
         }
 
+        case "IMAGEKIT_FIRMA": {
+          if (!esAdmin) return forbidden();
+          const ikPriv = env.IMAGEKIT_PRIVATE_KEY;
+          if (!ikPriv) { result = { ok: false, error: "ImageKit no configurado" }; break; }
+          const token  = crypto.randomUUID();
+          const expire = Math.floor(Date.now() / 1000) + 3600;
+          const enc    = new TextEncoder();
+          const ck     = await crypto.subtle.importKey("raw", enc.encode(ikPriv), { name: "HMAC", hash: "SHA-1" }, false, ["sign"]);
+          const sig    = await crypto.subtle.sign("HMAC", ck, enc.encode(token + expire));
+          const signature = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
+          result = { ok: true, token, expire, signature };
+          break;
+        }
+
         case "SUBIR_FOTO": {
           // Permitir subida con key pública (desde celular) o con pass admin
           const keyOk = d.key === "VEREX_2026_PRO" || esAdmin;
