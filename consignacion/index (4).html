@@ -2765,7 +2765,7 @@ function ikFoto(url, size) {
     if (!url || !url.includes("imagekit.io")) return url;
     const s = size || 600;
     const base = url.split("?")[0];
-    return `${base}?tr=w-${s},h-${s},c-at_max,fo-center`;
+    return `${base}?tr=w-${s},h-${s},c-force,fo-auto`;
 }
 
 async function subirFotoImageKit(base64, nombre) {
