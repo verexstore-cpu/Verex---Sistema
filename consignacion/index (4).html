@@ -4566,6 +4566,21 @@ async function guardarStockNuevo() {
     const esAnillo   = categoria === "AN" || categoria === "CJ";
     const cantidad   = parseInt(document.getElementById("sn-cantidad").value) || 1;
 
+    // Rescatar códigos con talla que el usuario escribió pero no confirmó con Enter
+    if (esAnillo) {
+        for (const fieldId of ["sn-codigo-manual", "sn-multicod-input"]) {
+            const val = (document.getElementById(fieldId)?.value || "").trim().toUpperCase();
+            if (val && /T\d+(\.\d+)?$/.test(val) && !_snMultiCodigos.find(c => c.codigo === val)) {
+                const m2 = val.match(/^(.+?)T(\d+(?:\.\d+)?)$/i);
+                const entry = { codigo: val, talla: m2 ? m2[2] : "", codigoBase: m2 ? m2[1] : val, qty: 1 };
+                const existeDup = stockData.find(s => String(s.codigo).toUpperCase() === val);
+                if (existeDup) entry.esRestock = true;
+                if (fieldId === "sn-codigo-manual") _snMultiCodigos.unshift(entry);
+                else _snMultiCodigos.push(entry);
+            }
+        }
+    }
+
     const modoMultiCod = esAnillo && _snMultiCodigos.length > 0;
     const codigoManualTemp = (document.getElementById("sn-codigo-manual")?.value || "").trim().toUpperCase();
     const codigoYaTieneTallaTemp = /T\d+(\.\d+)?$/.test(codigoManualTemp);
