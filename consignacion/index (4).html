@@ -4640,7 +4640,26 @@ async function guardarStockNuevo() {
                     return { codigo: c.codigo, stock_bodega: (parseInt(prod?.stock_bodega) || 0) + (c.qty || 1) };
                 });
                 const res = await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: itemsRestock });
-                if (res.ok) guardados += restock.length;
+                if (res.ok) {
+                    guardados += restock.length - (res.notFound?.length || 0);
+                    // Códigos eliminados de la BD → registrarlos como nuevos
+                    for (const cod of (res.notFound || [])) {
+                        const c = restock.find(r => r.codigo === cod);
+                        if (!c) continue;
+                        const r2 = await apiPost({
+                            accion: "STOCK_REGISTRAR",
+                            codigo: c.codigo, codigoBase: c.codigoBase, talla: c.talla,
+                            nombre:      c.talla ? `${nombreVal} T${c.talla}` : nombreVal,
+                            nombre_base: nombreVal,
+                            categoria, precio: precioNum,
+                            foto: fotoUrlMulti, cantidad: c.qty || 1,
+                            material: _snMaterial || "",
+                            descripcion: desc, descripcionTienda: descTienda,
+                            caracterEspecial: caractEspecial
+                        });
+                        if (r2.ok) guardados++;
+                    }
+                }
             }
             const codigosGuardados = _snMultiCodigos.filter((_, i) => i < guardados).map(x => x.codigo);
             const msgNuevos  = nuevos.length  ? `${nuevos.length} nueva${nuevos.length>1?"s":""}` : "";

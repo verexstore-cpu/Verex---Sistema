@@ -220,6 +220,7 @@ export default {
 
         case "STOCK_ACTUALIZAR_CANTIDADES": {
           if (!esAdmin) return forbidden();
+          const notFound = [];
           for (const item of (d.items || [])) {
             const doc = await sb.get("stock", item.codigo);
             if (doc) {
@@ -228,9 +229,11 @@ export default {
                 stock_tienda:       item.stock_tienda       ?? doc.stock_tienda,
                 stock_consignacion: item.stock_consignacion ?? doc.stock_consignacion,
               });
+            } else {
+              notFound.push(item.codigo);
             }
           }
-          result = { ok: true };
+          result = { ok: true, notFound };
           break;
         }
 
