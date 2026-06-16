@@ -2840,7 +2840,7 @@ function procesarFotoJoya(file) {
                 const preview = out.toDataURL("image/jpeg", 0.75);
 
                 // Si se usó canvas con relleno, el "original" para subir es ese canvas
-                const uploadOriginal = padCanvas ? padCanvas.toDataURL("image/jpeg", 0.97) : original;
+                const uploadOriginal = padCanvas ? padCanvas.toDataURL("image/jpeg", 0.99) : original;
 
                 resolve({ preview, original: uploadOriginal, crop });
             };
@@ -2906,7 +2906,7 @@ async function subirFotoImageKit(fileOrBase64, nombre, crop) {
             const base = data.url.split("?")[0];
             if (crop) {
                 const { x, y, side } = crop;
-                return `${base}?tr=cm-extract,x-${Math.round(x)},y-${Math.round(y)},w-${Math.round(side)},h-${Math.round(side)},q-97`;
+                return `${base}?tr=cm-extract,x-${Math.round(x)},y-${Math.round(y)},w-${Math.round(side)},h-${Math.round(side)},q-99`;
             }
             return base;
         }
