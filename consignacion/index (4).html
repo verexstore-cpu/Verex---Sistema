@@ -2947,16 +2947,7 @@ async function agregarProductoNuevo() {
     // Obtener código base
     let codigoBase = document.getElementById("np-codigo").value.trim().toUpperCase();
     if (!codigoBase) {
-        try {
-            const resC = await fetch(API_URL, {
-                method: "POST",
-                body: JSON.stringify({ accion: "GENERAR_CODIGO", _pass: _sessionPass, categoria })
-            });
-            const dataC = await resC.json();
-            codigoBase = dataC.ok ? dataC.codigo : generarCodigo(categoria);
-        } catch(e) {
-            codigoBase = generarCodigo(categoria);
-        }
+        codigoBase = generarCodigo(categoria, window._materialProducto);
     }
 
     // Construir variantes: una por talla si es anillo, o una sola si no
@@ -4690,12 +4681,7 @@ async function guardarStockNuevo() {
         const codigoManual = document.getElementById("sn-codigo-manual").value.trim().toUpperCase();
         let codigoBase = codigoManual;
         if (!codigoBase) {
-            const resC = await fetch(API_URL, {
-                method: "POST",
-                body: JSON.stringify({ accion: "GENERAR_CODIGO", _pass: _sessionPass, categoria })
-            });
-            const dataC = await resC.json();
-            codigoBase = dataC.ok ? dataC.codigo : (categoria + Date.now());
+            codigoBase = generarCodigo(categoria, _snMaterial);
         } else {
             const existe = stockData.find(p => String(p.codigo).toUpperCase() === codigoBase);
             if (existe) {

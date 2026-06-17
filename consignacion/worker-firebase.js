@@ -778,13 +778,21 @@ export default {
 
         // ══ GENERAR CÓDIGO ════════════════════════════════════════
         case "GENERAR_CODIGO": {
-          const prefijo = String(d.categoria || "GEN").toUpperCase().slice(0, 2);
+          const cat = String(d.categoria || "GEN").toUpperCase().slice(0, 2);
+          const mat = String(d.material || "").toLowerCase();
+          const matChar = mat.includes("laminado")  ? "L"
+                        : mat.includes("oro")       ? "O"
+                        : mat.includes("acero")     ? "A"
+                        : mat.includes("reloj")     ? "W"
+                        : mat.includes("plata")     ? "P"
+                        : "X";
+          const prefijo = cat + matChar;
           const allStock = await sb.getAll("stock");
           let maxNum = 0;
           allStock.forEach(s => {
-            const base = String(s.codigoBase || "");
+            const base = String(s.codigoBase || s.codigo || "").toUpperCase();
             if (base.startsWith(prefijo)) {
-              const num = parseInt(base.replace(prefijo, "")) || 0;
+              const num = parseInt(base.slice(prefijo.length).replace(/T[\d.]+$/i, "")) || 0;
               if (num > maxNum) maxNum = num;
             }
           });
