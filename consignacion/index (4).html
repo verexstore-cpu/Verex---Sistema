@@ -2722,16 +2722,15 @@ function aplicarTallaNombre(nombreBase, talla) {
 
 function generarCodigo(categoria, material, usadosEnSesion = []) {
     const mat = String(material || _materialLote || "").toLowerCase();
-    const prefMat = mat.includes("oro laminado") ? "PO"
-                  : mat.includes("14 kil") || mat.includes("14k") ? "OR14"
-                  : mat.includes("10 kil") || mat.includes("10k") ? "OR10"
-                  : mat.includes("oro")          ? "OR"
+    // Un solo carácter por material para códigos compactos (máx 10 chars total)
+    const matChar = mat.includes("laminado")     ? "L"
+                  : mat.includes("oro")          ? "O"
                   : mat.includes("acero")        ? "A"
                   : mat.includes("reloj")        ? "W"
                   : mat.includes("plata")        ? "P"
-                  : "";
-    const prefijo = prefMat ? `${prefMat}-${categoria}` : categoria;
-    // Buscar número máximo desde stockData (Supabase) + códigos ya generados en esta sesión
+                  : "X";
+    // Formato: [CAT2][MAT1][NNN3] = 6 chars base → con talla: ANA001T10 = 9 chars
+    const prefijo = categoria + matChar;
     const todosLosCodigos = [
         ...(stockData || []).map(p => String(p.codigo || p.codigoBase || "")),
         ...usadosEnSesion
@@ -2740,7 +2739,6 @@ function generarCodigo(categoria, material, usadosEnSesion = []) {
     todosLosCodigos.forEach(cod => {
         const upper = cod.toUpperCase();
         if (upper.startsWith(prefijo.toUpperCase())) {
-            // Extraer la parte numérica después del prefijo (ignorar sufijo de talla)
             const resto = upper.slice(prefijo.length).replace(/T[\d.]+$/i, "");
             const n = parseInt(resto, 10);
             if (!isNaN(n) && n > maxN) maxN = n;
