@@ -2720,7 +2720,7 @@ function aplicarTallaNombre(nombreBase, talla) {
     return `${nombreBase} T${talla}`;
 }
 
-function generarCodigo(categoria, material) {
+function generarCodigo(categoria, material, usadosEnSesion = []) {
     const mat = String(material || _materialLote || "").toLowerCase();
     const prefMat = mat.includes("oro laminado") ? "PO"
                   : mat.includes("14 kil") || mat.includes("14k") ? "OR14"
@@ -2731,9 +2731,22 @@ function generarCodigo(categoria, material) {
                   : mat.includes("plata")        ? "P"
                   : "";
     const prefijo = prefMat ? `${prefMat}-${categoria}` : categoria;
-    const extras  = safeParseJSON(localStorage.getItem("vx_prod_extras"), []);
-    const deCat   = extras.filter(p => (p.codigoBase||p.codigo||"").startsWith(prefijo));
-    return prefijo + String(deCat.length + 1).padStart(3, '0');
+    // Buscar número máximo desde stockData (Supabase) + códigos ya generados en esta sesión
+    const todosLosCodigos = [
+        ...(stockData || []).map(p => String(p.codigo || p.codigoBase || "")),
+        ...usadosEnSesion
+    ];
+    let maxN = 0;
+    todosLosCodigos.forEach(cod => {
+        const upper = cod.toUpperCase();
+        if (upper.startsWith(prefijo.toUpperCase())) {
+            // Extraer la parte numérica después del prefijo (ignorar sufijo de talla)
+            const resto = upper.slice(prefijo.length).replace(/T[\d.]+$/i, "");
+            const n = parseInt(resto, 10);
+            if (!isNaN(n) && n > maxN) maxN = n;
+        }
+    });
+    return prefijo + String(maxN + 1).padStart(3, '0');
 }
 
 // ── PROCESAMIENTO DE FOTO COMPARTIDO ────────────────────────────────
@@ -3715,10 +3728,12 @@ async function confirmarLote() {
     // ── PASO 1: Generar todo localmente (instantáneo) ─────────────────
     const productosGenerados = [];
     const tareasAPI = []; // llamadas a guardar en background
+    const codigosGeneradosEnLote = []; // evitar duplicados dentro del mismo lote
 
     for (let p of loteProductos) {
         const categoria  = p.categoria;
-        const codigoBase = p.codigoManual ? p.codigoManual.trim().toUpperCase() : generarCodigo(categoria, _materialLote);
+        const codigoBase = p.codigoManual ? p.codigoManual.trim().toUpperCase() : generarCodigo(categoria, _materialLote, codigosGeneradosEnLote);
+        codigosGeneradosEnLote.push(codigoBase);
 
         // Construir lista de { talla, cantidad } — soporta cantidad individual por talla
         let variantes;
@@ -4852,84 +4867,124 @@ function abrirModalImpresion() {
         `;
         m.innerHTML = `
             <div style="background:#111;border:1px solid #C9A84C;border-radius:16px;
-                        padding:24px;width:340px;max-width:95vw;font-family:'DM Sans',sans-serif;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+                        padding:20px;width:680px;max-width:97vw;font-family:'DM Sans',sans-serif;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
                     <span style="color:#C9A84C;font-size:15px;font-weight:700;">🖨️ Imprimir etiquetas</span>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="color:#888;font-size:11px;">Servidor <span style="color:#22c55e;font-weight:700;">● conectado</span></span>
+                        <button onclick="abrirWifiDesdeModal()" id="btn-wifi-consig"
+                            style="background:#161616;border:1px solid #333;color:#aaa;border-radius:8px;
+                                   padding:4px 10px;font-size:11px;cursor:pointer;font-weight:600;">
+                            📶 WiFi
+                        </button>
+                    </div>
                     <button onclick="cerrarModalImpresion()" style="background:none;border:none;color:#666;font-size:20px;cursor:pointer;line-height:1;">×</button>
                 </div>
-
-                <p style="color:#888;font-size:12px;margin-bottom:14px;">
-                    Servidor de impresión <span style="color:#22c55e;font-weight:700;">● conectado</span>
-                </p>
-
-                <p style="color:#ccc;font-size:12px;margin-bottom:10px;font-weight:600;">Formato de etiqueta:</p>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;" id="print-format-grid">
-                    <button onclick="selFormatoImpresion('mini',this)"
-                        style="background:#C9A84C;color:#111;border:none;border-radius:10px;
-                               padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
-                        📎 Mini<br><span style="font-size:10px;font-weight:400;">6×1.5cm — colgante</span>
-                    </button>
-                    <button onclick="selFormatoImpresion('producto',this)"
-                        style="background:#222;color:#aaa;border:1px solid #333;border-radius:10px;
-                               padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
-                        🏷️ Producto<br><span style="font-size:10px;font-weight:400;">5×1.5cm</span>
-                    </button>
-                    <button onclick="selFormatoImpresion('dk1204',this)"
-                        style="background:#222;color:#aaa;border:1px solid #333;border-radius:10px;
-                               padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
-                        🏷️ DK-1204<br><span style="font-size:10px;font-weight:400;">5.4×1.7cm precortada</span>
-                    </button>
-                    <button onclick="selFormatoImpresion('producto-v',this)"
-                        style="background:#222;color:#aaa;border:1px solid #333;border-radius:10px;
-                               padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
-                        🏷️ DK Vertical<br><span style="font-size:10px;font-weight:400;">1.7×5.4cm premium</span>
-                    </button>
-                    <button onclick="selFormatoImpresion('tarjeta25',this)"
-                        style="background:#222;color:#aaa;border:1px solid #333;border-radius:10px;
-                               padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
-                        🏷️ Tarjeta<br><span style="font-size:10px;font-weight:400;">2.5×1.5cm</span>
-                    </button>
-                    <button onclick="selFormatoImpresion('guia',this)"
-                        style="background:#222;color:#aaa;border:1px solid #333;border-radius:10px;
-                               padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
-                        📦 Guía<br><span style="font-size:10px;font-weight:400;">9cm envíos</span>
-                    </button>
-                    <button onclick="selFormatoImpresion('recibo',this)" style="grid-column: span 2;
-                        background:#222;color:#aaa;border:1px solid #333;border-radius:10px;
-                               padding:12px 8px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">
-                        🧾 Recibo<br><span style="font-size:10px;font-weight:400;">62mm × dinámico</span>
-                    </button>
+                <!-- Mini-modal WiFi embebido -->
+                <div id="wifi-consig-panel" style="display:none;background:#0d0d0d;border:1px solid #333;border-radius:10px;padding:14px;margin-bottom:14px;">
+                    <p style="color:#ccc;font-size:11px;font-weight:600;margin-bottom:8px;">📶 Configurar WiFi · Brother QL-810W</p>
+                    <div style="display:flex;gap:6px;margin-bottom:8px;">
+                        <input id="wifi-consig-ip" type="text" placeholder="192.168.1.xxx"
+                            style="flex:1;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;
+                                   padding:7px 10px;font-size:12px;outline:none;" />
+                        <button onclick="wifiConsigScan()" id="btn-wifi-consig-scan"
+                            style="background:#222;border:1px solid #333;color:#aaa;border-radius:6px;
+                                   padding:7px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">
+                            🔍 Buscar
+                        </button>
+                    </div>
+                    <div id="wifi-consig-candidates" style="display:none;margin-bottom:8px;"></div>
+                    <div style="display:flex;gap:6px;">
+                        <button onclick="wifiConsigTest()"
+                            style="flex:1;background:#1a1a1a;border:1px solid #333;color:#aaa;border-radius:6px;
+                                   padding:7px;font-size:11px;cursor:pointer;">
+                            🔌 Probar
+                        </button>
+                        <button onclick="wifiConsigSave()"
+                            style="flex:1;background:#C9A84C;border:none;color:#111;border-radius:6px;
+                                   padding:7px;font-size:11px;font-weight:700;cursor:pointer;">
+                            💾 Guardar
+                        </button>
+                        <button onclick="document.getElementById('wifi-consig-panel').style.display='none'"
+                            style="background:#1a1a1a;border:1px solid #333;color:#666;border-radius:6px;
+                                   padding:7px 10px;font-size:11px;cursor:pointer;">
+                            ✕
+                        </button>
+                    </div>
+                    <div id="wifi-consig-status" style="font-size:11px;color:#888;margin-top:6px;min-height:14px;text-align:center;"></div>
                 </div>
-
-                <p style="color:#ccc;font-size:12px;margin-bottom:8px;font-weight:600;">🎞️ Tipo de rollo instalado:</p>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px;" id="print-rollo-grid">
-                    <button onclick="selRolloImpresion('mono',this)"
-                        style="background:#161616;color:#C9A84C;border:1px solid #C9A84C;border-radius:8px;
-                               padding:10px 8px;font-size:12px;font-weight:700;cursor:pointer;">
-                        ⬜ Monocromo
-                    </button>
-                    <button onclick="selRolloImpresion('rojo',this)"
-                        style="background:#161616;color:#666;border:1px solid #333;border-radius:8px;
-                               padding:10px 8px;font-size:12px;font-weight:700;cursor:pointer;">
-                        🔴 Negro/Rojo
-                    </button>
+                <div style="display:flex;gap:16px;">
+                    <!-- Columna izquierda: formatos + rollo -->
+                    <div style="flex:1;min-width:0;">
+                        <p style="color:#ccc;font-size:11px;margin-bottom:8px;font-weight:600;">Formato:</p>
+                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px;" id="print-format-grid">
+                            <button onclick="selFormatoImpresion('mini',this)"
+                                style="background:#C9A84C;color:#111;border:none;border-radius:8px;
+                                       padding:9px 4px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3;">
+                                📎 Mini<br><span style="font-size:9px;font-weight:400;">2×1.2cm · 6/label</span>
+                            </button>
+                            <button onclick="selFormatoImpresion('producto',this)"
+                                style="background:#222;color:#aaa;border:1px solid #333;border-radius:8px;
+                                       padding:9px 4px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3;">
+                                🏷️ Producto<br><span style="font-size:9px;font-weight:400;">5×1.5cm</span>
+                            </button>
+                            <button onclick="selFormatoImpresion('dk1204',this)"
+                                style="background:#222;color:#aaa;border:1px solid #333;border-radius:8px;
+                                       padding:9px 4px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3;">
+                                🏷️ DK-1204<br><span style="font-size:9px;font-weight:400;">5.4×1.7cm</span>
+                            </button>
+                            <button onclick="selFormatoImpresion('producto-v',this)"
+                                style="background:#222;color:#aaa;border:1px solid #333;border-radius:8px;
+                                       padding:9px 4px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3;">
+                                🏷️ DK Vertical<br><span style="font-size:9px;font-weight:400;">1.7×5.4cm</span>
+                            </button>
+                            <button onclick="selFormatoImpresion('tarjeta25',this)"
+                                style="background:#222;color:#aaa;border:1px solid #333;border-radius:8px;
+                                       padding:9px 4px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3;">
+                                🏷️ Tarjeta<br><span style="font-size:9px;font-weight:400;">2.5×1.5cm</span>
+                            </button>
+                            <button onclick="selFormatoImpresion('guia',this)"
+                                style="background:#222;color:#aaa;border:1px solid #333;border-radius:8px;
+                                       padding:9px 4px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3;">
+                                📦 Guía<br><span style="font-size:9px;font-weight:400;">9cm envíos</span>
+                            </button>
+                            <button onclick="selFormatoImpresion('recibo',this)" style="grid-column:span 3;
+                                background:#222;color:#aaa;border:1px solid #333;border-radius:8px;
+                                       padding:9px 4px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3;">
+                                🧾 Recibo &nbsp;·&nbsp; <span style="font-size:9px;font-weight:400;">62mm × dinámico</span>
+                            </button>
+                        </div>
+                        <p style="color:#ccc;font-size:11px;margin-bottom:6px;font-weight:600;">🎞️ Rollo:</p>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;" id="print-rollo-grid">
+                            <button onclick="selRolloImpresion('mono',this)"
+                                style="background:#161616;color:#C9A84C;border:1px solid #C9A84C;border-radius:8px;
+                                       padding:8px 4px;font-size:11px;font-weight:700;cursor:pointer;">
+                                ⬜ Monocromo
+                            </button>
+                            <button onclick="selRolloImpresion('rojo',this)"
+                                style="background:#161616;color:#666;border:1px solid #333;border-radius:8px;
+                                       padding:8px 4px;font-size:11px;font-weight:700;cursor:pointer;">
+                                🔴 Negro/Rojo
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Columna derecha: preview + botones -->
+                    <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;">
+                        <div id="print-preview-area" style="border-radius:8px;overflow:hidden;flex:1;margin-bottom:10px;min-height:80px;"></div>
+                        <div id="print-server-status" style="font-size:11px;color:#888;margin-bottom:8px;min-height:14px;text-align:center;"></div>
+                        <button onclick="enviarImpresionServidor()"
+                            style="width:100%;background:linear-gradient(135deg,#C9A84C,#a87d20);
+                                   color:#111;border:none;border-radius:10px;padding:12px;
+                                   font-size:13px;font-weight:700;cursor:pointer;margin-bottom:6px;">
+                            🖨️ Imprimir en Brother QL
+                        </button>
+                        <button onclick="descargarSoloPDF()"
+                            style="width:100%;background:none;color:#666;border:1px solid #333;
+                                   border-radius:10px;padding:8px;font-size:11px;cursor:pointer;">
+                            ⬇️ Solo descargar PDF
+                        </button>
+                    </div>
                 </div>
-
-                <div id="print-preview-area" style="margin-bottom:14px;border-radius:8px;overflow:hidden;min-height:0;"></div>
-
-                <div id="print-server-status" style="font-size:12px;color:#888;margin-bottom:12px;min-height:16px;text-align:center;"></div>
-
-                <button onclick="enviarImpresionServidor()"
-                    style="width:100%;background:linear-gradient(135deg,#C9A84C,#a87d20);
-                           color:#111;border:none;border-radius:10px;padding:13px;
-                           font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px;">
-                    🖨️ Imprimir en Brother QL
-                </button>
-                <button onclick="descargarSoloPDF()"
-                    style="width:100%;background:none;color:#666;border:1px solid #333;
-                           border-radius:10px;padding:9px;font-size:12px;cursor:pointer;">
-                    ⬇️ Solo descargar PDF
-                </button>
             </div>
         `;
         document.body.appendChild(m);
@@ -4973,6 +5028,167 @@ function cerrarModalImpresion() {
     if (!m) return;
     if (typeof m._onclose === 'function') { m._onclose(); m._onclose = null; }
     m.style.display = 'none';
+}
+
+const PRINT_SERVER = 'http://127.0.0.1:7891';
+
+async function abrirWifiDesdeModal() {
+    const panel = document.getElementById('wifi-consig-panel');
+    const isOpen = panel.style.display !== 'none';
+    if (isOpen) { panel.style.display = 'none'; return; }
+    panel.style.display = 'block';
+    const status = document.getElementById('wifi-consig-status');
+    document.getElementById('wifi-consig-candidates').style.display = 'none';
+    try {
+        const res = await fetch(PRINT_SERVER + '/wifi', { signal: AbortSignal.timeout(2000) });
+        const data = await res.json();
+        if (data.ip) {
+            document.getElementById('wifi-consig-ip').value = data.ip;
+            status.textContent = '✅ IP guardada: ' + data.ip;
+            status.style.color = '#22c55e';
+        } else {
+            // No hay IP guardada — descubrir automáticamente
+            wifiConsigAutoDescubrir();
+        }
+    } catch {
+        status.textContent = '⏳ Abriendo app de impresión...';
+        status.style.color = '#C9A84C';
+        window.open('verex://open', '_self');
+        let intentos = 0;
+        const timer = setInterval(async () => {
+            intentos++;
+            try {
+                const r = await fetch(PRINT_SERVER + '/wifi', { signal: AbortSignal.timeout(1500) });
+                const d = await r.json();
+                clearInterval(timer);
+                if (d.ip) {
+                    document.getElementById('wifi-consig-ip').value = d.ip;
+                    status.textContent = '✅ IP guardada: ' + d.ip;
+                    status.style.color = '#22c55e';
+                } else {
+                    wifiConsigAutoDescubrir();
+                }
+            } catch {
+                if (intentos >= 10) {
+                    clearInterval(timer);
+                    status.textContent = 'No se pudo abrir la app. Ábrela manualmente.';
+                    status.style.color = '#ef4444';
+                }
+            }
+        }, 2000);
+    }
+}
+
+async function wifiConsigAutoDescubrir() {
+    const status = document.getElementById('wifi-consig-status');
+    const btn = document.getElementById('btn-wifi-consig');
+    status.textContent = '🔍 Buscando impresora automáticamente...';
+    status.style.color = '#C9A84C';
+    try {
+        const res = await fetch(PRINT_SERVER + '/wifi-discover');
+        const data = await res.json();
+        if (data.found && data.found.length > 0) {
+            const ip = data.found[0];
+            document.getElementById('wifi-consig-ip').value = ip;
+            status.textContent = '✅ Impresora encontrada y guardada: ' + ip;
+            status.style.color = '#22c55e';
+            btn.style.borderColor = '#22c55e';
+            btn.style.color = '#22c55e';
+        } else {
+            // Fallback al escaneo completo
+            status.textContent = '🔍 Escaneando red...';
+            await wifiConsigScan();
+        }
+    } catch {
+        status.textContent = 'No se pudo detectar la impresora';
+        status.style.color = '#ef4444';
+    }
+}
+
+async function wifiConsigScan() {
+    const btn = document.getElementById('btn-wifi-consig-scan');
+    const status = document.getElementById('wifi-consig-status');
+    const cands = document.getElementById('wifi-consig-candidates');
+    btn.textContent = '⏳ Buscando...';
+    btn.disabled = true;
+    status.textContent = 'Escaneando red, puede tardar ~20s...';
+    status.style.color = '#C9A84C';
+    cands.style.display = 'none';
+    try {
+        const res = await fetch(PRINT_SERVER + '/wifi-scan');
+        const data = await res.json();
+        if (data.found && data.found.length > 0) {
+            cands.style.display = 'block';
+            cands.innerHTML = data.found.map(ip =>
+                `<div onclick="document.getElementById('wifi-consig-ip').value='${ip}';document.getElementById('wifi-consig-candidates').style.display='none';"
+                    style="background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:7px 10px;
+                           font-size:12px;color:#C9A84C;cursor:pointer;margin-bottom:4px;">
+                    🖨️ ${ip}
+                </div>`
+            ).join('');
+            status.textContent = `${data.found.length} impresora(s) encontrada(s)`;
+            status.style.color = '#22c55e';
+        } else {
+            status.textContent = 'No se encontraron impresoras en la red';
+            status.style.color = '#ef4444';
+        }
+    } catch {
+        status.textContent = 'App de impresión no está abierta';
+        status.style.color = '#ef4444';
+    }
+    btn.textContent = '🔍 Buscar';
+    btn.disabled = false;
+}
+
+async function wifiConsigTest() {
+    const ip = document.getElementById('wifi-consig-ip').value.trim();
+    const status = document.getElementById('wifi-consig-status');
+    if (!ip) { status.textContent = 'Ingresa una IP primero'; status.style.color = '#ef4444'; return; }
+    status.textContent = 'Probando conexión...';
+    status.style.color = '#C9A84C';
+    try {
+        const res = await fetch(PRINT_SERVER + '/wifi-test', {
+            method: 'POST', body: JSON.stringify({ ip }),
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (data.ok) {
+            status.textContent = '✅ Conexión exitosa';
+            status.style.color = '#22c55e';
+        } else {
+            status.textContent = '❌ ' + (data.error || 'Sin respuesta');
+            status.style.color = '#ef4444';
+        }
+    } catch {
+        status.textContent = 'App de impresión no está abierta';
+        status.style.color = '#ef4444';
+    }
+}
+
+async function wifiConsigSave() {
+    const ip = document.getElementById('wifi-consig-ip').value.trim();
+    const status = document.getElementById('wifi-consig-status');
+    if (!ip) { status.textContent = 'Ingresa una IP primero'; status.style.color = '#ef4444'; return; }
+    try {
+        const res = await fetch(PRINT_SERVER + '/wifi', {
+            method: 'POST', body: JSON.stringify({ ip }),
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (data.ok) {
+            status.textContent = '✅ IP guardada — la app imprimirá por WiFi';
+            status.style.color = '#22c55e';
+            const btn = document.getElementById('btn-wifi-consig');
+            btn.style.borderColor = '#22c55e';
+            btn.style.color = '#22c55e';
+        } else {
+            status.textContent = '❌ No se pudo guardar';
+            status.style.color = '#ef4444';
+        }
+    } catch {
+        status.textContent = 'App de impresión no está abierta';
+        status.style.color = '#ef4444';
+    }
 }
 
 function selFormatoImpresion(fmt, btn) {
@@ -5027,10 +5243,10 @@ async function enviarImpresionServidor() {
 
     status.textContent = '📡 Enviando a impresora…';
     try {
-        const res = await fetch('http://127.0.0.1:5000/imprimir', {
+        const res = await fetch(PRINT_SERVER + '/imprimir', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ formato: _formatoImpresion, rollo: _rolloImpresion, pdf_base64: pdfBase64, rotar: true })
+            body: JSON.stringify({ formato: _formatoImpresion, rollo: _rolloImpresion, pdf_base64: pdfBase64, pageCount: codigos.length })
         });
         const json = await res.json();
         if (json.ok) {
@@ -5091,6 +5307,12 @@ async function generarPDFParaServidor(codigos, formato) {
 
     const { jsPDF } = window.jspdf;
     const B = [0, 0, 0];
+
+    // ── FORMATO MINI 2×1.2cm — 6 por DK-11201 (29×90.3mm) ───────────────────
+    if (formato === 'mini') {
+        const b64 = await _generarPDFMini(prods, qrImages);
+        return b64;
+    }
 
     // ── FORMATO TARJETA 25×15mm ───────────────────────────────────────────────
     if (formato === 'tarjeta25') {
@@ -5232,7 +5454,7 @@ async function generarPDFParaServidor(codigos, formato) {
                            .replace(/Laminado/gi, "Lam.");
             if (matT) {
                 doc.setFont("helvetica", "bold"); doc.setTextColor(...B);
-                doc.setFontSize(6.5);
+                doc.setFontSize(7.5);
                 const lineas = doc.splitTextToSize(matT, dMatW);
                 const n = Math.min(lineas.length, 2);
                 const yMat = n === 1 ? [dQR_Y + 3.5] : [dQR_Y + 1.8, dQR_Y + 4.5];
@@ -5243,7 +5465,7 @@ async function generarPDFParaServidor(codigos, formato) {
             const codigoT = p.codigo || "";
             if (codigoT) {
                 doc.setFont("helvetica", "bold"); doc.setTextColor(...B);
-                doc.setFontSize(5.5);
+                doc.setFontSize(6.5);
                 const skuMaxW = FOLD - dDivX - 0.2;
                 const skuW = doc.getTextWidth(codigoT);
                 if (skuW > skuMaxW) {
@@ -5322,6 +5544,64 @@ async function generarPDFParaServidor(codigos, formato) {
 
     const raw = doc.output('datauristring');
     return raw.split(',')[1];
+}
+
+// ── FORMATO MINI 2×1.2cm — 6 etiquetas en DK-11201 (29×90.3mm) ──────────────
+// PDF 29×90.3mm portrait: 6 minis de 20×12mm en 1 columna
+async function _generarPDFMini(prods, qrImages) {
+    const { jsPDF } = window.jspdf;
+    const W = 29, H = 90.3;
+    const ROWS = 6, CELL_H = H / ROWS;   // 15.05mm por fila
+    const LW = 20, LH = 12;              // contenido 20mm×12mm
+    const X0 = (W - LW) / 2;            // 4.5mm margen lateral
+    const B = [0, 0, 0];
+    const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'portrait' });
+
+    // Todo en UNA sola página — las 6 minis en columna vertical
+    for (let i = 0; i < ROWS; i++) {
+        const p = prods[i] || null;
+        const cellY = i * CELL_H;
+        const Y0 = cellY + (CELL_H - LH) / 2;  // centrado en celda
+
+        // Línea divisora
+        if (i > 0) {
+            doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.1);
+            doc.line(1, cellY, W - 1, cellY);
+        }
+
+        if (!p) continue;
+
+        // QR 9×9mm
+        const QS = 9;
+        if (qrImages[p.codigo]) {
+            try { doc.addImage(qrImages[p.codigo], 'PNG', X0, Y0 + (LH - QS) / 2, QS, QS); } catch(e) {}
+        }
+
+        const RX = X0 + QS + 1;
+        const RW = LW - QS - 1;
+
+        // Precio
+        const precio = '$ ' + parseFloat(p.precio || 0).toFixed(2);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...B);
+        doc.text(precio, RX, Y0 + 3.5);
+
+        // Material
+        const mat = (p.material || extraerMaterial(p.nombre || '', p.descripcion || '')).replace(/Laminado/gi, 'Lam.');
+        if (mat) {
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(5.5); doc.setTextColor(...B);
+            const ml = doc.splitTextToSize(mat, RW);
+            ml.slice(0, 2).forEach((l, j) => doc.text(l, RX, Y0 + 6.5 + j * 2.5));
+        }
+
+        // Código
+        const cod = p.codigo || '';
+        if (cod) {
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(5); doc.setTextColor(...B);
+            doc.text(cod, RX, Y0 + LH - 0.5);
+        }
+    }
+
+    return doc.output('datauristring').split(',')[1];
 }
 
 // ── FORMATO TARJETA 2.5×1.5cm — dos caras iguales de datos ──────────────────
