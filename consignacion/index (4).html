@@ -5334,15 +5334,15 @@ async function generarPDFParaServidor(codigos, formato) {
 
             // ── Logo VEREX (lado derecho, centrado en 25→50mm) ─────────────
             const logoCX = DIV + (W - DIV) / 2; // 37.5mm
-            doc.setFont('times', 'bold'); doc.setFontSize(9); doc.setTextColor(...B);
-            doc.text('VEREX', logoCX, 5.8, { align: 'center', charSpace: 1.8 });
+            doc.setFont('times', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...B);
+            doc.text('VEREX', logoCX, 5.8, { align: 'center', charSpace: 1.2 });
 
             // Línea dorada decorativa
             doc.setDrawColor(180, 140, 50); doc.setLineWidth(0.25);
-            doc.line(logoCX - 5.5, 7.2, logoCX + 5.5, 7.2);
+            doc.line(logoCX - 5, 7.2, logoCX + 5, 7.2);
 
             // Slogan pequeño
-            doc.setFont('helvetica', 'italic'); doc.setFontSize(3.5); doc.setTextColor(120, 120, 120);
+            doc.setFont('helvetica', 'italic'); doc.setFontSize(3.2); doc.setTextColor(120, 120, 120);
             doc.text('La expresión de tu mejor versión', logoCX, 9.5, { align: 'center' });
         });
 
