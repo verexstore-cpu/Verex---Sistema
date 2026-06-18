@@ -4917,6 +4917,11 @@ function abrirModalImpresion() {
                                        padding:9px 4px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3;">
                                 🏷️ DK-1204<br><span style="font-size:9px;font-weight:400;">5.4×1.7cm</span>
                             </button>
+                            <button onclick="selFormatoImpresion('dk2214',this)"
+                                style="background:#222;color:#aaa;border:1px solid #333;border-radius:8px;
+                                       padding:9px 4px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3;">
+                                🏷️ DK-2214<br><span style="font-size:9px;font-weight:400;">5×1.2cm cinta</span>
+                            </button>
                             <button onclick="selFormatoImpresion('producto-v',this)"
                                 style="background:#222;color:#aaa;border:1px solid #333;border-radius:8px;
                                        padding:9px 4px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3;">
@@ -5291,6 +5296,59 @@ async function generarPDFParaServidor(codigos, formato) {
 
     const { jsPDF } = window.jspdf;
     const B = [0, 0, 0];
+
+    // ── FORMATO DK-2214 — cinta 12mm — 50×12mm ──────────────────────────────
+    if (formato === 'dk2214') {
+        const W = 50, H = 12, DIV = 25;
+        const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'landscape' });
+
+        prods.forEach((p, idx) => {
+            if (idx > 0) doc.addPage([W, H], 'landscape');
+
+            // ── QR (izquierda, 10×10mm centrado en 12mm alto) ──────────────
+            if (qrImages[p.codigo]) {
+                try { doc.addImage(qrImages[p.codigo], 'PNG', 1.0, 1.0, 10, 10); } catch(e) {}
+            }
+
+            // ── Datos: precio, código, material ────────────────────────────
+            const dataX = 12.2, dataW = DIV - dataX - 0.5;
+            const precio = '$ ' + parseFloat(p.precio || 0).toFixed(2);
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5); doc.setTextColor(...B);
+            doc.text(precio, dataX, 4.8);
+
+            const codigo = p.codigo || '';
+            if (codigo) {
+                doc.setFont('courier', 'normal'); doc.setFontSize(5); doc.setTextColor(40, 40, 40);
+                doc.text(doc.splitTextToSize(codigo, dataW)[0], dataX, 7.2);
+            }
+
+            const material = p.material || extraerMaterial(p.nombre || '', p.descripcion || '');
+            if (material) {
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(4); doc.setTextColor(90, 90, 90);
+                doc.text(doc.splitTextToSize(material, dataW)[0], dataX, 9.4);
+            }
+
+            // ── Línea divisoria vertical ────────────────────────────────────
+            doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.2);
+            doc.line(DIV, 1.0, DIV, 11.0);
+
+            // ── Logo VEREX (lado derecho, centrado en 25→50mm) ─────────────
+            const logoCX = DIV + (W - DIV) / 2; // 37.5mm
+            doc.setFont('times', 'bold'); doc.setFontSize(9); doc.setTextColor(...B);
+            doc.text('VEREX', logoCX, 5.8, { align: 'center', charSpace: 1.8 });
+
+            // Línea dorada decorativa
+            doc.setDrawColor(180, 140, 50); doc.setLineWidth(0.25);
+            doc.line(logoCX - 5.5, 7.2, logoCX + 5.5, 7.2);
+
+            // Slogan pequeño
+            doc.setFont('helvetica', 'italic'); doc.setFontSize(3.5); doc.setTextColor(120, 120, 120);
+            doc.text('La expresión de tu mejor versión', logoCX, 9.5, { align: 'center' });
+        });
+
+        const raw = doc.output('datauristring');
+        return raw.split(',')[1];
+    }
 
     // ── FORMATO MINI 2×1.2cm — 6 por DK-11201 (29×90.3mm) ───────────────────
     if (formato === 'mini') {
