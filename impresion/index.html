@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VEREX – Impresión</title>
 <script src="./node_modules/pdfjs-dist/build/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
   /* ─── VARIABLES ─── */
   :root {
@@ -450,6 +451,7 @@
       <div class="roll-btns">
         <button class="roll-btn" id="roll-btn-62mm"   onclick="setRoll('62mm')"   title="62mm continuo — guías y recibos">📏 62mm</button>
         <button class="roll-btn" id="roll-btn-dk1204" onclick="setRoll('dk1204')" title="DK-2251 (62mm continuo) — etiquetas joyería RAW">💎 DK-2251</button>
+        <button class="roll-btn" id="roll-btn-dk2214" onclick="setRoll('dk2214')" title="DK-2214 (12mm continuo) — etiqueta joyería cinta">🏷️ DK-2214</button>
       </div>
       <button class="roll-save-btn" id="roll-save-btn" onclick="saveRollProfile()" title="Guardar configuración actual del driver como perfil de este rollo">💾</button>
     </div>
@@ -574,6 +576,7 @@
       <div class="subtabs">
         <div class="subtab active" onclick="setSubtabJ(0)">✏️ Manual</div>
         <div class="subtab" onclick="setSubtabJ(1)">📄 Subir PDF</div>
+        <div class="subtab" onclick="setSubtabJ(2)">🏷️ DK-2214</div>
       </div>
 
       <!-- MANUAL -->
@@ -610,6 +613,19 @@
         <button class="btn-print" id="btn-print-etiq" onclick="imprimirTodasEtiquetas()" disabled>
           🖨️ Imprimir todas las etiquetas
         </button>
+      </div>
+
+      <!-- DK-2214 -->
+      <div class="subpanel" id="subpanel-j2">
+        <label>Código del producto</label>
+        <input type="text" id="dk-codigo" placeholder="ANA001T7" oninput="renderDK2214()">
+        <label>Precio</label>
+        <input type="text" id="dk-precio" placeholder="$35.000" oninput="renderDK2214()">
+        <label>Material</label>
+        <input type="text" id="dk-material" placeholder="Plata 925 con Oro Laminado" oninput="renderDK2214()">
+        <label>Cantidad de etiquetas</label>
+        <input type="number" id="dk-cantidad" value="1" min="1" max="200">
+        <button class="btn-print" onclick="imprimirDK2214()">🖨️ Imprimir Etiqueta (50×12mm)</button>
       </div>
     </div>
     <div class="card preview-card">
@@ -690,6 +706,10 @@
 <script>
 // PDF.js worker local
 pdfjsLib.GlobalWorkerOptions.workerSrc = './node_modules/pdfjs-dist/build/pdf.worker.min.js';
+
+// Evitar que Electron navegue y habilitar drag & drop de archivos desde el Explorador
+document.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+document.addEventListener('drop',     e => { e.preventDefault(); });
 
 // ─── AUTO-RECORTE DE BORDES BLANCOS ───
 function autoCrop(canvas) {
@@ -858,8 +878,10 @@ function setSubtab(n) {
 function setSubtabJ(n) {
   document.querySelectorAll('#panel-1 .subtab').forEach((t, i) => t.classList.toggle('active', i === n));
   document.querySelectorAll('#panel-1 .subpanel').forEach((p, i) => p.classList.toggle('active', i === n));
-  document.getElementById('joya-hint').textContent = n === 0 ? '* 54×17mm · Horizontal · Monocromo' : '* 54×17mm · DK-2251 RAW';
+  const hints = ['* 54×17mm · Horizontal · Monocromo', '* 54×17mm · DK-2251 RAW', '* 50×12mm · DK-2214 · Cinta 12mm'];
+  document.getElementById('joya-hint').textContent = hints[n] || hints[0];
   if (n === 0) renderJoya();
+  else if (n === 2) renderDK2214();
   else if (etiqPages.length) renderEtiquetaPreview();
   else document.getElementById('preview-joya').innerHTML = '<span style="color:#5a6270;font-size:13px">Carga un PDF para previsualizar</span>';
 }
@@ -867,13 +889,13 @@ function setSubtabJ(n) {
 // ─── PDF ───
 let pdfPages = [], selectedPage = 0, fitMode = 'cover';
 
-function onDragOver(e) { e.preventDefault(); document.getElementById('drop-zone').classList.add('drag-over'); }
+function onDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; document.getElementById('drop-zone').classList.add('drag-over'); }
 function onDragLeave() { document.getElementById('drop-zone').classList.remove('drag-over'); }
 function onDrop(e) {
   e.preventDefault();
   document.getElementById('drop-zone').classList.remove('drag-over');
   const f = e.dataTransfer.files[0];
-  if (f?.type === 'application/pdf') loadPdf(f);
+  if (f && (f.type === 'application/pdf' || f.name?.toLowerCase().endsWith('.pdf'))) loadPdf(f);
 }
 function onFileSelected(e) { if (e.target.files[0]) loadPdf(e.target.files[0]); }
 
@@ -1002,13 +1024,13 @@ function setSubtabR(n) {
 // ─── PDF RECIBO ───
 let reciboPages = [], reciboSelectedPage = 0;
 
-function onDragOver2(e) { e.preventDefault(); document.getElementById('drop-zone-r').classList.add('drag-over'); }
+function onDragOver2(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; document.getElementById('drop-zone-r').classList.add('drag-over'); }
 function onDragLeave2() { document.getElementById('drop-zone-r').classList.remove('drag-over'); }
 function onDrop2(e) {
   e.preventDefault();
   document.getElementById('drop-zone-r').classList.remove('drag-over');
   const f = e.dataTransfer.files[0];
-  if (f?.type === 'application/pdf') loadPdfRecibo(f);
+  if (f && (f.type === 'application/pdf' || f.name?.toLowerCase().endsWith('.pdf'))) loadPdfRecibo(f);
 }
 function onFileSelectedR(e) { if (e.target.files[0]) loadPdfRecibo(e.target.files[0]); }
 
@@ -1271,16 +1293,113 @@ td:nth-child(2){text-align:center;color:#555;}
   await imprimir(html, 62, 0); // 0 = altura automática
 }
 
+// ─── DK-2214 — CINTA 12mm — 50×12mm ───
+function generateQRDataUrl(text) {
+  return new Promise(resolve => {
+    const div = document.createElement('div');
+    div.style.cssText = 'position:fixed;left:-9999px;top:-9999px;';
+    document.body.appendChild(div);
+    try {
+      new QRCode(div, { text: text || ' ', width: 128, height: 128, colorDark: '#000', colorLight: '#fff', correctLevel: QRCode.CorrectLevel.M });
+    } catch(e) { document.body.removeChild(div); resolve(''); return; }
+    setTimeout(() => {
+      const canvas = div.querySelector('canvas');
+      const url = canvas ? canvas.toDataURL('image/png') : '';
+      document.body.removeChild(div);
+      resolve(url);
+    }, 120);
+  });
+}
+
+async function renderDK2214() {
+  const codigo   = document.getElementById('dk-codigo').value   || 'ANA001T7';
+  const precio   = document.getElementById('dk-precio').value   || '$0';
+  const material = document.getElementById('dk-material').value || '';
+  const qrUrl    = await generateQRDataUrl(codigo);
+  const qrImg    = qrUrl ? `<img src="${qrUrl}" style="width:100%;height:100%;display:block;">` : '';
+  // Preview escalado ×6 para visualizar en pantalla
+  document.getElementById('preview-joya').innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+      <div style="font-size:11px;color:#a07820;font-weight:700;">Vista previa DK-2214 · 50×12mm</div>
+      <div style="width:300px;height:72px;display:flex;border:1px solid #c8ccd6;border-radius:4px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.2);background:#fff;">
+        <!-- datos -->
+        <div style="width:150px;height:72px;display:flex;align-items:center;padding:4px 2px 4px 5px;gap:4px;flex-shrink:0;">
+          <div style="width:60px;height:60px;flex-shrink:0;">${qrImg}</div>
+          <div style="flex:1;display:flex;flex-direction:column;justify-content:center;overflow:hidden;">
+            <div style="font-size:8px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${precio}</div>
+            <div style="font-size:7px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${codigo}</div>
+            ${material ? `<div style="font-size:6px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;">${material}</div>` : ''}
+          </div>
+        </div>
+        <!-- divisor -->
+        <div style="width:1px;background:#ccc;margin:4px 0;flex-shrink:0;"></div>
+        <!-- logo -->
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;">
+          <div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:14px;font-weight:700;letter-spacing:4px;color:#111;">VEREX</div>
+          <div style="font-size:8px;color:#888;">✦</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:#6a7080;">50mm × 12mm · DK-2214</div>
+    </div>`;
+}
+
+async function imprimirDK2214() {
+  const codigo   = document.getElementById('dk-codigo').value.trim()   || 'VEREX';
+  const precio   = document.getElementById('dk-precio').value.trim()   || '$0';
+  const material = document.getElementById('dk-material').value.trim() || '';
+  const cant     = parseInt(document.getElementById('dk-cantidad').value) || 1;
+  const qrUrl    = await generateQRDataUrl(codigo);
+  const qrTag    = qrUrl ? `<img src="${qrUrl}" class="qr-img">` : `<div class="qr-img"></div>`;
+  let etiquetas  = '';
+  for (let i = 0; i < cant; i++) {
+    etiquetas += `
+    <div class="e">
+      <div class="left">
+        <div class="qr-wrap">${qrTag}</div>
+        <div class="info">
+          <div class="precio">${precio}</div>
+          <div class="codigo">${codigo}</div>
+          ${material ? `<div class="material">${material}</div>` : ''}
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="right">
+        <div class="logo-name">VEREX</div>
+        <div class="logo-star">✦</div>
+      </div>
+    </div>`;
+  }
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&display=swap" rel="stylesheet">
+<style>
+@page{size:50mm 12mm;margin:0;}
+*{box-sizing:border-box;margin:0;padding:0;}
+.e{width:50mm;height:12mm;display:flex;align-items:stretch;overflow:hidden;page-break-after:always;}
+.left{width:24mm;display:flex;align-items:center;padding:1mm 0.5mm 1mm 1mm;gap:0.8mm;flex-shrink:0;}
+.qr-wrap{width:10mm;height:10mm;flex-shrink:0;}
+.qr-img{width:10mm;height:10mm;display:block;}
+.info{flex:1;display:flex;flex-direction:column;justify-content:center;overflow:hidden;}
+.precio{font-family:'Segoe UI',Arial,sans-serif;font-size:6pt;font-weight:900;white-space:nowrap;overflow:hidden;}
+.codigo{font-family:'Courier New',monospace;font-size:4.5pt;color:#222;white-space:nowrap;overflow:hidden;margin-top:0.4mm;}
+.material{font-family:'Segoe UI',Arial,sans-serif;font-size:3.8pt;color:#555;white-space:nowrap;overflow:hidden;margin-top:0.3mm;}
+.divider{width:0.3mm;background:#bbb;align-self:stretch;margin:1mm 0;flex-shrink:0;}
+.right{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.4mm;}
+.logo-name{font-family:'Cormorant Garamond',Georgia,serif;font-size:9.5pt;font-weight:600;letter-spacing:2.5pt;color:#111;}
+.logo-star{font-size:4pt;color:#888;}
+</style></head><body>${etiquetas}</body></html>`;
+  await imprimir(html, 0, 0, cant);
+}
+
 // ─── PDF ETIQUETAS DK-1204 ───
 let etiqPages = [];
 
-function onDragOver3(e) { e.preventDefault(); document.getElementById('drop-zone-e').classList.add('drag-over'); }
+function onDragOver3(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; document.getElementById('drop-zone-e').classList.add('drag-over'); }
 function onDragLeave3() { document.getElementById('drop-zone-e').classList.remove('drag-over'); }
 function onDrop3(e) {
   e.preventDefault();
   document.getElementById('drop-zone-e').classList.remove('drag-over');
   const f = e.dataTransfer.files[0];
-  if (f?.type === 'application/pdf') loadPdfEtiqueta(f);
+  if (f && (f.type === 'application/pdf' || f.name?.toLowerCase().endsWith('.pdf'))) loadPdfEtiqueta(f);
 }
 function onFileSelectedE(e) { if (e.target.files[0]) loadPdfEtiqueta(e.target.files[0]); }
 
@@ -1394,12 +1513,14 @@ let currentRoll = localStorage.getItem('verex-roll') || '62mm'
 let pendingRoll  = null   // rol en espera de ser guardado (primer uso)
 
 async function initRollSelector() {
-  const [r62, rDK] = await Promise.all([
+  const [r62, rDK, rDK2214] = await Promise.all([
     window.electronAPI.rollProfileExists('62mm'),
     window.electronAPI.rollProfileExists('dk1204'),
+    window.electronAPI.rollProfileExists('dk2214'),
   ])
   document.getElementById('roll-btn-62mm').classList.toggle('warn', !r62.exists)
   document.getElementById('roll-btn-dk1204').classList.toggle('warn', !rDK.exists)
+  document.getElementById('roll-btn-dk2214').classList.toggle('warn', !rDK2214.exists)
   updateRollUI(currentRoll)
 
   // Actualizar tooltip del botón guardar
@@ -1409,11 +1530,14 @@ async function initRollSelector() {
 function updateRollUI(type) {
   document.getElementById('roll-btn-62mm').classList.toggle('active', type === '62mm')
   document.getElementById('roll-btn-dk1204').classList.toggle('active', type === 'dk1204')
+  document.getElementById('roll-btn-dk2214').classList.toggle('active', type === 'dk2214')
 }
 
 function refreshSaveBtn() {
   const roll = pendingRoll || currentRoll
-  const label = roll === '62mm' ? '62mm continuo' : 'DK-2251 (54×17mm RAW)'
+  const label = roll === '62mm' ? '62mm continuo'
+              : roll === 'dk2214' ? 'DK-2214 (12mm cinta)'
+              : 'DK-2251 (54×17mm RAW)'
   document.getElementById('roll-save-btn').title =
     `Guardar config actual del driver como perfil "${label}"`
 }
@@ -1422,10 +1546,12 @@ async function setRoll(type) {
   const result = await window.electronAPI.loadRollProfile(type, printerName)
 
   if (result.notSetup) {
-    // Primera vez con DK-1204: abrir preferencias → elegir DK-1204 → OK → click 💾
     pendingRoll = type
     refreshSaveBtn()
-    toast('⚙️ 1ª vez con DK-1204: en las preferencias elige DK-1204 → OK → vuelve y click 💾', true)
+    const msg = type === 'dk2214'
+      ? '⚙️ 1ª vez con DK-2214: en preferencias elige cinta 12mm → OK → vuelve y click 💾'
+      : '⚙️ 1ª vez con DK-1204: en las preferencias elige DK-1204 → OK → vuelve y click 💾'
+    toast(msg, true)
     await window.electronAPI.openPrinterProps(printerName)
     return
   }
@@ -1435,9 +1561,11 @@ async function setRoll(type) {
     currentRoll = type
     localStorage.setItem('verex-roll', type)
     updateRollUI(type)
-    document.getElementById(`roll-btn-${type === '62mm' ? '62mm' : 'dk1204'}`).classList.remove('warn')
+    const btnId = type === '62mm' ? 'roll-btn-62mm' : type === 'dk2214' ? 'roll-btn-dk2214' : 'roll-btn-dk1204'
+    document.getElementById(btnId).classList.remove('warn')
     refreshSaveBtn()
-    toast(type === '62mm' ? '📏 Rollo 62mm activado' : '💎 Rollo DK-2251 activado')
+    const msg = type === '62mm' ? '📏 Rollo 62mm activado' : type === 'dk2214' ? '🏷️ Cinta DK-2214 activada' : '💎 Rollo DK-2251 activado'
+    toast(msg)
   } else {
     toast('❌ Error al cambiar rollo: ' + (result.error || 'desconocido'), true)
   }
