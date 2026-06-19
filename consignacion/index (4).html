@@ -5258,7 +5258,7 @@ async function enviarImpresionServidor() {
     // Intentar servidor Electron (7891) — si no está, imprimir directo desde el navegador
     let serverVivo = false;
     try {
-        const ping = await fetch(PRINT_SERVER + '/ping', { signal: AbortSignal.timeout(1000) });
+        const ping = await fetch(PRINT_SERVER + '/ping', { signal: AbortSignal.timeout(3000) });
         serverVivo = ping.ok;
     } catch {}
 
