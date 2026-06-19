@@ -4837,7 +4837,7 @@ async function imprimirCola() {
 }
 
 // ── MODAL DE IMPRESIÓN DIRECTA ────────────────────────────────────────────
-let _formatoImpresion = 'etiqueta';
+let _formatoImpresion = localStorage.getItem('verex_formato_impresion') || 'mini';
 let _rolloImpresion = localStorage.getItem('verex_rollo_impresion') || 'mono';
 
 function abrirModalImpresion() {
@@ -4980,11 +4980,14 @@ function abrirModalImpresion() {
         document.body.appendChild(m);
     }
     m.style.display = 'flex';
-    _formatoImpresion = 'producto';
-    // Resetear selección de formato visual — activar botón "Producto" (índice 1)
-    document.querySelectorAll('#print-format-grid button').forEach((b,i) => {
-        if (i === 1) { b.style.background='#C9A84C'; b.style.color='#111'; b.style.border='none'; }
-        else         { b.style.background='#222';    b.style.color='#aaa'; b.style.border='1px solid #333'; }
+    // Restaurar formato persistido (o mini por defecto)
+    _formatoImpresion = localStorage.getItem('verex_formato_impresion') || 'mini';
+    document.querySelectorAll('#print-format-grid button').forEach(b => {
+        const fmt = (b.getAttribute('onclick') || '').match(/'([^']+)'/)?.[1];
+        const activo = (fmt === _formatoImpresion);
+        b.style.background = activo ? '#C9A84C' : '#222';
+        b.style.color      = activo ? '#111'    : '#aaa';
+        b.style.border     = activo ? 'none'    : '1px solid #333';
     });
     // Aplicar selección de rollo persistida
     document.querySelectorAll('#print-rollo-grid button').forEach((b, i) => {
@@ -5183,6 +5186,7 @@ async function wifiConsigSave() {
 
 function selFormatoImpresion(fmt, btn) {
     _formatoImpresion = fmt;
+    localStorage.setItem('verex_formato_impresion', fmt);
     document.querySelectorAll('#print-format-grid button').forEach(b => {
         b.style.background = '#222';
         b.style.color      = '#aaa';
