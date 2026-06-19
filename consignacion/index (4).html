@@ -5285,39 +5285,88 @@ async function enviarImpresionServidor() {
     status.style.color = '#C9A84C';
     status.textContent = '⏳ Generando PDF…';
 
-    // Generar PDF con 1 etiqueta por página (para el servidor)
     const codigos = [..._colaEtiquetas];
     let pdfBase64 = null;
     try {
         pdfBase64 = await generarPDFParaServidor(codigos, _formatoImpresion);
     } catch(err) {
-        console.error('generarPDFParaServidor error:', err);
         status.style.color = '#ef4444';
         status.textContent = '⚠️ Error PDF: ' + (err.message || err);
         return;
     }
     if (!pdfBase64) { status.style.color='#ef4444'; status.textContent='⚠️ Error generando PDF (null)'; return; }
 
-    status.textContent = '📡 Enviando a impresora…';
+    // Intentar servidor Electron (7891) — si no está, imprimir directo desde el navegador
+    let serverVivo = false;
     try {
-        const res = await fetch(PRINT_SERVER + '/imprimir', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ formato: _formatoImpresion, rollo: _rolloImpresion, pdf_base64: pdfBase64, pageCount: codigos.length, printerIp: localStorage.getItem('verex_wifi_ip') || undefined })
-        });
-        const json = await res.json();
-        if (json.ok) {
-            status.style.color = '#22c55e';
-            status.textContent = `✅ ${json.etiquetas} etiqueta(s) enviadas a Brother QL`;
-            setTimeout(() => { cerrarModalImpresion(); limpiarCola(); }, 1800);
-        } else {
+        const ping = await fetch(PRINT_SERVER + '/ping', { signal: AbortSignal.timeout(1000) });
+        serverVivo = ping.ok;
+    } catch {}
+
+    if (serverVivo) {
+        status.textContent = '📡 Enviando a impresora…';
+        try {
+            const res = await fetch(PRINT_SERVER + '/imprimir', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ formato: _formatoImpresion, rollo: _rolloImpresion, pdf_base64: pdfBase64, pageCount: codigos.length, printerIp: localStorage.getItem('verex_wifi_ip') || undefined })
+            });
+            const json = await res.json();
+            if (json.ok) {
+                status.style.color = '#22c55e';
+                status.textContent = `✅ ${json.etiquetas} etiqueta(s) enviadas a Brother QL`;
+                setTimeout(() => { cerrarModalImpresion(); limpiarCola(); }, 1800);
+            } else {
+                status.style.color = '#ef4444';
+                status.textContent = '⚠️ ' + (json.error || 'Error en impresora');
+            }
+        } catch(e) {
             status.style.color = '#ef4444';
-            status.textContent = '⚠️ ' + (json.error || 'Error en impresora');
+            status.textContent = '⚠️ Error al enviar al servidor';
         }
-    } catch(e) {
-        status.style.color = '#ef4444';
-        status.textContent = '⚠️ No se pudo conectar al servidor';
+    } else {
+        // Imprimir directo desde el navegador sin app externa
+        imprimirPDFNavegador(pdfBase64, codigos.length);
+        status.style.color = '#22c55e';
+        status.textContent = '✅ Abriendo diálogo de impresión…';
+        setTimeout(() => { cerrarModalImpresion(); limpiarCola(); }, 1200);
     }
+}
+
+function imprimirPDFNavegador(pdfBase64, pageCount) {
+    // Dimensiones según formato (en mm)
+    const dims = {
+        mini:        { w: 20,   h: 12  },
+        dk2214:      { w: 50,   h: 12  },
+        producto:    { w: 54,   h: 15  },
+        'dk1204':    { w: 54,   h: 17  },
+        'producto-v':{ w: 17,   h: 54  },
+        tarjeta25:   { w: 50,   h: 15  },
+        guia:        { w: 62,   h: 90  },
+        recibo:      { w: 62,   h: 0   },
+    };
+    const d = dims[_formatoImpresion] || { w: 54, h: 15 };
+    const orient = (d.w > d.h) ? 'landscape' : 'portrait';
+    const cssSize = d.h > 0 ? `${d.w}mm ${d.h}mm` : `${d.w}mm auto`;
+
+    const html = `<!DOCTYPE html><html><head>
+<style>
+  @page { size: ${cssSize} ${orient}; margin: 0; }
+  html, body { margin: 0; padding: 0; background: white; }
+  embed { display: block; width: 100vw; height: 100vh; }
+</style>
+</head><body>
+<embed src="data:application/pdf;base64,${pdfBase64}" type="application/pdf" width="100%" height="100%">
+<script>
+  window.onload = function() {
+    // Dar tiempo a que el PDF renderice antes de imprimir
+    setTimeout(function() { window.print(); }, 800);
+  };
+<\/script>
+</body></html>`;
+
+    const w = window.open('', '_blank', `width=${Math.round(d.w * 3.78)},height=${Math.round((d.h || 300) * 3.78 * pageCount)}`);
+    if (w) { w.document.write(html); w.document.close(); }
 }
 
 async function descargarSoloPDF() {
