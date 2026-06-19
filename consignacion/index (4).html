@@ -8,6 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="tahomabd.js"></script>
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
 
@@ -4905,7 +4906,7 @@ function abrirModalImpresion() {
                             <button onclick="selFormatoImpresion('mini',this)"
                                 style="background:#C9A84C;color:#111;border:none;border-radius:8px;
                                        padding:9px 4px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3;">
-                                📎 Mini<br><span style="font-size:9px;font-weight:400;">2×1.2cm · 6/label</span>
+                                📎 Mini<br><span style="font-size:9px;font-weight:400;">2×1.2cm · cinta</span>
                             </button>
                             <button onclick="selFormatoImpresion('producto',this)"
                                 style="background:#222;color:#aaa;border:1px solid #333;border-radius:8px;
@@ -5301,49 +5302,77 @@ async function generarPDFParaServidor(codigos, formato) {
     if (formato === 'dk2214') {
         const W = 50, H = 12, DIV = 25;
         const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'landscape' });
+        // registrar Tahoma Bold en este doc
+        const hasTahoma = !!window.TAHOMA_BOLD_B64;
+        if (hasTahoma) {
+            try {
+                doc.addFileToVFS('TahomaBold.ttf', window.TAHOMA_BOLD_B64);
+                doc.addFont('TahomaBold.ttf', 'TahomaBold', 'normal');
+            } catch(e) {}
+        }
 
         prods.forEach((p, idx) => {
             if (idx > 0) doc.addPage([W, H], 'landscape');
 
-            // ── QR (izquierda, 10×10mm centrado en 12mm alto) ──────────────
+            // ── QR 8×8mm ─────────────────────────────────────────────────────
             if (qrImages[p.codigo]) {
-                try { doc.addImage(qrImages[p.codigo], 'PNG', 1.0, 1.0, 10, 10); } catch(e) {}
+                try { doc.addImage(qrImages[p.codigo], 'PNG', 0.8, 2.2, 8, 8); } catch(e) {}
             }
 
-            // ── Datos: precio, código, material ────────────────────────────
-            const dataX = 12.2, dataW = DIV - dataX - 0.5;
+            // ── Precio a la derecha del QR ──────────────────────────────────
+            const dataX = 9.5, dataW = DIV - dataX - 0.5;
             const precio = '$ ' + parseFloat(p.precio || 0).toFixed(2);
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5); doc.setTextColor(...B);
-            doc.text(precio, dataX, 4.8);
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...B);
+            doc.text(precio, dataX, 5.0);
 
-            const codigo = p.codigo || '';
-            if (codigo) {
-                doc.setFont('courier', 'normal'); doc.setFontSize(5); doc.setTextColor(40, 40, 40);
-                doc.text(doc.splitTextToSize(codigo, dataW)[0], dataX, 7.2);
-            }
-
+            // ── Material debajo del precio ───────────────────────────────────
             const material = p.material || extraerMaterial(p.nombre || '', p.descripcion || '');
             if (material) {
-                doc.setFont('helvetica', 'normal'); doc.setFontSize(4); doc.setTextColor(90, 90, 90);
-                doc.text(doc.splitTextToSize(material, dataW)[0], dataX, 9.4);
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(6); doc.setTextColor(...B);
+                doc.text(doc.splitTextToSize(material, dataW)[0], dataX, 7.5);
+            }
+
+            // ── Código debajo del material (Tahoma Bold 5pt, hasta 12 chars) ─
+            const codigo = p.codigo || '';
+            if (codigo) {
+                if (hasTahoma) doc.setFont('TahomaBold', 'normal');
+                else doc.setFont('helvetica', 'bold');
+                doc.setFontSize(5); doc.setTextColor(...B);
+                doc.text(codigo.slice(0, 12), dataX, 9.6);
             }
 
             // ── Línea divisoria vertical ────────────────────────────────────
             doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.2);
-            doc.line(DIV, 1.0, DIV, 11.0);
+            doc.line(DIV, 0.8, DIV, 11.2);
 
-            // ── Logo VEREX (lado derecho, centrado en 25→50mm) ─────────────
+            // ── Logo VEREX centrado ──────────────────────────────────────────
             const logoCX = DIV + (W - DIV) / 2; // 37.5mm
-            doc.setFont('times', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...B);
-            doc.text('VEREX', logoCX, 5.8, { align: 'center', charSpace: 1.2 });
+            doc.setFont('times', 'bold'); doc.setFontSize(12.5);
+            const verexW = doc.getTextWidth('VEREX') + 5 * (1.2 * 25.4 / 72);
+            const vHalf  = verexW / 2;
+            doc.setTextColor(...B);
+            doc.text('VEREX', logoCX - vHalf, 4.8, { charSpace: 1.2 });
 
-            // Línea dorada decorativa
-            doc.setDrawColor(180, 140, 50); doc.setLineWidth(0.25);
-            doc.line(logoCX - 5, 7.2, logoCX + 5, 7.2);
+            // ── Separador: estrella+líneas corridas +0.5mm a la derecha ──────
+            const sepCX = logoCX + 0.5; // corrección visual de simetría
+            const sepY = 6.3, r1 = 0.65, r2 = 0.26, starGap = r1 + 0.4;
+            doc.setDrawColor(...B); doc.setLineWidth(0.22);
+            doc.line(sepCX - vHalf,   sepY, sepCX - starGap, sepY);
+            doc.line(sepCX + starGap, sepY, sepCX + vHalf,   sepY);
+            doc.setFillColor(...B);
+            const sPts = [];
+            for (let i = 0; i < 8; i++) {
+                const a = (i * Math.PI / 4) - Math.PI / 2;
+                const r = (i % 2 === 0) ? r1 : r2;
+                sPts.push([sepCX + r * Math.cos(a), sepY + r * Math.sin(a)]);
+            }
+            doc.lines(sPts.slice(1).map((pt, i) => [pt[0]-sPts[i][0], pt[1]-sPts[i][1]]),
+                      sPts[0][0], sPts[0][1], [1,1], 'FD', true);
 
-            // Slogan pequeño
-            doc.setFont('helvetica', 'italic'); doc.setFontSize(3.2); doc.setTextColor(120, 120, 120);
-            doc.text('La expresión de tu mejor versión', logoCX, 9.5, { align: 'center' });
+            // ── Slogan centrado ──────────────────────────────────────────────
+            doc.setFont('helvetica', 'bolditalic'); doc.setFontSize(5.5); doc.setTextColor(...B);
+            doc.text('La expresion de tu', logoCX, 8.2, { align: 'center' });
+            doc.text('mejor version',      logoCX, 10.0, { align: 'center' });
         });
 
         const raw = doc.output('datauristring');
@@ -5588,61 +5617,59 @@ async function generarPDFParaServidor(codigos, formato) {
     return raw.split(',')[1];
 }
 
-// ── FORMATO MINI 2×1.2cm — 6 etiquetas en DK-11201 (29×90.3mm) ──────────────
-// PDF 29×90.3mm portrait: 6 minis de 20×12mm en 1 columna
+// ── FORMATO MINI 1.2×2cm — DK-2214 cinta 12mm — una etiqueta por página ──────
+// PDF multi-página: cada página 20×12mm landscape (ancho cinta 12mm)
 async function _generarPDFMini(prods, qrImages) {
     const { jsPDF } = window.jspdf;
-    const W = 29, H = 90.3;
-    const ROWS = 6, CELL_H = H / ROWS;   // 15.05mm por fila
-    const LW = 20, LH = 12;              // contenido 20mm×12mm
-    const X0 = (W - LW) / 2;            // 4.5mm margen lateral
+    const W = 20, H = 12;   // 20mm largo × 12mm ancho (cinta DK-2214)
     const B = [0, 0, 0];
-    const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'portrait' });
+    const QS = 9.5;          // QR cuadrado, ocupa casi toda la altura
+    const PAD = 0.8;         // margen superior/inferior
+    const RX = PAD + QS + 1; // inicio columna de texto
+    const RW = W - RX - PAD; // ancho disponible para texto
 
-    // Todo en UNA sola página — las 6 minis en columna vertical
-    for (let i = 0; i < ROWS; i++) {
-        const p = prods[i] || null;
-        const cellY = i * CELL_H;
-        const Y0 = cellY + (CELL_H - LH) / 2;  // centrado en celda
+    let doc = null;
 
-        // Línea divisora
-        if (i > 0) {
-            doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.1);
-            doc.line(1, cellY, W - 1, cellY);
-        }
-
+    for (let i = 0; i < prods.length; i++) {
+        const p = prods[i];
         if (!p) continue;
 
-        // QR 9×9mm
-        const QS = 9;
-        if (qrImages[p.codigo]) {
-            try { doc.addImage(qrImages[p.codigo], 'PNG', X0, Y0 + (LH - QS) / 2, QS, QS); } catch(e) {}
+        if (!doc) {
+            doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'landscape' });
+        } else {
+            doc.addPage([W, H], 'landscape');
         }
 
-        const RX = X0 + QS + 1;
-        const RW = LW - QS - 1;
+        // QR centrado verticalmente
+        if (qrImages[p.codigo]) {
+            const qY = (H - QS) / 2;
+            try { doc.addImage(qrImages[p.codigo], 'PNG', PAD, qY, QS, QS); } catch(e) {}
+        }
 
         // Precio
         const precio = '$ ' + parseFloat(p.precio || 0).toFixed(2);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...B);
-        doc.text(precio, RX, Y0 + 3.5);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...B);
+        doc.text(precio, RX, 4);
 
         // Material
         const mat = (p.material || extraerMaterial(p.nombre || '', p.descripcion || '')).replace(/Laminado/gi, 'Lam.');
         if (mat) {
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(5.5); doc.setTextColor(...B);
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(5); doc.setTextColor(...B);
             const ml = doc.splitTextToSize(mat, RW);
-            ml.slice(0, 2).forEach((l, j) => doc.text(l, RX, Y0 + 6.5 + j * 2.5));
+            ml.slice(0, 2).forEach((l, j) => doc.text(l, RX, 7 + j * 2.2));
         }
 
         // Código
         const cod = p.codigo || '';
         if (cod) {
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(5); doc.setTextColor(...B);
-            doc.text(cod, RX, Y0 + LH - 0.5);
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(4.5); doc.setTextColor(...B);
+            doc.text(cod, RX, H - 1);
         }
     }
 
+    if (!doc) {
+        doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'landscape' });
+    }
     return doc.output('datauristring').split(',')[1];
 }
 
