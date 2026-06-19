@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const os = require('os')
@@ -7,6 +7,33 @@ const net = require('net')
 const { exec } = require('child_process')
 
 let mainWindow
+let tray = null
+
+function createTrayIcon() {
+  const size = 32
+  const buf = Buffer.alloc(size * size * 4)
+  for (let i = 0; i < size * size; i++) {
+    buf[i * 4]     = 0xC9  // R (gold)
+    buf[i * 4 + 1] = 0xA8  // G
+    buf[i * 4 + 2] = 0x4C  // B
+    buf[i * 4 + 3] = 0xFF  // A
+  }
+  return nativeImage.createFromBitmap(buf, { width: size, height: size })
+}
+
+function createTray() {
+  tray = new Tray(createTrayIcon())
+  tray.setToolTip('VEREX Impresión · Activo')
+  const menu = Menu.buildFromTemplate([
+    { label: 'VEREX Impresión', enabled: false },
+    { type: 'separator' },
+    { label: '🖨️ Abrir ventana', click: () => { mainWindow.setSkipTaskbar(false); mainWindow.show(); mainWindow.focus() } },
+    { type: 'separator' },
+    { label: 'Salir', click: () => { tray.destroy(); app.quit() } },
+  ])
+  tray.setContextMenu(menu)
+  tray.on('double-click', () => { mainWindow.setSkipTaskbar(false); mainWindow.show(); mainWindow.focus() })
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -15,7 +42,9 @@ function createWindow() {
     minWidth: 860,
     minHeight: 600,
     title: 'VEREX – Impresión',
-    backgroundColor: '#f0f2f5',
+    backgroundColor: '#0e0e18',
+    show: false,
+    skipTaskbar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -24,13 +53,60 @@ function createWindow() {
   })
   mainWindow.loadFile('index.html')
   mainWindow.setMenuBarVisibility(false)
+
+  // Al cerrar la ventana → ocultar a bandeja en lugar de cerrar
+  mainWindow.on('close', (e) => {
+    e.preventDefault()
+    mainWindow.hide()
+    mainWindow.setSkipTaskbar(true)
+  })
+
+  // Bloquear navegación al arrastrar archivos desde el Explorador de Windows
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    if (!url.startsWith('file://') || !url.endsWith('index.html')) e.preventDefault()
+  })
 }
+
+// Registrar protocolo verex:// para que el browser pueda abrir la app
+if (process.defaultApp) {
+  if (process.argv.length >= 2) app.setAsDefaultProtocolClient('verex', process.execPath, [path.resolve(process.argv[1])])
+} else {
+  app.setAsDefaultProtocolClient('verex')
+}
+
+// Activar auto-inicio con Windows
+app.setLoginItemSettings({ openAtLogin: true, openAsHidden: false })
 
 app.whenReady().then(() => {
   createWindow()
+  createTray()
   startPrintServer()
 })
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
+
+// Si ya hay una instancia corriendo y el browser abre verex://, traer al frente
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+  }
+})
+
+// En Windows: segunda instancia por protocolo verex://
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+}
+
+// Nunca cerrar la app al cerrar la ventana — vive en la bandeja del sistema
+app.on('window-all-closed', () => {})
 
 // ── Servidor HTTP local para recibir PDFs desde el admin ──────────────────
 // Escucha en localhost:7891 — solo accesible desde esta misma PC
@@ -63,8 +139,6 @@ function startPrintServer() {
           if (req.url === '/print-guia')     canal = 'load-pdf-guia'
           if (req.url === '/print-etiqueta') canal = 'load-pdf-etiqueta'
           if (mainWindow) {
-            if (mainWindow.isMinimized()) mainWindow.restore()
-            mainWindow.focus()
             mainWindow.webContents.send(canal, {
               pdfBase64: body.pdfBase64,
               nombre: body.nombre || '',
@@ -76,6 +150,360 @@ function startPrintServer() {
           res.writeHead(400, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify({ ok: false, error: e.message }))
         }
+      })
+      return
+    }
+
+    // POST /imprimir — recibe { formato, rollo, pdf_base64, pageCount } desde consignación
+    if (req.method === 'POST' && req.url === '/imprimir') {
+      const chunks = []
+      req.on('data', c => chunks.push(c))
+      req.on('end', async () => {
+        try {
+          const body   = JSON.parse(Buffer.concat(chunks).toString())
+          const { formato, rollo, pdf_base64, pageCount } = body
+          const pages  = parseInt(pageCount) || 1
+          if (!pdf_base64) {
+            res.writeHead(400, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ ok: false, error: 'pdf_base64 vacío' }))
+            return
+          }
+
+          // Dimensiones de captura según formato
+          const isMini   = formato === 'mini'
+          const isDK2214srv = formato === 'dk2214'
+          const isLabel  = !['guia','recibo','mini','dk2214'].includes(formato)
+          const widthMm  = isMini ? 29 : (isLabel ? 0 : 62)
+          const heightMm = isMini ? 90.3 : (formato === 'guia' ? 90 : 0)
+
+          const pdfPath = path.join(os.tmpdir(), `verex-print-${Date.now()}.pdf`)
+          fs.writeFileSync(pdfPath, Buffer.from(pdf_base64, 'base64'))
+
+          // HTML mínimo que carga el PDF con pdfjs y lo renderiza en canvas
+          const pdfJsPath     = path.join(__dirname, 'node_modules/pdfjs-dist/build/pdf.min.js').replace(/\\/g, '/')
+          const pdfWorkerPath = path.join(__dirname, 'node_modules/pdfjs-dist/build/pdf.worker.min.js').replace(/\\/g, '/')
+          const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#fff">
+<canvas id="c"></canvas>
+<script src="file:///${pdfJsPath}"><\/script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='file:///${pdfWorkerPath}';
+const url='file:///${pdfPath.replace(/\\/g,'/')}';
+pdfjsLib.getDocument(url).promise.then(pdf=>{
+  const total=pdf.numPages;
+  Promise.all(Array.from({length:total},(_,i)=>pdf.getPage(i+1))).then(pgs=>{
+    const vp=pgs[0].getViewport({scale:4});
+    const W=Math.round(vp.width), H=Math.round(vp.height);
+    const c=document.getElementById('c');
+    c.width=W; c.height=H*total;
+    const ctx=c.getContext('2d');
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H*total);
+    let done=0;
+    pgs.forEach((pg,i)=>{
+      const vp2=pg.getViewport({scale:4});
+      ctx.save();
+      ctx.translate(0, i*H);
+      pg.render({canvasContext:ctx,viewport:vp2}).promise
+        .then(()=>{ ctx.restore(); done++; if(done===total) document.title='READY'; });
+    });
+  });
+});
+<\/script></body></html>`
+
+          const tmpHtml = path.join(os.tmpdir(), `verex-pdf-${Date.now()}.html`)
+          fs.writeFileSync(tmpHtml, html, 'utf8')
+
+          const result = await new Promise((resolve) => {
+            let settled = false
+            const done = v => { if (!settled) { settled = true; resolve(v) } }
+            setTimeout(() => done({ success: false, error: 'Timeout renderizando PDF' }), 45000)
+
+            const LW_CSS = Math.round(54 * 96 / 25.4), LH_CSS = Math.round(17 * 96 / 25.4), LSCALE = 4
+            const GW_CSS = Math.round(62 * 96 / 25.4), GSCALE = 3
+            const DK14W  = Math.round(50 * 96 / 25.4) * 4  // 756px — DK-2214 50mm @96dpi×4
+            const DK14H  = Math.round(12 * 96 / 25.4) * 4  // 182px — DK-2214 12mm @96dpi×4
+            const winW = isDK2214srv ? DK14W : (isLabel ? LW_CSS * LSCALE : Math.round(widthMm * 96 / 25.4) * GSCALE)
+            const winH = isDK2214srv ? DK14H * pages : (isLabel ? LH_CSS * LSCALE * pages : (heightMm > 0 ? Math.round(heightMm * 96 / 25.4) * GSCALE : 4500))
+
+            const win = new BrowserWindow({
+              show: false, width: winW, height: winH,
+              webPreferences: { nodeIntegration: false, contextIsolation: true, offscreen: true, webSecurity: false }
+            })
+            win.loadFile(tmpHtml)
+
+            const checkReady = setInterval(async () => {
+              try {
+                const title = await win.webContents.getTitle()
+                if (title !== 'READY') return
+              } catch { return }
+              clearInterval(checkReady)
+              await new Promise(r => setTimeout(r, 300))
+
+              try {
+                const captureW = winW, captureH = isDK2214srv ? DK14H * pages : ((isLabel && !isMini) ? LH_CSS * LSCALE * pages : winH)
+                const img = await win.webContents.capturePage({ x: 0, y: 0, width: captureW, height: captureH })
+                win.close()
+                fs.unlink(tmpHtml, () => {}); fs.unlink(pdfPath, () => {})
+                if (!img || img.isEmpty()) { done({ success: false, error: 'Captura vacía' }); return }
+
+                const pngBuf = img.toPNG()
+                const tmpPng = path.join(os.tmpdir(), `verex-lbl-${Date.now()}.png`)
+                fs.writeFileSync(tmpPng, pngBuf)
+                fs.writeFileSync(path.join(app.getPath('desktop'), 'verex-debug-label.png'), pngBuf)
+
+                const cfg = loadConfig()
+                const printerIp = body.printerIp || cfg.printerIp
+                if (!printerIp) { done({ success: false, error: 'Sin IP WiFi configurada. Abre ajustes WiFi en VEREX.' }); return }
+                // Si vino del browser, persistir para futuras impresiones
+                if (body.printerIp && body.printerIp !== cfg.printerIp) saveConfig({ printerIp: body.printerIp })
+
+                // Mapa rollo → label brother_ql
+                const labelMap = {
+                  'rojo':  '62red',
+                  'mono':  '62',
+                  'guia':  '62',
+                  'recibo':'62',
+                }
+                // Dimensiones en pixels para canvas de 696px (px_mm = 696/62 = 11.226)
+                // Valores replicados del sistema original sistema_impresion_verex.py
+                const P = 696 / 62  // 11.226 px/mm
+                const formatPx = {
+                  'producto': { w: Math.round(54 * P), h: 117  },  // original: 606×117
+                  'mini':     { w: 306, h: 991 },  // DK-11201 29×90mm: dots_printable exactos
+                  'dk1204':   { w: Math.round(54 * P), h: Math.round(17 * P) }, // 606×191
+                  'vertical': { w: Math.round(17 * P), h: Math.round(54 * P) }, // 191×606
+                  'tarjeta':  { w: Math.round(25 * P), h: Math.round(15 * P) }, // 281×168
+                  'guia':     { w: 696, h: 1063 },
+                  'recibo':   { w: 696, h: 0    },
+                  'etiqueta': { w: Math.round(54 * P), h: 117  },
+                  'dk2214':   { w: 106, h: 591 },  // 12mm tape: 106 dots imprimibles, 50mm=591 líneas
+                }
+                // Algunos formatos tienen rollo fijo independiente del selector
+                const formatLabelOverride = { 'mini': '29x90', 'dk2214': '12' }
+                const labelId = formatLabelOverride[formato] || labelMap[rollo] || '62'
+                const px = formatPx[formato] || { w: 696, h: 117 }
+                const rotateDeg = formato === 'dk2214' ? 90 : 0
+                const pyScript = path.join(__dirname, 'verex_print.py')
+                const r = await new Promise(resolve => {
+                  const cmd = `python "${pyScript}" --png "${tmpPng}" --ip "${printerIp}" --label "${labelId}" --target-w ${px.w} --target-h ${px.h} --rotate ${rotateDeg}`
+                  exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
+                    if (err) resolve({ ok: false, error: stderr || err.message })
+                    else     resolve({ ok: true })
+                  })
+                })
+                fs.unlink(tmpPng, () => {})
+                done({ success: r.ok, error: r.ok ? null : r.error })
+              } catch (e) {
+                try { win.close() } catch {}
+                done({ success: false, error: e.message })
+              }
+            }, 500)
+          })
+
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: result.success, etiquetas: pages, error: result.error || null }))
+        } catch (e) {
+          res.writeHead(500, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: false, error: e.message }))
+        }
+      })
+      return
+    }
+
+    // GET /wifi — devuelve IP guardada
+    if (req.method === 'GET' && req.url === '/wifi') {
+      const cfg = loadConfig()
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ok: true, ip: cfg.printerIp || null }))
+      return
+    }
+
+    // POST /wifi — guarda IP { ip: "192.168.x.x" }
+    if (req.method === 'POST' && req.url === '/wifi') {
+      const chunks = []
+      req.on('data', c => chunks.push(c))
+      req.on('end', () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString())
+          saveConfig({ printerIp: body.ip ? body.ip.trim() : null })
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: true }))
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: false, error: e.message }))
+        }
+      })
+      return
+    }
+
+    // POST /wifi-test — prueba conexión { ip: "192.168.x.x" }
+    // Intenta puerto 80 (web Brother, siempre activo) y 9100 (RAW print)
+    if (req.method === 'POST' && req.url === '/wifi-test') {
+      const chunks = []
+      req.on('data', c => chunks.push(c))
+      req.on('end', () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString())
+          const ip = body.ip
+          let settled = false
+          function ok80() {
+            if (settled) return; settled = true
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ ok: true, via: 'web' }))
+          }
+          function ok9100() {
+            if (settled) return; settled = true
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ ok: true, via: 'print' }))
+          }
+          function fail(msg) {
+            if (settled) return; settled = true
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ ok: false, error: msg }))
+          }
+          // HTTP GET puerto 80 (página web Brother — siempre disponible)
+          const hreq = http.get({ hostname: ip, port: 80, path: '/', timeout: 3000 }, hres => {
+            hres.destroy(); ok80()
+          })
+          hreq.on('error', () => {})
+          hreq.on('timeout', () => { hreq.destroy() })
+          // Puerto 9100 RAW (solo responde al imprimir, intento igual)
+          const s9100 = net.createConnection({ host: ip, port: 9100, timeout: 3000 })
+          s9100.on('connect', () => { s9100.destroy(); ok9100() })
+          s9100.on('timeout', () => { s9100.destroy() })
+          s9100.on('error', () => {})
+          // Si ninguno responde en 4s → fallo
+          setTimeout(() => fail('Sin respuesta — verifica que la impresora esté encendida y en WiFi'), 4000)
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: false, error: e.message }))
+        }
+      })
+      return
+    }
+
+    // GET /wifi-discover — descubrimiento automático Brother via UDP broadcast puerto 54925
+    if (req.method === 'GET' && req.url === '/wifi-discover') {
+      const dgram = require('dgram')
+      const found = new Set()
+      const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true })
+      let settled = false
+      function finish(ips) {
+        if (settled) return; settled = true
+        try { sock.close() } catch {}
+        const list = Array.from(ips)
+        // Auto-guardar la primera IP encontrada
+        if (list.length > 0) saveConfig({ printerIp: list[0] })
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ ok: true, found: list, autoSaved: list.length > 0 }))
+      }
+      sock.on('message', (msg, rinfo) => {
+        found.add(rinfo.address)
+      })
+      sock.on('error', () => finish(found))
+      sock.bind(0, () => {
+        sock.setBroadcast(true)
+        // Probe de descubrimiento Brother QL/P-touch (puerto 54925)
+        const probe = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01])
+        sock.send(probe, 54925, '255.255.255.255', () => {})
+        setTimeout(() => finish(found), 3000)
+      })
+      return
+    }
+
+    // GET /wifi-scan — detecta Brother QL por ARP + HTTP/puerto 80 + puerto 9100
+    if (req.method === 'GET' && req.url === '/wifi-scan') {
+      const os2    = require('os')
+      const dgram  = require('dgram')
+      const candidates = new Set()
+
+      // 1. ARP cache — dispositivos que el PC ya conoce (más rápido)
+      try {
+        const arpOut = exec('arp -a', { timeout: 3000 })
+        // exec es async, usamos execSync aquí
+      } catch {}
+      try {
+        const { execSync: es } = require('child_process')
+        const arpOut = es('arp -a', { timeout: 3000 }).toString()
+        for (const m of arpOut.matchAll(/(\d+\.\d+\.\d+\.\d+)/g)) {
+          const ip = m[1]
+          if (!ip.startsWith('224.') && !ip.startsWith('239.') &&
+              ip !== '255.255.255.255' && !ip.startsWith('169.254.'))
+            candidates.add(ip)
+        }
+      } catch {}
+
+      // 2. Subnet propia /24
+      for (const iface of Object.values(os2.networkInterfaces())) {
+        for (const addr of iface) {
+          if (addr.family === 'IPv4' && !addr.internal) {
+            const parts = addr.address.split('.')
+            const subnet = parts.slice(0, 3).join('.')
+            for (let i = 1; i <= 254; i++) candidates.add(`${subnet}.${i}`)
+          }
+        }
+      }
+
+      const ips = Array.from(candidates)
+      const found = new Set()
+      if (ips.length === 0) {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ ok: true, found: [] }))
+        return
+      }
+
+      let pending = ips.length * 2
+      let sent = false
+      function finish() {
+        if (--pending <= 0 && !sent) { sent = true; sendResult() }
+      }
+      function sendResult() {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ ok: true, found: Array.from(found) }))
+      }
+      // Timeout máximo 8s por si algún IP congela
+      setTimeout(() => { if (!sent) { sent = true; sendResult() } }, 8000)
+
+      // Ruta A: TCP puerto 9100
+      ips.forEach(ip => {
+        let done = false
+        function doneA() { if (!done) { done = true; finish() } }
+        const s = net.createConnection({ host: ip, port: 9100, timeout: 700 })
+        s.on('connect', () => { found.add(ip); s.destroy(); doneA() })
+        s.on('timeout', () => { s.destroy(); doneA() })
+        s.on('error', () => doneA())
+      })
+
+      // Ruta B: HTTP puerto 80 — Brother redirige a /home/status.html con "Brother" en el body
+      ips.forEach(ip => {
+        let done = false
+        function doneB() { if (!done) { done = true; finish() } }
+        function checkUrl(path) {
+          const hreq = http.get({ hostname: ip, port: 80, path, timeout: 1500 }, hres => {
+            // Si redirige → seguir redirect (Brother redirige a /home/status.html)
+            if (hres.statusCode === 301 || hres.statusCode === 302) {
+              const loc = hres.headers['location'] || ''
+              hres.destroy()
+              if (loc && !loc.startsWith('http') && loc !== path) {
+                checkUrl(loc)  // seguir redirect interno
+              } else {
+                // Redirige a HTTPS u otra cosa → marcar como Brother igual (solo impresoras redirigen así)
+                found.add(ip); doneB()
+              }
+              return
+            }
+            let body = ''; hres.setEncoding('utf8')
+            hres.on('data', d => {
+              body += d
+              if (body.toLowerCase().includes('brother')) { found.add(ip); hres.destroy(); doneB() }
+              else if (body.length > 4000) { hres.destroy(); doneB() }
+            })
+            hres.on('end', () => doneB())
+            hres.on('close', () => doneB())
+          })
+          hreq.on('error', () => doneB())
+          hreq.on('timeout', () => { hreq.destroy(); doneB() })
+        }
+        checkUrl('/')
       })
       return
     }
@@ -435,7 +863,7 @@ ipcMain.handle('get-printers', async () => {
 // Ruta 1 (WiFi): TCP directo port 9100  → sin driver, sin RFID
 // Ruta 2 (USB) : CreateFile "\\.\USBxxx" → sin spooler, sin driver, sin RFID
 // Nunca usa WritePrinter/spooler (ese camino bloquea por RFID DK-1201).
-function buildRawPrintScript(printerName, pngFile, pageCount, forcedIp = null, printW = 638, printH = 201, headDots = 720) {
+function buildRawPrintScript(printerName, pngFile, pageCount, forcedIp = null, printW = 638, printH = 201, headDots = 720, mediaWidthMm = 62) {
   const pn  = printerName.replace(/'/g, "''")
   const png = pngFile.replace(/\\/g, '\\\\').replace(/'/g, "''")
   return `
@@ -475,7 +903,7 @@ public class BrotherRaw {
 
     public static byte[] MakeRaster(string pngPath,int pages,int printW,int printH,int headDots) {
         // Mini-job completo por etiqueta: init + config + raster + 0x1A
-        // valid_flag=0x80 → sin validacion RFID | type=0x0A → continuo → 0x1A corta a 17mm
+        // valid_flag=0x02 → valida solo tipo de media (no ancho) para aceptar cualquier rollo continuo
         int leftPad=(headDots-printW)/2, rowBytes=headDots/8;
         var o=new List<byte>();
         using(var src=new Bitmap(pngPath)) {
@@ -483,10 +911,13 @@ public class BrotherRaw {
             for(int page=0;page<pages;page++) {
                 o.AddRange(new byte[]{0x1B,0x40});
                 o.AddRange(new byte[]{0x1B,0x69,0x61,0x01});
-                // DK-2251: rollo continuo 62mm
-                // valid_flag=0x80: no fuerza parametros, el RFID del DK-2251 ya dice 62mm continuo
-                // n5-n8: numero real de lineas raster (little-endian) para que el firmware no rechace
-                o.AddRange(new byte[]{0x1B,0x69,0x7A, 0x80,0x0A,62, 0, 1,0,0,0,0,0});
+                // valid_flag=0x86: PI_RECOVER(0x80)+PI_WIDTH(0x04)+PI_TYPE(0x02)
+                // Valor estándar en capturas reales de QL-810W — el firmware lo acepta sin error
+                int rLines = printH;
+                o.AddRange(new byte[]{0x1B,0x69,0x7A,
+                    0x86, 0x0A, mediaWidthMm, 0,
+                    (byte)(rLines&0xFF),(byte)((rLines>>8)&0xFF),(byte)((rLines>>16)&0xFF),(byte)((rLines>>24)&0xFF),
+                    0, 0});
                 o.AddRange(new byte[]{0x1B,0x69,0x4D,0x40});
                 o.AddRange(new byte[]{0x1B,0x69,0x41,0x01});
                 o.AddRange(new byte[]{0x1B,0x69,0x4B,0x08});
@@ -693,12 +1124,22 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
   const GSCALE = 3
   const GWS    = GW_CSS * GSCALE              // 702px captura física
 
-  const isLabel = widthMm === 0
-  const is62mm  = widthMm === 62
+  const isDK2214 = widthMm === -12
+  const isLabel  = widthMm === 0
+  const is62mm   = widthMm === 62
+
+  // DK-2214: 50mm × 12mm cinta
+  const DKW_CSS  = Math.round(50 * 96 / 25.4)  // 189px virtual
+  const DKH_CSS  = Math.round(12 * 96 / 25.4)  // 45px  virtual
+  const DKSCALE  = 4
+  const DKWS     = DKW_CSS * DKSCALE            // 756px captura
+  const DKHS     = DKH_CSS * DKSCALE            // 182px captura
 
   // Tamaño de ventana offscreen según módulo
   let winW, winH, zoomFactor
-  if (isLabel) {
+  if (isDK2214) {
+    winW = DKWS; winH = DKHS * PC; zoomFactor = DKSCALE
+  } else if (isLabel) {
     winW = LWS; winH = LHS * PC; zoomFactor = LSCALE
   } else if (is62mm) {
     winW = GWS
@@ -736,11 +1177,21 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
     win.webContents.once('did-finish-load', async () => {
 
       // ── Impresión: etiquetas (RAW TCP) + guías/recibos (GDI driver) ─────────
-      if (isLabel || is62mm) {
+      if (isDK2214 || isLabel || is62mm) {
         try {
           let captureW, captureH, reciboCssPx = 0
 
-          if (isLabel) {
+          if (isDK2214) {
+            // ── DK-2214: 50mm×12mm cinta — RAW TCP ──
+            await win.webContents.insertCSS(
+              'html,body{overflow:hidden!important;margin:0!important;padding:0!important;' +
+              'width:50mm!important;height:' + (12 * PC) + 'mm!important;}'
+            )
+            await new Promise(r => setTimeout(r, 800))
+            captureW = DKWS
+            captureH = DKHS * PC
+
+          } else if (isLabel) {
             // ── Etiquetas DK-2251: 54mm×17mm — RAW TCP ──
             await win.webContents.insertCSS(
               'html,body{overflow:hidden!important;margin:0!important;padding:0!important;' +
@@ -788,7 +1239,16 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
           fs.writeFileSync(tmpPng, pngBuf)
 
           let r
-          if (isLabel) {
+          if (isDK2214) {
+            // DK-2214: cinta 12mm — 106 dots imprimibles, 591 líneas por 50mm
+            const cfg = loadConfig()
+            const DK_W = 106                              // 12mm @ 300dpi printable
+            const DK_H = Math.round(50 * 300 / 25.4)     // 591 dots por etiqueta
+            r = await runPs1(
+              buildRawPrintScript(printerName || '', tmpPng, PC, cfg.printerIp || null, DK_W, DK_H * PC, 720, 12),
+              35000
+            )
+          } else if (isLabel) {
             // Etiquetas: RAW TCP directo (bypasa driver — probado funcionando)
             const cfg = loadConfig()
             r = await runPs1(

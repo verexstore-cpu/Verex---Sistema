@@ -5286,7 +5286,7 @@ async function enviarImpresionServidor() {
         const res = await fetch(PRINT_SERVER + '/imprimir', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ formato: _formatoImpresion, rollo: _rolloImpresion, pdf_base64: pdfBase64, pageCount: codigos.length })
+            body: JSON.stringify({ formato: _formatoImpresion, rollo: _rolloImpresion, pdf_base64: pdfBase64, pageCount: codigos.length, printerIp: localStorage.getItem('verex_wifi_ip') || undefined })
         });
         const json = await res.json();
         if (json.ok) {
