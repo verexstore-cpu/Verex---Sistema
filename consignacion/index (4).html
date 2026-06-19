@@ -1328,7 +1328,7 @@ async function generarEtiquetas() {
     let serverVivo = false;
     try {
         const res = await Promise.race([
-            fetch('http://127.0.0.1:5000/ping'),
+            fetch('http://127.0.0.1:7891/ping'),
             new Promise((_, rej) => setTimeout(() => rej(), 1200))
         ]);
         serverVivo = res.ok;
@@ -4821,7 +4821,7 @@ async function imprimirCola() {
     let serverVivo = false;
     try {
         const res = await Promise.race([
-            fetch('http://127.0.0.1:5000/ping'),
+            fetch('http://127.0.0.1:7891/ping'),
             new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 1200))
         ]);
         serverVivo = res.ok;
