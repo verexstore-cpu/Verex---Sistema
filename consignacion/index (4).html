@@ -5714,28 +5714,29 @@ async function _generarPDFMini(prods, qrImages) {
             doc.addPage([W, H], 'landscape');
         }
 
-        // QR 8×8mm — misma posición que DK-2214
+        // QR 8×8mm — centrado verticalmente
         if (qrImages[p.codigo]) {
-            try { doc.addImage(qrImages[p.codigo], 'PNG', 0.8, 2.2, QS, QS); } catch(e) {}
+            try { doc.addImage(qrImages[p.codigo], 'PNG', 0.5, 2.0, QS, QS); } catch(e) {}
         }
 
         // Precio
         const precio = '$ ' + parseFloat(p.precio || 0).toFixed(2);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...B);
-        doc.text(precio, dataX, 5.0);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...B);
+        doc.text(precio, dataX, 4.2);
 
-        // Material
+        // Material — hasta 2 líneas, fuente reducida
         const mat = (p.material || extraerMaterial(p.nombre || '', p.descripcion || '')).replace(/Laminado/gi, 'Lam.');
         if (mat) {
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(6); doc.setTextColor(...B);
-            doc.text(doc.splitTextToSize(mat, dataW)[0], dataX, 7.5);
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(5); doc.setTextColor(...B);
+            const lines = doc.splitTextToSize(mat, dataW).slice(0, 2);
+            lines.forEach((l, j) => doc.text(l, dataX, 6.2 + j * 2.0));
         }
 
         // Código
         const cod = p.codigo || '';
         if (cod) {
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(5); doc.setTextColor(...B);
-            doc.text(cod.slice(0, 12), dataX, 9.6);
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(4.5); doc.setTextColor(...B);
+            doc.text(cod.slice(0, 12), dataX, 10.8);
         }
     }
 
