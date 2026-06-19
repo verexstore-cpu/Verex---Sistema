@@ -126,8 +126,8 @@ def print_png_to_printer(png_path, printer_ip, label_id, target_w, target_h, rot
 
 # ── Dimensiones por formato ───────────────────────────────────────────────────
 FORMAT_CFG = {
-    'mini':       {'label': '12',    'w': 106, 'h': 212,  'rotate': 0},
-    'dk2214':     {'label': '12',    'w': 106, 'h': 591,  'rotate': 90},
+    'mini':       {'label': '12',    'w': 106, 'h': 236,  'rotate': 0},   # 20mm @ 300dpi = 236 dots
+    'dk2214':     {'label': '12',    'w': 106, 'h': 591,  'rotate': 90},  # 50mm @ 300dpi = 591 dots
     'producto':   {'label': '62',    'w': 606, 'h': 117,  'rotate': 0},
     'dk1204':     {'label': '62',    'w': 606, 'h': 191,  'rotate': 0},
     'producto-v': {'label': '62',    'w': 191, 'h': 606,  'rotate': 0},
