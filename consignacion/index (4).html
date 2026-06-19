@@ -5032,43 +5032,88 @@ async function abrirWifiDesdeModal() {
     panel.style.display = 'block';
     const status = document.getElementById('wifi-consig-status');
     document.getElementById('wifi-consig-candidates').style.display = 'none';
+
+    // Restaurar IP guardada localmente (siempre disponible aunque el server no esté)
+    const ipLocal = localStorage.getItem('verex_wifi_ip');
+    if (ipLocal) {
+        document.getElementById('wifi-consig-ip').value = ipLocal;
+        status.textContent = '⏳ Aplicando IP guardada...';
+        status.style.color = '#C9A84C';
+    }
+
     try {
         const res = await fetch(PRINT_SERVER + '/wifi', { signal: AbortSignal.timeout(2000) });
         const data = await res.json();
-        if (data.ip) {
-            document.getElementById('wifi-consig-ip').value = data.ip;
-            status.textContent = '✅ IP guardada: ' + data.ip;
+        const ipServidor = data.ip || ipLocal;
+        if (ipServidor) {
+            document.getElementById('wifi-consig-ip').value = ipServidor;
+            localStorage.setItem('verex_wifi_ip', ipServidor);
+            status.textContent = '✅ IP activa: ' + ipServidor;
             status.style.color = '#22c55e';
+            // Sincronizar IP local al servidor si el servidor no la tenía
+            if (!data.ip && ipLocal) {
+                fetch(PRINT_SERVER + '/wifi', {
+                    method: 'POST', body: JSON.stringify({ ip: ipLocal }),
+                    headers: { 'Content-Type': 'application/json' }
+                }).catch(() => {});
+            }
         } else {
-            // No hay IP guardada — descubrir automáticamente
             wifiConsigAutoDescubrir();
         }
     } catch {
-        status.textContent = '⏳ Abriendo app de impresión...';
-        status.style.color = '#C9A84C';
-        window.open('verex://open', '_self');
-        let intentos = 0;
-        const timer = setInterval(async () => {
-            intentos++;
-            try {
-                const r = await fetch(PRINT_SERVER + '/wifi', { signal: AbortSignal.timeout(1500) });
-                const d = await r.json();
-                clearInterval(timer);
-                if (d.ip) {
-                    document.getElementById('wifi-consig-ip').value = d.ip;
-                    status.textContent = '✅ IP guardada: ' + d.ip;
-                    status.style.color = '#22c55e';
-                } else {
-                    wifiConsigAutoDescubrir();
-                }
-            } catch {
-                if (intentos >= 10) {
+        if (ipLocal) {
+            // Servidor no responde pero tenemos IP guardada — intentar abrirlo y aplicar
+            status.textContent = '⏳ Iniciando app con IP: ' + ipLocal + '...';
+            status.style.color = '#C9A84C';
+            window.open('verex://open', '_self');
+            let intentos = 0;
+            const timer = setInterval(async () => {
+                intentos++;
+                try {
+                    await fetch(PRINT_SERVER + '/wifi', {
+                        method: 'POST', body: JSON.stringify({ ip: ipLocal }),
+                        headers: { 'Content-Type': 'application/json' },
+                        signal: AbortSignal.timeout(1500)
+                    });
                     clearInterval(timer);
-                    status.textContent = 'No se pudo abrir la app. Ábrela manualmente.';
-                    status.style.color = '#ef4444';
+                    status.textContent = '✅ IP aplicada: ' + ipLocal;
+                    status.style.color = '#22c55e';
+                } catch {
+                    if (intentos >= 8) {
+                        clearInterval(timer);
+                        status.textContent = 'App no disponible. IP guardada: ' + ipLocal;
+                        status.style.color = '#888';
+                    }
                 }
-            }
-        }, 2000);
+            }, 2000);
+        } else {
+            status.textContent = '⏳ Abriendo app de impresión...';
+            status.style.color = '#C9A84C';
+            window.open('verex://open', '_self');
+            let intentos = 0;
+            const timer = setInterval(async () => {
+                intentos++;
+                try {
+                    const r = await fetch(PRINT_SERVER + '/wifi', { signal: AbortSignal.timeout(1500) });
+                    const d = await r.json();
+                    clearInterval(timer);
+                    if (d.ip) {
+                        document.getElementById('wifi-consig-ip').value = d.ip;
+                        localStorage.setItem('verex_wifi_ip', d.ip);
+                        status.textContent = '✅ IP guardada: ' + d.ip;
+                        status.style.color = '#22c55e';
+                    } else {
+                        wifiConsigAutoDescubrir();
+                    }
+                } catch {
+                    if (intentos >= 8) {
+                        clearInterval(timer);
+                        status.textContent = 'No se pudo abrir la app. Ábrela manualmente.';
+                        status.style.color = '#ef4444';
+                    }
+                }
+            }, 2000);
+        }
     }
 }
 
@@ -5169,6 +5214,7 @@ async function wifiConsigSave() {
         });
         const data = await res.json();
         if (data.ok) {
+            localStorage.setItem('verex_wifi_ip', ip);
             status.textContent = '✅ IP guardada — la app imprimirá por WiFi';
             status.style.color = '#22c55e';
             const btn = document.getElementById('btn-wifi-consig');
