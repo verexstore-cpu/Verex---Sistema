@@ -5623,10 +5623,9 @@ async function _generarPDFMini(prods, qrImages) {
     const { jsPDF } = window.jspdf;
     const W = 20, H = 12;   // 20mm largo × 12mm ancho (cinta DK-2214)
     const B = [0, 0, 0];
-    const QS = 9.5;          // QR cuadrado, ocupa casi toda la altura
-    const PAD = 0.8;         // margen superior/inferior
-    const RX = PAD + QS + 1; // inicio columna de texto
-    const RW = W - RX - PAD; // ancho disponible para texto
+    // coordenadas idénticas a la cara de datos del DK-2214
+    const QS = 8;            // QR 8×8mm
+    const dataX = 9.5, dataW = W - dataX - 0.5;
 
     let doc = null;
 
@@ -5640,30 +5639,28 @@ async function _generarPDFMini(prods, qrImages) {
             doc.addPage([W, H], 'landscape');
         }
 
-        // QR centrado verticalmente
+        // QR 8×8mm — misma posición que DK-2214
         if (qrImages[p.codigo]) {
-            const qY = (H - QS) / 2;
-            try { doc.addImage(qrImages[p.codigo], 'PNG', PAD, qY, QS, QS); } catch(e) {}
+            try { doc.addImage(qrImages[p.codigo], 'PNG', 0.8, 2.2, QS, QS); } catch(e) {}
         }
 
         // Precio
         const precio = '$ ' + parseFloat(p.precio || 0).toFixed(2);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...B);
-        doc.text(precio, RX, 4);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...B);
+        doc.text(precio, dataX, 5.0);
 
         // Material
         const mat = (p.material || extraerMaterial(p.nombre || '', p.descripcion || '')).replace(/Laminado/gi, 'Lam.');
         if (mat) {
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(5); doc.setTextColor(...B);
-            const ml = doc.splitTextToSize(mat, RW);
-            ml.slice(0, 2).forEach((l, j) => doc.text(l, RX, 7 + j * 2.2));
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(6); doc.setTextColor(...B);
+            doc.text(doc.splitTextToSize(mat, dataW)[0], dataX, 7.5);
         }
 
         // Código
         const cod = p.codigo || '';
         if (cod) {
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(4.5); doc.setTextColor(...B);
-            doc.text(cod, RX, H - 1);
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(5); doc.setTextColor(...B);
+            doc.text(cod.slice(0, 12), dataX, 9.6);
         }
     }
 
