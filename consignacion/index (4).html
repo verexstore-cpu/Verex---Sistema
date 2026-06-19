@@ -5000,6 +5000,32 @@ function abrirModalImpresion() {
     });
     document.getElementById('print-server-status').textContent = '';
     setTimeout(actualizarPreviewImpresion, 50);
+    // Auto-detectar impresora en background al abrir el modal
+    _autoDetectarImpresora();
+}
+
+async function _autoDetectarImpresora() {
+    const status = document.getElementById('print-server-status');
+    // Si ya tenemos IP no hacer nada
+    if (localStorage.getItem('verex_wifi_ip')) return;
+    try {
+        status.textContent = '🔍 Buscando impresora...';
+        status.style.color = '#C9A84C';
+        const res = await fetch(PRINT_SERVER + '/wifi-autoconnect', { signal: AbortSignal.timeout(12000) });
+        const data = await res.json();
+        if (data.ok && data.ip) {
+            localStorage.setItem('verex_wifi_ip', data.ip);
+            status.textContent = '✅ Impresora encontrada: ' + data.ip;
+            status.style.color = '#22c55e';
+            setTimeout(() => { if (status.textContent.includes('encontrada')) status.textContent = ''; }, 3000);
+        } else {
+            status.textContent = '⚠️ Impresora no encontrada en la red';
+            status.style.color = '#ef4444';
+        }
+    } catch {
+        // Servidor no disponible — silencioso
+        status.textContent = '';
+    }
 }
 
 function selRolloImpresion(rollo, btn) {

@@ -251,8 +251,13 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
                 fs.writeFileSync(path.join(app.getPath('desktop'), 'verex-debug-label.png'), pngBuf)
 
                 const cfg = loadConfig()
-                const printerIp = body.printerIp || cfg.printerIp
-                if (!printerIp) { done({ success: false, error: 'Sin IP WiFi configurada. Abre ajustes WiFi en VEREX.' }); return }
+                let printerIp = body.printerIp || cfg.printerIp
+                if (!printerIp) {
+                  // Auto-detectar impresora si no hay IP guardada
+                  printerIp = await autoDiscoverPrinter()
+                  if (printerIp) saveConfig({ printerIp })
+                  else { done({ success: false, error: 'Impresora no encontrada. Verifica que esté encendida y en WiFi.' }); return }
+                }
                 // Si vino del browser, persistir para futuras impresiones
                 if (body.printerIp && body.printerIp !== cfg.printerIp) saveConfig({ printerIp: body.printerIp })
 
@@ -508,6 +513,21 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
       return
     }
 
+    // GET /wifi-autoconnect — descubre y guarda IP automáticamente (UDP + TCP)
+    if (req.method === 'GET' && req.url === '/wifi-autoconnect') {
+      autoDiscoverPrinter().then(ip => {
+        if (ip) {
+          saveConfig({ printerIp: ip })
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: true, ip }))
+        } else {
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: false, error: 'Impresora no encontrada en la red' }))
+        }
+      })
+      return
+    }
+
     res.writeHead(404); res.end()
   })
 
@@ -518,6 +538,78 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
   server.on('error', (e) => {
     // Puerto ocupado: no es crítico, la app sigue funcionando normal
     console.warn('Print server error:', e.message)
+  })
+}
+
+// ── Auto-descubrimiento de impresora Brother QL ──────────────────────────────
+// Intenta UDP broadcast (rápido 3s) → luego ARP+TCP scan (hasta 8s)
+async function autoDiscoverPrinter() {
+  // 1. UDP broadcast Brother (puerto 54925) — método más rápido
+  const udpIp = await new Promise(resolve => {
+    const dgram = require('dgram')
+    const found = new Set()
+    let settled = false
+    function finish(ip) { if (!settled) { settled = true; resolve(ip || null) } }
+    try {
+      const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true })
+      sock.on('error', () => finish(null))
+      sock.on('message', (msg, rinfo) => { found.add(rinfo.address) })
+      sock.bind(() => {
+        try { sock.setBroadcast(true) } catch {}
+        const probe = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01])
+        sock.send(probe, 54925, '255.255.255.255', () => {})
+        setTimeout(() => { try { sock.close() } catch {}; finish([...found][0] || null) }, 3000)
+      })
+    } catch { finish(null) }
+  })
+  if (udpIp) return udpIp
+
+  // 2. ARP cache + subnet /24 scan en puertos 9100 y 80 (hasta 8s)
+  const { execSync: es } = require('child_process')
+  const candidates = new Set()
+  try {
+    const arpOut = es('arp -a', { timeout: 3000 }).toString()
+    for (const m of arpOut.matchAll(/(\d+\.\d+\.\d+\.\d+)/g)) {
+      const ip = m[1]
+      if (!ip.startsWith('224.') && !ip.startsWith('239.') &&
+          ip !== '255.255.255.255' && !ip.startsWith('169.254.'))
+        candidates.add(ip)
+    }
+  } catch {}
+  const os3 = require('os')
+  for (const iface of Object.values(os3.networkInterfaces())) {
+    for (const addr of iface) {
+      if (addr.family === 'IPv4' && !addr.internal) {
+        const parts = addr.address.split('.')
+        const subnet = parts.slice(0, 3).join('.')
+        for (let i = 1; i <= 254; i++) candidates.add(`${subnet}.${i}`)
+      }
+    }
+  }
+  const ips = Array.from(candidates)
+  if (!ips.length) return null
+
+  return new Promise(resolve => {
+    const found = new Set()
+    let pending = ips.length * 2, sent = false
+    function finish() { if (--pending <= 0 && !sent) { sent = true; resolve([...found][0] || null) } }
+    setTimeout(() => { if (!sent) { sent = true; resolve([...found][0] || null) } }, 8000)
+    ips.forEach(ip => {
+      let d = false; function done() { if (!d) { d = true; finish() } }
+      const s = net.createConnection({ host: ip, port: 9100, timeout: 700 })
+      s.on('connect', () => { found.add(ip); s.destroy(); done() })
+      s.on('timeout', () => { s.destroy(); done() })
+      s.on('error', () => done())
+    })
+    ips.forEach(ip => {
+      let d = false; function done() { if (!d) { d = true; finish() } }
+      const hreq = http.get({ hostname: ip, port: 80, path: '/', timeout: 1500 }, hres => {
+        let body = ''; hres.setEncoding('utf8')
+        hres.on('data', c => { body += c; if (body.toLowerCase().includes('brother')) { found.add(ip); hres.destroy(); done() } else if (body.length > 2000) { hres.destroy(); done() } })
+        hres.on('end', done); hres.on('close', done)
+      })
+      hreq.on('error', done); hreq.on('timeout', () => { hreq.destroy(); done() })
+    })
   })
 }
 
