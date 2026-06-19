@@ -4846,48 +4846,7 @@ function abrirModalImpresion() {
                         padding:20px;width:680px;max-width:97vw;font-family:'DM Sans',sans-serif;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
                     <span style="color:#C9A84C;font-size:15px;font-weight:700;">🖨️ Imprimir etiquetas</span>
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span style="color:#888;font-size:11px;">Servidor <span style="color:#22c55e;font-weight:700;">● conectado</span></span>
-                        <button onclick="abrirWifiDesdeModal()" id="btn-wifi-consig"
-                            style="background:#161616;border:1px solid #333;color:#aaa;border-radius:8px;
-                                   padding:4px 10px;font-size:11px;cursor:pointer;font-weight:600;">
-                            📶 WiFi
-                        </button>
-                    </div>
                     <button onclick="cerrarModalImpresion()" style="background:none;border:none;color:#666;font-size:20px;cursor:pointer;line-height:1;">×</button>
-                </div>
-                <!-- Mini-modal WiFi embebido -->
-                <div id="wifi-consig-panel" style="display:none;background:#0d0d0d;border:1px solid #333;border-radius:10px;padding:14px;margin-bottom:14px;">
-                    <p style="color:#ccc;font-size:11px;font-weight:600;margin-bottom:8px;">📶 Configurar WiFi · Brother QL-810W</p>
-                    <div style="display:flex;gap:6px;margin-bottom:8px;">
-                        <input id="wifi-consig-ip" type="text" placeholder="192.168.1.xxx"
-                            style="flex:1;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;
-                                   padding:7px 10px;font-size:12px;outline:none;" />
-                        <button onclick="wifiConsigScan()" id="btn-wifi-consig-scan"
-                            style="background:#222;border:1px solid #333;color:#aaa;border-radius:6px;
-                                   padding:7px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">
-                            🔍 Buscar
-                        </button>
-                    </div>
-                    <div id="wifi-consig-candidates" style="display:none;margin-bottom:8px;"></div>
-                    <div style="display:flex;gap:6px;">
-                        <button onclick="wifiConsigTest()"
-                            style="flex:1;background:#1a1a1a;border:1px solid #333;color:#aaa;border-radius:6px;
-                                   padding:7px;font-size:11px;cursor:pointer;">
-                            🔌 Probar
-                        </button>
-                        <button onclick="wifiConsigSave()"
-                            style="flex:1;background:#C9A84C;border:none;color:#111;border-radius:6px;
-                                   padding:7px;font-size:11px;font-weight:700;cursor:pointer;">
-                            💾 Guardar
-                        </button>
-                        <button onclick="document.getElementById('wifi-consig-panel').style.display='none'"
-                            style="background:#1a1a1a;border:1px solid #333;color:#666;border-radius:6px;
-                                   padding:7px 10px;font-size:11px;cursor:pointer;">
-                            ✕
-                        </button>
-                    </div>
-                    <div id="wifi-consig-status" style="font-size:11px;color:#888;margin-top:6px;min-height:14px;text-align:center;"></div>
                 </div>
                 <div style="display:flex;gap:16px;">
                     <!-- Columna izquierda: formatos + rollo -->
