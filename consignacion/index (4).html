@@ -1324,28 +1324,19 @@ function extraerMaterial(nombre, descripcion) {
 async function generarEtiquetas() {
     if (seleccionEtiquetas.size === 0) { toast("⚠️ Selecciona al menos un producto"); return; }
 
-    // Detectar servidor de impresión
-    let serverVivo = false;
-    try {
-        const res = await Promise.race([
-            fetch('http://127.0.0.1:7891/ping'),
-            new Promise((_, rej) => setTimeout(() => rej(), 1200))
-        ]);
-        serverVivo = res.ok;
-    } catch(e) {}
+    // Siempre abrir el modal — el check del servidor se hace al presionar Imprimir
+    const codigosEtiq = productosDisponibles
+        .filter(p => seleccionEtiquetas.has(p.codigo))
+        .map(p => p.codigo);
+    const colaAnterior = [..._colaEtiquetas];
+    codigosEtiq.forEach(c => { if (!_colaEtiquetas.includes(c)) _colaEtiquetas.push(c); });
+    _formatoImpresion = localStorage.getItem('verex_formato_impresion') || 'mini';
+    abrirModalImpresion();
+    const modal = document.getElementById('modal-print-server');
+    if (modal) modal._onclose = () => { _colaEtiquetas = colaAnterior; };
+    return;
 
-    if (serverVivo) {
-        const codigosEtiq = productosDisponibles
-            .filter(p => seleccionEtiquetas.has(p.codigo))
-            .map(p => p.codigo);
-        const colaAnterior = [..._colaEtiquetas];
-        codigosEtiq.forEach(c => { if (!_colaEtiquetas.includes(c)) _colaEtiquetas.push(c); });
-        _formatoImpresion = 'producto'; // etiquetas de producto = 6×1.5cm
-        abrirModalImpresion();
-        const modal = document.getElementById('modal-print-server');
-        if (modal) modal._onclose = () => { _colaEtiquetas = colaAnterior; };
-        return;
-    }
+    // ── fallback PDF (alcanzable solo si se elimina el return arriba) ──────
 
     const prods = productosDisponibles.filter(p => seleccionEtiquetas.has(p.codigo));
     toast("⏳ Generando etiquetas...");
