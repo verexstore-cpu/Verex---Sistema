@@ -1274,7 +1274,7 @@ function renderGridEtiquetas(prods) {
         const key = "etq-" + i;
         const sel = seleccionEtiquetas.has(p.codigo);
         return `<div onclick="toggleEtiqueta('${p.codigo}')" id="etqcard-${p.codigo.replace(/[^a-zA-Z0-9]/g,'-')}"
-            style="background:#0f2040;border:2px solid ${sel ? 'var(--dorado)' : '#1e3a5f'};border-radius:10px;padding:10px;cursor:pointer;transition:border-color 0.2s;">
+            style="background:#0f2040;border:2px solid ${sel ? '#00E676' : '#1e3a5f'};border-radius:10px;padding:10px;cursor:pointer;transition:border-color 0.2s;">
             <div style="font-size:10px;color:var(--dorado);font-weight:600;">${p.codigo}</div>
             <div style="font-size:11px;font-weight:500;margin:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.nombre}</div>
             <div style="font-size:12px;font-weight:700;color:var(--dorado-claro);">$${parseFloat(p.precio||0).toFixed(2)}</div>
