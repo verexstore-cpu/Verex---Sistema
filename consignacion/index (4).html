@@ -500,16 +500,8 @@
         <div id="tab-content-etiquetas" style="display:none;">
 
             <!-- Generador Brother QL -->
-            <div class="card" style="margin-bottom:12px;">
-                <h2>🖨️ Etiquetas Brother QL</h2>
-                <p style="font-size:13px;color:var(--plateado);margin-bottom:12px;">Genera etiquetas mini para impresora Brother QL desde un PDF.</p>
-                <button class="btn btn-dorado" style="width:100%;padding:12px;" onclick="window.open('etiquetas.html','_blank')">
-                    🏷️ Abrir Generador de Etiquetas
-                </button>
-            </div>
-
-            <div class="card">
-                <h2>🏷️ Generar Etiquetas Avery</h2>
+            <div class="card" style="background:#0a1628;border-color:#1e3a5f;">
+                <h2>🖨️ Imprimir Etiquetas <span style="color:var(--dorado);">Brother QL</span></h2>
                 <div class="search-bar">
                     <input type="text" id="bus-etiquetas" placeholder="Buscar producto..." oninput="filtrarProductosEtiquetas()" onchange="buscarEtiquetasPorScanner(this.value.trim().toUpperCase())" onkeydown="if(event.key==='Enter'||event.keyCode===13){buscarEtiquetasPorScanner(this.value.trim().toUpperCase());event.preventDefault();}" onpaste="setTimeout(()=>buscarEtiquetasPorScanner(this.value.trim().toUpperCase()),50)">
                 </div>
@@ -526,7 +518,7 @@
 
         <!-- Tab Stock -->
         <div id="tab-content-stock" style="display:none;">
-            <div class="card">
+            <div class="card" style="background:#1C1C1E;border-color:#3a3a3c;">
                 <h2>📦 Control de Stock</h2>
 
                 <!-- KPIs -->
@@ -1246,7 +1238,7 @@ function cambiarTab(tab) {
         btn.style.filter      = t === tab ? 'none' : 'brightness(0.7)';
     });
     if (tab === 'dashboard')    renderDashboard();
-    if (tab === 'etiquetas')  { renderGridEtiquetas(productosDisponibles); setTimeout(()=>{ const f=document.getElementById('bus-etiquetas'); if(f)f.focus(); },300); }
+    if (tab === 'etiquetas')  { refrescarProductosEtiquetas(); setTimeout(()=>{ const f=document.getElementById('bus-etiquetas'); if(f)f.focus(); },300); }
     if (tab === 'stock')      { cargarStock(); setTimeout(()=>{ const f=document.getElementById('bus-stock'); if(f)f.focus(); },300); }
     if (tab === 'ventadirecta')    iniciarVentaDirecta();
     if (tab === 'historialventas') cargarHistorialVentas();
@@ -1254,6 +1246,22 @@ function cambiarTab(tab) {
 
 // ── ETIQUETAS ────────────────────────────────────────────────────────
 let seleccionEtiquetas = new Set();
+
+async function refrescarProductosEtiquetas() {
+    // stockData ya fue actualizado por cargarStock() y es la fuente definitiva
+    if (stockData && stockData.length) {
+        productosDisponibles = stockData.filter(p => p.estado !== "inactivo");
+    } else {
+        try {
+            const res = await apiPost({ accion: "STOCK_GET_ALL" });
+            if (res.stock) {
+                stockData = res.stock;
+                productosDisponibles = res.stock.filter(p => p.estado !== "inactivo");
+            }
+        } catch(e) {}
+    }
+    renderGridEtiquetas(productosDisponibles);
+}
 
 function renderGridEtiquetas(prods) {
     const grid = document.getElementById("grid-etiquetas");
@@ -1265,11 +1273,11 @@ function renderGridEtiquetas(prods) {
         const key = "etq-" + i;
         const sel = seleccionEtiquetas.has(p.codigo);
         return `<div onclick="toggleEtiqueta('${p.codigo}')" id="etqcard-${p.codigo.replace(/[^a-zA-Z0-9]/g,'-')}"
-            style="background:var(--gris2);border:2px solid ${sel ? 'var(--dorado)' : 'var(--borde)'};border-radius:10px;padding:10px;cursor:pointer;transition:border-color 0.2s;">
+            style="background:#0f2040;border:2px solid ${sel ? 'var(--dorado)' : '#1e3a5f'};border-radius:10px;padding:10px;cursor:pointer;transition:border-color 0.2s;">
             <div style="font-size:10px;color:var(--dorado);font-weight:600;">${p.codigo}</div>
             <div style="font-size:11px;font-weight:500;margin:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.nombre}</div>
             <div style="font-size:12px;font-weight:700;color:var(--dorado-claro);">$${parseFloat(p.precio||0).toFixed(2)}</div>
-            ${p.material ? `<div style="font-size:9px;color:var(--plateado);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.material}</div>` : ''}
+            ${p.material ? `<div style="font-size:9px;color:var(--plateado);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${abreviarMaterial(p.material)}</div>` : ''}
             ${sel ? '<div style="font-size:10px;color:var(--dorado);margin-top:4px;">✓ Seleccionado</div>' : ''}
         </div>`;
     }).join('');
@@ -1305,6 +1313,12 @@ function filtrarProductosEtiquetas() {
         (p.nombre||"").toLowerCase().includes(busq) || (p.codigo||"").toLowerCase().includes(busq)
     );
     renderGridEtiquetas(filtrados);
+}
+
+function abreviarMaterial(mat) {
+    if (!mat) return mat;
+    return mat.replace(/Plata 925 con Oro Laminado/gi, 'Plata 925 / Oro Lam.')
+              .replace(/Laminado/gi, 'Lam.');
 }
 
 function extraerMaterial(nombre, descripcion) {
@@ -2787,63 +2801,65 @@ function procesarFotoJoya(file) {
                 minY = Math.round(minY / SCALE); maxY = Math.round(maxY / SCALE);
 
                 let crop = null;
-                let padCanvas = null; // canvas con relleno si la joya está en el borde
 
                 if (minX < maxX && minY < maxY) {
                     const objW = maxX - minX, objH = maxY - minY;
                     const largest = Math.max(objW, objH);
-                    const pad   = Math.round(largest * 0.30);
-                    const ideal = largest + 2 * pad; // lado ideal del cuadro
-
-                    // Centro del objeto en la imagen original
-                    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-
-                    // Offset del objeto dentro del cuadro ideal
-                    const imgOffX = Math.round(cx - ideal / 2); // puede ser negativo
-                    const imgOffY = Math.round(cy - ideal / 2);
-
-                    // Si el cuadro ideal cabe completamente en la imagen → recorte directo
-                    if (imgOffX >= 0 && imgOffY >= 0 && imgOffX + ideal <= w && imgOffY + ideal <= h) {
-                        const ocupacion = largest / ideal;
-                        console.log(`[ikCrop] bbox=${objW}×${objH} crop=${ideal}px ocupacion=${(ocupacion*100).toFixed(1)}%`);
-                        crop = { x: imgOffX, y: imgOffY, side: ideal };
-                    } else {
-                        // El cuadro se sale de la imagen — crear canvas con relleno blanco
-                        const canvSize = ideal;
-                        const pc = document.createElement("canvas");
-                        pc.width = canvSize; pc.height = canvSize;
-                        const pctx = pc.getContext("2d");
-                        pctx.fillStyle = "#f8f8f8";
-                        pctx.fillRect(0, 0, canvSize, canvSize);
-                        // Posición donde dibujar la imagen dentro del canvas
-                        const drawX = -imgOffX; // positivo cuando imgOffX era negativo
-                        const drawY = -imgOffY;
-                        pctx.drawImage(img, 0, 0, w, h, drawX, drawY, w, h);
-                        padCanvas = pc;
-                        const ocupacion = largest / canvSize;
-                        console.log(`[ikCrop] bbox=${objW}×${objH} crop=${canvSize}px (relleno) ocupacion=${(ocupacion*100).toFixed(1)}%`);
-                        // Sin crop transform — la foto ya está bien encuadrada en el canvas
-                        crop = null;
-                    }
-                }
-
-                // Preview 600×600
-                const out = document.createElement("canvas");
-                out.width = 600; out.height = 600;
-                const octx = out.getContext("2d");
-                octx.fillStyle = "#f0f0f0";
-                octx.fillRect(0, 0, 600, 600);
-                if (padCanvas) {
-                    octx.drawImage(padCanvas, 0, 0, padCanvas.width, padCanvas.height, 0, 0, 600, 600);
-                } else if (crop) {
-                    octx.drawImage(img, crop.x, crop.y, crop.side, crop.side, 0, 0, 600, 600);
+                    const pad   = Math.round(largest * 0.25);
+                    // Nunca superar el tamaño de imagen — sin bordes grises
+                    const ideal = Math.min(largest + 2 * pad, Math.min(w, h));
+                    const cx = Math.round((minX + maxX) / 2);
+                    const cy = Math.round((minY + maxY) / 2);
+                    // Centrar en (cx,cy) y clampear para que quede dentro de la imagen
+                    const x1 = Math.max(0, Math.min(Math.round(cx - ideal / 2), w - ideal));
+                    const y1 = Math.max(0, Math.min(Math.round(cy - ideal / 2), h - ideal));
+                    console.log(`[ikCrop] bbox=${objW}×${objH} ideal=${ideal}px cx=${cx} cy=${cy} crop=(${x1},${y1})`);
+                    crop = { x: x1, y: y1, side: ideal };
                 } else {
-                    octx.drawImage(img, 0, 0, w, h, 0, 0, 600, 600);
+                    // Detección fallida — crop cuadrado centrado en la imagen
+                    const side = Math.min(w, h);
+                    crop = { x: Math.round((w - side) / 2), y: Math.round((h - side) / 2), side };
+                    console.log(`[ikCrop] detección fallida — crop central ${side}px`);
                 }
-                const preview = out.toDataURL("image/jpeg", 0.75);
 
-                // Si se usó canvas con relleno, el "original" para subir es ese canvas
-                const uploadOriginal = padCanvas ? padCanvas.toDataURL("image/jpeg", 0.99) : original;
+                // Preview 900×900 — alta calidad + sharpen por convolución
+                const PV = 900;
+                const out = document.createElement("canvas");
+                out.width = PV; out.height = PV;
+                const octx = out.getContext("2d");
+                octx.imageSmoothingEnabled = true;
+                octx.imageSmoothingQuality = 'high';
+                octx.fillStyle = "#f0f0f0";
+                octx.fillRect(0, 0, PV, PV);
+                if (crop) {
+                    octx.drawImage(img, crop.x, crop.y, crop.side, crop.side, 0, 0, PV, PV);
+                } else {
+                    octx.drawImage(img, 0, 0, w, h, 0, 0, PV, PV);
+                }
+                // Kernel sharpen 3×3 (unsharp mask)
+                (function(ctx, w2, h2) {
+                    const src = ctx.getImageData(0, 0, w2, h2);
+                    const dst = ctx.createImageData(w2, h2);
+                    const s = src.data, d = dst.data;
+                    const k = [0,-1,0,-1,5,-1,0,-1,0];
+                    for (let y = 1; y < h2-1; y++) {
+                        for (let x = 1; x < w2-1; x++) {
+                            const i = (y*w2+x)*4;
+                            for (let c = 0; c < 3; c++) {
+                                let v = 0;
+                                for (let ky = -1; ky <= 1; ky++)
+                                    for (let kx = -1; kx <= 1; kx++)
+                                        v += s[((y+ky)*w2+(x+kx))*4+c] * k[(ky+1)*3+(kx+1)];
+                                d[i+c] = Math.max(0, Math.min(255, v));
+                            }
+                            d[i+3] = s[i+3];
+                        }
+                    }
+                    ctx.putImageData(dst, 0, 0);
+                })(octx, PV, PV);
+                const preview = out.toDataURL("image/jpeg", 0.93);
+
+                const uploadOriginal = original;
 
                 resolve({ preview, original: uploadOriginal, crop });
             };
@@ -3457,6 +3473,7 @@ async function guardarEdicionProducto() {
     btn.textContent = "💾 Guardar"; btn.disabled = false;
     cerrarModal("modal-ver-producto");
     renderGridEntrega(productosDisponibles);
+    renderGridEtiquetas(productosDisponibles);
     if (existencia > 0) await cargarStock();
 }
 
@@ -3909,32 +3926,32 @@ function renderStock(items) {
         const estadoNorm = normalizar(item.estado);
         const est = estadoColor[estadoNorm] || estadoColor["bodega"];
         const sel = stockSeleccionados.includes(item.codigo);
-        return `<div class="inv-item" data-codigo="${sanitizar(item.codigo)}" style="border-color:${sel ? "var(--dorado)" : "#333"};cursor:pointer;" onclick="toggleSeleccionStock(${jsArg(item.codigo)})">
+        return `<div class="inv-item" data-codigo="${sanitizar(item.codigo)}" style="background:#2C2C2E;border-color:${sel ? "var(--dorado)" : "#3a3a3c"};cursor:pointer;" onclick="toggleSeleccionStock(${jsArg(item.codigo)})">
             <div style="display:flex;align-items:center;gap:4px;margin-right:8px;">
                 <div style="width:18px;height:18px;border:2px solid ${sel?"var(--dorado)":"#555"};border-radius:4px;background:${sel?"var(--dorado)":"transparent"};display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">
                     ${sel ? "✓" : ""}
                 </div>
             </div>
-            ${item.foto ? `<img src="${sanitizar(ikFoto(item.foto,200))}" onerror="this.style.display='none'" onclick="event.stopPropagation();abrirFotoZoom(${jsArg(item.foto)},${jsArg(item.nombre)})" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;">` : '<div style="width:52px;height:52px;background:var(--gris2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">💍</div>'}
+            ${item.foto ? `<img src="${sanitizar(ikFoto(item.foto,200))}" onerror="this.style.display='none'" onclick="event.stopPropagation();abrirFotoZoom(${jsArg(item.foto)},${jsArg(item.nombre)})" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;">` : '<div style="width:52px;height:52px;background:#3a3a3c;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">💍</div>'}
             <div class="inv-item-info" style="flex:1;min-width:0;">
-                <div class="inv-item-codigo">${sanitizar(item.codigo)}</div>
+                <div class="inv-item-codigo" style="color:#34D399;">${sanitizar(item.codigo)}</div>
                 <div class="inv-item-nombre">${sanitizar(item.nombre)}</div>
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px;">
-                    <span style="font-size:11px;color:var(--plateado);">$${parseFloat(item.precio||0).toFixed(2)} · ${sanitizar(item.categoria||"")}</span>
-                    ${item.material ? `<span style="font-size:10px;font-weight:600;color:var(--dorado);background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.3);border-radius:4px;padding:1px 7px;">${sanitizar(item.material)}</span>` : ''}
+                    <span style="font-size:11px;color:#34D399;font-weight:600;">$${parseFloat(item.precio||0).toFixed(2)}</span><span style="font-size:11px;color:#888;"> · ${sanitizar(item.categoria||"")}</span>
+                    ${item.material ? `<span style="font-size:10px;font-weight:600;color:#C9A84C;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.3);border-radius:4px;padding:1px 7px;">${sanitizar(item.material)}</span>` : ''}
                 </div>
             </div>
             <div style="text-align:right;flex-shrink:0;">
                 <span style="font-size:11px;padding:3px 8px;border-radius:20px;background:${est.bg};color:${est.color};font-weight:600;">${est.label}</span>
-                <div style="font-size:11px;color:var(--plateado);margin-top:4px;">
-                    Bodega: <b style="color:var(--blanco);">${item.stock_bodega||0}</b> ·
-                    Tienda: <b style="color:#4caf82;">${item.stock_tienda||0}</b> ·
+                <div style="font-size:11px;color:#666;margin-top:4px;">
+                    Bodega: <b style="color:#fff;">${item.stock_bodega||0}</b> ·
+                    Tienda: <b style="color:#34D399;">${item.stock_tienda||0}</b> ·
                     Consig: <b style="color:var(--dorado);">${item.stock_consignacion||0}</b>
                 </div>
                 <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px;position:relative;">
-                    <button onclick="event.stopPropagation();abrirEditarStockItem(${jsArg(item.codigo)})" style="padding:4px 10px;font-size:11px;background:#4a6fa5;color:#fff;border:none;border-radius:6px;cursor:pointer;">✏️ Editar</button>
-                    <button onclick="event.stopPropagation();toggleMenuMover(${jsArg(item.codigo)},this)" style="padding:4px 10px;font-size:11px;background:var(--dorado);color:var(--negro);border:none;border-radius:6px;cursor:pointer;font-weight:700;">Mover ▾</button>
-                    <button onclick="event.stopPropagation();eliminarStockItem(${jsArg(item.codigo)})" style="padding:4px 10px;font-size:11px;background:#c0392b;color:#fff;border:none;border-radius:6px;cursor:pointer;">🗑️</button>
+                    <button onclick="event.stopPropagation();abrirEditarStockItem(${jsArg(item.codigo)})" style="padding:4px 10px;font-size:11px;background:#5AC8FA;color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✏️ Editar</button>
+                    <button onclick="event.stopPropagation();toggleMenuMover(${jsArg(item.codigo)},this)" style="padding:4px 10px;font-size:11px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">⇄ Mover ▾</button>
+                    <button onclick="event.stopPropagation();eliminarStockItem(${jsArg(item.codigo)})" style="padding:4px 10px;font-size:11px;background:#FF453A;color:#fff;border:none;border-radius:6px;cursor:pointer;">🗑️</button>
                     <div id="menu-mover-${sanitizar(item.codigo)}" style="display:none;position:absolute;bottom:32px;right:0;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
                         <button onclick="event.stopPropagation();moverItemDirecto(${jsArg(item.codigo)},'tienda')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4caf82;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🛍️ Enviar a Tienda</button>
                         <button onclick="event.stopPropagation();moverItemDirecto(${jsArg(item.codigo)},'bodega')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4a6fa5;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">📦 Devolver a Bodega</button>
@@ -4923,6 +4940,11 @@ function abrirModalImpresion() {
                                    border-radius:10px;padding:8px;font-size:11px;cursor:pointer;">
                             ⬇️ Solo descargar PDF
                         </button>
+                        <button onclick="reconectarImpresora()"
+                            style="width:100%;background:none;color:#888;border:1px solid #333;
+                                   border-radius:10px;padding:7px;font-size:11px;cursor:pointer;margin-top:5px;">
+                            🔄 Reconectar impresora
+                        </button>
                     </div>
                 </div>
             </div>
@@ -5236,6 +5258,23 @@ async function actualizarPreviewImpresion() {
                 scrolling="no"></iframe>`;
     } catch(e) {
         area.innerHTML = '<p style="color:#444;font-size:11px;text-align:center;padding:8px;">Vista previa no disponible</p>';
+    }
+}
+
+async function reconectarImpresora() {
+    const st = document.getElementById('print-server-status');
+    if (st) st.innerHTML = '<span style="color:#C9A84C;">Buscando impresora...</span>';
+    try {
+        const r = await fetch('http://127.0.0.1:7891/wifi-autoconnect', { signal: AbortSignal.timeout(12000) });
+        const d = await r.json();
+        if (d.ok && d.ip) {
+            localStorage.setItem('verex_wifi_ip', d.ip);
+            if (st) st.innerHTML = `<span style="color:#4caf50;">✓ Conectado: ${d.ip}</span>`;
+        } else {
+            if (st) st.innerHTML = '<span style="color:#e57373;">No se encontró la impresora. Verifica que esté encendida y en WiFi.</span>';
+        }
+    } catch(e) {
+        if (st) st.innerHTML = '<span style="color:#e57373;">Servidor no disponible. Abre el servidor de impresión.</span>';
     }
 }
 
@@ -5696,11 +5735,13 @@ async function generarPDFParaServidor(codigos, formato) {
 // PDF multi-página: cada página 20×12mm landscape (ancho cinta 12mm)
 async function _generarPDFMini(prods, qrImages) {
     const { jsPDF } = window.jspdf;
-    const W = 20, H = 12;   // 20mm largo × 12mm ancho (cinta DK-2214)
+    const W = 20, H = 12;
     const B = [0, 0, 0];
-    // coordenadas idénticas a la cara de datos del DK-2214
-    const QS = 8;            // QR 8×8mm
-    const dataX = 9.5, dataW = W - dataX - 0.5;
+    const QS = 8.5;
+    const dataX = 0.2, dataW = 11.1;
+
+    // Tahoma Bold igual que DK-2214
+    const hasTahoma = !!window.TAHOMA_BOLD_B64;
 
     let doc = null;
 
@@ -5710,33 +5751,41 @@ async function _generarPDFMini(prods, qrImages) {
 
         if (!doc) {
             doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'landscape' });
+            if (hasTahoma) {
+                try {
+                    doc.addFileToVFS('TahomaBold.ttf', window.TAHOMA_BOLD_B64);
+                    doc.addFont('TahomaBold.ttf', 'TahomaBold', 'normal');
+                } catch(e) {}
+            }
         } else {
             doc.addPage([W, H], 'landscape');
         }
 
-        // QR 8×8mm — centrado verticalmente
+        // QR 8×8mm — columna derecha
         if (qrImages[p.codigo]) {
-            try { doc.addImage(qrImages[p.codigo], 'PNG', 0.5, 2.0, QS, QS); } catch(e) {}
+            try { doc.addImage(qrImages[p.codigo], 'PNG', 11.5, 0.2, QS, QS); } catch(e) {}
         }
 
-        // Precio
+        // Precio — 8.5pt helvetica bold (igual que DK-2214)
         const precio = '$ ' + parseFloat(p.precio || 0).toFixed(2);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...B);
-        doc.text(precio, dataX, 4.2);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...B);
+        doc.text(precio, dataX, 3.5);
 
-        // Material — hasta 2 líneas, fuente reducida
-        const mat = (p.material || extraerMaterial(p.nombre || '', p.descripcion || '')).replace(/Laminado/gi, 'Lam.');
-        if (mat) {
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(5); doc.setTextColor(...B);
-            const lines = doc.splitTextToSize(mat, dataW).slice(0, 2);
-            lines.forEach((l, j) => doc.text(l, dataX, 6.2 + j * 2.0));
-        }
-
-        // Código
+        // Código — 5pt Tahoma Bold (igual que DK-2214), hasta 2 líneas
         const cod = p.codigo || '';
         if (cod) {
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(4.5); doc.setTextColor(...B);
-            doc.text(cod.slice(0, 12), dataX, 10.8);
+            if (hasTahoma) doc.setFont('TahomaBold', 'normal');
+            else doc.setFont('helvetica', 'bold');
+            doc.setFontSize(5); doc.setTextColor(...B);
+            const codLines = doc.splitTextToSize(cod, dataW).slice(0, 2);
+            codLines.forEach((l, j) => doc.text(l, dataX, 6.5 + j * 1.6));
+        }
+
+        // Material — 6pt helvetica bold (igual que DK-2214), ancho completo inferior
+        const mat = abreviarMaterial(p.material || extraerMaterial(p.nombre || '', p.descripcion || ''));
+        if (mat) {
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(5.5); doc.setTextColor(...B);
+            doc.text(doc.splitTextToSize(mat, W - 1)[0], 0.5, 10.7);
         }
     }
 
