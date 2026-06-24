@@ -3517,7 +3517,21 @@ async function guardarEdicionProducto() {
     cerrarModal("modal-ver-producto");
     renderGridEntrega(productosDisponibles);
     renderGridEtiquetas(productosDisponibles);
-    if (existencia > 0) await cargarStock();
+    if (existencia > 0) {
+        await cargarStock();
+        // Refrescar productosDisponibles desde stockData actualizado (incluye nueva talla)
+        await refrescarProductosEtiquetas();
+        if (tallaAdd) {
+            // Ir a etiquetas para imprimir la nueva talla de inmediato
+            cambiarTab('etiquetas');
+            // Pre-seleccionar la nueva talla en el grid de etiquetas
+            const codigoTallaNueva = `${getCodigoBase(codigo)}T${tallaAdd}`;
+            setTimeout(() => {
+                const card = document.querySelector(`#grid-etiquetas [data-codigo="${codigoTallaNueva}"]`);
+                if (card) { card.click(); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+            }, 400);
+        }
+    }
 }
 
 // ── NUEVO LOTE ───────────────────────────────────────────────────────
