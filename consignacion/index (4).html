@@ -3480,11 +3480,30 @@ async function guardarEdicionProducto() {
     await apiPost({ accion: "EDITAR_PRODUCTO", codigo: codigoViejo, nuevo_codigo: codigo !== codigoViejo ? codigo : undefined, nombre, descripcion: desc, precio, img, material, caracterEspecial });
     // Sumar existencia a bodega si se ingresó cantidad
     const existencia = parseInt(document.getElementById("ep-existencia")?.value) || 0;
+    const tallaAdd   = (document.getElementById("ep-talla-add")?.value || "").trim();
     if (existencia > 0) {
-        const stockActual = stockData.find(s => s.codigo === codigoViejo);
-        const bodegaActual = parseInt(stockActual?.stock_bodega || 0);
-        await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo, stock_bodega: bodegaActual + existencia }] });
-        toast(`✅ Producto actualizado y +${existencia} unidades sumadas a bodega`);
+        if (tallaAdd) {
+            // Registrar variante con talla — puede ser nueva o existente
+            const codigoBase  = getCodigoBase(codigo);
+            const codigoTalla = `${codigoBase}T${tallaAdd}`;
+            const stockTalla  = stockData.find(s => s.codigo === codigoTalla);
+            if (stockTalla) {
+                // Ya existe esa talla → solo sumar cantidad
+                const bodegaActual = parseInt(stockTalla.stock_bodega || 0);
+                await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo: codigoTalla, stock_bodega: bodegaActual + existencia }] });
+            } else {
+                // Nueva variante — registrar con STOCK_REGISTRAR
+                const p = productoEditando.p;
+                const nombreConTalla = `${p.nombre_base || p.nombre} T${tallaAdd}`;
+                await apiPost({ accion: "STOCK_REGISTRAR", codigo: codigoTalla, codigoBase, talla: tallaAdd, nombre: nombreConTalla, nombre_base: p.nombre_base || p.nombre, categoria: p.categoria || "", material, precio, foto: img, cantidad: existencia, descripcion: desc, caracterEspecial });
+            }
+            toast(`✅ +${existencia} unidades T${tallaAdd} (${codigoBase}T${tallaAdd})`);
+        } else {
+            const stockActual  = stockData.find(s => s.codigo === codigoViejo);
+            const bodegaActual = parseInt(stockActual?.stock_bodega || 0);
+            await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo, stock_bodega: bodegaActual + existencia }] });
+            toast(`✅ Producto actualizado y +${existencia} unidades sumadas a bodega`);
+        }
     } else {
         toast("✅ Producto actualizado");
     }
@@ -3958,7 +3977,7 @@ function renderStock(items) {
             </div>
             ${item.foto ? `<img src="${sanitizar(ikFoto(item.foto,200))}" onerror="this.style.display='none'" onclick="event.stopPropagation();abrirFotoZoom(${jsArg(item.foto)},${jsArg(item.nombre)})" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;">` : '<div style="width:52px;height:52px;background:#3a3a3c;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">💍</div>'}
             <div class="inv-item-info" style="flex:1;min-width:0;">
-                <div class="inv-item-codigo" style="color:#34D399;">${sanitizar(item.codigo)}</div>
+                <div class="inv-item-codigo" style="color:#FF9500;">${sanitizar(item.codigo)}</div>
                 <div class="inv-item-nombre">${sanitizar(item.nombre)}</div>
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px;">
                     <span style="font-size:11px;color:#34D399;font-weight:600;">$${parseFloat(item.precio||0).toFixed(2)}</span><span style="font-size:11px;color:#888;"> · ${sanitizar(item.categoria||"")}</span>
@@ -7239,7 +7258,11 @@ function enviarWAEstadoCuenta(ventaId) {
                 <button type="button" class="ep-mat-btn" data-mat="Reloj"                 onclick="selMatEdit(this)" style="padding:5px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">⌚ Reloj</button>
             </div>
             <label style="font-size:11px;color:var(--plateado);display:block;margin:8px 0 4px;font-weight:600;">📦 Agregar a Bodega</label>
-            <input type="number" id="ep-existencia" placeholder="Cantidad a sumar (ej: 2)" min="0" value="0" style="border-color:var(--dorado);">
+            <div style="display:flex;gap:8px;margin-bottom:4px;">
+                <input type="number" id="ep-existencia" placeholder="Cantidad a sumar" min="0" value="0" style="flex:2;border-color:var(--dorado);">
+                <input type="number" id="ep-talla-add" placeholder="Talla (opcional)" min="5" max="15" step="0.5" style="flex:1;">
+            </div>
+            <div style="font-size:10px;color:var(--plateado);margin-bottom:8px;">Si ingresas talla, se registra como variante separada (ej: ANP039<b style="color:#FF9500;">T10</b>)</div>
             <div style="text-align:center;margin-bottom:12px;">
                 <label for="ep-foto" style="display:block;cursor:pointer;">
                     <div id="ep-foto-preview" style="width:100%;height:150px;background:var(--gris2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:8px;overflow:hidden;">📷</div>
