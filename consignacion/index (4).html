@@ -1279,7 +1279,7 @@ function renderGridEtiquetas(prods) {
             <div style="font-size:11px;font-weight:500;margin:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.nombre}</div>
             <div style="font-size:12px;font-weight:700;color:var(--dorado-claro);">$${parseFloat(p.precio||0).toFixed(2)}</div>
             ${p.material ? `<div style="font-size:9px;color:var(--plateado);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${abreviarMaterial(p.material)}</div>` : ''}
-            ${sel ? '<div style="font-size:10px;color:var(--dorado);margin-top:4px;">✓ Seleccionado</div>' : ''}
+            ${sel ? '<div style="font-size:10px;color:#00E676;margin-top:4px;font-weight:700;">✓ Seleccionado</div>' : ''}
         </div>`;
     }).join('');
     actualizarConteoEtiquetas();
