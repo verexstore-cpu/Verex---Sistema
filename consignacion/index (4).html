@@ -4141,6 +4141,11 @@ function selPrecioTipoSN(tipo) {
     document.getElementById("sn-precio-dif-btn").style.borderColor = !esUni ? "var(--dorado)" : "var(--borde)";
     document.getElementById("sn-precio-unisex-wrap").style.display = esUni ? "" : "none";
     document.getElementById("sn-precio-dif-wrap").style.display = !esUni ? "flex" : "none";
+    // Actualizar selector de tallas si el set container está visible
+    if (document.getElementById("sn-talla-set-container")?.style.display !== "none") {
+        _snTallasQtyDama = {}; _snTallasQtyCaballero = {};
+        renderTallaSetSN();
+    }
 }
 
 function selSetEP(btn) {
@@ -4542,6 +4547,7 @@ function renderTallaSetSN() {
     const cont = document.getElementById("sn-talla-set-container");
     if (!cont) return;
     const tallasStd = [5,6,7,8,9,10,11,12,13,14];
+    const esUnisex = (document.getElementById("sn-precio-unisex-wrap")?.style.display || "") !== "none";
     function btnSet(t, tipo, map) {
         const sel = map[String(t)] !== undefined;
         return `<button type="button" onclick="seleccionarTallaSNSet(${t},'${tipo}')"
@@ -4549,48 +4555,70 @@ function renderTallaSetSN() {
             background:${sel?'var(--dorado)':'var(--gris2)'};color:${sel?'var(--negro)':'var(--blanco)'};
             font-size:11px;font-weight:600;cursor:pointer;">T${t}</button>`;
     }
-    cont.innerHTML = `
-        <div style="margin-bottom:8px;">
-            <label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:5px;">💃 Tallas Dama:</label>
-            <div style="display:flex;flex-wrap:wrap;gap:5px;">${tallasStd.map(t=>btnSet(t,'D',_snTallasQtyDama)).join('')}</div>
-        </div>
-        <div>
-            <label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:5px;">🕺 Tallas Caballero:</label>
-            <div style="display:flex;flex-wrap:wrap;gap:5px;">${tallasStd.map(t=>btnSet(t,'C',_snTallasQtyCaballero)).join('')}</div>
-        </div>`;
+    if (esUnisex) {
+        cont.innerHTML = `
+            <div style="margin-bottom:8px;">
+                <label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:5px;">💍 Tallas:</label>
+                <div style="display:flex;flex-wrap:wrap;gap:5px;">${tallasStd.map(t=>btnSet(t,'U',_snTallasQtyDama)).join('')}</div>
+            </div>`;
+    } else {
+        cont.innerHTML = `
+            <div style="margin-bottom:8px;">
+                <label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:5px;">💃 Tallas Dama:</label>
+                <div style="display:flex;flex-wrap:wrap;gap:5px;">${tallasStd.map(t=>btnSet(t,'D',_snTallasQtyDama)).join('')}</div>
+            </div>
+            <div>
+                <label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:5px;">🕺 Tallas Caballero:</label>
+                <div style="display:flex;flex-wrap:wrap;gap:5px;">${tallasStd.map(t=>btnSet(t,'C',_snTallasQtyCaballero)).join('')}</div>
+            </div>`;
+    }
     renderResumenTallasSetSN();
 }
 
 function renderResumenTallasSetSN() {
     const cont = document.getElementById("sn-tallas-set-resumen");
     if (!cont) return;
+    const esUnisex = (document.getElementById("sn-precio-unisex-wrap")?.style.display || "") !== "none";
     const entriesD = Object.entries(_snTallasQtyDama);
     const entriesC = Object.entries(_snTallasQtyCaballero);
     if (!entriesD.length && !entriesC.length) { cont.innerHTML = ""; return; }
-    const filaD = entriesD.map(([t, q]) => `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(201,168,76,0.15);border:1px solid var(--dorado);border-radius:6px;padding:3px 8px;font-size:11px;">
-        💃T${t} <button type="button" onclick="cambiarQtySetSN('${t}','D',-1)" style="background:none;border:none;color:var(--plateado);cursor:pointer;padding:0 2px;font-size:13px;line-height:1;">−</button>
+    const chip = (emoji, t, q, tipo) => `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(201,168,76,0.15);border:1px solid var(--dorado);border-radius:6px;padding:3px 8px;font-size:11px;">
+        ${emoji}T${t} <button type="button" onclick="cambiarQtySetSN('${t}','${tipo}',-1)" style="background:none;border:none;color:var(--plateado);cursor:pointer;padding:0 2px;font-size:13px;line-height:1;">−</button>
         <span style="font-weight:700;color:var(--dorado);">${q}</span>
-        <button type="button" onclick="cambiarQtySetSN('${t}','D',1)" style="background:none;border:none;color:var(--plateado);cursor:pointer;padding:0 2px;font-size:13px;line-height:1;">+</button></span>`).join('');
-    const filaC = entriesC.map(([t, q]) => `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(201,168,76,0.15);border:1px solid var(--dorado);border-radius:6px;padding:3px 8px;font-size:11px;">
-        🕺T${t} <button type="button" onclick="cambiarQtySetSN('${t}','C',-1)" style="background:none;border:none;color:var(--plateado);cursor:pointer;padding:0 2px;font-size:13px;line-height:1;">−</button>
-        <span style="font-weight:700;color:var(--dorado);">${q}</span>
-        <button type="button" onclick="cambiarQtySetSN('${t}','C',1)" style="background:none;border:none;color:var(--plateado);cursor:pointer;padding:0 2px;font-size:13px;line-height:1;">+</button></span>`).join('');
-    cont.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;">${filaD}${filaC}</div>`;
+        <button type="button" onclick="cambiarQtySetSN('${t}','${tipo}',1)" style="background:none;border:none;color:var(--plateado);cursor:pointer;padding:0 2px;font-size:13px;line-height:1;">+</button></span>`;
+    if (esUnisex) {
+        const fila = entriesD.map(([t, q]) => chip('💍', t, q, 'U')).join('');
+        cont.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;">${fila}</div>`;
+    } else {
+        const filaD = entriesD.map(([t, q]) => chip('💃', t, q, 'D')).join('');
+        const filaC = entriesC.map(([t, q]) => chip('🕺', t, q, 'C')).join('');
+        cont.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;">${filaD}${filaC}</div>`;
+    }
 }
 
 function seleccionarTallaSNSet(talla, tipo) {
-    const map = tipo === 'D' ? _snTallasQtyDama : _snTallasQtyCaballero;
     const t = String(talla);
-    if (map[t] !== undefined) delete map[t];
-    else map[t] = 1;
+    if (tipo === 'U') {
+        if (_snTallasQtyDama[t] !== undefined) { delete _snTallasQtyDama[t]; delete _snTallasQtyCaballero[t]; }
+        else { _snTallasQtyDama[t] = 1; _snTallasQtyCaballero[t] = 1; }
+    } else {
+        const map = tipo === 'D' ? _snTallasQtyDama : _snTallasQtyCaballero;
+        if (map[t] !== undefined) delete map[t]; else map[t] = 1;
+    }
     renderTallaSetSN();
 }
 
 function cambiarQtySetSN(talla, tipo, delta) {
-    const map = tipo === 'D' ? _snTallasQtyDama : _snTallasQtyCaballero;
     const t = String(talla);
-    if (map[t] === undefined) return;
-    map[t] = Math.max(1, (map[t] || 1) + delta);
+    if (tipo === 'U') {
+        if (_snTallasQtyDama[t] === undefined) return;
+        const nv = Math.max(1, (_snTallasQtyDama[t] || 1) + delta);
+        _snTallasQtyDama[t] = nv; _snTallasQtyCaballero[t] = nv;
+    } else {
+        const map = tipo === 'D' ? _snTallasQtyDama : _snTallasQtyCaballero;
+        if (map[t] === undefined) return;
+        map[t] = Math.max(1, (map[t] || 1) + delta);
+    }
     renderResumenTallasSetSN();
 }
 
