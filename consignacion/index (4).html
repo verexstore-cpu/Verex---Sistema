@@ -3429,6 +3429,11 @@ function activarEdicionProducto() {
     document.querySelectorAll(".ep-mat-btn").forEach(b => {
         b.style.outline = (b.dataset.mat === p.material) ? "2px solid var(--dorado)" : "";
     });
+    // Marcar set_config actual
+    const scActual = p.set_config || "";
+    document.querySelectorAll(".ep-set-btn").forEach(b => { b.style.background="var(--gris2)"; b.style.color="var(--blanco)"; b.style.borderColor="var(--borde)"; });
+    const epSetBtn = document.querySelector(`.ep-set-btn[data-set="${scActual}"]`);
+    if (epSetBtn) { epSetBtn.style.background="var(--dorado)"; epSetBtn.style.color="#111"; epSetBtn.style.borderColor="var(--dorado)"; }
     document.getElementById("modal-prod-vista").style.display = "none";
     document.getElementById("modal-prod-edicion").style.display = "block";
     // Mostrar foto actual en el preview del editor
@@ -3476,9 +3481,10 @@ async function guardarEdicionProducto() {
     const matSelBtn = document.querySelector(".ep-mat-btn[style*='solid var(--dorado)']");
     const material  = matSelBtn ? matSelBtn.dataset.mat : (productoEditando.p.material || "");
     const caracterEspecial = (document.getElementById("ep-caract")?.value || "").trim();
+    const setConfig = document.querySelector(".ep-set-btn[style*='var(--dorado)']")?.dataset.set ?? undefined;
     const codigoViejo = productoEditando.p.codigo;
     // Update en servidor
-    await apiPost({ accion: "EDITAR_PRODUCTO", codigo: codigoViejo, nuevo_codigo: codigo !== codigoViejo ? codigo : undefined, nombre, descripcion: desc, precio, img, material, caracterEspecial });
+    await apiPost({ accion: "EDITAR_PRODUCTO", codigo: codigoViejo, nuevo_codigo: codigo !== codigoViejo ? codigo : undefined, nombre, descripcion: desc, precio, img, material, caracterEspecial, set_config: setConfig });
     // Sumar existencia a bodega si se ingresó cantidad
     const existencia = parseInt(document.getElementById("ep-existencia")?.value) || 0;
     const tallaAdd   = (document.getElementById("ep-talla-add")?.value || "").trim();
@@ -4073,6 +4079,16 @@ function selMatEdit(btn) {
     btn.style.outline = "2px solid var(--dorado)";
 }
 
+function selSetSN(btn) {
+    document.querySelectorAll(".sn-set-btn").forEach(b => { b.style.background="var(--gris2)"; b.style.color="var(--blanco)"; b.style.borderColor="var(--borde)"; b.classList.remove("selected"); });
+    btn.style.background = "var(--dorado)"; btn.style.color = "#111"; btn.style.borderColor = "var(--dorado)"; btn.classList.add("selected");
+}
+
+function selSetEP(btn) {
+    document.querySelectorAll(".ep-set-btn").forEach(b => { b.style.background="var(--gris2)"; b.style.color="var(--blanco)"; b.style.borderColor="var(--borde)"; });
+    btn.style.background = "var(--dorado)"; btn.style.color = "#111"; btn.style.borderColor = "var(--dorado)";
+}
+
 function toggleMenuMover(codigo, btn) {
     // Cerrar todos los otros menús abiertos
     document.querySelectorAll('[id^="menu-mover-"]').forEach(m => {
@@ -4403,6 +4419,10 @@ function abrirStockNuevoProd() {
     document.getElementById("sn-multicod-chips").innerHTML = "";
     document.querySelectorAll(".sn-mat-btn").forEach(b => { b.style.background="var(--gris2)"; b.style.color="var(--blanco)"; });
     document.querySelectorAll(".sn-talla-btn").forEach(b => { b.style.background="var(--gris2)"; b.style.color="var(--blanco)"; });
+    // Reset set_config — Individual por defecto
+    document.querySelectorAll(".sn-set-btn").forEach(b => { b.style.background="var(--gris2)"; b.style.color="var(--blanco)"; b.style.borderColor="var(--borde)"; b.classList.remove("selected"); });
+    const snSetDefault = document.querySelector('.sn-set-btn[data-set=""]');
+    if (snSetDefault) { snSetDefault.style.background="var(--dorado)"; snSetDefault.style.color="#111"; snSetDefault.style.borderColor="var(--dorado)"; snSetDefault.classList.add("selected"); }
     abrirModal("modal-stock-nuevo");
 }
 
@@ -4714,6 +4734,7 @@ async function guardarStockNuevo() {
         const desc          = document.getElementById("sn-desc").value.trim();
         const descTienda    = document.getElementById("sn-desc-tienda").value.trim();
         const caractEspecial = (document.getElementById("sn-caract")?.value || "").trim();
+        const setConfig      = document.querySelector(".sn-set-btn.selected")?.dataset.set || null;
         const precioNum  = parseFloat(precio);
 
         // ── Modo multi-código: salida temprana ───────────────────────────────
@@ -4748,7 +4769,8 @@ async function guardarStockNuevo() {
                     foto: fotoUrlMulti, cantidad: qty || 1,
                     material: _snMaterial || "",
                     descripcion: desc, descripcionTienda: descTienda,
-                    caracterEspecial: caractEspecial
+                    caracterEspecial: caractEspecial,
+                    set_config: setConfig || undefined
                 });
                 if (res.ok) guardados++;
             }
@@ -4774,7 +4796,8 @@ async function guardarStockNuevo() {
                             foto: fotoUrlMulti, cantidad: c.qty || 1,
                             material: _snMaterial || "",
                             descripcion: desc, descripcionTienda: descTienda,
-                            caracterEspecial: caractEspecial
+                            caracterEspecial: caractEspecial,
+                            set_config: setConfig || undefined
                         });
                         if (r2.ok) guardados++;
                     }
@@ -4834,7 +4857,8 @@ async function guardarStockNuevo() {
                     foto: fotoUrl, cantidad: qty,
                     material: _snMaterial || "",
                     descripcion: desc, descripcionTienda: descTienda,
-                    caracterEspecial: caractEspecial
+                    caracterEspecial: caractEspecial,
+                    set_config: setConfig || undefined
                 });
                 if (res.ok) guardados++;
             }
@@ -4860,7 +4884,8 @@ async function guardarStockNuevo() {
                 foto: fotoUrl, cantidad,
                 material: _snMaterial || "",
                 descripcion: desc, descripcionTienda: descTienda,
-                caracterEspecial: caractEspecial
+                caracterEspecial: caractEspecial,
+                set_config: setConfig || undefined
             });
             if (!res.ok) { toast("⚠️ " + (res.error || "Error al guardar")); btn.textContent = "✅ Guardar en Stock"; btn.disabled = false; return; }
             toast("✅ Producto guardado en stock");
@@ -7320,6 +7345,13 @@ function enviarWAEstadoCuenta(ventaId) {
                 <button type="button" class="ep-mat-btn" data-mat="Oro 14 Kilates"        onclick="selMatEdit(this)" style="padding:5px 10px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:11px;font-weight:600;cursor:pointer;">👑 Oro 14K</button>
                 <button type="button" class="ep-mat-btn" data-mat="Reloj"                 onclick="selMatEdit(this)" style="padding:5px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">⌚ Reloj</button>
             </div>
+            <!-- Tipo de venta -->
+            <label style="font-size:11px;color:var(--plateado);display:block;margin:8px 0 4px;font-weight:600;">Tipo de venta:</label>
+            <div style="display:flex;gap:6px;margin-bottom:8px;">
+                <button type="button" class="ep-set-btn" data-set="" onclick="selSetEP(this)" style="flex:1;padding:5px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:700;cursor:pointer;">Individual</button>
+                <button type="button" class="ep-set-btn" data-set="1+1" onclick="selSetEP(this)" style="flex:1;padding:5px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:700;cursor:pointer;">Set Par 1+1</button>
+                <button type="button" class="ep-set-btn" data-set="2+1" onclick="selSetEP(this)" style="flex:1;padding:5px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:700;cursor:pointer;">Set Trío 2+1</button>
+            </div>
             <label style="font-size:11px;color:var(--plateado);display:block;margin:8px 0 4px;font-weight:600;">📦 Agregar a Bodega</label>
             <div style="display:flex;gap:8px;margin-bottom:4px;">
                 <input type="number" id="ep-existencia" placeholder="Cantidad a sumar" min="0" value="0" style="flex:2;border-color:var(--dorado);">
@@ -7497,6 +7529,15 @@ function enviarWAEstadoCuenta(ventaId) {
                 <button type="button" class="sn-mat-btn" data-mat="Oro 10 Kilates" onclick="seleccionarMatSN(this)" style="padding:6px 10px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:11px;font-weight:600;cursor:pointer;">🥇 Oro 10K</button>
                 <button type="button" class="sn-mat-btn" data-mat="Oro 14 Kilates" onclick="seleccionarMatSN(this)" style="padding:6px 10px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:11px;font-weight:600;cursor:pointer;">👑 Oro 14K</button>
                 <button type="button" class="sn-mat-btn" data-mat="Reloj" onclick="seleccionarMatSN(this)" style="padding:6px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">⌚ Reloj</button>
+            </div>
+        </div>
+        <!-- Tipo de venta: individual / set -->
+        <div style="margin-bottom:10px;">
+            <label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:6px;">Tipo de venta:</label>
+            <div style="display:flex;gap:6px;">
+                <button type="button" class="sn-set-btn selected" data-set="" onclick="selSetSN(this)" style="flex:1;padding:6px 0;border:1px solid var(--dorado);border-radius:8px;background:var(--dorado);color:#111;font-size:11px;font-weight:700;cursor:pointer;">Individual</button>
+                <button type="button" class="sn-set-btn" data-set="1+1" onclick="selSetSN(this)" style="flex:1;padding:6px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:700;cursor:pointer;">Set Par 1+1</button>
+                <button type="button" class="sn-set-btn" data-set="2+1" onclick="selSetSN(this)" style="flex:1;padding:6px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:700;cursor:pointer;">Set Trío 2+1</button>
             </div>
         </div>
         <button class="btn btn-gris btn-full" id="sn-btn-ia" onclick="analizarFotoStockNuevo()" style="display:none;margin-bottom:12px;">✨ Analizar con IA</button>
