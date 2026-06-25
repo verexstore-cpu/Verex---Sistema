@@ -1182,6 +1182,7 @@ export default {
           if (d.material        !== undefined) upd.material          = d.material;
           if (d.caracterEspecial !== undefined) upd.caracterEspecial = d.caracterEspecial;
           if (d.set_config      !== undefined) upd.set_config        = d.set_config || null;
+          if (d.precio_caballero !== undefined) upd.precio_caballero = d.precio_caballero || null;
           // Cambio de código: copiar fila con nuevo código y marcar vieja inactiva
           if (d.nuevo_codigo && d.nuevo_codigo !== d.codigo) {
             const viejo = await sb.get("stock", d.codigo);

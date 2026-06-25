@@ -3429,11 +3429,18 @@ function activarEdicionProducto() {
     document.querySelectorAll(".ep-mat-btn").forEach(b => {
         b.style.outline = (b.dataset.mat === p.material) ? "2px solid var(--dorado)" : "";
     });
-    // Marcar set_config actual
+    // Marcar set_config actual y mostrar campos de precio correctos
     const scActual = p.set_config || "";
     document.querySelectorAll(".ep-set-btn").forEach(b => { b.style.background="var(--gris2)"; b.style.color="var(--blanco)"; b.style.borderColor="var(--borde)"; });
     const epSetBtn = document.querySelector(`.ep-set-btn[data-set="${scActual}"]`);
     if (epSetBtn) { epSetBtn.style.background="var(--dorado)"; epSetBtn.style.color="#111"; epSetBtn.style.borderColor="var(--dorado)"; }
+    const esSetActual = scActual !== "";
+    document.getElementById("ep-precio").style.display = esSetActual ? "none" : "";
+    document.getElementById("ep-precio-set-wrap").style.display = esSetActual ? "flex" : "none";
+    if (esSetActual) {
+        document.getElementById("ep-precio-dama").value = p.precio || p.precioNum || "";
+        document.getElementById("ep-precio-caballero").value = p.precio_caballero || "";
+    }
     document.getElementById("modal-prod-vista").style.display = "none";
     document.getElementById("modal-prod-edicion").style.display = "block";
     // Mostrar foto actual en el preview del editor
@@ -3470,8 +3477,13 @@ async function guardarEdicionProducto() {
     const codigo  = document.getElementById("ep-codigo").value.trim();
     const nombre  = document.getElementById("ep-nombre").value.trim();
     const desc    = document.getElementById("ep-desc").value.trim();
-    const precio  = parseFloat(document.getElementById("ep-precio").value) || 0;
+    const setConfigEP = document.querySelector(".ep-set-btn[style*='var(--dorado)']")?.dataset.set ?? "";
+    const esSetEP = setConfigEP !== "";
+    const precio  = esSetEP ? (parseFloat(document.getElementById("ep-precio-dama").value) || 0)
+                            : (parseFloat(document.getElementById("ep-precio").value) || 0);
+    const precioCaballeroEP = esSetEP ? (parseFloat(document.getElementById("ep-precio-caballero").value) || 0) : undefined;
     if (!nombre || !precio) { toast("⚠️ Completa nombre y precio"); btn.textContent = "💾 Guardar"; btn.disabled = false; return; }
+    if (esSetEP && !precioCaballeroEP) { toast("⚠️ Completa el precio de caballero"); btn.textContent = "💾 Guardar"; btn.disabled = false; return; }
     let img = productoEditando.p.img || "";
     if (productoEditando.nuevaFoto) {
         const url = await subirFotoImageKit(productoEditando.nuevaFotoFile || productoEditando.nuevaFotoOriginal || productoEditando.nuevaFoto, codigo, productoEditando.nuevaFotoCrop);
@@ -3481,10 +3493,9 @@ async function guardarEdicionProducto() {
     const matSelBtn = document.querySelector(".ep-mat-btn[style*='solid var(--dorado)']");
     const material  = matSelBtn ? matSelBtn.dataset.mat : (productoEditando.p.material || "");
     const caracterEspecial = (document.getElementById("ep-caract")?.value || "").trim();
-    const setConfig = document.querySelector(".ep-set-btn[style*='var(--dorado)']")?.dataset.set ?? undefined;
     const codigoViejo = productoEditando.p.codigo;
     // Update en servidor
-    await apiPost({ accion: "EDITAR_PRODUCTO", codigo: codigoViejo, nuevo_codigo: codigo !== codigoViejo ? codigo : undefined, nombre, descripcion: desc, precio, img, material, caracterEspecial, set_config: setConfig });
+    await apiPost({ accion: "EDITAR_PRODUCTO", codigo: codigoViejo, nuevo_codigo: codigo !== codigoViejo ? codigo : undefined, nombre, descripcion: desc, precio, img, material, caracterEspecial, set_config: setConfigEP || undefined, precio_caballero: precioCaballeroEP });
     // Sumar existencia a bodega si se ingresó cantidad
     const existencia = parseInt(document.getElementById("ep-existencia")?.value) || 0;
     const tallaAdd   = (document.getElementById("ep-talla-add")?.value || "").trim();
@@ -4082,11 +4093,17 @@ function selMatEdit(btn) {
 function selSetSN(btn) {
     document.querySelectorAll(".sn-set-btn").forEach(b => { b.style.background="var(--gris2)"; b.style.color="var(--blanco)"; b.style.borderColor="var(--borde)"; b.classList.remove("selected"); });
     btn.style.background = "var(--dorado)"; btn.style.color = "#111"; btn.style.borderColor = "var(--dorado)"; btn.classList.add("selected");
+    const esSet = btn.dataset.set !== "";
+    document.getElementById("sn-precio").style.display = esSet ? "none" : "";
+    document.getElementById("sn-precio-set").style.display = esSet ? "flex" : "none";
 }
 
 function selSetEP(btn) {
     document.querySelectorAll(".ep-set-btn").forEach(b => { b.style.background="var(--gris2)"; b.style.color="var(--blanco)"; b.style.borderColor="var(--borde)"; });
     btn.style.background = "var(--dorado)"; btn.style.color = "#111"; btn.style.borderColor = "var(--dorado)";
+    const esSet = btn.dataset.set !== "";
+    document.getElementById("ep-precio").style.display = esSet ? "none" : "";
+    document.getElementById("ep-precio-set-wrap").style.display = esSet ? "flex" : "none";
 }
 
 function toggleMenuMover(codigo, btn) {
@@ -4409,6 +4426,10 @@ function abrirStockNuevoProd() {
     document.getElementById("sn-nombre").value = "";
     document.getElementById("sn-categoria").value = "";
     document.getElementById("sn-precio").value = "";
+    document.getElementById("sn-precio-dama").value = "";
+    document.getElementById("sn-precio-caballero").value = "";
+    document.getElementById("sn-precio").style.display = "";
+    document.getElementById("sn-precio-set").style.display = "none";
     document.getElementById("sn-cantidad").value = "1";
     document.getElementById("sn-desc").value = "";
     document.getElementById("sn-desc-tienda").value = "";
@@ -4701,7 +4722,11 @@ async function analizarFotoStockNuevo() {
 async function guardarStockNuevo() {
     const nombreVal  = document.getElementById("sn-nombre").value.trim();
     const categoria  = document.getElementById("sn-categoria").value;
-    const precio     = document.getElementById("sn-precio").value;
+    const setConfigSN = document.querySelector(".sn-set-btn.selected")?.dataset.set || "";
+    const esSetSN     = setConfigSN !== "";
+    const precio      = esSetSN ? document.getElementById("sn-precio-dama").value
+                                : document.getElementById("sn-precio").value;
+    const precioCaballeroSN = esSetSN ? (parseFloat(document.getElementById("sn-precio-caballero").value) || 0) : undefined;
     const esAnillo   = categoria === "AN" || categoria === "CJ";
     const cantidad   = parseInt(document.getElementById("sn-cantidad").value) || 1;
 
@@ -4724,6 +4749,7 @@ async function guardarStockNuevo() {
     const codigoManualTemp = (document.getElementById("sn-codigo-manual")?.value || "").trim().toUpperCase();
     const codigoYaTieneTallaTemp = /T\d+(\.\d+)?$/.test(codigoManualTemp);
     if (!nombreVal || !categoria || !precio) { toast("⚠️ Completa nombre, categoría y precio"); return; }
+    if (esSetSN && !precioCaballeroSN) { toast("⚠️ Completa el precio de caballero"); return; }
     if (esAnillo && !modoMultiCod && !codigoYaTieneTallaTemp && Object.keys(_snTallasQty).length === 0) { toast("⚠️ Selecciona al menos una talla o escanea los códigos físicos"); return; }
     if (modoMultiCod && _snMultiCodigos.length === 0) { toast("⚠️ Escanea al menos un código"); return; }
 
@@ -4734,7 +4760,7 @@ async function guardarStockNuevo() {
         const desc          = document.getElementById("sn-desc").value.trim();
         const descTienda    = document.getElementById("sn-desc-tienda").value.trim();
         const caractEspecial = (document.getElementById("sn-caract")?.value || "").trim();
-        const setConfig      = document.querySelector(".sn-set-btn.selected")?.dataset.set || null;
+        const setConfig  = setConfigSN || null;
         const precioNum  = parseFloat(precio);
 
         // ── Modo multi-código: salida temprana ───────────────────────────────
@@ -4770,7 +4796,8 @@ async function guardarStockNuevo() {
                     material: _snMaterial || "",
                     descripcion: desc, descripcionTienda: descTienda,
                     caracterEspecial: caractEspecial,
-                    set_config: setConfig || undefined
+                    set_config: setConfig || undefined,
+                    precio_caballero: precioCaballeroSN
                 });
                 if (res.ok) guardados++;
             }
@@ -4797,7 +4824,8 @@ async function guardarStockNuevo() {
                             material: _snMaterial || "",
                             descripcion: desc, descripcionTienda: descTienda,
                             caracterEspecial: caractEspecial,
-                            set_config: setConfig || undefined
+                            set_config: setConfig || undefined,
+                    precio_caballero: precioCaballeroSN
                         });
                         if (r2.ok) guardados++;
                     }
@@ -4858,7 +4886,8 @@ async function guardarStockNuevo() {
                     material: _snMaterial || "",
                     descripcion: desc, descripcionTienda: descTienda,
                     caracterEspecial: caractEspecial,
-                    set_config: setConfig || undefined
+                    set_config: setConfig || undefined,
+                    precio_caballero: precioCaballeroSN
                 });
                 if (res.ok) guardados++;
             }
@@ -6202,10 +6231,10 @@ function toast(msg, bg) {
         const activeId = document.activeElement?.id || "";
         // Solo ignorar si el foco está en un input de otro módulo (modal, precio, etc.)
         // Los campos de búsqueda de stock/etiquetas SÍ deben pasar
-        const inputsExcluidos = ["sn-multicod-input","sn-codigo-manual","sn-nombre","sn-precio",
+        const inputsExcluidos = ["sn-multicod-input","sn-codigo-manual","sn-nombre","sn-precio","sn-precio-dama","sn-precio-caballero",
             "sn-cantidad","sn-desc","sn-desc-tienda","sn-caract","inp-pass",
             "np-nombre","np-desc","np-precio","np-codigo","np-qty","np-caract",
-            "ep-codigo","ep-nombre","ep-desc","ep-precio","ep-caract","ep-existencia",
+            "ep-codigo","ep-nombre","ep-desc","ep-precio","ep-precio-dama","ep-precio-caballero","ep-caract","ep-existencia",
             "lote-precio-global"];
         if (inputsExcluidos.includes(activeId)) return;
         // Ignorar si hay un modal visible con un textarea/input activo
@@ -7334,6 +7363,10 @@ function enviarWAEstadoCuenta(ventaId) {
             <input type="text" id="ep-nombre" placeholder="Nombre">
             <input type="text" id="ep-desc" placeholder="Descripción">
             <input type="number" id="ep-precio" placeholder="Precio $" step="0.01">
+            <div id="ep-precio-set-wrap" style="display:none;gap:8px;">
+                <div style="flex:1;"><label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">💃 Precio Dama $</label><input type="number" id="ep-precio-dama" placeholder="0.00" step="0.01"></div>
+                <div style="flex:1;"><label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">🕺 Precio Caballero $</label><input type="number" id="ep-precio-caballero" placeholder="0.00" step="0.01"></div>
+            </div>
             <input type="text" id="ep-caract" placeholder="Características especiales (ej: hipoalergénico, ajustable…)">
             <label style="font-size:11px;color:var(--plateado);display:block;margin:8px 0 4px;font-weight:600;">Material</label>
             <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;" id="ep-mat-btns">
@@ -7608,7 +7641,15 @@ function enviarWAEstadoCuenta(ventaId) {
                 <button type="button" onclick="agregarCodigoMulti()" style="padding:8px 12px;background:var(--dorado);border:none;border-radius:8px;color:#111;font-weight:700;font-size:12px;cursor:pointer;">+ Agregar</button>
             </div>
         </div>
-        <input type="number" id="sn-precio" placeholder="Precio $" step="0.01" style="margin-top:8px;" onkeydown="if(event.key==='Enter')event.preventDefault()">
+        <div id="sn-precio-wrap" style="margin-top:8px;">
+            <input type="number" id="sn-precio" placeholder="Precio $" step="0.01" style="width:100%;box-sizing:border-box;" onkeydown="if(event.key==='Enter')event.preventDefault()">
+            <div id="sn-precio-set" style="display:none;flex-direction:column;gap:8px;">
+                <div style="display:flex;gap:8px;">
+                    <div style="flex:1;"><label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">💃 Precio Dama $</label><input type="number" id="sn-precio-dama" placeholder="0.00" step="0.01" onkeydown="if(event.key==='Enter')event.preventDefault()"></div>
+                    <div style="flex:1;"><label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">🕺 Precio Caballero $</label><input type="number" id="sn-precio-caballero" placeholder="0.00" step="0.01" onkeydown="if(event.key==='Enter')event.preventDefault()"></div>
+                </div>
+            </div>
+        </div>
         <div id="sn-cantidad-wrap">
             <label style="font-size:11px;color:var(--dorado);display:block;margin-top:10px;margin-bottom:4px;font-weight:600;">📦 Cantidad en existencia:</label>
             <input type="number" id="sn-cantidad" placeholder="Cantidad de piezas" value="1" min="1" style="margin-top:0;border-color:var(--dorado);" onkeydown="if(event.key==='Enter')event.preventDefault()">
