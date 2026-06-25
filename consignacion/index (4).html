@@ -2062,7 +2062,7 @@ let mapaProductos = {};
 
 // "AN021T10" → "AN021"   |  "CO005" → "CO005"
 function getCodigoBase(codigo) {
-    return (codigo || "").replace(/[DC]?T\d+(\.\d+)?$/i, "").trim();
+    return (codigo || "").replace(/[DCU]?T\d+(\.\d+)?$/i, "").trim();
 }
 
 // "AN021T10" → "10"   |  "CO005" → null
@@ -5054,44 +5054,62 @@ async function guardarStockNuevo() {
         const esUnisexSN = esSetSN && document.getElementById("sn-precio-unisex-wrap")?.style.display !== "none";
         const tieneSetTallas = esSetSN && (Object.keys(_snTallasQtyDama).length > 0 || Object.keys(_snTallasQtyCaballero).length > 0);
         if (esAnillo && !codigoYaTieneTalla && tieneSetTallas) {
-            // Set de anillos con selector dual Dama/Caballero
             let guardados = 0;
             const codigosEtiq = [];
             const precioDama = precioNum;
             const precioCab  = precioCaballeroSN || precioNum;
-            for (const [talla, qty] of Object.entries(_snTallasQtyDama)) {
-                const codigo = codigoBase + "DT" + talla;
-                const res = await apiPost({
-                    accion: "STOCK_REGISTRAR",
-                    codigo, codigoBase, talla,
-                    nombre: `${nombreVal} Dama T${talla}`,
-                    nombre_base: nombreVal,
-                    categoria, precio: precioDama,
-                    foto: fotoUrl, cantidad: qty,
-                    material: _snMaterial || "",
-                    descripcion: desc, descripcionTienda: descTienda,
-                    caracterEspecial: caractEspecial,
-                    set_config: setConfig || undefined
-                });
-                // Unisex: 1 etiqueta por par (solo Dama); Diferenciado: etiqueta por cada tipo
-                if (res.ok) { guardados++; codigosEtiq.push({ codigo, qty }); }
-            }
-            for (const [talla, qty] of Object.entries(_snTallasQtyCaballero)) {
-                const codigo = codigoBase + "CT" + talla;
-                const res = await apiPost({
-                    accion: "STOCK_REGISTRAR",
-                    codigo, codigoBase, talla,
-                    nombre: `${nombreVal} Caballero T${talla}`,
-                    nombre_base: nombreVal,
-                    categoria, precio: precioCab,
-                    foto: fotoUrl, cantidad: qty,
-                    material: _snMaterial || "",
-                    descripcion: desc, descripcionTienda: descTienda,
-                    caracterEspecial: caractEspecial,
-                    set_config: setConfig || undefined
-                });
-                // En Unisex no se duplican etiquetas (ya se agregó la Dama)
-                if (res.ok) { guardados++; if (!esUnisexSN) codigosEtiq.push({ codigo, qty }); }
+            if (esUnisexSN) {
+                // Unisex: una sola entrada por talla con sufijo UT
+                for (const [talla, qty] of Object.entries(_snTallasQtyDama)) {
+                    const codigo = codigoBase + "UT" + talla;
+                    const res = await apiPost({
+                        accion: "STOCK_REGISTRAR",
+                        codigo, codigoBase, talla,
+                        nombre: `${nombreVal} T${talla}`,
+                        nombre_base: nombreVal,
+                        categoria, precio: precioDama,
+                        foto: fotoUrl, cantidad: qty,
+                        material: _snMaterial || "",
+                        descripcion: desc, descripcionTienda: descTienda,
+                        caracterEspecial: caractEspecial,
+                        set_config: setConfig || undefined
+                    });
+                    if (res.ok) { guardados++; codigosEtiq.push({ codigo, qty }); }
+                }
+            } else {
+                // Diferenciado: entrada DT para dama y CT para caballero
+                for (const [talla, qty] of Object.entries(_snTallasQtyDama)) {
+                    const codigo = codigoBase + "DT" + talla;
+                    const res = await apiPost({
+                        accion: "STOCK_REGISTRAR",
+                        codigo, codigoBase, talla,
+                        nombre: `${nombreVal} Dama T${talla}`,
+                        nombre_base: nombreVal,
+                        categoria, precio: precioDama,
+                        foto: fotoUrl, cantidad: qty,
+                        material: _snMaterial || "",
+                        descripcion: desc, descripcionTienda: descTienda,
+                        caracterEspecial: caractEspecial,
+                        set_config: setConfig || undefined
+                    });
+                    if (res.ok) { guardados++; codigosEtiq.push({ codigo, qty }); }
+                }
+                for (const [talla, qty] of Object.entries(_snTallasQtyCaballero)) {
+                    const codigo = codigoBase + "CT" + talla;
+                    const res = await apiPost({
+                        accion: "STOCK_REGISTRAR",
+                        codigo, codigoBase, talla,
+                        nombre: `${nombreVal} Caballero T${talla}`,
+                        nombre_base: nombreVal,
+                        categoria, precio: precioCab,
+                        foto: fotoUrl, cantidad: qty,
+                        material: _snMaterial || "",
+                        descripcion: desc, descripcionTienda: descTienda,
+                        caracterEspecial: caractEspecial,
+                        set_config: setConfig || undefined
+                    });
+                    if (res.ok) { guardados++; codigosEtiq.push({ codigo, qty }); }
+                }
             }
             toast(`✅ ${guardados} variante${guardados > 1 ? 's' : ''} de set guardada${guardados > 1 ? 's' : ''} en stock`);
             cerrarModal("modal-stock-nuevo");
