@@ -3438,8 +3438,16 @@ function activarEdicionProducto() {
     document.getElementById("ep-precio").style.display = esSetActual ? "none" : "";
     document.getElementById("ep-precio-set-wrap").style.display = esSetActual ? "flex" : "none";
     if (esSetActual) {
-        document.getElementById("ep-precio-dama").value = p.precio || p.precioNum || "";
-        document.getElementById("ep-precio-caballero").value = p.precio_caballero || "";
+        const pDama = parseFloat(p.precio || p.precioNum) || 0;
+        const pCab  = parseFloat(p.precio_caballero) || 0;
+        const esUniActual = !pCab || pCab === pDama;
+        selPrecioTipoEP(esUniActual ? 'unisex' : 'dif');
+        if (esUniActual) {
+            document.getElementById("ep-precio-unisex").value = pDama || "";
+        } else {
+            document.getElementById("ep-precio-dama").value = pDama || "";
+            document.getElementById("ep-precio-caballero").value = pCab || "";
+        }
     }
     document.getElementById("modal-prod-vista").style.display = "none";
     document.getElementById("modal-prod-edicion").style.display = "block";
@@ -3477,13 +3485,18 @@ async function guardarEdicionProducto() {
     const codigo  = document.getElementById("ep-codigo").value.trim();
     const nombre  = document.getElementById("ep-nombre").value.trim();
     const desc    = document.getElementById("ep-desc").value.trim();
-    const setConfigEP = document.querySelector(".ep-set-btn[style*='var(--dorado)']")?.dataset.set ?? "";
-    const esSetEP = setConfigEP !== "";
-    const precio  = esSetEP ? (parseFloat(document.getElementById("ep-precio-dama").value) || 0)
-                            : (parseFloat(document.getElementById("ep-precio").value) || 0);
-    const precioCaballeroEP = esSetEP ? (parseFloat(document.getElementById("ep-precio-caballero").value) || 0) : undefined;
+    const setConfigEP  = document.querySelector(".ep-set-btn[style*='var(--dorado)']")?.dataset.set ?? "";
+    const esSetEP      = setConfigEP !== "";
+    const esUnisexEP   = esSetEP && document.getElementById("ep-precio-unisex-wrap")?.style.display !== "none";
+    const precio       = esSetEP
+        ? (esUnisexEP ? (parseFloat(document.getElementById("ep-precio-unisex").value) || 0)
+                      : (parseFloat(document.getElementById("ep-precio-dama").value) || 0))
+        : (parseFloat(document.getElementById("ep-precio").value) || 0);
+    const precioCaballeroEP = esSetEP
+        ? (esUnisexEP ? precio : (parseFloat(document.getElementById("ep-precio-caballero").value) || 0))
+        : undefined;
     if (!nombre || !precio) { toast("⚠️ Completa nombre y precio"); btn.textContent = "💾 Guardar"; btn.disabled = false; return; }
-    if (esSetEP && !precioCaballeroEP) { toast("⚠️ Completa el precio de caballero"); btn.textContent = "💾 Guardar"; btn.disabled = false; return; }
+    if (esSetEP && !esUnisexEP && !precioCaballeroEP) { toast("⚠️ Completa el precio de caballero"); btn.textContent = "💾 Guardar"; btn.disabled = false; return; }
     let img = productoEditando.p.img || "";
     if (productoEditando.nuevaFoto) {
         const url = await subirFotoImageKit(productoEditando.nuevaFotoFile || productoEditando.nuevaFotoOriginal || productoEditando.nuevaFoto, codigo, productoEditando.nuevaFotoCrop);
@@ -4096,6 +4109,18 @@ function selSetSN(btn) {
     const esSet = btn.dataset.set !== "";
     document.getElementById("sn-precio").style.display = esSet ? "none" : "";
     document.getElementById("sn-precio-set").style.display = esSet ? "flex" : "none";
+    if (esSet) selPrecioTipoSN('unisex');
+}
+function selPrecioTipoSN(tipo) {
+    const esUni = tipo === 'unisex';
+    document.getElementById("sn-precio-unisex-btn").style.background = esUni ? "var(--dorado)" : "var(--gris2)";
+    document.getElementById("sn-precio-unisex-btn").style.color = esUni ? "#111" : "var(--blanco)";
+    document.getElementById("sn-precio-unisex-btn").style.borderColor = esUni ? "var(--dorado)" : "var(--borde)";
+    document.getElementById("sn-precio-dif-btn").style.background = !esUni ? "var(--dorado)" : "var(--gris2)";
+    document.getElementById("sn-precio-dif-btn").style.color = !esUni ? "#111" : "var(--blanco)";
+    document.getElementById("sn-precio-dif-btn").style.borderColor = !esUni ? "var(--dorado)" : "var(--borde)";
+    document.getElementById("sn-precio-unisex-wrap").style.display = esUni ? "" : "none";
+    document.getElementById("sn-precio-dif-wrap").style.display = !esUni ? "flex" : "none";
 }
 
 function selSetEP(btn) {
@@ -4104,6 +4129,18 @@ function selSetEP(btn) {
     const esSet = btn.dataset.set !== "";
     document.getElementById("ep-precio").style.display = esSet ? "none" : "";
     document.getElementById("ep-precio-set-wrap").style.display = esSet ? "flex" : "none";
+    if (esSet) selPrecioTipoEP('unisex');
+}
+function selPrecioTipoEP(tipo) {
+    const esUni = tipo === 'unisex';
+    document.getElementById("ep-precio-unisex-btn").style.background = esUni ? "var(--dorado)" : "var(--gris2)";
+    document.getElementById("ep-precio-unisex-btn").style.color = esUni ? "#111" : "var(--blanco)";
+    document.getElementById("ep-precio-unisex-btn").style.borderColor = esUni ? "var(--dorado)" : "var(--borde)";
+    document.getElementById("ep-precio-dif-btn").style.background = !esUni ? "var(--dorado)" : "var(--gris2)";
+    document.getElementById("ep-precio-dif-btn").style.color = !esUni ? "#111" : "var(--blanco)";
+    document.getElementById("ep-precio-dif-btn").style.borderColor = !esUni ? "var(--dorado)" : "var(--borde)";
+    document.getElementById("ep-precio-unisex-wrap").style.display = esUni ? "" : "none";
+    document.getElementById("ep-precio-dif-wrap").style.display = !esUni ? "" : "none";
 }
 
 function toggleMenuMover(codigo, btn) {
@@ -4428,6 +4465,7 @@ function abrirStockNuevoProd() {
     document.getElementById("sn-precio").value = "";
     document.getElementById("sn-precio-dama").value = "";
     document.getElementById("sn-precio-caballero").value = "";
+    document.getElementById("sn-precio-unisex").value = "";
     document.getElementById("sn-precio").style.display = "";
     document.getElementById("sn-precio-set").style.display = "none";
     document.getElementById("sn-cantidad").value = "1";
@@ -4722,11 +4760,17 @@ async function analizarFotoStockNuevo() {
 async function guardarStockNuevo() {
     const nombreVal  = document.getElementById("sn-nombre").value.trim();
     const categoria  = document.getElementById("sn-categoria").value;
-    const setConfigSN = document.querySelector(".sn-set-btn.selected")?.dataset.set || "";
-    const esSetSN     = setConfigSN !== "";
-    const precio      = esSetSN ? document.getElementById("sn-precio-dama").value
-                                : document.getElementById("sn-precio").value;
-    const precioCaballeroSN = esSetSN ? (parseFloat(document.getElementById("sn-precio-caballero").value) || 0) : undefined;
+    const setConfigSN  = document.querySelector(".sn-set-btn.selected")?.dataset.set || "";
+    const esSetSN      = setConfigSN !== "";
+    const esUnisexSN   = esSetSN && document.getElementById("sn-precio-unisex-wrap")?.style.display !== "none";
+    const precio       = esSetSN
+        ? (esUnisexSN ? document.getElementById("sn-precio-unisex").value
+                      : document.getElementById("sn-precio-dama").value)
+        : document.getElementById("sn-precio").value;
+    const precioCaballeroSN = esSetSN
+        ? (esUnisexSN ? (parseFloat(precio) || 0)
+                      : (parseFloat(document.getElementById("sn-precio-caballero").value) || 0))
+        : undefined;
     const esAnillo   = categoria === "AN" || categoria === "CJ";
     const cantidad   = parseInt(document.getElementById("sn-cantidad").value) || 1;
 
@@ -4749,7 +4793,7 @@ async function guardarStockNuevo() {
     const codigoManualTemp = (document.getElementById("sn-codigo-manual")?.value || "").trim().toUpperCase();
     const codigoYaTieneTallaTemp = /T\d+(\.\d+)?$/.test(codigoManualTemp);
     if (!nombreVal || !categoria || !precio) { toast("⚠️ Completa nombre, categoría y precio"); return; }
-    if (esSetSN && !precioCaballeroSN) { toast("⚠️ Completa el precio de caballero"); return; }
+    if (esSetSN && !esUnisexSN && !precioCaballeroSN) { toast("⚠️ Completa el precio de caballero"); return; }
     if (esAnillo && !modoMultiCod && !codigoYaTieneTallaTemp && Object.keys(_snTallasQty).length === 0) { toast("⚠️ Selecciona al menos una talla o escanea los códigos físicos"); return; }
     if (modoMultiCod && _snMultiCodigos.length === 0) { toast("⚠️ Escanea al menos un código"); return; }
 
@@ -7363,9 +7407,21 @@ function enviarWAEstadoCuenta(ventaId) {
             <input type="text" id="ep-nombre" placeholder="Nombre">
             <input type="text" id="ep-desc" placeholder="Descripción">
             <input type="number" id="ep-precio" placeholder="Precio $" step="0.01">
-            <div id="ep-precio-set-wrap" style="display:none;gap:8px;">
-                <div style="flex:1;"><label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">💃 Precio Dama $</label><input type="number" id="ep-precio-dama" placeholder="0.00" step="0.01"></div>
-                <div style="flex:1;"><label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">🕺 Precio Caballero $</label><input type="number" id="ep-precio-caballero" placeholder="0.00" step="0.01"></div>
+            <div id="ep-precio-set-wrap" style="display:none;flex-direction:column;gap:8px;">
+                <div style="display:flex;gap:6px;">
+                    <button type="button" id="ep-precio-unisex-btn" onclick="selPrecioTipoEP('unisex')" style="flex:1;padding:5px 0;border:1px solid var(--dorado);border-radius:8px;background:var(--dorado);color:#111;font-size:11px;font-weight:700;cursor:pointer;">⚪ Unisex</button>
+                    <button type="button" id="ep-precio-dif-btn" onclick="selPrecioTipoEP('dif')" style="flex:1;padding:5px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:700;cursor:pointer;">♀♂ Diferenciado</button>
+                </div>
+                <div id="ep-precio-unisex-wrap">
+                    <label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">⚪ Precio por pieza $</label>
+                    <input type="number" id="ep-precio-unisex" placeholder="0.00" step="0.01">
+                </div>
+                <div id="ep-precio-dif-wrap" style="display:none;">
+                    <div style="display:flex;gap:8px;">
+                        <div style="flex:1;"><label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">💃 Precio Dama $</label><input type="number" id="ep-precio-dama" placeholder="0.00" step="0.01"></div>
+                        <div style="flex:1;"><label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">🕺 Precio Caballero $</label><input type="number" id="ep-precio-caballero" placeholder="0.00" step="0.01"></div>
+                    </div>
+                </div>
             </div>
             <input type="text" id="ep-caract" placeholder="Características especiales (ej: hipoalergénico, ajustable…)">
             <label style="font-size:11px;color:var(--plateado);display:block;margin:8px 0 4px;font-weight:600;">Material</label>
@@ -7644,9 +7700,19 @@ function enviarWAEstadoCuenta(ventaId) {
         <div id="sn-precio-wrap" style="margin-top:8px;">
             <input type="number" id="sn-precio" placeholder="Precio $" step="0.01" style="width:100%;box-sizing:border-box;" onkeydown="if(event.key==='Enter')event.preventDefault()">
             <div id="sn-precio-set" style="display:none;flex-direction:column;gap:8px;">
-                <div style="display:flex;gap:8px;">
-                    <div style="flex:1;"><label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">💃 Precio Dama $</label><input type="number" id="sn-precio-dama" placeholder="0.00" step="0.01" onkeydown="if(event.key==='Enter')event.preventDefault()"></div>
-                    <div style="flex:1;"><label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">🕺 Precio Caballero $</label><input type="number" id="sn-precio-caballero" placeholder="0.00" step="0.01" onkeydown="if(event.key==='Enter')event.preventDefault()"></div>
+                <div style="display:flex;gap:6px;margin-bottom:2px;">
+                    <button type="button" id="sn-precio-unisex-btn" onclick="selPrecioTipoSN('unisex')" style="flex:1;padding:5px 0;border:1px solid var(--dorado);border-radius:8px;background:var(--dorado);color:#111;font-size:11px;font-weight:700;cursor:pointer;">⚪ Unisex</button>
+                    <button type="button" id="sn-precio-dif-btn" onclick="selPrecioTipoSN('dif')" style="flex:1;padding:5px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:700;cursor:pointer;">♀♂ Diferenciado</button>
+                </div>
+                <div id="sn-precio-unisex-wrap">
+                    <label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">⚪ Precio por pieza $</label>
+                    <input type="number" id="sn-precio-unisex" placeholder="0.00" step="0.01" style="width:100%;box-sizing:border-box;" onkeydown="if(event.key==='Enter')event.preventDefault()">
+                </div>
+                <div id="sn-precio-dif-wrap" style="display:none;gap:8px;">
+                    <div style="display:flex;gap:8px;">
+                        <div style="flex:1;"><label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">💃 Precio Dama $</label><input type="number" id="sn-precio-dama" placeholder="0.00" step="0.01" onkeydown="if(event.key==='Enter')event.preventDefault()"></div>
+                        <div style="flex:1;"><label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">🕺 Precio Caballero $</label><input type="number" id="sn-precio-caballero" placeholder="0.00" step="0.01" onkeydown="if(event.key==='Enter')event.preventDefault()"></div>
+                    </div>
                 </div>
             </div>
         </div>
