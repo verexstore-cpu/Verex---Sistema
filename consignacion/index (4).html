@@ -4120,6 +4120,16 @@ function selSetSN(btn) {
         if (snTallaSetCont) snTallaSetCont.style.display = esSet ? "block" : "none";
         if (snTallaSetResumen) snTallaSetResumen.style.display = esSet ? "block" : "none";
     }
+    // Al cambiar modo, limpiar tallas del modo anterior
+    const snResumenInd = document.getElementById("sn-tallas-resumen");
+    if (esSet) {
+        _snTallasQty = {};
+        if (snResumenInd) snResumenInd.innerHTML = "";
+    } else {
+        _snTallasQtyDama = {}; _snTallasQtyCaballero = {};
+        const srSet = document.getElementById("sn-tallas-set-resumen");
+        if (srSet) srSet.innerHTML = "";
+    }
 }
 function selPrecioTipoSN(tipo) {
     const esUni = tipo === 'unisex';
@@ -4594,22 +4604,41 @@ function cambiarQtySN(talla, delta) {
 function agregarTallaEspecialSN(val) {
     const t = String(val || "").trim();
     if (!t || isNaN(parseFloat(t))) return;
-    // Quitar tallas especiales previas y el entero base (ej: quita "8" al escribir "8.5")
     const base = String(Math.floor(parseFloat(t)));
-    Object.keys(_snTallasQty).forEach(k => { if (k.includes(".") || k === base) delete _snTallasQty[k]; });
-    _snTallasQty[t] = 1;
-    const chip = document.getElementById("sn-talla-especial-chip");
-    if (chip) { chip.style.display = "inline-block"; chip.textContent = `T${t} ✕`; }
-    renderResumenTallasSN();
+    const esSetActivo = (document.querySelector(".sn-set-btn.selected")?.dataset.set || "") !== "";
+    if (esSetActivo) {
+        // En modo set: quitar decimales y base previos de ambos mapas, agregar a D y C
+        [_snTallasQtyDama, _snTallasQtyCaballero].forEach(map => {
+            Object.keys(map).forEach(k => { if (k.includes(".") || k === base) delete map[k]; });
+            map[t] = 1;
+        });
+        const chip = document.getElementById("sn-talla-especial-chip");
+        if (chip) { chip.style.display = "inline-block"; chip.textContent = `T${t} ✕`; }
+        renderResumenTallasSetSN();
+    } else {
+        Object.keys(_snTallasQty).forEach(k => { if (k.includes(".") || k === base) delete _snTallasQty[k]; });
+        _snTallasQty[t] = 1;
+        const chip = document.getElementById("sn-talla-especial-chip");
+        if (chip) { chip.style.display = "inline-block"; chip.textContent = `T${t} ✕`; }
+        renderResumenTallasSN();
+    }
 }
 
 function quitarTallaEspecialSN() {
-    Object.keys(_snTallasQty).forEach(k => { if (k.includes(".")) delete _snTallasQty[k]; });
+    const esSetActivo = (document.querySelector(".sn-set-btn.selected")?.dataset.set || "") !== "";
+    if (esSetActivo) {
+        [_snTallasQtyDama, _snTallasQtyCaballero].forEach(map => {
+            Object.keys(map).forEach(k => { if (k.includes(".")) delete map[k]; });
+        });
+        renderResumenTallasSetSN();
+    } else {
+        Object.keys(_snTallasQty).forEach(k => { if (k.includes(".")) delete _snTallasQty[k]; });
+        renderResumenTallasSN();
+    }
     const inp = document.getElementById("sn-talla-especial");
     if (inp) inp.value = "";
     const chip = document.getElementById("sn-talla-especial-chip");
     if (chip) chip.style.display = "none";
-    renderResumenTallasSN();
 }
 
 function renderResumenTallasSN() {
