@@ -2062,7 +2062,7 @@ let mapaProductos = {};
 
 // "AN021T10" → "AN021"   |  "CO005" → "CO005"
 function getCodigoBase(codigo) {
-    return (codigo || "").replace(/T\d+$/i, "").trim();
+    return (codigo || "").replace(/[DC]?T\d+(\.\d+)?$/i, "").trim();
 }
 
 // "AN021T10" → "10"   |  "CO005" → null
@@ -4110,6 +4110,16 @@ function selSetSN(btn) {
     document.getElementById("sn-precio").style.display = esSet ? "none" : "";
     document.getElementById("sn-precio-set").style.display = esSet ? "flex" : "none";
     if (esSet) selPrecioTipoSN('unisex');
+    if (esSet) renderTallaSetSN();
+    // Show set talla container only if categoria is anillo/conjunto and visible
+    const snTallaCont = document.getElementById("sn-talla-container");
+    const snTallaSetCont = document.getElementById("sn-talla-set-container");
+    const snTallaSetResumen = document.getElementById("sn-tallas-set-resumen");
+    if (snTallaCont && snTallaCont.style.display !== "none") {
+        snTallaCont.style.display = esSet ? "none" : "block";
+        if (snTallaSetCont) snTallaSetCont.style.display = esSet ? "block" : "none";
+        if (snTallaSetResumen) snTallaSetResumen.style.display = esSet ? "block" : "none";
+    }
 }
 function selPrecioTipoSN(tipo) {
     const esUni = tipo === 'unisex';
@@ -4474,6 +4484,9 @@ function abrirStockNuevoProd() {
     document.getElementById("sn-btn-ia").style.display = "none";
     document.getElementById("sn-ia-estado").style.display = "none";
     document.getElementById("sn-talla-container").style.display = "none";
+    document.getElementById("sn-talla-set-container").style.display = "none";
+    document.getElementById("sn-tallas-set-resumen").style.display = "none";
+    _snTallasQtyDama = {}; _snTallasQtyCaballero = {};
     document.getElementById("sn-multicod-container").style.display = "none";
     document.getElementById("sn-multicod-chips").innerHTML = "";
     document.querySelectorAll(".sn-mat-btn").forEach(b => { b.style.background="var(--gris2)"; b.style.color="var(--blanco)"; });
@@ -4492,6 +4505,8 @@ function seleccionarMatSN(btn) {
 }
 
 let _snTallasQty = {}; // { "8": 2, "9": 1, "10": 3 }
+let _snTallasQtyDama = {};
+let _snTallasQtyCaballero = {};
 
 function seleccionarTallaSN(talla) {
     const t = String(talla);
@@ -4511,6 +4526,62 @@ function seleccionarTallaSN(talla) {
         b.style.borderColor = sel ? "var(--dorado)" : "var(--borde)";
     });
     renderResumenTallasSN();
+}
+
+function renderTallaSetSN() {
+    const cont = document.getElementById("sn-talla-set-container");
+    if (!cont) return;
+    const tallasStd = [5,6,7,8,9,10,11,12,13,14];
+    function btnSet(t, tipo, map) {
+        const sel = map[String(t)] !== undefined;
+        return `<button type="button" onclick="seleccionarTallaSNSet(${t},'${tipo}')"
+            style="padding:5px 9px;border:1px solid ${sel?'var(--dorado)':'var(--borde)'};border-radius:6px;
+            background:${sel?'var(--dorado)':'var(--gris2)'};color:${sel?'var(--negro)':'var(--blanco)'};
+            font-size:11px;font-weight:600;cursor:pointer;">T${t}</button>`;
+    }
+    cont.innerHTML = `
+        <div style="margin-bottom:8px;">
+            <label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:5px;">💃 Tallas Dama:</label>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;">${tallasStd.map(t=>btnSet(t,'D',_snTallasQtyDama)).join('')}</div>
+        </div>
+        <div>
+            <label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:5px;">🕺 Tallas Caballero:</label>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;">${tallasStd.map(t=>btnSet(t,'C',_snTallasQtyCaballero)).join('')}</div>
+        </div>`;
+    renderResumenTallasSetSN();
+}
+
+function renderResumenTallasSetSN() {
+    const cont = document.getElementById("sn-tallas-set-resumen");
+    if (!cont) return;
+    const entriesD = Object.entries(_snTallasQtyDama);
+    const entriesC = Object.entries(_snTallasQtyCaballero);
+    if (!entriesD.length && !entriesC.length) { cont.innerHTML = ""; return; }
+    const filaD = entriesD.map(([t, q]) => `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(201,168,76,0.15);border:1px solid var(--dorado);border-radius:6px;padding:3px 8px;font-size:11px;">
+        💃T${t} <button type="button" onclick="cambiarQtySetSN('${t}','D',-1)" style="background:none;border:none;color:var(--plateado);cursor:pointer;padding:0 2px;font-size:13px;line-height:1;">−</button>
+        <span style="font-weight:700;color:var(--dorado);">${q}</span>
+        <button type="button" onclick="cambiarQtySetSN('${t}','D',1)" style="background:none;border:none;color:var(--plateado);cursor:pointer;padding:0 2px;font-size:13px;line-height:1;">+</button></span>`).join('');
+    const filaC = entriesC.map(([t, q]) => `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(201,168,76,0.15);border:1px solid var(--dorado);border-radius:6px;padding:3px 8px;font-size:11px;">
+        🕺T${t} <button type="button" onclick="cambiarQtySetSN('${t}','C',-1)" style="background:none;border:none;color:var(--plateado);cursor:pointer;padding:0 2px;font-size:13px;line-height:1;">−</button>
+        <span style="font-weight:700;color:var(--dorado);">${q}</span>
+        <button type="button" onclick="cambiarQtySetSN('${t}','C',1)" style="background:none;border:none;color:var(--plateado);cursor:pointer;padding:0 2px;font-size:13px;line-height:1;">+</button></span>`).join('');
+    cont.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;">${filaD}${filaC}</div>`;
+}
+
+function seleccionarTallaSNSet(talla, tipo) {
+    const map = tipo === 'D' ? _snTallasQtyDama : _snTallasQtyCaballero;
+    const t = String(talla);
+    if (map[t] !== undefined) delete map[t];
+    else map[t] = 1;
+    renderTallaSetSN();
+}
+
+function cambiarQtySetSN(talla, tipo, delta) {
+    const map = tipo === 'D' ? _snTallasQtyDama : _snTallasQtyCaballero;
+    const t = String(talla);
+    if (map[t] === undefined) return;
+    map[t] = Math.max(1, (map[t] || 1) + delta);
+    renderResumenTallasSetSN();
 }
 
 function cambiarQtySN(talla, delta) {
@@ -4563,8 +4634,17 @@ function mostrarTallaSN(cat) {
     const hayMultiCodigos = _snMultiCodigos.length > 0;
 
     // Talla selector: solo si es anillo SIN código físico impreso y sin multi-códigos
-    document.getElementById("sn-talla-container").style.display =
-        (esAnillo && !codigoYaTieneTalla && !hayMultiCodigos) ? "block" : "none";
+    const esSetActivo = document.querySelector(".sn-set-btn.selected")?.dataset.set !== "";
+    if (esAnillo && !codigoYaTieneTalla && !hayMultiCodigos) {
+        document.getElementById("sn-talla-container").style.display = esSetActivo ? "none" : "block";
+        document.getElementById("sn-talla-set-container").style.display = esSetActivo ? "block" : "none";
+        document.getElementById("sn-tallas-set-resumen").style.display = esSetActivo ? "block" : "none";
+        if (esSetActivo) renderTallaSetSN();
+    } else {
+        document.getElementById("sn-talla-container").style.display = "none";
+        document.getElementById("sn-talla-set-container").style.display = "none";
+        document.getElementById("sn-tallas-set-resumen").style.display = "none";
+    }
 
     // Multi-código panel: si el código ya tiene talla O ya hay chips
     document.getElementById("sn-multicod-container").style.display =
@@ -4794,7 +4874,7 @@ async function guardarStockNuevo() {
     const codigoYaTieneTallaTemp = /T\d+(\.\d+)?$/.test(codigoManualTemp);
     if (!nombreVal || !categoria || !precio) { toast("⚠️ Completa nombre, categoría y precio"); return; }
     if (esSetSN && !esUnisexSN && !precioCaballeroSN) { toast("⚠️ Completa el precio de caballero"); return; }
-    if (esAnillo && !modoMultiCod && !codigoYaTieneTallaTemp && Object.keys(_snTallasQty).length === 0) { toast("⚠️ Selecciona al menos una talla o escanea los códigos físicos"); return; }
+    if (esAnillo && !modoMultiCod && !codigoYaTieneTallaTemp && Object.keys(_snTallasQty).length === 0 && Object.keys(_snTallasQtyDama).length === 0 && Object.keys(_snTallasQtyCaballero).length === 0) { toast("⚠️ Selecciona al menos una talla o escanea los códigos físicos"); return; }
     if (modoMultiCod && _snMultiCodigos.length === 0) { toast("⚠️ Escanea al menos un código"); return; }
 
     const btn = document.querySelector("#modal-stock-nuevo .btn-dorado");
@@ -4913,7 +4993,51 @@ async function guardarStockNuevo() {
         // Si el código manual ya trae talla (SA18509JT7), guardarlo como pieza única
         const codigoYaTieneTalla = /T\d+(\.\d+)?$/.test(codigoBase);
 
-        if (esAnillo && !codigoYaTieneTalla && Object.keys(_snTallasQty).length > 0) {
+        const tieneSetTallas = esSetSN && (Object.keys(_snTallasQtyDama).length > 0 || Object.keys(_snTallasQtyCaballero).length > 0);
+        if (esAnillo && !codigoYaTieneTalla && tieneSetTallas) {
+            // Set de anillos con selector dual Dama/Caballero
+            let guardados = 0;
+            const codigosEtiq = [];
+            const precioDama = precioNum;
+            const precioCab  = precioCaballeroSN || precioNum;
+            for (const [talla, qty] of Object.entries(_snTallasQtyDama)) {
+                const codigo = codigoBase + "DT" + talla;
+                const res = await apiPost({
+                    accion: "STOCK_REGISTRAR",
+                    codigo, codigoBase, talla,
+                    nombre: `${nombreVal} Dama T${talla}`,
+                    nombre_base: nombreVal,
+                    categoria, precio: precioDama,
+                    foto: fotoUrl, cantidad: qty,
+                    material: _snMaterial || "",
+                    descripcion: desc, descripcionTienda: descTienda,
+                    caracterEspecial: caractEspecial,
+                    set_config: setConfig || undefined
+                });
+                if (res.ok) { guardados++; codigosEtiq.push({ codigo, qty }); }
+            }
+            for (const [talla, qty] of Object.entries(_snTallasQtyCaballero)) {
+                const codigo = codigoBase + "CT" + talla;
+                const res = await apiPost({
+                    accion: "STOCK_REGISTRAR",
+                    codigo, codigoBase, talla,
+                    nombre: `${nombreVal} Caballero T${talla}`,
+                    nombre_base: nombreVal,
+                    categoria, precio: precioCab,
+                    foto: fotoUrl, cantidad: qty,
+                    material: _snMaterial || "",
+                    descripcion: desc, descripcionTienda: descTienda,
+                    caracterEspecial: caractEspecial,
+                    set_config: setConfig || undefined
+                });
+                if (res.ok) { guardados++; codigosEtiq.push({ codigo, qty }); }
+            }
+            toast(`✅ ${guardados} variante${guardados > 1 ? 's' : ''} de set guardada${guardados > 1 ? 's' : ''} en stock`);
+            cerrarModal("modal-stock-nuevo");
+            btn.textContent = "✅ Guardar en Stock"; btn.disabled = false;
+            await cargarStock();
+            ofrecerEtiquetaRapida(codigosEtiq);
+        } else if (esAnillo && !codigoYaTieneTalla && Object.keys(_snTallasQty).length > 0) {
             // Anillo con selector de tallas — crear una entrada por talla
             const tallas = Object.entries(_snTallasQty);
             let guardados = 0;
@@ -7684,6 +7808,9 @@ function enviarWAEstadoCuenta(ventaId) {
             </div>
         </div>
         <!-- Resumen de tallas seleccionadas con qty -->
+        <!-- Selector de tallas para sets (secciones Dama + Caballero) -->
+        <div id="sn-talla-set-container" style="display:none;margin-top:8px;"></div>
+        <div id="sn-tallas-set-resumen" style="margin-top:6px;background:rgba(201,168,76,0.08);border-radius:8px;padding:0;"></div>
         <div id="sn-tallas-resumen" style="margin-top:10px;background:rgba(201,168,76,0.08);border-radius:8px;padding:0;"></div>
 
         <!-- Talla especial (decimales como 7.5) — visible siempre que sea anillo -->
