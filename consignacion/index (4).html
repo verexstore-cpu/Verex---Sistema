@@ -5051,6 +5051,7 @@ async function guardarStockNuevo() {
         // Si el código manual ya trae talla (SA18509JT7), guardarlo como pieza única
         const codigoYaTieneTalla = /T\d+(\.\d+)?$/.test(codigoBase);
 
+        const esUnisexSN = esSetSN && document.getElementById("sn-precio-unisex-wrap")?.style.display !== "none";
         const tieneSetTallas = esSetSN && (Object.keys(_snTallasQtyDama).length > 0 || Object.keys(_snTallasQtyCaballero).length > 0);
         if (esAnillo && !codigoYaTieneTalla && tieneSetTallas) {
             // Set de anillos con selector dual Dama/Caballero
@@ -5072,6 +5073,7 @@ async function guardarStockNuevo() {
                     caracterEspecial: caractEspecial,
                     set_config: setConfig || undefined
                 });
+                // Unisex: 1 etiqueta por par (solo Dama); Diferenciado: etiqueta por cada tipo
                 if (res.ok) { guardados++; codigosEtiq.push({ codigo, qty }); }
             }
             for (const [talla, qty] of Object.entries(_snTallasQtyCaballero)) {
@@ -5088,7 +5090,8 @@ async function guardarStockNuevo() {
                     caracterEspecial: caractEspecial,
                     set_config: setConfig || undefined
                 });
-                if (res.ok) { guardados++; codigosEtiq.push({ codigo, qty }); }
+                // En Unisex no se duplican etiquetas (ya se agregó la Dama)
+                if (res.ok) { guardados++; if (!esUnisexSN) codigosEtiq.push({ codigo, qty }); }
             }
             toast(`✅ ${guardados} variante${guardados > 1 ? 's' : ''} de set guardada${guardados > 1 ? 's' : ''} en stock`);
             cerrarModal("modal-stock-nuevo");
