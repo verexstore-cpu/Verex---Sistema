@@ -5497,7 +5497,7 @@ async function enviarImpresionServidor() {
     status.style.color = '#C9A84C';
     status.textContent = '⏳ Generando PDF…';
 
-    const codigos = [..._colaEtiquetas];
+    const codigos = _expandirCola();
     let pdfBase64 = null;
     try {
         pdfBase64 = await generarPDFParaServidor(codigos, _formatoImpresion);
