@@ -1344,7 +1344,7 @@ async function generarEtiquetas() {
         .filter(p => seleccionEtiquetas.has(p.codigo))
         .map(p => p.codigo);
     const colaAnterior = [..._colaEtiquetas];
-    codigosEtiq.forEach(c => { if (!_colaEtiquetas.includes(c)) _colaEtiquetas.push(c); });
+    codigosEtiq.forEach(c => { if (!_colaEtiquetas.find(x => x.codigo === c)) _colaEtiquetas.push({ codigo: c, qty: 1 }); });
     _formatoImpresion = localStorage.getItem('verex_formato_impresion') || 'mini';
     abrirModalImpresion();
     const modal = document.getElementById('modal-print-server');
@@ -4875,7 +4875,7 @@ async function guardarStockNuevo() {
                     }
                 }
             }
-            const codigosGuardados = _snMultiCodigos.filter((_, i) => i < guardados).map(x => x.codigo);
+            const codigosGuardados = _snMultiCodigos.filter((_, i) => i < guardados).map(x => ({ codigo: x.codigo, qty: x.qty || 1 }));
             const msgNuevos  = nuevos.length  ? `${nuevos.length} nueva${nuevos.length>1?"s":""}` : "";
             const msgRestock = restock.length ? `${restock.length} reabastecida${restock.length>1?"s":""}` : "";
             toast(`✅ ${[msgNuevos, msgRestock].filter(Boolean).join(" + ")} en bodega`);
@@ -4935,7 +4935,7 @@ async function guardarStockNuevo() {
                 });
                 if (res.ok) guardados++;
             }
-            const codigosTallas = Object.keys(_snTallasQty).map(t => aplicarTalla(codigoBase, t));
+            const codigosTallas = Object.entries(_snTallasQty).map(([t, qty]) => ({ codigo: aplicarTalla(codigoBase, t), qty }));
             toast(`✅ ${guardados} talla${guardados > 1 ? 's' : ''} guardada${guardados > 1 ? 's' : ''} en stock`);
             cerrarModal("modal-stock-nuevo");
             btn.textContent = "✅ Guardar en Stock"; btn.disabled = false;
@@ -4965,7 +4965,7 @@ async function guardarStockNuevo() {
             cerrarModal("modal-stock-nuevo");
             btn.textContent = "✅ Guardar en Stock"; btn.disabled = false;
             await cargarStock();
-            ofrecerEtiquetaRapida([codigoBase]);
+            ofrecerEtiquetaRapida([{ codigo: codigoBase, qty: cantidad }]);
         }
         return;
     } catch(e) { toast("⚠️ Error de conexión"); }
@@ -4974,20 +4974,30 @@ async function guardarStockNuevo() {
 }
 
 // ── COLA DE ETIQUETAS (sesión) ────────────────────────────────────────
-let _colaEtiquetas = []; // codigos acumulados durante la sesión
+let _colaEtiquetas = []; // [{codigo, qty}] acumulados durante la sesión
 
-function ofrecerEtiquetaRapida(codigos) {
-    if (!codigos || !codigos.length) return;
-    // Agregar a la cola (sin duplicados)
-    codigos.forEach(c => { if (!_colaEtiquetas.includes(c)) _colaEtiquetas.push(c); });
+function ofrecerEtiquetaRapida(items) {
+    // items puede ser string[] (legacy) o {codigo,qty}[]
+    if (!items || !items.length) return;
+    items.forEach(item => {
+        const cod = typeof item === 'string' ? item : item.codigo;
+        const qty = typeof item === 'string' ? 1 : (item.qty || 1);
+        const existing = _colaEtiquetas.find(x => x.codigo === cod);
+        if (existing) existing.qty += qty;
+        else _colaEtiquetas.push({ codigo: cod, qty });
+    });
     renderBotonCola();
+}
+
+function _expandirCola() {
+    return _colaEtiquetas.flatMap(x => Array(x.qty).fill(x.codigo));
 }
 
 function renderBotonCola() {
     let btn = document.getElementById("btn-cola-etiquetas");
     if (!_colaEtiquetas.length) { if (btn) btn.remove(); return; }
 
-    const n = _colaEtiquetas.length;
+    const n = _colaEtiquetas.reduce((s, x) => s + x.qty, 0);
     const multiplo6 = Math.floor(n / 6) * 6;
     const resto = n % 6;
     let subtexto = "";
@@ -5043,7 +5053,7 @@ async function imprimirCola() {
         abrirModalImpresion();
     } else {
         // Fallback: descargar PDF como antes
-        await generarEtiquetaRapida([..._colaEtiquetas]);
+        await generarEtiquetaRapida(_expandirCola());
         limpiarCola();
     }
 }
@@ -5451,7 +5461,7 @@ async function actualizarPreviewImpresion() {
     if (!area) return;
     area.innerHTML = '<p style="color:#555;font-size:11px;text-align:center;padding:8px;">Generando vista previa…</p>';
     try {
-        const codigos = [..._colaEtiquetas];
+        const codigos = _expandirCola();
         if (!codigos.length) { area.innerHTML = ''; return; }
         const pdfBase64 = await generarPDFParaServidor(codigos, _formatoImpresion);
         if (!pdfBase64) { area.innerHTML = ''; return; }
