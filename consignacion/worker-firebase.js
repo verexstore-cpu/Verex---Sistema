@@ -422,6 +422,7 @@ export default {
             items: JSON.stringify(d.items || []),
             subtotal: d.subtotal || d.total || 0,
             descuento: d.descuento || 0,
+            costoEnvio: d.costoEnvio || 0,
             total: d.total || 0,
             tipo: d.tipo || "contado",
             enganche: d.enganche || 0,

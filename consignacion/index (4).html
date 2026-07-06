@@ -625,6 +625,14 @@
                     <div id="vd-desc-info" style="font-size:11px;color:#4caf82;margin-top:6px;display:none;"></div>
                 </div>
 
+                <!-- Costo de envío -->
+                <div style="background:#111;border:1px solid #333;border-radius:10px;padding:12px;margin-top:12px;">
+                    <div style="font-size:12px;color:var(--plateado);margin-bottom:8px;font-weight:600;">🚚 Costo de envío</div>
+                    <input type="number" id="vd-envio-val" placeholder="0.00" min="0" step="0.01"
+                        oninput="renderCarritoVD()"
+                        style="width:100%;padding:8px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:14px;box-sizing:border-box;">
+                </div>
+
                 <div style="margin-top:12px;padding-top:10px;border-top:1px solid #333;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                         <span style="font-size:13px;color:var(--plateado);">Subtotal:</span>
@@ -633,6 +641,10 @@
                     <div id="fila-descuento-vd" style="display:none;justify-content:space-between;align-items:center;margin-bottom:4px;">
                         <span style="font-size:13px;color:#e74c3c;">Descuento:</span>
                         <span id="monto-desc-vd" style="font-size:13px;color:#e74c3c;">-$0.00</span>
+                    </div>
+                    <div id="fila-envio-vd" style="display:none;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                        <span style="font-size:13px;color:#0ea5e9;">Envío:</span>
+                        <span id="monto-envio-vd" style="font-size:13px;color:#0ea5e9;">+$0.00</span>
                     </div>
                     <div style="display:flex;justify-content:space-between;align-items:center;">
                         <span style="font-size:13px;color:var(--plateado);">Total:</span>
@@ -7110,7 +7122,8 @@ function renderCarritoVD() {
         </div>`;
     }).join('');
     const descuento   = _calcularDescuento(total);
-    const totalFinal  = Math.max(0, total - descuento);
+    const envio       = parseFloat(document.getElementById("vd-envio-val")?.value || 0) || 0;
+    const totalFinal  = Math.max(0, total - descuento + envio);
     const val         = parseFloat(document.getElementById("vd-descuento-val")?.value || 0) || 0;
 
     document.getElementById("subtotal-vd").textContent = "$" + total.toFixed(2);
@@ -7128,6 +7141,14 @@ function renderCarritoVD() {
     } else {
         filaDesc.style.display = "none";
         infoDesc.style.display = "none";
+    }
+
+    const filaEnvio = document.getElementById("fila-envio-vd");
+    if (envio > 0) {
+        filaEnvio.style.display = "flex";
+        document.getElementById("monto-envio-vd").textContent = "+$" + envio.toFixed(2);
+    } else {
+        filaEnvio.style.display = "none";
     }
     calcularSaldoVD();
 }
@@ -7148,7 +7169,8 @@ function seleccionarTipoVD(tipo) {
 function calcularSaldoVD() {
     const subtotal    = Object.values(_vdCarrito).reduce((s, { prod, qty }) => s + parseFloat(prod.precio||0)*qty, 0);
     const descuento   = _calcularDescuento(subtotal);
-    const total       = Math.max(0, subtotal - descuento);
+    const envio       = parseFloat(document.getElementById("vd-envio-val")?.value || 0) || 0;
+    const total       = Math.max(0, subtotal - descuento + envio);
     const enganche    = parseFloat(document.getElementById("vd-enganche")?.value || 0) || 0;
     const saldo       = Math.max(0, total - enganche);
     const el          = document.getElementById("vd-saldo-display");
@@ -7163,7 +7185,8 @@ async function confirmarVentaDirecta() {
     const tel    = document.getElementById("vd-cliente-tel").value.trim();
     const subtotal   = items.reduce((s, { prod, qty }) => s + parseFloat(prod.precio||0)*qty, 0);
     const descuento  = _calcularDescuento(subtotal);
-    const total      = Math.max(0, subtotal - descuento);
+    const costoEnvio = parseFloat(document.getElementById("vd-envio-val")?.value || 0) || 0;
+    const total      = Math.max(0, subtotal - descuento + costoEnvio);
     const enganche   = _vdTipo === 'credito' ? (parseFloat(document.getElementById("vd-enganche").value)||0) : total;
     const saldo      = _vdTipo === 'credito' ? Math.max(0, total - enganche) : 0;
     const nota     = _vdTipo === 'credito' ? (document.getElementById("vd-nota-credito").value.trim()) : "";
@@ -7178,6 +7201,7 @@ async function confirmarVentaDirecta() {
         subtotal,
         descuento,
         descuentoTipo: _vdModoDescuento,
+        costoEnvio,
         total,
         tipo: _vdTipo,
         enganche,
@@ -7202,8 +7226,10 @@ async function confirmarVentaDirecta() {
             document.getElementById("vd-cliente-tel").value = "";
             const elEng = document.getElementById("vd-enganche");
             const elNot = document.getElementById("vd-nota-credito");
+            const elEnvio = document.getElementById("vd-envio-val");
             if (elEng) elEng.value = "";
             if (elNot) elNot.value = "";
+            if (elEnvio) elEnvio.value = "";
             seleccionarTipoVD('contado');
             filtrarVD();
             renderCarritoVD();
@@ -7461,6 +7487,8 @@ async function generarPDFVentaDirecta(venta, abonos) {
         doc.text('$' + parseFloat(valor).toFixed(2), W - pad, y, { align: 'right' });
         y += 6;
     };
+    const costoEnvio = parseFloat(venta.costoEnvio || 0);
+    if (costoEnvio > 0) filaTotal('Envío:', costoEnvio, false, [14,165,233]);
     filaTotal('Total de compra:', total, true, [30,30,30]);
     if (venta.tipo === 'credito') {
         filaTotal('Enganche pagado:', enganche, false, [39,174,96]);
