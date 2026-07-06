@@ -208,6 +208,16 @@ class Handler(BaseHTTPRequestHandler):
                 printer_ip = auto_discover_printer()
                 if printer_ip:
                     save_cfg({'printerIp': printer_ip})
+
+            # La IP guardada puede quedar obsoleta si el router reasigna DHCP
+            # (típico con impresoras WiFi). Antes de imprimir, confirmar que
+            # sigue viva; si no, re-descubrir automáticamente.
+            elif not _tcp_reachable(printer_ip, 9100):
+                nueva_ip = auto_discover_printer()
+                if nueva_ip:
+                    printer_ip = nueva_ip
+                    save_cfg({'printerIp': nueva_ip})
+
             if not printer_ip:
                 self._json(200, {'ok': False, 'error': 'Impresora no encontrada. Verifica WiFi.'}); return
 
