@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VEREX — Consignación</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -3061,6 +3062,168 @@ async function agregarProductoNuevo() {
 // ── FOTOS DESDE CELULAR ──────────────────────────────────────────────
 const UPLOAD_URL = "https://verex-consignacion.pages.dev/upload";
 
+// ── FOTO CELULAR SYNC — sesión persistente ───────────────────────────
+// La sesión vive mientras la página esté abierta.
+// Si llega una foto con el modal cerrado, se guarda en _fotoCelPendiente
+// y se carga automáticamente al abrir el siguiente producto.
+let _fotoCelSession   = null;
+let _fotoCelInterval  = null;
+let _fotoCelPendiente = null;
+let _fotoCelLastTs    = Date.now();
+let _fotoCelLastUrl   = null; // evita procesar la misma foto dos veces
+
+const _sbRealtime = window.supabase.createClient(
+    'https://jimliwzodtglocdcwgil.supabase.co',
+    'sb_publishable_PGoQtcuRuXt24bVVgG4m6w_4heJYulo'
+);
+
+function iniciarSesionFotoCel() {
+    if (_fotoCelSession) return;
+    _fotoCelSession = "VEREX-STORE";
+
+    // Realtime WebSocket — recibe al instante cuando el worker guarda la URL
+    _sbRealtime.channel('foto-cel')
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'config',
+            filter: 'id=eq.foto_temp_VEREX-STORE'
+        }, (payload) => {
+            const rec = payload.new;
+            if (!rec || !rec.data) return;
+            const url = rec.data?.url;
+            if (!url) return;
+            // Borrar la entrada para que el polling no la procese de nuevo
+            fetch(`https://verex-api.verexstore.workers.dev/foto-check?s=${_fotoCelSession}`).catch(()=>{});
+            _aplicarFotoCelular(url);
+        })
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') console.log('[fotoCel] Realtime conectado ✅');
+        });
+
+    // Polling de respaldo cada 5s por si el Realtime falla
+    _fotoCelInterval = setInterval(_pollFotoCel, 5000);
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") _pollFotoCel();
+    });
+}
+
+function abrirFotoCelularSN() {
+    iniciarSesionFotoCel();
+    const url = `https://verex-api.verexstore.workers.dev/foto-upload?s=${_fotoCelSession}`;
+    document.getElementById("sn-qr-img").src =
+        `https://api.qrserver.com/v1/create-qr-code/?size=180x180&color=111111&bgcolor=ffffff&data=${encodeURIComponent(url)}`;
+    document.getElementById("sn-foto-celular-panel").style.display = "block";
+    document.getElementById("sn-foto-cel-status").textContent = "⏳ Esperando foto desde el celular...";
+}
+
+function cerrarFotoCelularSN() {
+    // Solo oculta el panel — la sesión y el polling SIGUEN activos
+    document.getElementById("sn-foto-celular-panel").style.display = "none";
+}
+
+async function _pollFotoCel() {
+    if (!_fotoCelSession) return;
+    try {
+        const res  = await fetch(`https://verex-api.verexstore.workers.dev/foto-check?s=${_fotoCelSession}`);
+        const data = await res.json();
+        if (!data.pending || !data.url) return;
+        _aplicarFotoCelular(data.url);
+    } catch(e) {
+        console.error("[fotoCel]", e);
+    }
+}
+
+// Recibe foto del celular y la aplica en el modal
+function _aplicarFotoCelular(url) {
+    if (!url || url === _fotoCelLastUrl) return; // ignorar duplicados
+    _fotoCelLastUrl = url;
+    const modalAbierto = document.getElementById("modal-stock-nuevo")?.classList.contains("active");
+    if (modalAbierto) {
+        _cargarUrlFotoEnModal(url);
+    } else {
+        _fotoCelPendiente = { url };
+        toast("📱 Foto lista — se carga al abrir el siguiente producto");
+    }
+}
+
+async function _cargarUrlFotoEnModal(url) {
+    const urlActiva = url; // capturar para detectar si cambió mientras procesamos
+    const prev = document.getElementById("sn-foto-preview");
+    if (prev) prev.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:contain;">`;
+    const panel = document.getElementById("sn-foto-celular-panel");
+    if (panel) panel.style.display = "none";
+    window._snFotoUrl = url;
+    toast("📱 Foto cargada desde celular ✅");
+
+    try {
+        let blob;
+        if (url.startsWith("data:")) {
+            const res = await fetch(url); blob = await res.blob();
+        } else {
+            blob = await (await fetch(url)).blob();
+        }
+        const file = new File([blob], "foto_celular.jpg", { type: "image/jpeg" });
+        const r = await procesarFotoJoya(file);
+        // Si la foto activa cambió mientras procesábamos, descartar resultado
+        if (_fotoCelLastUrl !== urlActiva) return;
+        _snFotoOriginalFile   = file;
+        _snFotoBase64         = r.preview;
+        _snFotoOriginalBase64 = r.original;
+        _snFotoCropCoords     = r.crop;
+        window._snFotoUrl     = null;
+        if (prev) prev.innerHTML = `<img src="${r.preview}" style="width:100%;height:100%;object-fit:contain;">`;
+        const btnIA = document.getElementById("sn-btn-ia");
+        if (btnIA) btnIA.style.display = "flex";
+    } catch(e) {
+        console.error("[fotoCel procesarJoya]", e);
+    }
+}
+
+function _aplicarFotoEnModal(payload) {
+    _snFotoOriginalFile   = payload.file;
+    _snFotoBase64         = payload.preview;
+    _snFotoOriginalBase64 = payload.original;
+    _snFotoCropCoords     = payload.crop;
+    window._snFotoUrl     = null;
+    const prev = document.getElementById("sn-foto-preview");
+    if (prev) prev.innerHTML = `<img src="${payload.preview}" style="width:100%;height:100%;object-fit:contain;">`;
+    const btnIA = document.getElementById("sn-btn-ia");
+    if (btnIA) btnIA.style.display = "flex";
+    const panel = document.getElementById("sn-foto-celular-panel");
+    if (panel) panel.style.display = "none";
+    toast("📱 Foto cargada desde celular ✅");
+}
+
+// Botón manual: verificar si hay foto esperando en el servidor
+async function verificarFotoCelularManual() {
+    if (!_fotoCelSession) { toast("⚠️ Aún no hay sesión activa — toca 'Desde celular' primero"); return; }
+    const btn = document.getElementById("sn-btn-verificar-foto");
+    if (btn) { btn.textContent = "⏳ Buscando..."; btn.disabled = true; }
+    try {
+        const res  = await fetch(`https://verex-api.verexstore.workers.dev/foto-check?s=${_fotoCelSession}`);
+        const data = await res.json();
+        if (data.pending && data.url) {
+            _aplicarFotoCelular(data.url);
+        } else {
+            toast(`📭 Sin foto nueva — sesión: ${_fotoCelSession}`);
+        }
+    } catch(e) {
+        toast("⚠️ Error de conexión al verificar foto");
+    } finally {
+        if (btn) { btn.textContent = "🔄 Verificar foto"; btn.disabled = false; }
+    }
+}
+
+// Llamar al abrir el modal de stock nuevo para cargar foto pendiente
+function cargarFotoCelPendienteSN() {
+    if (!_fotoCelPendiente) return;
+    const { url } = _fotoCelPendiente;
+    _fotoCelPendiente = null;
+    setTimeout(() => { _cargarUrlFotoEnModal(url); }, 200);
+}
+
 function abrirModalFotosCelular() {
     // Generar QR con la URL de la página de carga
     const qrImg = document.getElementById("qr-celular");
@@ -4486,6 +4649,7 @@ function escanearCodigoSN() {
 }
 
 function abrirStockNuevoProd() {
+    iniciarSesionFotoCel();
     _snFotoBase64 = null; _snMaterial = null; _snTalla = null; _snTallasQty = {};
     _snMultiCodigos = [];
     window._snFotoUrl = null;
@@ -4495,6 +4659,7 @@ function abrirStockNuevoProd() {
     const chipTE = document.getElementById("sn-talla-especial-chip"); if (chipTE) chipTE.style.display = "none";
     const wrapTE = document.getElementById("sn-talla-especial-wrap"); if (wrapTE) wrapTE.style.display = "none";
     document.getElementById("sn-foto-preview").innerHTML = "📷";
+    _fotoCelLastUrl = null;
     document.getElementById("sn-foto-input").value = "";
     document.getElementById("sn-codigo-manual").value = "";
     document.getElementById("sn-nombre").value = "";
@@ -4523,6 +4688,7 @@ function abrirStockNuevoProd() {
     const snSetDefault = document.querySelector('.sn-set-btn[data-set=""]');
     if (snSetDefault) { snSetDefault.style.background="var(--dorado)"; snSetDefault.style.color="#111"; snSetDefault.style.borderColor="var(--dorado)"; snSetDefault.classList.add("selected"); }
     abrirModal("modal-stock-nuevo");
+    cargarFotoCelPendienteSN(); // debe ir DESPUÉS del reset para que no se borre
 }
 
 function seleccionarMatSN(btn) {
@@ -4943,6 +5109,7 @@ async function guardarStockNuevo() {
     const codigoManualTemp = (document.getElementById("sn-codigo-manual")?.value || "").trim().toUpperCase();
     const codigoYaTieneTallaTemp = /T\d+(\.\d+)?$/.test(codigoManualTemp);
     if (!nombreVal || !categoria || !precio) { toast("⚠️ Completa nombre, categoría y precio"); return; }
+    if (!_snMaterial) { toast("⚠️ Selecciona el material del producto"); return; }
     if (esSetSN && !esUnisexSN && !precioCaballeroSN) { toast("⚠️ Completa el precio de caballero"); return; }
     if (esAnillo && !modoMultiCod && !codigoYaTieneTallaTemp && Object.keys(_snTallasQty).length === 0 && Object.keys(_snTallasQtyDama).length === 0 && Object.keys(_snTallasQtyCaballero).length === 0) { toast("⚠️ Selecciona al menos una talla o escanea los códigos físicos"); return; }
     if (modoMultiCod && _snMultiCodigos.length === 0) { toast("⚠️ Escanea al menos un código"); return; }
@@ -7389,6 +7556,10 @@ async function generarPDFVentaDirecta(venta, abonos) {
     const W = 148, pad = 14;
     let y = 14;
 
+    // Modo térmico: forzar todo texto en negro puro independientemente del color configurado
+    const _origSetTextColor = doc.setTextColor.bind(doc);
+    doc.setTextColor = (...args) => _origSetTextColor(0, 0, 0);
+
     // Encabezado — sin franja negra
     doc.setFont('courier', 'bold');
     doc.setFontSize(23);
@@ -7531,10 +7702,9 @@ async function generarPDFVentaDirecta(venta, abonos) {
 
     // Saldo destacado si hay pendiente
     if (saldo > 0) {
-        doc.setFillColor(192, 192, 192);
-        doc.setDrawColor(150, 150, 170);
-        doc.setLineWidth(0.5);
-        doc.roundedRect(pad - 2, y - 4, W - pad*2 + 4, 12, 2, 2, 'FD');
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.8);
+        doc.roundedRect(pad - 2, y - 4, W - pad*2 + 4, 12, 2, 2, 'S');
         doc.setFont('courier', 'bold');
         doc.setFontSize(11);
         doc.setTextColor(30, 60, 140);
@@ -7838,7 +8008,7 @@ function enviarWAEstadoCuenta(ventaId) {
     <div class="modal-box" style="max-width:480px;">
         <div class="modal-header">
             <h3>➕ Agregar Pieza al Stock</h3>
-            <button class="modal-close" onclick="cerrarModal('modal-stock-nuevo')">×</button>
+            <button class="modal-close" onclick="cerrarFotoCelularSN();cerrarModal('modal-stock-nuevo')">×</button>
         </div>
         <!-- Foto -->
         <div style="text-align:center;margin-bottom:14px;">
@@ -7846,7 +8016,17 @@ function enviarWAEstadoCuenta(ventaId) {
                 <div id="sn-foto-preview" style="width:100%;height:160px;background:var(--gris2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:10px;overflow:hidden;">📷</div>
             </label>
             <input type="file" id="sn-foto-input" accept="image/*" capture="environment" style="display:none;" onchange="cargarFotoStockNuevo(this)">
-            <label for="sn-foto-input" class="btn btn-gris" style="font-size:12px;padding:6px 14px;display:inline-block;cursor:pointer;">📷 Seleccionar Foto</label>
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+                <label for="sn-foto-input" class="btn" style="font-size:14px;font-weight:700;padding:10px 20px;display:inline-block;cursor:pointer;background:#4a6fa5;color:#fff;border:none;border-radius:10px;">📷 Seleccionar Foto</label>
+                <button type="button" class="btn" style="font-size:14px;font-weight:700;padding:10px 20px;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;border:none;border-radius:10px;" onclick="abrirFotoCelularSN()">📱 Desde celular</button>
+                <button type="button" id="sn-btn-verificar-foto" class="btn" style="font-size:14px;font-weight:700;padding:10px 20px;background:#7c3aed;color:#fff;border:none;border-radius:10px;" onclick="verificarFotoCelularManual()">🔄 Verificar foto</button>
+            </div>
+            <div id="sn-foto-celular-panel" style="display:none;margin-top:10px;background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:12px;text-align:center;">
+                <div style="font-size:11px;color:var(--plateado);margin-bottom:8px;">Escanea con tu celular — la foto aparecerá sola aquí</div>
+                <img id="sn-qr-img" style="width:160px;height:160px;border-radius:8px;background:#fff;" alt="QR">
+                <div id="sn-foto-cel-status" style="font-size:11px;color:#aaa;margin-top:8px;">⏳ Esperando foto...</div>
+                <button type="button" onclick="cerrarFotoCelularSN()" style="margin-top:8px;font-size:11px;background:none;border:none;color:#888;cursor:pointer;text-decoration:underline;">Cancelar</button>
+            </div>
         </div>
         <!-- Material selector -->
         <div style="margin-bottom:10px;">
