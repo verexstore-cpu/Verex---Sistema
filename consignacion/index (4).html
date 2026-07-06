@@ -7578,7 +7578,7 @@ async function generarPDFVentaDirecta(venta, abonos) {
     y = 38;
 
     // Info venta
-    doc.setFont('courier', 'normal');
+    doc.setFont('courier', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(80, 80, 80);
     const fechaVenta = venta.fecha ? new Date(venta.fecha).toLocaleDateString('es-SV', { day:'2-digit', month:'long', year:'numeric' }) : '';
@@ -7594,7 +7594,7 @@ async function generarPDFVentaDirecta(venta, abonos) {
     doc.setFontSize(12);
     doc.setTextColor(30, 30, 30);
     doc.text('Cliente: ' + (venta.cliente || ''), pad, y + 3);
-    doc.setFont('courier', 'normal');
+    doc.setFont('courier', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(80, 80, 80);
     if (venta.telefono) doc.text('Tel: ' + venta.telefono, pad, y + 9);
@@ -7613,7 +7613,7 @@ async function generarPDFVentaDirecta(venta, abonos) {
 
     let items = [];
     try { items = typeof venta.items === 'string' ? JSON.parse(venta.items) : (venta.items || []); } catch(_) {}
-    doc.setFont('courier', 'normal');
+    doc.setFont('courier', 'bold');
     doc.setFontSize(9.5);
     doc.setTextColor(30, 30, 30);
     items.forEach(item => {
@@ -7622,7 +7622,7 @@ async function generarPDFVentaDirecta(venta, abonos) {
         const sub    = (qty * precio).toFixed(2);
         const nombre = (item.nombre || '').substring(0, 32);
         const ref    = item.codigo || item.ref || '';
-        doc.setFont('courier', 'normal');
+        doc.setFont('courier', 'bold');
         doc.setFontSize(9.5);
         doc.setTextColor(30, 30, 30);
         doc.text(nombre, pad, y);
@@ -7630,7 +7630,7 @@ async function generarPDFVentaDirecta(venta, abonos) {
         doc.text(`$${sub}`, W - pad, y, { align: 'right' });
         if (ref) {
             y += 4;
-            doc.setFontSize(8);
+            doc.setFontSize(9);
             doc.setTextColor(150, 150, 150);
             doc.text(`Ref: ${ref}`, pad, y);
             doc.setFontSize(9.5);
@@ -7651,7 +7651,7 @@ async function generarPDFVentaDirecta(venta, abonos) {
     const saldo   = Math.max(0, total - pagado);
 
     const filaTotal = (label, valor, bold, color) => {
-        if (bold) doc.setFont('courier', 'bold'); else doc.setFont('courier', 'normal');
+        doc.setFont('courier', 'bold');
         if (color) doc.setTextColor(...color); else doc.setTextColor(30, 30, 30);
         doc.setFontSize(10);
         doc.text(label, pad, y);
@@ -7680,7 +7680,7 @@ async function generarPDFVentaDirecta(venta, abonos) {
         y += 4;
         abonos.forEach((ab, i) => {
             const fa = ab.fecha ? new Date(ab.fecha).toLocaleDateString('es-SV') : '';
-            doc.setFont('courier', 'normal');
+            doc.setFont('courier', 'bold');
             doc.setFontSize(9.5);
             doc.setTextColor(30, 30, 30);
             doc.text(`${i+1}. ${fa}`, pad, y);
@@ -7693,8 +7693,8 @@ async function generarPDFVentaDirecta(venta, abonos) {
 
     // Nota crédito
     if (venta.nota) {
-        doc.setFont('courier', 'italic');
-        doc.setFontSize(9);
+        doc.setFont('courier', 'bold');
+        doc.setFontSize(10);
         doc.setTextColor(100, 100, 100);
         doc.text('Nota: ' + venta.nota, pad, y);
         y += 8;
@@ -7722,15 +7722,15 @@ async function generarPDFVentaDirecta(venta, abonos) {
     }
 
     // Footer
-    doc.setFont('courier', 'normal');
-    doc.setFontSize(8.5);
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(10);
     doc.setTextColor(168, 168, 180);
     doc.text('WhatsApp: 7125-0725', W/2, y + 1, { align: 'center' });
     doc.setTextColor(150, 150, 150);
-    doc.text('Gracias por su preferencia  VEREX', W/2, y + 6, { align: 'center' });
-    y += 12;
-    doc.setFont('courier', 'italic');
-    doc.setFontSize(8);
+    doc.text('Gracias por su preferencia  VEREX', W/2, y + 7, { align: 'center' });
+    y += 14;
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(9);
     doc.setTextColor(180, 150, 180);
     const tagline = 'El mundo es mas maravilloso cuando brillas TU';
     const tw = doc.getTextWidth(tagline);
