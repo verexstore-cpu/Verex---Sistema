@@ -7360,7 +7360,7 @@ async function confirmarVentaDirecta() {
         fecha: new Date().toISOString(),
         cliente: nombre,
         telefono: tel,
-        items: items.map(({ prod, qty }) => ({ codigo: prod.codigo, nombre: prod.nombre, precio: prod.precio, cantidad: qty })),
+        items: items.map(({ prod, qty }) => ({ codigo: prod.codigo, nombre: prod.nombre, precio: prod.precio, cantidad: qty, material: prod.material || '' })),
         subtotal,
         descuento,
         descuentoTipo: _vdModoDescuento,
@@ -7624,6 +7624,15 @@ async function generarPDFVentaDirecta(venta, abonos) {
         doc.text(nombre, pad, y);
         doc.text(`${qty} x $${precio.toFixed(2)}`, 108, y, { align: 'right' });
         doc.text(`$${sub}`, W - pad, y, { align: 'right' });
+        const material = item.material || '';
+        if (material) {
+            y += 4;
+            doc.setFontSize(9);
+            doc.setTextColor(150, 150, 150);
+            doc.text(material, pad, y);
+            doc.setFontSize(9.5);
+            doc.setTextColor(30, 30, 30);
+        }
         if (ref) {
             y += 4;
             doc.setFontSize(9);
