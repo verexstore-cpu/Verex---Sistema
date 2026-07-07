@@ -8262,42 +8262,42 @@ function enviarWAEstadoCuenta(ventaId) {
 
 <!-- TAB HISTORIAL VENTAS -->
 <div id="tab-content-historialventas" style="display:none;">
-    <div class="card">
+    <div class="card" style="background:#ffffff;">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
-            <h2 style="margin:0;">🧾 Historial de Ventas</h2>
+            <h2 style="margin:0;color:#1a1a1a;">🧾 Historial de Ventas</h2>
             <button class="btn btn-gris" style="padding:7px 14px;font-size:12px;" onclick="cargarHistorialVentas()">🔄 Actualizar</button>
         </div>
 
         <!-- KPIs -->
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;">
-            <div style="background:var(--gris2);border-radius:10px;padding:10px;text-align:center;">
-                <div id="hv-total-ventas" style="font-size:20px;font-weight:700;color:var(--dorado);">—</div>
-                <div style="font-size:11px;color:var(--plateado);">Total ventas</div>
+            <div style="background:#fff;border:1px solid #ede8d5;border-top:3px solid #C9A84C;border-radius:10px;padding:10px;text-align:center;">
+                <div id="hv-total-ventas" style="font-size:20px;font-weight:700;color:#C9A84C;">—</div>
+                <div style="font-size:11px;color:#888;">Total ventas</div>
             </div>
-            <div style="background:var(--gris2);border-radius:10px;padding:10px;text-align:center;">
-                <div id="hv-total-monto" style="font-size:20px;font-weight:700;color:#4caf82;">—</div>
-                <div style="font-size:11px;color:var(--plateado);">Monto total</div>
+            <div style="background:#fff;border:1px solid #d4edda;border-top:3px solid #27ae60;border-radius:10px;padding:10px;text-align:center;">
+                <div id="hv-total-monto" style="font-size:20px;font-weight:700;color:#27ae60;">—</div>
+                <div style="font-size:11px;color:#888;">Monto total</div>
             </div>
-            <div style="background:var(--gris2);border-radius:10px;padding:10px;text-align:center;">
+            <div style="background:#fff;border:1px solid #f5c6cb;border-top:3px solid #e74c3c;border-radius:10px;padding:10px;text-align:center;">
                 <div id="hv-pendiente" style="font-size:20px;font-weight:700;color:#e74c3c;">—</div>
-                <div style="font-size:11px;color:var(--plateado);">Por cobrar</div>
+                <div style="font-size:11px;color:#888;">Por cobrar</div>
             </div>
-            <div style="background:var(--gris2);border-radius:10px;padding:10px;text-align:center;">
-                <div id="hv-hoy" style="font-size:20px;font-weight:700;color:var(--dorado);">—</div>
-                <div style="font-size:11px;color:var(--plateado);">Ventas hoy</div>
+            <div style="background:#fff;border:1px solid #ede8d5;border-top:3px solid #C9A84C;border-radius:10px;padding:10px;text-align:center;">
+                <div id="hv-hoy" style="font-size:20px;font-weight:700;color:#C9A84C;">—</div>
+                <div style="font-size:11px;color:#888;">Ventas hoy</div>
             </div>
         </div>
 
         <!-- Filtros -->
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-            <input type="text" id="hv-buscar" placeholder="Buscar cliente o producto..." oninput="renderHistorialVentas()" style="flex:1;min-width:160px;">
-            <select id="hv-filtro-tipo" onchange="renderHistorialVentas()" style="width:140px;">
+            <input type="text" id="hv-buscar" placeholder="Buscar cliente o producto..." oninput="renderHistorialVentas()" style="flex:1;min-width:160px;background:#f9fafb;border:1px solid #e5e7eb;color:#1a1a1a;">
+            <select id="hv-filtro-tipo" onchange="renderHistorialVentas()" style="width:140px;background:#f9fafb;border:1px solid #e5e7eb;color:#1a1a1a;">
                 <option value="">Todos</option>
                 <option value="directa">💸 Venta Directa</option>
                 <option value="catalogo">🛍️ Catálogo</option>
                 <option value="consignacion">👤 Consignación</option>
             </select>
-            <select id="hv-filtro-estado" onchange="renderHistorialVentas()" style="width:130px;">
+            <select id="hv-filtro-estado" onchange="renderHistorialVentas()" style="width:130px;background:#f9fafb;border:1px solid #e5e7eb;color:#1a1a1a;">
                 <option value="">Todos</option>
                 <option value="pagado">✅ Pagado</option>
                 <option value="credito">🕐 Crédito</option>
@@ -8305,7 +8305,7 @@ function enviarWAEstadoCuenta(ventaId) {
             </select>
         </div>
 
-        <div id="lista-historial-ventas"><p style="color:var(--plateado);font-size:13px;">Toca 🔄 para cargar.</p></div>
+        <div id="lista-historial-ventas"><p style="color:#888;font-size:13px;">Toca 🔄 para cargar.</p></div>
     </div>
 </div>
 
@@ -8524,20 +8524,20 @@ function renderHistorialVentas() {
             if (items.length > 2) itemsStr += ` +${items.length - 2} más`;
         } catch(_) {}
 
-        return `<div style="background:var(--gris2);border:1px solid var(--borde);border-radius:10px;padding:12px;margin-bottom:8px;">
+        return `<div style="background:#fff;border:1px solid #ebebeb;border-left:4px solid ${tb.color};border-radius:10px;padding:12px;margin-bottom:8px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                 <div style="flex:1;min-width:0;">
                     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
                         <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:${tb.bg};color:${tb.color};font-weight:600;">${tb.label}</span>
                         <span style="font-size:10px;color:${eb.color};font-weight:600;">${eb.label}</span>
                     </div>
-                    <div style="font-size:13px;font-weight:700;color:var(--blanco);">${sanitizar(v.cliente)}</div>
-                    <div style="font-size:11px;color:var(--plateado);margin-top:2px;">${fecha} · Ref: ${String(v.id||"").slice(-6)}</div>
-                    ${itemsStr ? `<div style="font-size:11px;color:#888;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sanitizar(itemsStr)}</div>` : ""}
-                    ${v.nota ? `<div style="font-size:11px;color:var(--plateado);font-style:italic;margin-top:2px;">${sanitizar(v.nota)}</div>` : ""}
+                    <div style="font-size:13px;font-weight:700;color:#1a1a1a;">${sanitizar(v.cliente)}</div>
+                    <div style="font-size:11px;color:#6b7280;margin-top:2px;">${fecha} · Ref: ${String(v.id||"").slice(-6)}</div>
+                    ${itemsStr ? `<div style="font-size:11px;color:#9ca3af;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sanitizar(itemsStr)}</div>` : ""}
+                    ${v.nota ? `<div style="font-size:11px;color:#9ca3af;font-style:italic;margin-top:2px;">${sanitizar(v.nota)}</div>` : ""}
                 </div>
                 <div style="text-align:right;flex-shrink:0;">
-                    <div style="font-size:15px;font-weight:700;color:var(--dorado);">$${parseFloat(v.total||0).toFixed(2)}</div>
+                    <div style="font-size:15px;font-weight:700;color:#C9A84C;">$${parseFloat(v.total||0).toFixed(2)}</div>
                     ${v.saldoPendiente > 0 ? `<div style="font-size:11px;color:#e74c3c;font-weight:600;">Debe: $${parseFloat(v.saldoPendiente).toFixed(2)}</div>` : ""}
                 </div>
             </div>
