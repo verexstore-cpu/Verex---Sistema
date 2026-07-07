@@ -4200,7 +4200,7 @@ function renderStock(items) {
             const sel = stockSeleccionados.includes(item.codigo);
             const estadoNorm = normalizar(item.estado);
             const est = estadoColor[estadoNorm] || estadoColor["bodega"];
-            return `<div data-codigo="${sanitizar(item.codigo)}" onclick="abrirEditarStockItem(${jsArg(item.codigo)})" style="background:#2C2C2E;border:${sel?"2px solid var(--dorado)":"1px solid rgba(201,168,76,0.45)"};border-radius:12px;overflow:hidden;cursor:pointer;position:relative;">
+            return `<div data-codigo="${sanitizar(item.codigo)}" onclick="abrirEditarStockItem(${jsArg(item.codigo)})" style="background:#2C2C2E;border:${sel?"2px solid var(--dorado)":"1px solid var(--dorado)"};border-radius:12px;overflow:hidden;cursor:pointer;position:relative;">
                 <div onclick="event.stopPropagation();toggleSeleccionStock(${jsArg(item.codigo)})" style="position:absolute;top:6px;left:6px;width:18px;height:18px;border:2px solid ${sel?"var(--dorado)":"#666"};border-radius:4px;background:${sel?"var(--dorado)":"rgba(0,0,0,0.5)"};display:flex;align-items:center;justify-content:center;font-size:11px;z-index:2;">${sel?"✓":""}</div>
                 <div style="width:100%;aspect-ratio:1;background:#1a1a1a;overflow:hidden;">
                     ${item.foto ? `<img src="${sanitizar(ikFoto(item.foto,300))}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;">💍</div>`}
@@ -4234,7 +4234,7 @@ function renderStock(items) {
         const estadoNorm = normalizar(item.estado);
         const est = estadoColor[estadoNorm] || estadoColor["bodega"];
         const sel = stockSeleccionados.includes(item.codigo);
-        return `<div class="inv-item" data-codigo="${sanitizar(item.codigo)}" style="background:#2C2C2E;border-color:${sel ? "var(--dorado)" : "#3a3a3c"};cursor:pointer;" onclick="toggleSeleccionStock(${jsArg(item.codigo)})">
+        return `<div class="inv-item" data-codigo="${sanitizar(item.codigo)}" style="background:#2C2C2E;border-color:var(--dorado);cursor:pointer;" onclick="toggleSeleccionStock(${jsArg(item.codigo)})">
             <div style="display:flex;align-items:center;gap:4px;margin-right:8px;">
                 <div style="width:18px;height:18px;border:2px solid ${sel?"var(--dorado)":"#555"};border-radius:4px;background:${sel?"var(--dorado)":"transparent"};display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">
                     ${sel ? "✓" : ""}
