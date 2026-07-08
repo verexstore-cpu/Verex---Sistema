@@ -2850,7 +2850,8 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function getNotaEspecial(p) {
-    const v = p.caractEspecial || p.caract_especial || p.caracteristicaEspecial
+    // "caracterEspecial" (con "er") es el nombre real que usa Consignación/el worker.
+    const v = p.caracterEspecial || p.caractEspecial || p.caract_especial || p.caracteristicaEspecial
            || p.caracteristica_especial || p.notaEspecial || p.nota_especial
            || p.caract || p.nota || p.etiqueta || "";
     return String(v).trim();
@@ -3051,7 +3052,7 @@ function agruparParaCatalogo(lista) {
         }
         const g = map.get(key);
         if (!g._codigos.includes(p.codigo)) g._codigos.push(p.codigo);
-        if (!g.caractEspecial && p.caractEspecial) g.caractEspecial = p.caractEspecial;
+        if (!getNotaEspecial(g) && getNotaEspecial(p)) g.caracterEspecial = getNotaEspecial(p);
 
         let s = {};
         try { s = JSON.parse(p.caracteristicas || "{}"); } catch(_) {}
