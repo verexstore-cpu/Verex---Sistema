@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>VEREX · Catálogo</title>
+    <script>var LZString=function(){var r=String.fromCharCode,o="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=",n="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-$",e={};function t(r,o){if(!e[r]){e[r]={};for(var n=0;n<r.length;n++)e[r][r.charAt(n)]=n}return e[r][o]}var i={compressToBase64:function(r){if(null==r)return"";var n=i._compress(r,6,function(r){return o.charAt(r)});switch(n.length%4){default:case 0:return n;case 1:return n+"===";case 2:return n+"==";case 3:return n+"="}},decompressFromBase64:function(r){return null==r?"":""==r?null:i._decompress(r.length,32,function(n){return t(o,r.charAt(n))})},compressToUTF16:function(o){return null==o?"":i._compress(o,15,function(o){return r(o+32)})+" "},decompressFromUTF16:function(r){return null==r?"":""==r?null:i._decompress(r.length,16384,function(o){return r.charCodeAt(o)-32})},compressToUint8Array:function(r){for(var o=i.compress(r),n=new Uint8Array(2*o.length),e=0,t=o.length;e<t;e++){var s=o.charCodeAt(e);n[2*e]=s>>>8,n[2*e+1]=s%256}return n},decompressFromUint8Array:function(o){if(null==o)return i.decompress(o);for(var n=new Array(o.length/2),e=0,t=n.length;e<t;e++)n[e]=256*o[2*e]+o[2*e+1];var s=[];return n.forEach(function(o){s.push(r(o))}),i.decompress(s.join(""))},compressToEncodedURIComponent:function(r){return null==r?"":i._compress(r,6,function(r){return n.charAt(r)})},decompressFromEncodedURIComponent:function(r){return null==r?"":""==r?null:(r=r.replace(/ /g,"+"),i._decompress(r.length,32,function(o){return t(n,r.charAt(o))}))},compress:function(o){return i._compress(o,16,function(o){return r(o)})},_compress:function(r,o,n){if(null==r)return"";var e,t,i,s={},u={},a="",p="",c="",l=2,f=3,h=2,d=[],m=0,v=0;for(i=0;i<r.length;i+=1)if(a=r.charAt(i),Object.prototype.hasOwnProperty.call(s,a)||(s[a]=f++,u[a]=!0),p=c+a,Object.prototype.hasOwnProperty.call(s,p))c=p;else{if(Object.prototype.hasOwnProperty.call(u,c)){if(c.charCodeAt(0)<256){for(e=0;e<h;e++)m<<=1,v==o-1?(v=0,d.push(n(m)),m=0):v++;for(t=c.charCodeAt(0),e=0;e<8;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}else{for(t=1,e=0;e<h;e++)m=m<<1|t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t=0;for(t=c.charCodeAt(0),e=0;e<16;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}0==--l&&(l=Math.pow(2,h),h++),delete u[c]}else for(t=s[c],e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;0==--l&&(l=Math.pow(2,h),h++),s[p]=f++,c=String(a)}if(""!==c){if(Object.prototype.hasOwnProperty.call(u,c)){if(c.charCodeAt(0)<256){for(e=0;e<h;e++)m<<=1,v==o-1?(v=0,d.push(n(m)),m=0):v++;for(t=c.charCodeAt(0),e=0;e<8;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}else{for(t=1,e=0;e<h;e++)m=m<<1|t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t=0;for(t=c.charCodeAt(0),e=0;e<16;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}0==--l&&(l=Math.pow(2,h),h++),delete u[c]}else for(t=s[c],e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;0==--l&&(l=Math.pow(2,h),h++)}for(t=2,e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;for(;;){if(m<<=1,v==o-1){d.push(n(m));break}v++}return d.join("")},decompress:function(r){return null==r?"":""==r?null:i._decompress(r.length,32768,function(o){return r.charCodeAt(o)})},_decompress:function(o,n,e){var t,i,s,u,a,p,c,l=[],f=4,h=4,d=3,m="",v=[],g={val:e(0),position:n,index:1};for(t=0;t<3;t+=1)l[t]=t;for(s=0,a=Math.pow(2,2),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;switch(s){case 0:for(s=0,a=Math.pow(2,8),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;c=r(s);break;case 1:for(s=0,a=Math.pow(2,16),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;c=r(s);break;case 2:return""}for(l[3]=c,i=c,v.push(c);;){if(g.index>o)return"";for(s=0,a=Math.pow(2,d),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;switch(c=s){case 0:for(s=0,a=Math.pow(2,8),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;l[h++]=r(s),c=h-1,f--;break;case 1:for(s=0,a=Math.pow(2,16),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;l[h++]=r(s),c=h-1,f--;break;case 2:return v.join("")}if(0==f&&(f=Math.pow(2,d),d++),l[c])m=l[c];else{if(c!==h)return null;m=i+i.charAt(0)}v.push(m),l[h++]=i+m.charAt(0),i=m,0==--f&&(f=Math.pow(2,d),d++)}}};return i}();"function"==typeof define&&define.amd?define(function(){return LZString}):"undefined"!=typeof module&&null!=module?module.exports=LZString:"undefined"!=typeof angular&&null!=angular&&angular.module("LZString",[]).factory("LZString",function(){return LZString});</script>
+    <style>
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body{font-family:'Segoe UI',sans-serif;background:#f0f2f5;min-height:100vh;}
+
+        header{background:#111;text-align:center;padding:10px 16px;}
+        header img.logo{width:260px;max-width:80vw;display:block;margin:0 auto;}
+
+        .info-bar{
+            background:#fff;border-bottom:1px solid #e2e2e2;
+            padding:10px 16px;text-align:center;font-size:13px;color:#555;
+        }
+        .info-bar strong{color:#111;}
+        .validez{color:#f97316;font-weight:700;font-size:12px;margin-top:4px;}
+
+        .grid{
+            display:grid;grid-template-columns:repeat(2,1fr);
+            gap:12px;padding:16px;max-width:580px;margin:0 auto;
+        }
+
+        .card{background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);display:flex;flex-direction:column;}
+        .card-img{width:100%;aspect-ratio:1/1;object-fit:contain;background:#f7f7f7;display:block;flex-shrink:0;}
+        .card-img-ph{
+            width:100%;aspect-ratio:1/1;background:#f0f0f0;
+            display:flex;align-items:center;justify-content:center;
+            font-size:36px;color:#ccc;flex-shrink:0;
+        }
+        .card-body{padding:10px;text-align:center;flex:1;}
+        .card-name{font-size:12px;font-weight:700;color:#1a1a1a;line-height:1.3;margin-bottom:3px;}
+        .card-material{font-size:11px;color:#7c3aed;font-weight:600;margin-bottom:5px;}
+        .card-price{font-size:16px;font-weight:800;color:#00BFFF;margin-bottom:4px;}
+        .card-ne{display:inline-block;font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:5px;padding:2px 7px;margin-bottom:4px;line-height:1.5;}
+        .card-nota{display:inline-block;font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:5px;padding:2px 7px;margin-top:5px;line-height:1.5;}
+        .card-footer{padding:0 10px 10px;}
+        .wa-order{
+            display:block;width:100%;text-align:center;
+            background:#25D366;color:#fff;
+            padding:9px 0;border-radius:8px;
+            font-size:13px;font-weight:700;
+            border:none;cursor:pointer;
+        }
+
+        /* Vencido */
+        .expired{
+            display:flex;flex-direction:column;align-items:center;
+            justify-content:center;text-align:center;
+            padding:60px 30px;min-height:65vh;
+        }
+        .exp-icon{font-size:64px;margin-bottom:20px;}
+        .expired h2{font-size:22px;font-weight:800;color:#1a1a1a;margin-bottom:10px;}
+        .expired p{font-size:14px;color:#666;margin-bottom:28px;line-height:1.6;max-width:280px;}
+        .wa-btn{
+            display:inline-flex;align-items:center;gap:8px;
+            background:#25D366;color:#fff;padding:14px 28px;
+            border-radius:10px;font-size:15px;font-weight:700;
+            text-decoration:none;
+        }
+
+        footer{text-align:center;padding:20px;font-size:11px;color:#aaa;}
+        #loading{text-align:center;padding:80px 20px;color:#888;font-size:14px;}
+        @media(max-width:340px){.grid{grid-template-columns:1fr;}}
+
+        /* Selector de talla */
+        #sz-overlay{
+            display:none;position:fixed;inset:0;
+            background:rgba(0,0,0,.5);z-index:999;
+            align-items:flex-end;justify-content:center;
+        }
+        #sz-overlay.open{display:flex;}
+        #sz-box{
+            background:#fff;border-radius:16px 16px 0 0;
+            padding:20px 16px 32px;width:100%;max-width:480px;
+            max-height:90vh;overflow-y:auto;
+        }
+        .sz-btn{
+            padding:8px 10px;border:2px solid #e2e2e2;border-radius:8px;
+            font-weight:700;font-size:13px;background:#fff;cursor:pointer;min-width:44px;
+        }
+        .sz-btn.sel-d{background:#7c3aed;border-color:#7c3aed;color:#fff;}
+        .sz-btn.sel-h{background:#0277bd;border-color:#0277bd;color:#fff;}
+    </style>
+</head>
+<body>
+<div id="app"><div id="loading">Cargando catálogo…</div></div>
+
+<!-- Selector de talla -->
+<div id="sz-overlay">
+    <div id="sz-box">
+        <div id="sz-title" style="font-weight:800;font-size:15px;color:#111;text-align:center;margin-bottom:4px;line-height:1.3;"></div>
+        <div id="sz-sub" style="font-size:12px;color:#888;text-align:center;margin-bottom:18px;"></div>
+
+        <div id="sz-sec-d">
+            <div id="sz-lbl-d" style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:8px;"></div>
+            <div id="sz-grid-d" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;"></div>
+        </div>
+
+        <div id="sz-sec-h" style="display:none;">
+            <div style="font-size:12px;font-weight:700;color:#0277bd;margin-bottom:8px;">Talla caballero</div>
+            <div id="sz-grid-h" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;"></div>
+        </div>
+
+        <button id="sz-confirm" onclick="confirmarTalla()"
+            style="width:100%;background:#25D366;color:#fff;border:none;padding:13px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;opacity:.5;"
+            disabled>💬 Enviar por WhatsApp</button>
+        <button onclick="cerrarTallas()"
+            style="width:100%;background:#f0f2f5;color:#555;border:none;padding:11px;border-radius:10px;font-size:14px;cursor:pointer;">
+            Cancelar</button>
+    </div>
+</div>
+
+<script>
+(function(){
+    const params = new URLSearchParams(location.search);
+    const c = params.get("c");
+
+    let _prods = [], _waNum = "", _szIdx = -1, _szD = "", _szH = "";
+
+    const SIZES   = ["5","5.5","6","6.5","7","7.5","8","8.5","9","9.5","10","10.5","11","12","13","14"];
+    const ES_PAR  = /matrimonio|argolla|novios|pareja|alianza/i;
+
+    function esc(s){
+        const d=document.createElement("div"); d.textContent=String(s||""); return d.innerHTML;
+    }
+
+    function showExpired(nombre, wa){
+        document.getElementById("app").innerHTML=`
+            <header><img class="logo" src="/images/logo.webp" alt="VEREX"></header>
+            <div class="expired">
+                <div class="exp-icon">⏰</div>
+                <h2>Este catálogo ya venció</h2>
+                <p>Hola${nombre?' <strong>'+esc(nombre)+'</strong>':''}, este catálogo ya no está disponible.<br>
+                Contáctanos para ver el inventario actualizado.</p>
+                <a href="https://wa.me/${esc(wa||'')}" class="wa-btn">📱 Contactar por WhatsApp</a>
+            </div>
+            <footer>VEREX · La expresión de tu mejor versión</footer>`;
+    }
+
+    function render(data){
+        _prods = data.prods || [];
+        _waNum = data.wa    || "";
+
+        const exp    = new Date(data.expiry);
+        const expStr = exp.toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"});
+        const nb     = data.nombre||"";
+        const talla  = data.talla||"";
+
+        let subParts=[];
+        if(nb)    subParts.push(`${data.afiliado?'Distribuidor:':'Para:'} <strong>${esc(nb)}</strong>`);
+        if(talla) subParts.push(`Talla: <strong>${esc(talla)}</strong>`);
+        const subHTML = subParts.join(" &nbsp;·&nbsp; ");
+
+        const szChip = sz => `<span style="padding:2px 7px;background:#e8f4fd;border-radius:5px;font-size:10px;font-weight:700;color:#0277bd;">T${sz}</span>`;
+        const cards = _prods.map((p,i)=>{
+            let sizesHtml = "";
+            if (p.cat === "AN") {
+                if (p.par && (p.sizesD?.length || p.sizesH?.length)) {
+                    sizesHtml = `<div style="margin:5px 0;font-size:10px;line-height:1.8;">
+                        ${p.sizesD?.length ? `<div><span style="color:#9333ea;font-weight:700;">Dama:</span> ${p.sizesD.map(szChip).join(" ")}</div>` : ""}
+                        ${p.sizesH?.length ? `<div><span style="color:#2563eb;font-weight:700;">Caballero:</span> ${p.sizesH.map(szChip).join(" ")}</div>` : ""}
+                    </div>`;
+                } else if (p.sizes?.length) {
+                    sizesHtml = `<div style="display:flex;flex-wrap:wrap;gap:3px;justify-content:center;margin:5px 0;">${p.sizes.map(szChip).join("")}</div>`;
+                }
+            }
+            return `
+            <div class="card">
+                ${p.i
+                    ?`<img class="card-img" src="${esc(p.i)}" alt="${esc(p.n)}" loading="lazy" onerror="this.outerHTML='<div class=\'card-img-ph\'>💍</div>'">`
+                    :`<div class="card-img-ph">💍</div>`}
+                <div class="card-body">
+                    <div class="card-name">${esc(p.n)}</div>
+                    ${p.m?`<div class="card-material">${esc(p.m)}</div>`:''}
+                    ${sizesHtml}
+                    ${p.ne?`<div class="card-ne">♦ ${esc(p.ne)}</div>`:''}
+                    <div class="card-price">$${esc(p.p)}${p.par?`<span style="display:block;font-size:10px;font-weight:500;color:#7c3aed;margin-top:2px;">Precio por pieza</span>`:""}</div>
+                    ${p.nota?`<div class="card-nota">${esc(p.nota)}</div>`:''}
+                </div>
+                <div class="card-footer">
+                    <button class="wa-order" onclick="elegirTalla(${i})">💬 Quiero este</button>
+                </div>
+            </div>`;
+        }).join("");
+
+        const b = data.banner;
+        const bannerHTML = b?.txt ? `
+            <div style="background:${esc(b.color||'#ef4444')};color:#fff;text-align:center;padding:14px 20px;">
+                <div style="font-size:16px;font-weight:900;letter-spacing:.5px;line-height:1.3;">${esc(b.txt)}</div>
+                ${b.sub?`<div style="font-size:12px;font-weight:500;margin-top:4px;opacity:.9;">${esc(b.sub)}</div>`:''}
+            </div>` : '';
+
+        document.getElementById("app").innerHTML=`
+            <header><img class="logo" src="/images/logo.webp" alt="VEREX"></header>
+            ${bannerHTML}
+            <div class="info-bar">
+                ${subHTML?`<div>${subHTML}</div>`:''}
+                <div class="validez">⏰ Válido hasta: ${expStr}</div>
+            </div>
+            <div class="grid">${cards}</div>
+            <footer>VEREX · La expresión de tu mejor versión</footer>`;
+    }
+
+    /* ── Selector de talla ── */
+
+    function elegirTalla(i){
+        const p = _prods[i];
+        if(!p) return;
+
+        const esPareja = ES_PAR.test(p.n) || p.par;
+
+        // Argollas de par y productos sin talla: ir directo a WhatsApp
+        if(esPareja){
+            const sizesInfo = [
+                p.sizesD?.length ? `Dama: ${p.sizesD.map(s=>'T'+s).join(', ')}` : '',
+                p.sizesH?.length ? `Caballero: ${p.sizesH.map(s=>'T'+s).join(', ')}` : ''
+            ].filter(Boolean).join('\n');
+            const precioInfo = (p.pD && p.pH && p.pD !== p.pH)
+                ? `Precio dama: $${p.pD} por pieza\nPrecio caballero: $${p.pH} por pieza`
+                : `Precio individual: $${p.p} por pieza`;
+            const msg = `Hola, me interesan estas argollas del catálogo VEREX:\n\n${p.n}\n${precioInfo}${sizesInfo ? `\n\nTallas disponibles:\n${sizesInfo}` : ''}\n\n¿Qué tallas necesita para dama y caballero?`;
+            window.open(`https://wa.me/${_waNum}?text=${encodeURIComponent(msg)}`,"_blank");
+            return;
+        }
+
+        if(p.cat && p.cat !== "AN"){
+            const msg=`Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\nPrecio: $${p.p}`;
+            window.open(`https://wa.me/${_waNum}?text=${encodeURIComponent(msg)}`,"_blank");
+            return;
+        }
+
+        _szIdx=i; _szD=""; _szH="";
+
+        const availD = (p.sizes?.length ? p.sizes : SIZES);
+
+        document.getElementById("sz-title").textContent = p.n;
+        document.getElementById("sz-sub").textContent   = "¿Qué talla necesitas?";
+        document.getElementById("sz-lbl-d").textContent = "Tu talla";
+        document.getElementById("sz-sec-h").style.display = "none";
+
+        document.getElementById("sz-grid-d").innerHTML = availD.map(sz=>
+            `<button class="sz-btn" onclick="selSz('D','${sz}',this)">T${sz}</button>`
+        ).join("");
+
+        const btn = document.getElementById("sz-confirm");
+        btn.disabled=true; btn.style.opacity=".5";
+        document.getElementById("sz-overlay").classList.add("open");
+    }
+
+    function selSz(gen, sz, el){
+        document.querySelectorAll("#sz-grid-d .sz-btn").forEach(b=>b.classList.remove("sel-d"));
+        el.classList.add("sel-d");
+        _szD = sz;
+        const btn = document.getElementById("sz-confirm");
+        btn.disabled=false; btn.style.opacity="1";
+    }
+
+    function confirmarTalla(){
+        const p = _prods[_szIdx];
+        const msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\nPrecio: $${p.p}\nTalla: T${_szD}`;
+        cerrarTallas();
+        window.open(`https://wa.me/${_waNum}?text=${encodeURIComponent(msg)}`,"_blank");
+    }
+
+    function cerrarTallas(){
+        document.getElementById("sz-overlay").classList.remove("open");
+    }
+
+    window.elegirTalla    = elegirTalla;
+    window.selSz          = selSz;
+    window.confirmarTalla = confirmarTalla;
+    window.cerrarTallas   = cerrarTallas;
+
+    /* ── Arranque ── */
+
+    let data;
+    // KV route: data injected server-side
+    if(window.__CATALOG_DATA__){
+        data = window.__CATALOG_DATA__;
+    } else {
+        if(!c){
+            document.getElementById("app").innerHTML='<div style="text-align:center;padding:60px;color:#888;">Link inválido.</div>';
+            return;
+        }
+        try{
+            // Try LZ-string URL-safe (new), then base64 LZ-string, then plain base64 (legacy)
+            const lzUri = LZString.decompressFromEncodedURIComponent(c);
+            if(lzUri){ data=JSON.parse(lzUri); }
+            else {
+                const raw=decodeURIComponent(c);
+                const lzB64=LZString.decompressFromBase64(raw);
+                data=lzB64 ? JSON.parse(lzB64) : JSON.parse(decodeURIComponent(escape(atob(raw))));
+            }
+        } catch(e){
+            document.getElementById("app").innerHTML='<div style="text-align:center;padding:60px;color:#888;">Link inválido o corrupto.</div>';
+            return;
+        }
+    }
+    if(data.expiry && Date.now()>data.expiry) showExpired(data.nombre, data.wa);
+    else render(data);
+})();
+</script>
+</body>
+</html>

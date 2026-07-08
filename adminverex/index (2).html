@@ -7,6 +7,7 @@
     <title>VEREX | Admin</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script>var LZString=function(){var r=String.fromCharCode,o="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=",n="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-$",e={};function t(r,o){if(!e[r]){e[r]={};for(var n=0;n<r.length;n++)e[r][r.charAt(n)]=n}return e[r][o]}var i={compressToBase64:function(r){if(null==r)return"";var n=i._compress(r,6,function(r){return o.charAt(r)});switch(n.length%4){default:case 0:return n;case 1:return n+"===";case 2:return n+"==";case 3:return n+"="}},decompressFromBase64:function(r){return null==r?"":""==r?null:i._decompress(r.length,32,function(n){return t(o,r.charAt(n))})},compressToUTF16:function(o){return null==o?"":i._compress(o,15,function(o){return r(o+32)})+" "},decompressFromUTF16:function(r){return null==r?"":""==r?null:i._decompress(r.length,16384,function(o){return r.charCodeAt(o)-32})},compressToUint8Array:function(r){for(var o=i.compress(r),n=new Uint8Array(2*o.length),e=0,t=o.length;e<t;e++){var s=o.charCodeAt(e);n[2*e]=s>>>8,n[2*e+1]=s%256}return n},decompressFromUint8Array:function(o){if(null==o)return i.decompress(o);for(var n=new Array(o.length/2),e=0,t=n.length;e<t;e++)n[e]=256*o[2*e]+o[2*e+1];var s=[];return n.forEach(function(o){s.push(r(o))}),i.decompress(s.join(""))},compressToEncodedURIComponent:function(r){return null==r?"":i._compress(r,6,function(r){return n.charAt(r)})},decompressFromEncodedURIComponent:function(r){return null==r?"":""==r?null:(r=r.replace(/ /g,"+"),i._decompress(r.length,32,function(o){return t(n,r.charAt(o))}))},compress:function(o){return i._compress(o,16,function(o){return r(o)})},_compress:function(r,o,n){if(null==r)return"";var e,t,i,s={},u={},a="",p="",c="",l=2,f=3,h=2,d=[],m=0,v=0;for(i=0;i<r.length;i+=1)if(a=r.charAt(i),Object.prototype.hasOwnProperty.call(s,a)||(s[a]=f++,u[a]=!0),p=c+a,Object.prototype.hasOwnProperty.call(s,p))c=p;else{if(Object.prototype.hasOwnProperty.call(u,c)){if(c.charCodeAt(0)<256){for(e=0;e<h;e++)m<<=1,v==o-1?(v=0,d.push(n(m)),m=0):v++;for(t=c.charCodeAt(0),e=0;e<8;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}else{for(t=1,e=0;e<h;e++)m=m<<1|t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t=0;for(t=c.charCodeAt(0),e=0;e<16;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}0==--l&&(l=Math.pow(2,h),h++),delete u[c]}else for(t=s[c],e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;0==--l&&(l=Math.pow(2,h),h++),s[p]=f++,c=String(a)}if(""!==c){if(Object.prototype.hasOwnProperty.call(u,c)){if(c.charCodeAt(0)<256){for(e=0;e<h;e++)m<<=1,v==o-1?(v=0,d.push(n(m)),m=0):v++;for(t=c.charCodeAt(0),e=0;e<8;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}else{for(t=1,e=0;e<h;e++)m=m<<1|t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t=0;for(t=c.charCodeAt(0),e=0;e<16;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}0==--l&&(l=Math.pow(2,h),h++),delete u[c]}else for(t=s[c],e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;0==--l&&(l=Math.pow(2,h),h++)}for(t=2,e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;for(;;){if(m<<=1,v==o-1){d.push(n(m));break}v++}return d.join("")},decompress:function(r){return null==r?"":""==r?null:i._decompress(r.length,32768,function(o){return r.charCodeAt(o)})},_decompress:function(o,n,e){var t,i,s,u,a,p,c,l=[],f=4,h=4,d=3,m="",v=[],g={val:e(0),position:n,index:1};for(t=0;t<3;t+=1)l[t]=t;for(s=0,a=Math.pow(2,2),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;switch(s){case 0:for(s=0,a=Math.pow(2,8),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;c=r(s);break;case 1:for(s=0,a=Math.pow(2,16),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;c=r(s);break;case 2:return""}for(l[3]=c,i=c,v.push(c);;){if(g.index>o)return"";for(s=0,a=Math.pow(2,d),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;switch(c=s){case 0:for(s=0,a=Math.pow(2,8),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;l[h++]=r(s),c=h-1,f--;break;case 1:for(s=0,a=Math.pow(2,16),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;l[h++]=r(s),c=h-1,f--;break;case 2:return v.join("")}if(0==f&&(f=Math.pow(2,d),d++),l[c])m=l[c];else{if(c!==h)return null;m=i+i.charAt(0)}v.push(m),l[h++]=i+m.charAt(0),i=m,0==--f&&(f=Math.pow(2,d),d++)}}};return i}();"function"==typeof define&&define.amd?define(function(){return LZString}):"undefined"!=typeof module&&null!=module?module.exports=LZString:"undefined"!=typeof angular&&null!=angular&&angular.module("LZString",[]).factory("LZString",function(){return LZString});</script>
     <style>
         :root {
             --azul:#00BFFF; --azul-d:#009ACD; --fondo:#f0f2f5;
@@ -542,9 +543,9 @@
             <div class="sb">
                 <input type="text" id="bus-prod" placeholder="Buscar..." oninput="renderProductos()">
             </div>
-            <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-                <button class="btn bfull" style="background:#00bcd4;color:#fff;font-weight:700;flex:1;" onclick="abrirCatalogo('cliente')">📋 Catálogo Cliente</button>
-                <button class="btn bfull" style="background:#22c55e;color:#fff;font-weight:700;flex:1;" onclick="abrirCatalogo('afiliado')">🏅 Catálogo Afiliado</button>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+                <button class="btn ba" style="justify-content:center;" onclick="abrirModalCatalogo('cliente')">📋 Catálogo Cliente</button>
+                <button class="btn" style="justify-content:center;background:#16a34a;color:#fff;" onclick="abrirModalCatalogo('afiliado')">🤝 Catálogo Afiliado</button>
             </div>
             <div id="lista-prod"></div>
         </div>
@@ -924,6 +925,8 @@
         <label>Nombre</label><input type="text" id="ed-nom">
         <label>Precio ($)</label><input type="number" id="ed-prec" step="0.01">
         <label>URL Imagen</label><input type="text" id="ed-img">
+        <label>Característica especial <span style="font-weight:400;color:#888;font-size:11px;">(ej: Ajustable hasta talla 8, 50cm, Broche de rosca)</span></label>
+        <input type="text" id="ed-caract-especial" placeholder="Dejar vacío si no aplica">
 
         <!-- Tallas visuales (solo anillos) -->
         <div id="ed-sec-tallas" style="display:none;margin-top:12px;">
@@ -1900,7 +1903,7 @@ function renderProductos() {
             <img src="${p.foto||p.img||''}" alt="" onerror="this.style.display='none'">
             <div class="pi">
                 <div class="pn">${p.nombre||"—"} ${dest?'<span class="badge bam2">⭐ Destacado</span>':''}</div>
-                <div class="pd">Ref: ${p.codigo||"—"} · $${parseFloat(p.precio||0).toFixed(2)} · ${stock}</div>
+                <div class="pd">Ref: ${p.codigo||"—"} · $${parseFloat(p.precio||0).toFixed(2)} · ${stock}${getNotaEspecial(p)?` · <span style="color:#92400e;background:#fef3c7;border-radius:3px;padding:0 4px;font-size:10px;">♦ ${getNotaEspecial(p)}</span>`:''}</div>
             </div>
             <div class="pa">
                 <button class="btn bg" onclick='abrirEditar(${JSON.stringify(p)})'>✏️</button>
@@ -1915,6 +1918,7 @@ function abrirEditar(p) {
     document.getElementById("ed-nom").value  = p.nombre;
     document.getElementById("ed-prec").value = p.precio;
     document.getElementById("ed-img").value  = p.foto || p.img || "";
+    document.getElementById("ed-caract-especial").value = getNotaEspecial(p);
 
     // Mostrar tallas solo para anillos
     const esAnillo = (p.codigo || "").startsWith("AN-");
@@ -1958,12 +1962,14 @@ async function guardarEdicion() {
         caracteristicas = JSON.stringify(stocks);
     }
 
+    const caractEspecial = document.getElementById("ed-caract-especial").value.trim();
     const datos = {
         accion: "EDITAR_PRODUCTO", _pass: ADMIN_PASS,
         codigo: document.getElementById("ed-cod").value,
         nombre: document.getElementById("ed-nom").value,
         precio: document.getElementById("ed-prec").value,
         img:    document.getElementById("ed-img").value,
+        caractEspecial,
         ...(caracteristicas !== undefined && { caracteristicas }),
     };
     await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(datos)});
@@ -2640,398 +2646,995 @@ function cerrarModalVentas() {
     document.getElementById("modal-ventas-vend").classList.remove("open");
 }
 
-// ═══════════════════════════════════════════════════════════
-//  CATÁLOGOS TEMPORALES — Cliente y Afiliado
-// ═══════════════════════════════════════════════════════════
-
-const VEREX_WA = "50371250725";
-let _catMode = "cliente";
-let _catStock = [];
-let _catSel   = [];
-
-async function abrirCatalogo(mode) {
-    _catMode = mode;
-    _catSel  = [];
-    document.getElementById("cat-modal-titulo").textContent =
-        mode === "cliente" ? "📋 Catálogo Cliente" : "🏅 Catálogo Afiliado";
-    document.getElementById("cat-wa-wrap").style.display =
-        mode === "afiliado" ? "block" : "none";
-    document.getElementById("cat-grid").innerHTML =
-        `<p style="color:#aaa;font-size:13px;text-align:center;padding:16px;grid-column:1/-1;">Presiona "✨ Armar con IA" para seleccionar productos del stock</p>`;
-    document.getElementById("cat-output-btns").style.display = "none";
-    document.getElementById("cat-count").textContent = "";
-    document.getElementById("cat-modal").classList.add("open");
-
-    if (!_catStock.length) await _cargarCatStock();
+// ── Canvas helper ──
+function _rr(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
+    ctx.arcTo(x+w,y,x+w,y+r,r); ctx.lineTo(x+w,y+h-r);
+    ctx.arcTo(x+w,y+h,x+w-r,y+h,r); ctx.lineTo(x+r,y+h);
+    ctx.arcTo(x,y+h,x,y+h-r,r); ctx.lineTo(x,y+r);
+    ctx.arcTo(x,y,x+r,y,r); ctx.closePath();
 }
 
-function cerrarCatModal() {
-    document.getElementById("cat-modal").classList.remove("open");
-}
+async function generarImagenCatalogo() {
+    const codsSel = [...document.querySelectorAll(".cat-chk:checked")].map(c => c.dataset.cod);
+    if (!codsSel.length) return toast("⚠️ Selecciona al menos un producto","#f97316");
 
-async function _cargarCatStock() {
+    const lista  = _catFiltrada.filter(p => codsSel.includes(p.codigo));
+    const nombre = document.getElementById("cat-nombre").value.trim();
+    const talla  = document.getElementById("cat-talla").value;
+    const dias   = parseInt(document.getElementById("cat-validez").value)||3;
+
+    const btn = document.getElementById("btn-gen-img");
+    btn.textContent = "⏳..."; btn.disabled = true;
+
     try {
-        const res  = await fetch(API_URL, { method: "POST",
-            body: JSON.stringify({ accion: "GET_STOCK", _pass: ADMIN_PASS }) });
-        const data = await res.json();
-        if (data.ok && data.stock) {
-            _catStock = data.stock.filter(p => {
-                const tot = (parseInt(p.stock_bodega)||0) + (parseInt(p.stock_tienda)||0);
-                return tot > 0 && p.estado !== "inactivo";
-            });
-        }
-    } catch(_) {
-        _catStock = productos.map(p => ({ ...p,
-            stock_bodega: parseInt(p.stock_bodega)||0,
-            stock_tienda: parseInt(p.stock_tienda)||0 }));
-    }
-}
+        const CW=800, COLS=2, GAP=14, MG=14;
+        const CW2 = (CW - MG*2 - GAP) / 2;
+        const IH=210, TH=96, CH2=IH+TH;
+        const HDR=90, SUB=38, FOOT=34;
+        const rows = Math.ceil(lista.length/COLS);
+        const TOTAL_H = HDR+SUB+GAP + rows*(CH2+GAP) + FOOT;
 
-function armarCatalogoIA() {
-    const size = parseInt(document.getElementById("cat-size").value) || 36;
-    if (!_catStock.length) { toast("⚠️ No hay stock cargado", "#ef4444"); return; }
-
-    // Agrupar por categoría (primeras 2 letras del código)
-    const grupos = {};
-    _catStock.forEach(p => {
-        const cat = (p.codigo || p.codigo_base || "OT").substring(0, 2);
-        if (!grupos[cat]) grupos[cat] = [];
-        grupos[cat].push(p);
-    });
-
-    // Ordenar cada grupo por stock descendente
-    const totalProds = _catStock.length;
-    let pool = [];
-    Object.values(grupos).forEach(g => {
-        g.sort((a,b) => {
-            const sa = (parseInt(a.stock_bodega)||0)+(parseInt(a.stock_tienda)||0);
-            const sb = (parseInt(b.stock_bodega)||0)+(parseInt(b.stock_tienda)||0);
-            return sb - sa;
-        });
-        // Tomar proporcionalmente de cada categoría, al menos 1
-        const cuota = Math.max(1, Math.round((g.length / totalProds) * size));
-        pool.push(...g.slice(0, cuota));
-    });
-
-    // Deduplicar por codigo_base (agrupar tallas del mismo producto)
-    const seen = new Set();
-    let uniq = pool.filter(p => {
-        const key = p.codigo_base || p.codigo;
-        if (seen.has(key)) return false;
-        seen.add(key); return true;
-    });
-
-    // Si faltan, completar con los de mayor stock restantes
-    if (uniq.length < size) {
-        const seenSet = new Set(uniq.map(p => p.codigo_base || p.codigo));
-        const extra = _catStock
-            .filter(p => !seenSet.has(p.codigo_base || p.codigo))
-            .sort((a,b) => {
-                const sa = (parseInt(a.stock_bodega)||0)+(parseInt(a.stock_tienda)||0);
-                const sb = (parseInt(b.stock_bodega)||0)+(parseInt(b.stock_tienda)||0);
-                return sb - sa;
-            });
-        uniq.push(...extra.slice(0, size - uniq.length));
-    }
-
-    _catSel = uniq.slice(0, size);
-    _renderCatGrid();
-    document.getElementById("cat-output-btns").style.display = "flex";
-    document.getElementById("cat-count").textContent = `${_catSel.length} productos seleccionados`;
-    toast(`✅ ${_catSel.length} productos armados con IA`, "#22c55e");
-}
-
-function _renderCatGrid() {
-    document.getElementById("cat-grid").innerHTML = _catSel.map((p, i) => {
-        const img    = p.foto || p.img || "";
-        const nombre = p.nombre || p.nombre_base || "—";
-        const precio = parseFloat(p.precio || p.precioNum || 0).toFixed(2);
-        const stock  = (parseInt(p.stock_bodega)||0)+(parseInt(p.stock_tienda)||0);
-        const badge  = p.caracterEspecial
-            ? `<span style="display:block;background:rgba(201,168,76,.15);color:#C9A84C;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;border:1px solid rgba(201,168,76,.35);margin:2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">✦ ${p.caracterEspecial}</span>`
-            : "";
-        return `<div style="background:var(--gris);border:1px solid var(--borde);border-radius:9px;overflow:hidden;font-size:11px;position:relative;">
-            ${img
-                ? `<img src="${img}" style="width:100%;height:80px;object-fit:cover;" onerror="this.style.display='none'">`
-                : `<div style="height:80px;background:#222;display:flex;align-items:center;justify-content:center;font-size:22px;">💍</div>`}
-            <div style="padding:5px 6px;">
-                <div style="font-weight:700;font-size:10px;line-height:1.3;margin-bottom:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${nombre}</div>
-                ${badge}
-                <div style="color:var(--dorado);font-weight:800;font-size:12px;">$${precio}</div>
-                <div style="color:#666;font-size:9px;">Stock: ${stock}</div>
-            </div>
-            <button onclick="_catSel.splice(${i},1);_renderCatGrid();document.getElementById('cat-count').textContent=_catSel.length+' productos seleccionados';"
-                style="position:absolute;top:3px;right:3px;background:rgba(0,0,0,.65);color:#fff;border:none;border-radius:50%;width:17px;height:17px;font-size:9px;cursor:pointer;line-height:17px;text-align:center;padding:0;">✕</button>
-        </div>`;
-    }).join("");
-}
-
-// ── Generar HTML del catálogo (usado por Link y PDF) ──────────────────────────
-
-function _buildCatalogoHTML(prods, titulo, waNum) {
-    const cards = prods.map(p => {
-        const img    = p.foto || p.img || "";
-        const nombre = p.nombre || p.nombre_base || "—";
-        const precio = parseFloat(p.precio || p.precioNum || 0).toFixed(2);
-        const badge  = p.caracterEspecial
-            ? `<div class="badge-esp">✦ ${p.caracterEspecial}</div>` : "";
-        const msg = encodeURIComponent(
-            `Hola! Me interesa este producto de VEREX:\n\n${nombre}\nPrecio: $${precio}\nCódigo: ${p.codigo_base || p.codigo || ""}`);
-        return `<div class="card">
-            ${img ? `<img src="${img}" alt="" loading="lazy" onerror="this.style.display='none'">` : `<div class="no-img">💍</div>`}
-            <div class="info">
-                <div class="nombre">${nombre}</div>
-                ${badge}
-                <div class="precio">$${precio}</div>
-                <a class="btn-quiero" href="https://wa.me/${waNum}?text=${msg}" target="_blank">💬 QUIERO ESTE</a>
-            </div>
-        </div>`;
-    }).join("");
-
-    return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${titulo}</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0d0d0d;color:#fff}
-header{background:linear-gradient(135deg,#111,#1a1a1a);border-bottom:2px solid #C9A84C;padding:20px;text-align:center}
-header h1{font-size:22px;color:#C9A84C;letter-spacing:2px}
-header p{color:#888;font-size:13px;margin-top:5px}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;padding:16px;max-width:1100px;margin:0 auto}
-.card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
-.card img,.card .no-img{width:100%;height:160px;object-fit:cover}
-.card .no-img{display:flex;align-items:center;justify-content:center;font-size:40px;background:#222}
-.info{padding:10px;flex:1;display:flex;flex-direction:column;gap:5px}
-.nombre{font-weight:700;font-size:12px;line-height:1.3;color:#eee}
-.badge-esp{background:rgba(201,168,76,.15);color:#C9A84C;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1px solid rgba(201,168,76,.4);display:inline-block;width:fit-content}
-.precio{color:#C9A84C;font-weight:800;font-size:17px}
-.btn-quiero{display:block;background:#25D366;color:#fff;text-align:center;text-decoration:none;padding:9px;border-radius:8px;font-weight:700;font-size:13px;margin-top:auto}
-.btn-quiero:hover{background:#128C7E}
-footer{text-align:center;padding:20px;color:#555;font-size:12px;border-top:1px solid #222;margin-top:20px}
-@media(max-width:480px){.grid{grid-template-columns:repeat(2,1fr);gap:8px;padding:10px}}
-</style></head><body>
-<header><h1>${titulo}</h1><p>${prods.length} productos disponibles</p></header>
-<div class="grid">${cards}</div>
-<footer>Catálogo generado por VEREX STORE · verexstore.com</footer>
-</body></html>`;
-}
-
-// ── Link ──────────────────────────────────────────────────────────────────────
-
-function generarCatLink() {
-    if (!_catSel.length) { toast("⚠️ Sin productos seleccionados", "#ef4444"); return; }
-    const waAfil = (document.getElementById("cat-wa-afil")?.value || "").replace(/\D/g,"");
-    const waNum  = (_catMode === "afiliado" && waAfil) ? waAfil : VEREX_WA;
-    const titulo = _catMode === "afiliado" ? "🏅 Catálogo Afiliado VEREX" : "📋 Catálogo VEREX";
-    const html   = _buildCatalogoHTML(_catSel, titulo, waNum);
-    const blob   = new Blob([html], { type: "text/html;charset=utf-8" });
-    window.open(URL.createObjectURL(blob), "_blank");
-    toast("🔗 Catálogo abierto en nueva pestaña", "#22c55e");
-}
-
-// ── PDF ───────────────────────────────────────────────────────────────────────
-
-async function generarCatPDF(evt) {
-    if (!_catSel.length) { toast("⚠️ Sin productos seleccionados", "#ef4444"); return; }
-    if (!window.jspdf) { toast("⚠️ jsPDF no disponible", "#ef4444"); return; }
-    const btn = evt.currentTarget; btn.disabled = true; btn.textContent = "⏳ Generando...";
-    try {
-        const waAfil = (document.getElementById("cat-wa-afil")?.value || "").replace(/\D/g,"");
-        const waNum  = (_catMode === "afiliado" && waAfil) ? waAfil : VEREX_WA;
-        const titulo = _catMode === "afiliado" ? "Catálogo Afiliado VEREX" : "Catálogo Cliente VEREX";
-        const { jsPDF } = window.jspdf;
-        const COLS=3, CW=62, CH=82, GAP=4, MAR=8, HEADER=14;
-        const PW = COLS*CW + (COLS-1)*GAP + MAR*2;
-        const rowsPerPage = Math.floor((290 - HEADER - MAR) / (CH+GAP));
-        const doc = new jsPDF({ unit:"mm", format:[PW, 297], orientation:"portrait" });
-
-        const drawHeader = () => {
-            doc.setFillColor(17,17,17); doc.rect(0,0,PW,HEADER,"F");
-            doc.setTextColor(201,168,76); doc.setFont("helvetica","bold"); doc.setFontSize(9);
-            doc.text(titulo, PW/2, HEADER-4, { align:"center" });
-        };
-        drawHeader();
-
-        for (let i = 0; i < _catSel.length; i++) {
-            const col = i % COLS;
-            const row = Math.floor(i / COLS) % rowsPerPage;
-            if (i > 0 && col === 0 && row === 0) { doc.addPage(); drawHeader(); }
-            const p  = _catSel[i];
-            const x  = MAR + col*(CW+GAP);
-            const y  = HEADER + MAR + row*(CH+GAP);
-
-            doc.setFillColor(26,26,26); doc.setDrawColor(42,42,42); doc.setLineWidth(0.3);
-            doc.roundedRect(x, y, CW, CH, 2, 2, "FD");
-
-            // Imagen
-            const imgUrl = p.foto || p.img || "";
-            if (imgUrl) {
-                try {
-                    const resp = await fetch(imgUrl);
-                    const blob = await resp.blob();
-                    const b64  = await new Promise(res => {
-                        const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(blob);
-                    });
-                    const fmt  = blob.type.includes("png") ? "PNG" : "JPEG";
-                    doc.addImage(b64, fmt, x+0.5, y+0.5, CW-1, 44);
-                } catch(_) {}
-            }
-
-            // Nombre
-            doc.setTextColor(238,238,238); doc.setFont("helvetica","normal"); doc.setFontSize(7);
-            const nombre = p.nombre || p.nombre_base || "—";
-            const lines  = doc.splitTextToSize(nombre, CW-3);
-            doc.text(lines.slice(0,2), x+1.5, y+48);
-
-            // Badge caracterEspecial
-            if (p.caracterEspecial) {
-                doc.setTextColor(201,168,76); doc.setFontSize(6);
-                doc.text("✦ " + p.caracterEspecial, x+1.5, y+57);
-            }
-
-            // Precio
-            doc.setTextColor(201,168,76); doc.setFont("helvetica","bold"); doc.setFontSize(10);
-            doc.text("$" + parseFloat(p.precio||p.precioNum||0).toFixed(2), x+CW/2, y+66, { align:"center" });
-
-            // WhatsApp
-            doc.setTextColor(37,211,102); doc.setFont("helvetica","normal"); doc.setFontSize(5.5);
-            doc.text("wa.me/"+waNum, x+CW/2, y+73, { align:"center" });
-        }
-
-        doc.save(`VEREX_Catalogo_${_catMode}_${new Date().toLocaleDateString("es-SV").replace(/\//g,"-")}.pdf`);
-        toast("📄 PDF generado", "#22c55e");
-    } catch(e) {
-        console.error(e); toast("⚠️ Error generando PDF", "#ef4444");
-    } finally { btn.disabled = false; btn.textContent = "🖨️ PDF"; }
-}
-
-// ── Imagen ────────────────────────────────────────────────────────────────────
-
-async function generarCatImagen(evt) {
-    if (!_catSel.length) { toast("⚠️ Sin productos seleccionados", "#ef4444"); return; }
-    const btn = evt.currentTarget; btn.disabled = true; btn.textContent = "⏳ Generando...";
-    try {
-        const COLS=4, CW=200, CH=250, GAP=12, MAR=20, HDRH=55;
-        const rows   = Math.ceil(_catSel.length / COLS);
-        const cW     = COLS*CW + (COLS-1)*GAP + MAR*2;
-        const cH     = HDRH + rows*(CH+GAP) - GAP + MAR;
         const canvas = document.createElement("canvas");
-        canvas.width = cW; canvas.height = cH;
+        canvas.width=CW; canvas.height=TOTAL_H;
         const ctx = canvas.getContext("2d");
 
-        ctx.fillStyle = "#0d0d0d"; ctx.fillRect(0,0,cW,cH);
-        ctx.fillStyle = "#111"; ctx.fillRect(0,0,cW,HDRH);
-        ctx.strokeStyle = "#C9A84C"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(0,HDRH); ctx.lineTo(cW,HDRH); ctx.stroke();
-        ctx.fillStyle = "#C9A84C"; ctx.font = "bold 22px Arial"; ctx.textAlign = "center";
-        const titulo = _catMode === "afiliado" ? "Catálogo Afiliado VEREX" : "Catálogo Cliente VEREX";
-        ctx.fillText(titulo, cW/2, 35);
+        // Header
+        ctx.fillStyle="#111"; ctx.fillRect(0,0,CW,HDR);
+        ctx.textAlign="center";
+        ctx.fillStyle="#00BFFF"; ctx.font="bold 40px 'Segoe UI',Arial";
+        ctx.fillText("VEREX",CW/2,54);
+        ctx.fillStyle="#999"; ctx.font="15px 'Segoe UI',Arial";
+        ctx.fillText("La expresión de tu mejor versión",CW/2,78);
 
-        // Precargar imágenes
-        const imgs = await Promise.all(_catSel.map(p => new Promise(res => {
-            const url = p.foto || p.img || "";
-            if (!url) return res(null);
-            const img = new Image(); img.crossOrigin = "anonymous";
-            img.onload = () => res(img); img.onerror = () => res(null); img.src = url;
-        })));
+        // Subtitle bar
+        ctx.fillStyle="#fff"; ctx.fillRect(0,HDR,CW,SUB);
+        ctx.fillStyle="#555"; ctx.font="italic 13px 'Segoe UI',Arial";
+        let sub=nombre?`Catálogo para: ${nombre}`:"Catálogo de productos";
+        if(talla) sub+=`  ·  Talla ${talla}`;
+        ctx.fillText(sub,CW/2,HDR+15);
+        ctx.fillStyle="#f97316"; ctx.font="bold 12px 'Segoe UI',Arial";
+        const expStr=new Date(Date.now()+dias*864e5).toLocaleDateString("es-CO");
+        ctx.fillText(`⏰ Válido hasta: ${expStr}`,CW/2,HDR+30);
 
-        const rr = (x,y,w,h,r) => {
-            ctx.beginPath(); ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
-            ctx.quadraticCurveTo(x+w,y,x+w,y+r); ctx.lineTo(x+w,y+h-r);
-            ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h); ctx.lineTo(x+r,y+h);
-            ctx.quadraticCurveTo(x,y+h,x,y+h-r); ctx.lineTo(x,y+r);
-            ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath();
+        // BG
+        ctx.fillStyle="#f0f2f5"; ctx.fillRect(0,HDR+SUB,CW,TOTAL_H-HDR-SUB-FOOT);
+
+        // Cards
+        for(let i=0;i<lista.length;i++){
+            const p=lista[i];
+            const col=i%COLS, row=Math.floor(i/COLS);
+            const x=MG+col*(CW2+GAP), y=HDR+SUB+GAP+row*(CH2+GAP);
+
+            ctx.fillStyle="rgba(0,0,0,0.06)"; _rr(ctx,x+2,y+3,CW2,CH2,10); ctx.fill();
+            ctx.fillStyle="#fff"; _rr(ctx,x,y,CW2,CH2,10); ctx.fill();
+
+            const b64=await imgToBase64Cat(p.foto||p.img||"");
+            if(b64){
+                const img=new Image();
+                await new Promise(r=>{img.onload=r;img.onerror=r;img.src=b64;});
+                ctx.save(); _rr(ctx,x,y,CW2,IH,10); ctx.clip();
+                const mw=CW2-8,mh=IH-8,ratio=img.width/img.height;
+                let dw,dh;
+                if(ratio>mw/mh){dw=mw;dh=mw/ratio;}else{dh=mh;dw=mh*ratio;}
+                ctx.drawImage(img,x+4+(mw-dw)/2,y+4+(mh-dh)/2,dw,dh);
+                ctx.restore();
+            } else {
+                ctx.fillStyle="#f0f0f0"; _rr(ctx,x,y,CW2,IH,10); ctx.fill();
+                ctx.fillStyle="#ccc"; ctx.font="28px sans-serif"; ctx.textAlign="center";
+                ctx.fillText("💍",x+CW2/2,y+IH/2+10);
+            }
+
+            ctx.fillStyle="#1a1a1a"; ctx.font="bold 14px 'Segoe UI',Arial"; ctx.textAlign="center";
+            const nm=(p.nombre||"—");
+            const nm2=nm.length>28?nm.substring(0,25)+"…":nm;
+            ctx.fillText(nm2,x+CW2/2,y+IH+22);
+
+            const matIMG = p.material || detectarMaterial(p.nombre) || "";
+            if (matIMG) {
+                ctx.fillStyle="#7c3aed"; ctx.font="bold 11px 'Segoe UI',Arial";
+                ctx.fillText(matIMG,x+CW2/2,y+IH+40);
+            }
+
+            ctx.fillStyle="#00BFFF"; ctx.font="bold 17px 'Segoe UI',Arial";
+            ctx.fillText(`$${parseFloat(p.precio||0).toFixed(2)}`,x+CW2/2,y+IH+62);
+
+            const notaIMG = (document.querySelector(`.cat-nota[data-cod="${p.codigo}"]`)?.value||"").trim();
+            if (notaIMG) {
+                ctx.fillStyle="#888"; ctx.font="italic 11px 'Segoe UI',Arial";
+                const notaTxt = notaIMG.length>40?notaIMG.substring(0,37)+"…":notaIMG;
+                ctx.fillText(notaTxt,x+CW2/2,y+IH+82);
+            }
+        }
+
+        // Footer
+        ctx.fillStyle="#fff"; ctx.fillRect(0,TOTAL_H-FOOT,CW,FOOT);
+        ctx.fillStyle="#aaa"; ctx.font="12px 'Segoe UI',Arial"; ctx.textAlign="center";
+        ctx.fillText("VEREX · La expresión de tu mejor versión",CW/2,TOTAL_H-10);
+
+        canvas.toBlob(blob=>{
+            const a=document.createElement("a");
+            a.href=URL.createObjectURL(blob);
+            a.download=nombre?`catalogo-${nombre.toLowerCase().replace(/\s+/g,"-")}.jpg`:"catalogo-verex.jpg";
+            a.click();
+            toast("✅ Imagen generada","#22c55e");
+        },"image/jpeg",0.92);
+
+    } catch(e){ console.error(e); toast("❌ Error al generar imagen","#ef4444"); }
+    finally { btn.textContent="🖼️ Imagen"; btn.disabled=false; }
+}
+
+function aplicarPromptIA() {
+    const prompt = (document.getElementById("cat-ia-prompt")?.value||"").toLowerCase();
+    if (!prompt.trim()) return;
+
+    const catKws = {
+        AN: /anillo|argolla|alianza|matrimonio|solitario|novio|pareja/,
+        AR: /arete|aretes|pendiente/,
+        CD: /cadena|collar|gargantilla/,
+        PL: /pulsera|brazalete/,
+        CN: /conjunto|set/,
+        RL: /reloj/,
+    };
+    const catsDetect = Object.entries(catKws).filter(([,re])=>re.test(prompt)).map(([k])=>k);
+
+    const mTalla = prompt.match(/talla\s*(\d+(?:[.,]\d+)?)|t\s*(\d+(?:[.,]\d+)?)\b/);
+    const talla  = mTalla ? (mTalla[1]||mTalla[2]).replace(",",".") : "";
+
+    let pfx = "";
+    if (/\bdama\b|\bmujer\b/.test(prompt))            pfx = "D";
+    else if (/\bcaballero\b|\bhombre\b/.test(prompt)) pfx = "C";
+    else if (/\bunico\b|\bún[io]co\b/.test(prompt))   pfx = "U";
+
+    let tipoAN = "";
+    if (/argolla|matrimonio|pareja|novios|alianza/.test(prompt)) tipoAN = "pareja";
+    else if (/sencillo|solitario/.test(prompt))                  tipoAN = "sencillo";
+
+    const mNom = prompt.match(/para\s+([a-záéíóúüñ]+)/i);
+    const clienteNom = mNom ? mNom[1].charAt(0).toUpperCase()+mNom[1].slice(1) : "";
+
+    document.querySelectorAll(".cat-cat-chk").forEach(chk => {
+        chk.checked = catsDetect.includes(chk.value);
+        const lbl = chk.closest("label");
+        if (chk.checked) { lbl.style.background="var(--azul)"; lbl.style.color="#fff"; lbl.style.borderColor="var(--azul)"; }
+        else             { lbl.style.background="#fff"; lbl.style.color=""; lbl.style.borderColor="var(--borde)"; }
+    });
+
+    const hasAN = catsDetect.length === 0 || catsDetect.includes("AN");
+    document.getElementById("cat-sec-talla").style.display = hasAN ? "block" : "none";
+    document.getElementById("cat-talla").value   = talla;
+    document.getElementById("cat-tipo-an").value = tipoAN;
+    document.getElementById("cat-genero").value  = "";
+    const pfEl = document.getElementById("cat-prefijo-txt");
+    if (pfEl) pfEl.value = pfx;
+    if (clienteNom) document.getElementById("cat-nombre").value = clienteNom;
+
+    filtrarParaCatalogo();
+
+    let sinStock = 0;
+    document.querySelectorAll(".cat-chk").forEach(chk => {
+        const cod = chk.dataset.cod;
+        const prod = _catFiltrada.find(p => (p._codigos?.[0]||p.codigo) === cod);
+        if (prod && !tieneStock(prod, talla)) { chk.checked = false; sinStock++; }
+    });
+
+    const total   = document.querySelectorAll(".cat-chk").length;
+    const activos = document.querySelectorAll(".cat-chk:checked").length;
+    const partes  = [];
+    if (catsDetect.length) partes.push(catsDetect.map(k=>CAT_MAP[k].replace(/\p{Emoji}/gu,"").trim()).join(", "));
+    if (talla)   partes.push(`talla ${talla}`);
+    if (pfx)     partes.push({D:"dama",C:"caballero",U:"único"}[pfx]||pfx);
+    if (tipoAN)  partes.push(tipoAN==="pareja"?"argollas/pareja":"sencillos");
+    document.getElementById("cat-ia-resultado").textContent =
+        `✅ ${activos} producto(s) con stock listo(s)${sinStock?" · "+sinStock+" sin stock omitido(s)":""}`
+        + (partes.length ? ` — ${partes.join(", ")}` : "");
+}
+
+let _bannerColor = "#ef4444";
+function selBannerColor(btn, color) {
+    _bannerColor = color;
+    document.querySelectorAll("#banner-colors button").forEach(b => b.style.border = "3px solid transparent");
+    btn.style.border = "3px solid #111";
+    const prev = document.getElementById("banner-preview");
+    const txt = document.getElementById("cat-banner-txt").value.trim();
+    if(txt){ prev.style.display="block"; prev.style.background=color; prev.textContent=txt; }
+}
+document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("cat-banner-txt")?.addEventListener("input", () => {
+        const txt = document.getElementById("cat-banner-txt").value.trim();
+        const prev = document.getElementById("banner-preview");
+        if(txt){ prev.style.display="block"; prev.style.background=_bannerColor; prev.textContent=txt; }
+        else { prev.style.display="none"; }
+    });
+});
+
+function getNotaEspecial(p) {
+    const v = p.caractEspecial || p.caract_especial || p.caracteristicaEspecial
+           || p.caracteristica_especial || p.notaEspecial || p.nota_especial
+           || p.caract || p.nota || p.etiqueta || "";
+    return String(v).trim();
+}
+
+async function generarLinkCatalogo() {
+    const codsSel=[...document.querySelectorAll(".cat-chk:checked")].map(c=>c.dataset.cod);
+    if(!codsSel.length) return toast("⚠️ Selecciona al menos un producto","#f97316");
+
+    // _catFiltrada already has grouped AN products — no second grouping needed
+    const lista      = _catFiltrada.filter(p=>codsSel.includes(p._codigos?.[0]||p.codigo));
+    const esAfiliado = document.getElementById("cat-es-afiliado")?.checked||false;
+    const nombre     = esAfiliado
+        ? (document.getElementById("cat-afiliado-nombre")?.value||"").trim()
+        : document.getElementById("cat-nombre").value.trim();
+    const talla      = document.getElementById("cat-talla").value;
+    const dias       = parseInt(document.getElementById("cat-validez").value)||3;
+    const wa         = (document.getElementById("cat-wa")?.value||localStorage.getItem("verex-wa")||"").trim();
+    const afiliadoId = (document.getElementById("cat-afiliado-id")?.value||"").trim();
+
+    const btn=document.getElementById("btn-gen-link");
+    btn.textContent="⏳..."; btn.disabled=true;
+
+    try {
+        const bannerTxt = (document.getElementById("cat-banner-txt")?.value||"").trim();
+        const bannerSub = (document.getElementById("cat-banner-sub")?.value||"").trim();
+        const banner = bannerTxt ? { txt: bannerTxt, sub: bannerSub, color: _bannerColor } : null;
+
+        const data={
+            expiry: Date.now()+dias*864e5,
+            nombre, talla, wa, banner, dias,
+            ...(esAfiliado && { afiliado: true }),
+            ...(afiliadoId && { customId: afiliadoId }),
+            prods: lista.map(p=>({
+                n: p.nombre||"—",
+                p: parseFloat(p.precio||0).toFixed(2),
+                i: p.foto||p.img||"",
+                m: p.material||detectarMaterial(p.nombre)||"",
+                cat: p._catKey||getCatKey(p.codigo),
+                sizes:  p._sizes||[],
+                sizesD: p._sizesD||[],
+                sizesH: p._sizesH||[],
+                par:    p._esPareja || /matrimonio|argolla|novios|pareja|alianza/i.test(p.nombre||"") || false,
+                pD:    p._precioDama||null,
+                pH:    p._precioCab||null,
+                ne:    getNotaEspecial(p),
+                nota: (document.querySelector(`.cat-nota[data-cod="${p._codigos?.[0]||p.codigo}"]`)?.value||"").trim()
+            }))
         };
 
-        for (let i = 0; i < _catSel.length; i++) {
-            const col = i % COLS, row = Math.floor(i / COLS);
-            const x = MAR + col*(CW+GAP), y = HDRH + MAR + row*(CH+GAP);
-            const p = _catSel[i];
+        if(wa) localStorage.setItem("verex-wa", wa);
 
-            // Fondo carta
-            ctx.fillStyle = "#1a1a1a"; ctx.strokeStyle = "#2a2a2a"; ctx.lineWidth = 1;
-            rr(x,y,CW,CH,10); ctx.fill(); ctx.stroke();
+        // Save to KV and get short URL
+        const saveRes = await fetch("/save-catalog", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data)
+        });
 
-            // Imagen
-            const IMH = 138;
-            if (imgs[i]) {
-                ctx.save(); rr(x,y,CW,IMH,10); ctx.clip();
-                ctx.drawImage(imgs[i],x,y,CW,IMH); ctx.restore();
+        let finalUrl;
+        if(saveRes.ok){
+            const { url } = await saveRes.json();
+            finalUrl = location.origin + url;
+        } else {
+            throw new Error("Error al guardar catálogo");
+        }
+
+        try { await navigator.clipboard.writeText(finalUrl); } catch(_){}
+        document.getElementById("cat-link-out").textContent=finalUrl;
+        document.getElementById("cat-link-box").style.display="block";
+        toast("🔗 Link listo — cópialo o compártelo por WhatsApp","#22c55e");
+
+    } catch(e){ console.error(e); toast("❌ Error al generar link: "+e.message,"#ef4444"); }
+    finally { btn.textContent="🔗 Link"; btn.disabled=false; }
+}
+
+// ═════════════════════════════════════════════
+//  CATÁLOGO PARA CLIENTE
+// ═════════════════════════════════════════════
+let _catFiltrada = [];
+
+const CAT_MAP = {
+    AN: "💍 Anillos",
+    AR: "👂 Aretes",
+    CD: "⛓️ Cadenas",
+    PL: "💪 Pulseras",
+    CN: "✨ Conjuntos",
+    RL: "⌚ Relojes",
+    OT: "📦 Otros",
+};
+
+function getCatKey(codigo) {
+    const c = (codigo || "").toUpperCase();
+    for (const k of Object.keys(CAT_MAP)) { if (c.startsWith(k)) return k; }
+    if (c.startsWith("U")) return "AN";
+    return "OT";
+}
+
+function getPrefijoProd(p) {
+    if (/^U/i.test(p.codigo||"")) return "U";
+    const n = (p.nombre||"").toLowerCase();
+    if (/\bdama\b|\bmujer\b/.test(n))                return "D";
+    if (/\bcaballero\b|\bhombre\b/.test(n))          return "C";
+    if (/\bún[io]co\b|\bunico\b|\bunisex\b/.test(n)) return "U";
+    const mCod = (p.codigo||"").match(/([CDHU])\d/i);
+    if (mCod) return mCod[1].toUpperCase();
+    return "T";
+}
+
+function tieneStock(p, talla) {
+    let s = {};
+    try { s = JSON.parse(p.caracteristicas || "{}"); } catch(_) {}
+    if (talla) {
+        return (parseInt(s[talla])||0) > 0
+            || (parseInt(s["D"+talla])||0) > 0
+            || (parseInt(s["H"+talla])||0) > 0
+            || (parseInt(s["C"+talla])||0) > 0;
+    }
+    return Object.values(s).some(v => (parseInt(v)||0) > 0);
+}
+
+function agruparParaCatalogo(lista) {
+    if (lista.length) console.log("[VEREX] campos producto:", Object.keys(lista[0]));
+    const ES_PAR_GRP  = /matrimonio|argolla|novios|pareja|alianza/i;
+    const ES_DAMA_GRP = /\b(dama|mujer)\b/i;
+    const ES_CAB_GRP  = /\b(caballero|hombre)\b/i;
+
+    const hasDKey = p => { try { return Object.keys(JSON.parse(p.caracteristicas||"{}")).some(k=>/^D\d/i.test(k)); } catch(_){return false;} };
+    // C keys (Caballero) and H keys (Hombre) both mark a caballero variant
+    const hasCHKey = p => { try { return Object.keys(JSON.parse(p.caracteristicas||"{}")).some(k=>/^[HC]\d/i.test(k)); } catch(_){return false;} };
+
+    const isDamaP = p => ES_DAMA_GRP.test(p.nombre||"") || hasDKey(p);
+    const isCabP  = p => ES_CAB_GRP.test(p.nombre||"")  || hasCHKey(p);
+
+    const addSz = (arr, sz) => { if (sz && !isNaN(parseFloat(sz)) && !arr.includes(sz)) arr.push(sz); };
+
+    const stripBase = nombre => (nombre||"")
+        .replace(/\s+[TCDHU]\d+(?:\.\d+)?\s*$/i, "")
+        .replace(/\s+(dama|caballero|hombre|mujer|único|unico)\s*$/i, "")
+        .trim();
+
+    const map = new Map();
+    lista.forEach(p => {
+        const catKey = getCatKey(p.codigo);
+        const baseNombre = catKey === "AN" ? stripBase(p.nombre) : (p.nombre||"").trim();
+        const key = catKey === "AN" ? baseNombre : (p.nombre||p.codigo);
+        if (!map.has(key)) {
+            map.set(key, { ...p, nombre: baseNombre, _sizes: [], _sizesD: [], _sizesH: [], _codigos: [p.codigo], _catKey: catKey });
+        }
+        const g = map.get(key);
+        if (!g._codigos.includes(p.codigo)) g._codigos.push(p.codigo);
+        if (!g.caractEspecial && p.caractEspecial) g.caractEspecial = p.caractEspecial;
+
+        let s = {};
+        try { s = JSON.parse(p.caracteristicas || "{}"); } catch(_) {}
+        Object.entries(s).forEach(([k, v]) => {
+            if ((parseInt(v) || 0) > 0) {
+                if (/^D\d/i.test(k))           addSz(g._sizesD, k.replace(/^D/i,""));
+                else if (/^[HC]\d/i.test(k))   addSz(g._sizesH, k.replace(/^[HC]/i,""));
+                else                           addSz(g._sizes,  k);
+            }
+        });
+
+        // Extract size from code/name suffix (e.g. AN001C9 → C → _sizesH, AN001D7 → D → _sizesD)
+        const mCod = (p.codigo||"").match(/([TCDHU])(\d+(?:\.\d+)?)$/i);
+        const mNom = (p.nombre||"").match(/([TCDHU])(\d+(?:\.\d+)?)\s*$/i);
+        [mCod, mNom].forEach(m => {
+            if (!m) return;
+            const [, letra, num] = m;
+            if (/^D$/i.test(letra))           addSz(g._sizesD, num);
+            else if (/^[HC]$/i.test(letra))   addSz(g._sizesH, num);
+            else                              addSz(g._sizes,  num);
+        });
+    });
+
+    const sortNum = arr => arr.sort((a,b) => parseFloat(a)-parseFloat(b));
+    map.forEach(g => { sortNum(g._sizes); sortNum(g._sizesD); sortNum(g._sizesH); });
+
+    // Pair pricing: sum dama + caballero prices
+    map.forEach(g => {
+        if (!ES_PAR_GRP.test(g.nombre)) return;
+        const originals = lista.filter(p => g._codigos.includes(p.codigo));
+        let dama = originals.find(isDamaP);
+        let cab  = originals.find(isCabP);
+
+        // If partner missing from filtered list, search the full products catalog
+        if ((!dama || !cab) && typeof productos !== "undefined") {
+            const allAN = productos.filter(p => getCatKey(p.codigo) === "AN");
+            const partners = allAN.filter(p => !g._codigos.includes(p.codigo) && stripBase(p.nombre) === g.nombre);
+            if (!dama) {
+                dama = partners.find(isDamaP);
+                if (dama) { // pull in dama sizes
+                    let s2 = {}; try { s2 = JSON.parse(dama.caracteristicas||"{}"); } catch(_) {}
+                    Object.entries(s2).forEach(([k,v]) => { if ((parseInt(v)||0)>0 && /^D\d/i.test(k)) addSz(g._sizesD, k.replace(/^D/i,"")); });
+                    sortNum(g._sizesD);
+                }
+            }
+            if (!cab) {
+                cab = partners.find(isCabP);
+                if (cab) { // pull in caballero sizes
+                    let s2 = {}; try { s2 = JSON.parse(cab.caracteristicas||"{}"); } catch(_) {}
+                    Object.entries(s2).forEach(([k,v]) => { if ((parseInt(v)||0)>0 && /^[HC]\d/i.test(k)) addSz(g._sizesH, k.replace(/^[HC]/i,"")); });
+                    sortNum(g._sizesH);
+                }
+            }
+        }
+
+        if (dama && cab) {
+            g._esPareja = true;
+            if (dama.codigo !== cab.codigo) {
+                g._precioDama = parseFloat(dama.precio||0).toFixed(2);
+                g._precioCab  = parseFloat(cab.precio||0).toFixed(2);
+            }
+        }
+    });
+
+    return [...map.values()];
+}
+
+function poblarCategorias() {
+    const presentes = [...new Set(productos.map(p => getCatKey(p.codigo)))];
+    const orden = ["AN","AR","CD","PL","CN","RL","OT"];
+    const pills = document.getElementById("cat-categoria-pills");
+    if (!pills) return;
+    pills.innerHTML = orden.filter(k => presentes.includes(k)).map(k => `
+        <label style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:20px;border:1.5px solid var(--borde);background:#fff;font-size:12px;font-weight:600;user-select:none;transition:all .15s;">
+            <input type="checkbox" class="cat-cat-chk" value="${k}" style="display:none;" onchange="onPillChange()">
+            ${CAT_MAP[k]}
+        </label>`).join("");
+}
+
+function onPillChange() {
+    document.querySelectorAll(".cat-cat-chk").forEach(chk => {
+        const lbl = chk.closest("label");
+        if (chk.checked) { lbl.style.background="var(--azul)"; lbl.style.color="#fff"; lbl.style.borderColor="var(--azul)"; }
+        else             { lbl.style.background="#fff"; lbl.style.color=""; lbl.style.borderColor="var(--borde)"; }
+    });
+    const cats = [...document.querySelectorAll(".cat-cat-chk:checked")].map(c => c.value);
+    const hasAN = cats.length === 0 || cats.includes("AN");
+    document.getElementById("cat-sec-talla").style.display = hasAN ? "block" : "none";
+    filtrarParaCatalogo();
+}
+
+function abrirModalCatalogo(tipo) {
+    const esAfiliado = tipo === "afiliado";
+    document.getElementById("modal-catalogo").classList.add("open");
+    document.getElementById("modal-catalogo-titulo").textContent = esAfiliado
+        ? "🤝 Catálogo para Afiliado / Distribuidor"
+        : "📋 Catálogo para Cliente";
+    document.getElementById("cat-tipo-an").value = "";
+    document.getElementById("cat-talla").value   = "";
+    document.getElementById("cat-genero").value  = "";
+    document.getElementById("cat-nombre").value  = "";
+    document.getElementById("cat-validez").value = esAfiliado ? "30" : "15";
+    document.getElementById("cat-link-box").style.display  = "none";
+    document.getElementById("cat-sec-talla").style.display = "none";
+
+    // Sección afiliado
+    const afChk = document.getElementById("cat-es-afiliado");
+    if (afChk) {
+        afChk.checked = esAfiliado;
+        document.getElementById("cat-afiliado-fields").style.display = esAfiliado ? "block" : "none";
+    }
+    const waEl  = document.getElementById("cat-wa");            if (waEl)  waEl.value  = esAfiliado ? "" : (localStorage.getItem("verex-wa")||"");
+    const afNom = document.getElementById("cat-afiliado-nombre"); if (afNom) afNom.value = "";
+    const afId  = document.getElementById("cat-afiliado-id");     if (afId)  afId.value  = "";
+
+    poblarCategorias();
+    const pf = document.getElementById("cat-prefijo-txt");
+    if (pf) pf.value = "";
+    filtrarParaCatalogo();
+}
+
+function cerrarModalCatalogo() {
+    document.getElementById("modal-catalogo").classList.remove("open");
+}
+
+function detectarMaterial(nombre) {
+    const n = (nombre || "").toLowerCase();
+    if (n.includes("oro laminado") || n.includes("plata 925 + oro")) return "Plata 925 + Oro Laminado";
+    if (n.includes("plata fina") || n.includes("plata 925"))         return "Plata Fina 925";
+    if (n.includes("acero"))                                          return "Acero 316L";
+    if (n.includes("reloj"))                                          return "Reloj";
+    return "";
+}
+
+function filtrarParaCatalogo() {
+    const talla  = document.getElementById("cat-talla").value;
+    const genero = document.getElementById("cat-genero").value;
+    const cont   = document.getElementById("cat-lista");
+    const info   = document.getElementById("cat-info");
+    const cats   = [...document.querySelectorAll(".cat-cat-chk:checked")].map(c => c.value);
+    const hasAN  = cats.length === 0 || cats.includes("AN");
+
+    let lista = cats.length
+        ? productos.filter(p => cats.includes(getCatKey(p.codigo)))
+        : [...productos];
+
+    // Filtro por prefijo (C, D, U...) — solo aplica a AN
+    const pfxTxt = (document.getElementById("cat-prefijo-txt")?.value||"").toUpperCase();
+    const pfxSel = pfxTxt.split(/[,\s]+/).map(s=>s.trim()).filter(Boolean);
+    if (hasAN && pfxSel.length) {
+        lista = lista.filter(p => getCatKey(p.codigo) !== "AN" || pfxSel.includes(getPrefijoProd(p)));
+    }
+
+    const tipoAN = document.getElementById("cat-tipo-an").value;
+    if (hasAN && tipoAN) {
+        lista = lista.filter(p => {
+            if (getCatKey(p.codigo) !== "AN") return true;
+            let s = {};
+            try { s = JSON.parse(p.caracteristicas || "{}"); } catch(_) {}
+            const esPareja = Object.keys(s).some(k => k.startsWith("D") || k.startsWith("H"))
+                || /matrimonio|argolla|novios|pareja|alianza/i.test(p.nombre || "");
+            return tipoAN === "pareja" ? esPareja : !esPareja;
+        });
+    }
+
+    const tieneTalla = (p, t) => {
+        let s = {};
+        try { s = JSON.parse(p.caracteristicas || "{}"); } catch(_) {}
+        if (genero === "dama")      return (s["D" + t] || 0) > 0;
+        if (genero === "caballero") return (s["H" + t] || 0) > 0;
+        if ((s[t] || 0) > 0 || (s["D" + t] || 0) > 0 || (s["H" + t] || 0) > 0) return true;
+        const cod = (p.codigo || "").toUpperCase();
+        return cod.includes("T" + t) || cod.includes("T0" + t);
+    };
+
+    if (hasAN && talla) {
+        lista = lista.filter(p => getCatKey(p.codigo) !== "AN" || tieneTalla(p, talla));
+    }
+
+    // Agrupar anillos; dejar el resto sin agrupar
+    const anLista    = lista.filter(p => getCatKey(p.codigo) === "AN");
+    const otherLista = lista.filter(p => getCatKey(p.codigo) !== "AN");
+    if (lista.length) console.log("[VEREX] campos producto:", Object.keys(lista[0]), "| caractEspecial:", lista[0].caractEspecial, "| getNotaEspecial:", getNotaEspecial(lista[0]));
+    lista = [...agruparParaCatalogo(anLista), ...otherLista];
+
+    _catFiltrada = lista;
+    const catLabel = cats.length ? cats.map(k => CAT_MAP[k]).join(", ") : "Todos los productos";
+    info.textContent = lista.length
+        ? `${lista.length} producto(s) — ${catLabel}${talla ? ", Talla " + talla : ""}. Marca los que quieres mostrar:`
+        : "";
+
+    if (!lista.length) {
+        cont.innerHTML = '<p style="color:#aaa;font-size:13px;text-align:center;padding:16px;">Sin productos para ese filtro.</p>';
+        return;
+    }
+
+    const cards = lista.map(p => {
+        let stockLabel = "";
+        try {
+            const s = JSON.parse(p.caracteristicas || "{}");
+            if (talla) {
+                const esPareja = Object.keys(s).some(k => k.startsWith("D") || k.startsWith("H"));
+                if (esPareja) {
+                    const d = s["D" + talla] || 0;
+                    const h = s["H" + talla] || 0;
+                    stockLabel = [d > 0 ? `D:${d}` : "", h > 0 ? `C:${h}` : ""].filter(Boolean).join(" ");
+                } else {
+                    const q = s[talla] || 0;
+                    stockLabel = q > 0 ? `Stock:${q}` : "";
+                }
+            }
+        } catch(_) {}
+
+        const img  = p.foto || p.img || "";
+        const mat  = p.material || detectarMaterial(p.nombre);
+        const cod0 = p._codigos?.[0] || p.codigo;
+        const sizesHtml = p._sizes?.length
+            ? `<div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:2px;">${p._sizes.map(sz =>
+                `<span style="padding:1px 5px;background:#e8f4fd;border-radius:4px;font-size:9px;font-weight:700;color:#0277bd;">T${sz}</span>`
+              ).join("")}</div>`
+            : "";
+        return `<div style="background:#fff;border-radius:8px;border:1px solid var(--borde);overflow:hidden;display:flex;flex-direction:column;">
+            <label style="cursor:pointer;display:block;flex:1;">
+                <div style="position:relative;aspect-ratio:1/1;background:#f5f5f5;">
+                    ${img
+                        ? `<img src="${img}" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'">`
+                        : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;color:#ccc;">💍</div>`
+                    }
+                    <input type="checkbox" class="cat-chk" data-cod="${cod0}"
+                        style="position:absolute;top:5px;left:5px;width:18px;height:18px;accent-color:var(--azul);cursor:pointer;" checked>
+                </div>
+                <div style="padding:6px 7px;">
+                    <div style="font-weight:700;font-size:11px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:#1a1a1a;">${p.nombre || "—"}</div>
+                    <div style="font-size:11px;font-weight:800;color:#00BFFF;margin-top:2px;">$${parseFloat(p.precio || 0).toFixed(2)}</div>
+                    ${mat ? `<div style="font-size:10px;color:#7c3aed;font-weight:600;">${mat}</div>` : ""}
+                    ${sizesHtml}
+                    ${stockLabel ? `<div style="font-size:10px;color:#0277bd;background:#e8f4fd;padding:1px 5px;border-radius:4px;display:inline-block;margin-top:2px;">${stockLabel}</div>` : ""}
+                    ${getNotaEspecial(p) ? `<div style="font-size:9px;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;padding:1px 5px;margin-top:2px;font-weight:700;">♦ ${getNotaEspecial(p)}</div>` : ""}
+                </div>
+            </label>
+            <input type="text" class="cat-nota" data-cod="${cod0}"
+                placeholder="Característica especial (ej: En consignación)"
+                style="width:100%;padding:5px 7px;border:none;border-top:1px solid var(--borde);font-size:11px;background:#fffef0;font-family:inherit;box-sizing:border-box;">
+        </div>`;
+    }).join("");
+    cont.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">${cards}</div>`;
+}
+
+function seleccionarTodosCatalogo(sel) {
+    document.querySelectorAll(".cat-chk").forEach(c => c.checked = sel);
+}
+
+function generarIdAfiliado(nombre) {
+    const id = nombre.toLowerCase()
+        .replace(/á/g,'a').replace(/é/g,'e').replace(/í/g,'i')
+        .replace(/ó/g,'o').replace(/ú/g,'u').replace(/ü/g,'u').replace(/ñ/g,'n')
+        .replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    const el = document.getElementById('cat-afiliado-id');
+    if (el) el.value = id;
+}
+
+function autoSeleccionarVariado() {
+    const DIST = { AN: 15, AR: 9, CD: 5, PL: 5 };
+    const TOTAL = 36;
+
+    const porCat = {};
+    _catFiltrada.forEach(p => {
+        const cat = p._catKey || getCatKey(p.codigo);
+        if (!porCat[cat]) porCat[cat] = [];
+        porCat[cat].push(p);
+    });
+
+    // Barajar cada categoría
+    Object.values(porCat).forEach(arr => {
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+    });
+
+    const selected = new Set();
+
+    // Seleccionar por distribución principal
+    Object.entries(DIST).forEach(([cat, count]) => {
+        (porCat[cat] || []).slice(0, count).forEach(p => selected.add(p._codigos?.[0] || p.codigo));
+    });
+
+    // Completar con otras categorías si hay espacio
+    let restante = TOTAL - selected.size;
+    Object.keys(porCat).filter(c => !DIST[c]).forEach(cat => {
+        if (restante <= 0) return;
+        (porCat[cat] || []).forEach(p => {
+            if (restante <= 0) return;
+            selected.add(p._codigos?.[0] || p.codigo);
+            restante--;
+        });
+    });
+
+    document.querySelectorAll(".cat-chk").forEach(c => { c.checked = selected.has(c.dataset.cod); });
+    const count = document.querySelectorAll(".cat-chk:checked").length;
+    toast(`✅ ${count} productos seleccionados automáticamente`, "#22c55e");
+}
+
+async function imgToBase64Cat(url) {
+    if (!url) return null;
+    return new Promise(resolve => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+            try {
+                const c = document.createElement("canvas");
+                c.width = img.naturalWidth; c.height = img.naturalHeight;
+                c.getContext("2d").drawImage(img, 0, 0);
+                resolve(c.toDataURL("image/jpeg", 0.85));
+            } catch(_) { resolve(null); }
+        };
+        img.onerror = () => resolve(null);
+        img.src = url;
+    });
+}
+
+async function generarPDFCatalogo() {
+    const codsSel = [...document.querySelectorAll(".cat-chk:checked")].map(c => c.dataset.cod);
+    if (!codsSel.length) return toast("⚠️ Selecciona al menos un producto", "#f97316");
+
+    const lista   = _catFiltrada.filter(p => codsSel.includes(p.codigo));
+    const talla   = document.getElementById("cat-talla").value;
+    const nombre  = document.getElementById("cat-nombre").value.trim();
+    const dias    = parseInt(document.getElementById("cat-validez").value) || 3;
+    const expDate = new Date(Date.now() + dias * 864e5).toLocaleDateString("es-CO");
+
+    const btn = document.getElementById("btn-gen-pdf");
+    btn.textContent = "⏳ Generando..."; btn.disabled = true;
+
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: "mm", format: "a4" });
+
+        const PW = 210, PH = 297;
+        const mg = 14;
+        const gap = 7;
+        const cols = 2;
+        const colW = (PW - mg * 2 - gap * (cols - 1)) / cols;   // ~85.5 mm
+        const imgH = 52;
+        const cardH = imgH + 32;
+
+        // ── Encabezado ──
+        doc.setFillColor(17, 17, 17);
+        doc.rect(0, 0, PW, 30, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(18);
+        doc.setTextColor(0, 191, 255);
+        doc.text("VEREX", PW / 2, 13, { align: "center" });
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(180, 180, 180);
+        doc.text("La expresión de tu mejor versión", PW / 2, 20, { align: "center" });
+
+        // Subtítulo
+        doc.setFont("helvetica", "italic");
+        doc.setFontSize(10);
+        doc.setTextColor(60, 60, 60);
+        let sub = nombre ? `Catálogo para: ${nombre}` : "Catálogo de productos";
+        if (talla) sub += `  ·  Talla ${talla}`;
+        doc.text(sub, PW / 2, 38, { align: "center" });
+
+        // ── Cuadrícula de productos ──
+        let y = 44, col = 0;
+
+        for (const p of lista) {
+            const x = mg + col * (colW + gap);
+
+            // Fondo tarjeta
+            doc.setFillColor(250, 250, 252);
+            doc.setDrawColor(220, 220, 225);
+            doc.roundedRect(x, y, colW, cardH, 3, 3, "FD");
+
+            // Imagen (preservando proporción)
+            const imgUrl = p.foto || p.img || "";
+            const b64 = await imgToBase64Cat(imgUrl);
+            if (b64) {
+                const maxW = colW - 4, maxH = imgH - 2;
+                const props = doc.getImageProperties(b64);
+                const ratio = props.width / props.height;
+                let dw, dh;
+                if (ratio > maxW / maxH) { dw = maxW; dh = maxW / ratio; }
+                else                     { dh = maxH; dw = maxH * ratio; }
+                const dx = x + 2 + (maxW - dw) / 2;
+                const dy = y + 2 + (maxH - dh) / 2;
+                doc.addImage(b64, "JPEG", dx, dy, dw, dh, undefined, "MEDIUM");
             } else {
-                ctx.fillStyle="#222"; rr(x,y,CW,IMH,10); ctx.fill();
-                ctx.fillStyle="#555"; ctx.font="36px Arial"; ctx.textAlign="center";
-                ctx.fillText("💍",x+CW/2,y+IMH/2+12);
+                doc.setFillColor(235, 235, 240);
+                doc.rect(x + 2, y + 2, colW - 4, imgH - 2, "F");
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(8);
+                doc.setTextColor(180, 180, 180);
+                doc.text("Sin imagen", x + colW / 2, y + imgH / 2 + 2, { align: "center" });
             }
 
             // Nombre
-            ctx.fillStyle="#eee"; ctx.font="bold 12px Arial"; ctx.textAlign="left";
-            const nombre = p.nombre || p.nombre_base || "—";
-            const words = nombre.split(" ");
-            let line="",lines=[];
-            words.forEach(w => { if (ctx.measureText(line+w+" ").width<CW-16){line+=w+" ";}else{lines.push(line.trim());line=w+" ";} });
-            lines.push(line.trim());
-            lines.slice(0,2).forEach((l,li) => ctx.fillText(l, x+8, y+IMH+18+li*15));
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(7.5);
+            doc.setTextColor(30, 30, 30);
+            const lineas = doc.splitTextToSize(p.nombre || "—", colW - 6);
+            doc.text(lineas[0], x + colW / 2, y + imgH + 7, { align: "center" });
 
-            // Badge caracterEspecial
-            let infoY = y+IMH+50;
-            if (p.caracterEspecial) {
-                const txt = "✦ "+p.caracterEspecial;
-                ctx.font="10px Arial"; ctx.textAlign="left";
-                const bw = ctx.measureText(txt).width+14;
-                ctx.fillStyle="rgba(201,168,76,.15)"; ctx.strokeStyle="rgba(201,168,76,.4)"; ctx.lineWidth=1;
-                rr(x+7,infoY-13,bw,18,9); ctx.fill(); ctx.stroke();
-                ctx.fillStyle="#C9A84C"; ctx.fillText(txt, x+14, infoY);
-                infoY += 22;
+            // Material
+            const matPDF = p.material || detectarMaterial(p.nombre) || "";
+            if (matPDF) {
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(6.5);
+                doc.setTextColor(124, 58, 237);
+                doc.text(matPDF, x + colW / 2, y + imgH + 14, { align: "center" });
             }
 
             // Precio
-            ctx.fillStyle="#C9A84C"; ctx.font="bold 20px Arial"; ctx.textAlign="center";
-            ctx.fillText("$"+parseFloat(p.precio||p.precioNum||0).toFixed(2), x+CW/2, y+CH-14);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(9);
+            doc.setTextColor(0, 150, 200);
+            doc.text(`$${parseFloat(p.precio || 0).toFixed(2)}`, x + colW / 2, y + imgH + 22, { align: "center" });
+
+            // Nota
+            const notaPDF = (document.querySelector(`.cat-nota[data-cod="${p.codigo}"]`)?.value || "").trim();
+            if (notaPDF) {
+                doc.setFont("helvetica", "italic");
+                doc.setFontSize(6.5);
+                doc.setTextColor(120, 120, 120);
+                const notaLine = doc.splitTextToSize(notaPDF, colW - 6)[0];
+                doc.text(notaLine, x + colW / 2, y + imgH + 29, { align: "center" });
+            }
+
+            col++;
+            if (col === cols) {
+                col = 0;
+                y += cardH + gap;
+            }
+
+            if (y + cardH > PH - 16) {
+                doc.addPage();
+                y = 16; col = 0;
+            }
         }
 
-        const a = document.createElement("a");
-        a.download = `VEREX_Catalogo_${_catMode}_${new Date().toLocaleDateString("es-SV").replace(/\//g,"-")}.png`;
-        a.href = canvas.toDataURL("image/png"); a.click();
-        toast("🖼️ Imagen generada", "#22c55e");
-    } catch(e) {
-        console.error(e); toast("⚠️ Error generando imagen", "#ef4444");
-    } finally { btn.disabled = false; btn.textContent = "🖼️ Imagen"; }
+        // ── Pie de página (todas las hojas) ──
+        const total = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= total; i++) {
+            doc.setPage(i);
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(7.5);
+            doc.setTextColor(190, 190, 190);
+            doc.text(
+                `VEREX  ·  Válido hasta: ${expDate}  ·  Página ${i} de ${total}`,
+                PW / 2, PH - 5, { align: "center" }
+            );
+        }
+
+        const fname = nombre
+            ? `catalogo-${nombre.toLowerCase().replace(/\s+/g, "-")}.pdf`
+            : "catalogo-verex.pdf";
+        doc.save(fname);
+        toast("✅ PDF generado correctamente", "#22c55e");
+        cerrarModalCatalogo();
+    } catch (e) {
+        console.error(e);
+        toast("❌ Error al generar PDF", "#ef4444");
+    } finally {
+        btn.textContent = "📥 Generar PDF"; btn.disabled = false;
+    }
 }
 </script>
 
-<!-- Modal Catálogo Temporal -->
-<div class="mo" id="cat-modal">
-    <div class="mb" style="max-width:900px;width:95%;">
-        <button class="mc" onclick="cerrarCatModal()">✕</button>
-        <h3 id="cat-modal-titulo" style="margin-bottom:14px;">📋 Catálogo</h3>
+<!-- MODAL CATÁLOGO CLIENTE -->
+<div class="mo" id="modal-catalogo">
+    <div class="mb" style="max-width:620px;">
+        <button class="mc" onclick="cerrarModalCatalogo()">✕</button>
+        <h3 id="modal-catalogo-titulo">📋 Catálogo para Cliente</h3>
 
-        <!-- WhatsApp afiliado -->
-        <div id="cat-wa-wrap" style="display:none;margin-bottom:12px;">
-            <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px;">📱 WhatsApp del Afiliado (con código de país)</label>
-            <input type="tel" id="cat-wa-afil" placeholder="Ej: 50312345678"
-                style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;">
+        <div style="background:#f0f7ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px;margin-bottom:14px;">
+            <label style="font-weight:700;color:#1e40af;font-size:12px;">🤖 Armar catálogo con IA</label>
+            <div style="display:flex;gap:8px;margin-top:6px;">
+                <input type="text" id="cat-ia-prompt" placeholder='Ej: "anillos talla 7 dama" o "argollas matrimonio talla 9"'
+                    style="flex:1;font-size:13px;"
+                    onkeydown="if(event.key==='Enter') aplicarPromptIA()">
+                <button onclick="aplicarPromptIA()"
+                    style="background:#1e40af;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">✨ Armar</button>
+            </div>
+            <div id="cat-ia-resultado" style="font-size:11px;color:#1e40af;margin-top:5px;min-height:14px;"></div>
         </div>
 
-        <!-- Config IA -->
-        <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
-            <select id="cat-size" style="padding:9px 12px;border-radius:8px;border:1.5px solid var(--borde);background:var(--gris);color:inherit;font-size:13px;font-weight:600;">
-                <option value="36">36 productos</option>
-                <option value="50">50 productos</option>
+        <div style="margin-bottom:10px;">
+            <label>Categorías / Prefijos</label>
+            <div id="cat-categoria-pills" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;"></div>
+        </div>
+
+        <div id="cat-sec-talla" style="display:none;">
+            <div style="margin-bottom:10px;">
+                <label>Buscar por prefijo del código</label>
+                <div style="position:relative;">
+                    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:15px;pointer-events:none;">🔍</span>
+                    <input type="text" id="cat-prefijo-txt" placeholder="Ej: C, D, U  (varias separadas por coma)"
+                        oninput="filtrarParaCatalogo()"
+                        style="padding-left:34px;width:100%;box-sizing:border-box;font-size:13px;">
+                </div>
+                <div style="font-size:11px;color:#888;margin-top:3px;">C=Caballero &nbsp;·&nbsp; D=Dama &nbsp;·&nbsp; T=Talla &nbsp;·&nbsp; U=Único/Alianza &nbsp;·&nbsp; H=Hombre &nbsp;·&nbsp; Varias: <strong>C, D</strong></div>
+            </div>
+            <div style="margin-bottom:10px;">
+                <label>Tipo de anillo</label>
+                <select id="cat-tipo-an" onchange="filtrarParaCatalogo()">
+                    <option value="">— Todos —</option>
+                    <option value="sencillo">💍 Anillos sencillos</option>
+                    <option value="pareja">💑 Argollas / Pareja / Matrimonio</option>
+                </select>
+            </div>
+            <div class="g2" style="margin-bottom:10px;">
+                <div>
+                    <label>Talla</label>
+                    <select id="cat-talla" onchange="filtrarParaCatalogo()">
+                        <option value="">— Todas —</option>
+                        <option value="5">Talla 5</option>
+                        <option value="6">Talla 6</option>
+                        <option value="7">Talla 7</option>
+                        <option value="8">Talla 8</option>
+                        <option value="9">Talla 9</option>
+                        <option value="10">Talla 10</option>
+                        <option value="11">Talla 11</option>
+                        <option value="12">Talla 12</option>
+                        <option value="13">Talla 13</option>
+                        <option value="14">Talla 14</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Género (pareja)</label>
+                    <select id="cat-genero" onchange="filtrarParaCatalogo()">
+                        <option value="">— Todos —</option>
+                        <option value="dama">👩 Dama</option>
+                        <option value="caballero">👨 Caballero</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+            <label>Nombre del cliente (opcional)</label>
+            <input type="text" id="cat-nombre" placeholder="Ej: María, Juan...">
+        </div>
+
+        <div style="margin-bottom:12px;background:#fffef0;border:1px solid #fde68a;border-radius:8px;padding:10px;">
+            <label style="color:#92400e;font-weight:700;">🏷️ Banner de oferta (opcional)</label>
+            <input type="text" id="cat-banner-txt" placeholder="Ej: 2x1 en aretes este fin de semana 🎉" style="margin-top:6px;">
+            <input type="text" id="cat-banner-sub" placeholder="Subtítulo (ej: Solo hasta el domingo)" style="margin-top:6px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
+                <span style="font-size:11px;color:#92400e;font-weight:700;">Color:</span>
+                <div id="banner-colors" style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <button type="button" onclick="selBannerColor(this,'#ef4444')" data-banner-color="#ef4444"
+                        style="width:26px;height:26px;border-radius:50%;background:#ef4444;border:3px solid transparent;cursor:pointer;"></button>
+                    <button type="button" onclick="selBannerColor(this,'#f97316')" data-banner-color="#f97316"
+                        style="width:26px;height:26px;border-radius:50%;background:#f97316;border:3px solid transparent;cursor:pointer;"></button>
+                    <button type="button" onclick="selBannerColor(this,'#7c3aed')" data-banner-color="#7c3aed"
+                        style="width:26px;height:26px;border-radius:50%;background:#7c3aed;border:3px solid transparent;cursor:pointer;"></button>
+                    <button type="button" onclick="selBannerColor(this,'#0277bd')" data-banner-color="#0277bd"
+                        style="width:26px;height:26px;border-radius:50%;background:#0277bd;border:3px solid transparent;cursor:pointer;"></button>
+                    <button type="button" onclick="selBannerColor(this,'#111111')" data-banner-color="#111111"
+                        style="width:26px;height:26px;border-radius:50%;background:#111111;border:3px solid transparent;cursor:pointer;"></button>
+                    <button type="button" onclick="selBannerColor(this,'#22c55e')" data-banner-color="#22c55e"
+                        style="width:26px;height:26px;border-radius:50%;background:#22c55e;border:3px solid transparent;cursor:pointer;"></button>
+                </div>
+                <div id="banner-preview" style="display:none;flex:1;padding:4px 10px;border-radius:5px;font-size:11px;font-weight:700;color:#fff;min-width:80px;text-align:center;"></div>
+            </div>
+        </div>
+
+        <div id="cat-info" style="font-size:12px;color:#888;margin-bottom:8px;"></div>
+        <div id="cat-lista" style="max-height:380px;overflow-y:auto;border:1px solid var(--borde);border-radius:8px;padding:8px;background:var(--gris);"></div>
+
+        <div style="display:flex;gap:8px;margin-top:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <button class="btn bg" style="flex:1;font-size:12px;min-width:80px;" onclick="seleccionarTodosCatalogo(true)">✅ Todos</button>
+            <button class="btn bg" style="flex:1;font-size:12px;min-width:80px;" onclick="seleccionarTodosCatalogo(false)">⬜ Ninguno</button>
+            <button class="btn ba" style="flex:2;font-size:12px;min-width:160px;" onclick="autoSeleccionarVariado()">🔀 Auto-seleccionar variado (36)</button>
+        </div>
+
+        <div style="margin-bottom:12px;">
+            <label>Validez del catálogo</label>
+            <select id="cat-validez">
+                <option value="1">1 día</option>
+                <option value="3">3 días</option>
+                <option value="7">7 días</option>
+                <option value="15">15 días (cliente)</option>
+                <option value="30">30 días (afiliado)</option>
             </select>
-            <button class="btn bg" style="flex:1;min-width:140px;" onclick="armarCatalogoIA()">✨ Armar con IA</button>
         </div>
 
-        <!-- Grid preview -->
-        <div id="cat-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;max-height:380px;overflow-y:auto;border:1px solid var(--borde);border-radius:8px;padding:10px;min-height:70px;margin-bottom:14px;">
-            <p style="color:#aaa;font-size:13px;text-align:center;padding:16px;grid-column:1/-1;">Presiona "✨ Armar con IA" para seleccionar productos del stock</p>
+        <!-- Sección Afiliado -->
+        <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:12px;margin-bottom:12px;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;color:#166534;font-size:12px;text-transform:uppercase;margin-bottom:0;">
+                <input type="checkbox" id="cat-es-afiliado" style="width:15px;height:15px;accent-color:#16a34a;"
+                    onchange="document.getElementById('cat-afiliado-fields').style.display=this.checked?'block':'none'">
+                🤝 Es catálogo de afiliado / distribuidor
+            </label>
+            <div id="cat-afiliado-fields" style="display:none;margin-top:10px;">
+                <div style="margin-bottom:8px;">
+                    <label style="color:#166534;">Nombre del afiliado</label>
+                    <input type="text" id="cat-afiliado-nombre" placeholder="Ej: Juan Pérez" style="margin-top:4px;"
+                        oninput="generarIdAfiliado(this.value)">
+                </div>
+                <div style="margin-bottom:8px;">
+                    <label style="color:#166534;">WhatsApp del afiliado</label>
+                    <input type="text" id="cat-wa" placeholder="Ej: 573001234567" inputmode="numeric" style="margin-top:4px;">
+                    <div style="font-size:10px;color:#166534;margin-top:3px;">Los botones "Quiero este" abrirán este número</div>
+                </div>
+                <div>
+                    <label style="color:#166534;">ID del afiliado (link fijo)</label>
+                    <input type="text" id="cat-afiliado-id" placeholder="Ej: juan-perez (sin espacios)" style="margin-top:4px;"
+                        oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')">
+                    <div style="font-size:10px;color:#166534;margin-top:3px;">El link siempre será el mismo — actualizable sin cambiar URL</div>
+                </div>
+            </div>
         </div>
-        <div id="cat-count" style="font-size:12px;color:#888;margin-bottom:10px;"></div>
 
-        <!-- Output buttons -->
-        <div id="cat-output-btns" style="display:none;gap:10px;flex-wrap:wrap;">
-            <button class="btn bfull" style="background:#22c55e;color:#fff;font-weight:700;flex:1;" onclick="generarCatPDF(event)">🖨️ PDF</button>
-            <button class="btn bfull" style="background:#f97316;color:#fff;font-weight:700;flex:1;" onclick="generarCatImagen(event)">🖼️ Imagen</button>
-            <button class="btn bfull" style="background:#00bcd4;color:#fff;font-weight:700;flex:1;" onclick="generarCatLink()">🔗 Link</button>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
+            <button class="btn bv" id="btn-gen-pdf"  onclick="generarPDFCatalogo()"    style="justify-content:center;padding:11px 6px;">📥 PDF</button>
+            <button class="btn bn" id="btn-gen-img"  onclick="generarImagenCatalogo()" style="justify-content:center;padding:11px 6px;">🖼️ Imagen</button>
+            <button class="btn ba" id="btn-gen-link" onclick="generarLinkCatalogo()"   style="justify-content:center;padding:11px 6px;">🔗 Link</button>
+        </div>
+
+        <div id="cat-link-box" style="display:none;background:#f0f2f5;border-radius:8px;padding:12px;border:1px solid var(--borde);">
+            <div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Link generado</div>
+            <div id="cat-link-out" style="font-size:13px;color:#0277bd;word-break:break-all;margin-bottom:10px;font-weight:600;"></div>
+            <div style="display:flex;gap:8px;">
+                <button onclick="navigator.clipboard.writeText(document.getElementById('cat-link-out').textContent);toast('✅ Copiado','#22c55e')"
+                    style="flex:1;background:#111;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📋 Copiar</button>
+                <button onclick="window.open('https://wa.me/?text='+encodeURIComponent('Hola, aquí está tu catálogo VEREX: '+document.getElementById('cat-link-out').textContent))"
+                    style="flex:1;background:#25D366;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📱 WhatsApp</button>
+            </div>
         </div>
     </div>
 </div>
