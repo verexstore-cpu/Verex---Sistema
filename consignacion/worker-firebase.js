@@ -50,8 +50,100 @@ export default {
 
     const sb = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
 
-    // ── GET: catálogo público ──────────────────────────────────────
+    // ── GET: rutas ────────────────────────────────────────────────
     if (request.method === "GET") {
+      const url = new URL(request.url);
+
+      // Página del celular para tomar foto
+      if (url.pathname === "/foto-upload") {
+        const session = url.searchParams.get("s") || "";
+        const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><title>VEREX — Foto</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#111;color:#fff;font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:20px;gap:16px}
+.logo{font-size:22px;font-weight:700;color:#C9A84C;letter-spacing:1px}
+#preview{width:100%;max-width:340px;aspect-ratio:1;object-fit:cover;border-radius:16px;display:none;border:2px solid #C9A84C}
+.btn{width:100%;max-width:340px;padding:16px;border:none;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;background:#C9A84C;color:#111}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+#status{font-size:14px;color:#aaa;text-align:center;min-height:20px}
+#tick{font-size:48px;display:none}</style></head>
+<body>
+<div class="logo">✨ VEREX — Foto</div>
+<img id="preview" alt="preview">
+<div id="tick">✅</div>
+<input type="file" id="inp" accept="image/*" capture="environment" style="display:none" onchange="onFoto(this)">
+<button class="btn" onclick="document.getElementById('inp').click()">📷 Tomar foto</button>
+<button class="btn" id="btnEnviar" style="display:none;background:#34D399;margin-top:4px" onclick="enviar()">✅ Enviar foto</button>
+<div id="status" style="font-size:16px;font-weight:700;color:#C9A84C;">ID: ${session || "sin sesión"}</div>
+<script>
+let b64="";
+function onFoto(inp){
+  const file=inp.files[0]; if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const img=new Image();
+    img.onload=()=>{
+      const MAX=1000; let w=img.width,h=img.height;
+      if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}
+      if(h>MAX){w=Math.round(w*MAX/h);h=MAX;}
+      const c=document.createElement("canvas");c.width=w;c.height=h;
+      c.getContext("2d").drawImage(img,0,0,w,h);
+      b64=c.toDataURL("image/jpeg",0.72);
+      document.getElementById("preview").src=b64;
+      document.getElementById("preview").style.display="block";
+      document.getElementById("btnEnviar").style.display="block";
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+async function enviar(){
+  const btn=document.getElementById("btnEnviar");
+  btn.disabled=true; btn.textContent="⏳ Enviando...";
+  document.getElementById("status").textContent="Subiendo foto...";
+  try{
+    const r=await fetch(location.origin+"/foto-upload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({accion:"FOTO_CEL_SAVE",session:"${session}",data:b64})});
+    const res=await r.json();
+    if(res.ok){
+    document.getElementById("tick").style.display="block";
+    document.getElementById("preview").style.display="none";
+    btn.style.display="none";
+    document.getElementById("status").textContent="✅ Foto enviada. Toca 📷 para la siguiente.";
+    setTimeout(()=>{document.getElementById("tick").style.display="none";},2000);
+    b64="";
+    const oldInp=document.getElementById("inp");
+    const newInp=document.createElement("input");
+    newInp.type="file"; newInp.id="inp"; newInp.accept="image/*";
+    newInp.setAttribute("capture","environment");
+    newInp.style.display="none";
+    newInp.onchange=function(){onFoto(this);};
+    oldInp.parentNode.replaceChild(newInp,oldInp);
+  } else {
+    document.getElementById("status").textContent="Error: "+(res.error||"desconocido");
+    btn.disabled=false; btn.textContent="✅ Enviar foto";
+  }
+  }catch(e){document.getElementById("status").textContent="⚠️ Error de red — intenta de nuevo";btn.disabled=false;btn.textContent="✅ Enviar foto";}
+  b64=""; document.getElementById("inp").value="";
+}
+</script></body></html>`;
+        return new Response(html, { headers: { "Content-Type": "text/html;charset=UTF-8", "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache" } });
+      }
+
+      // Polling: verificar si hay foto pendiente — devuelve y borra la entrada
+      if (url.pathname === "/foto-check") {
+        const session = url.searchParams.get("s") || "";
+        if (!session) return json({ ok: false, pending: false });
+        try {
+          const rec = await sb.get("config", `foto_temp_${session}`);
+          if (rec && rec.url) {
+            await sb.delete("config", `foto_temp_${session}`);
+            return json({ ok: true, pending: true, url: rec.url, ts: rec.ts || Date.now() });
+          }
+          return json({ ok: true, pending: false });
+        } catch(e) {
+          return json({ ok: false, pending: false, error: e.message });
+        }
+      }
+
+      // Catálogo público (ruta por defecto)
       try {
         const [prods, cups, cfgDoc] = await Promise.all([
           sb.getAll("stock"),
@@ -70,6 +162,19 @@ export default {
 
     try {
       const d = await request.json();
+
+      // ── Foto desde celular: guarda base64 directamente en Supabase ──
+      if (d.accion === "FOTO_CEL_SAVE") {
+        const { session, data } = d;
+        if (!session || !data) return json({ ok: false, error: "Faltan datos" });
+        try {
+          const ts = Date.now();
+          await sb.set("config", `foto_temp_${session}`, { url: data, ts });
+          return json({ ok: true, ts });
+        } catch(e) {
+          return json({ ok: false, error: e.message });
+        }
+      }
 
       // ── Verificación de contraseña (endpoint público de login) ───
       if (d.accion === "VERIFICAR_PASS") {
@@ -1184,6 +1289,7 @@ export default {
           if (d.caracterEspecial !== undefined) upd.caracterEspecial = d.caracterEspecial;
           if (d.set_config      !== undefined) upd.set_config        = d.set_config || null;
           if (d.precio_caballero !== undefined) upd.precio_caballero = d.precio_caballero || null;
+          if (d.reservado       !== undefined) upd.reservado         = Boolean(d.reservado);
           // Cambio de código: copiar fila con nuevo código y marcar vieja inactiva
           if (d.nuevo_codigo && d.nuevo_codigo !== d.codigo) {
             const viejo = await sb.get("stock", d.codigo);
@@ -1501,33 +1607,39 @@ export default {
             const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
 
             const promptGemini =
-              `Eres el catalogador de una joyería fina latinoamericana de alto nivel. Tu misión es dar nombres EVOCADORES y SOFISTICADOS a cada pieza. Responde ÚNICAMENTE con JSON válido, sin texto antes ni después.\n\n` +
+              `Eres el naming director de una joyería de lujo latinoamericana. Creas nombres COMERCIALES, EVOCADORES y PREMIUM para cada pieza. Responde ÚNICAMENTE con JSON válido, sin texto antes ni después.\n\n` +
               `MATERIAL CONFIRMADO (no lo detectes, úsalo tal cual): ${material}\n\n` +
-              `PASO 1 — TIPO de joya:\n` +
-              `AN=anillo PU=pulsera CO=collar CD=collar+dije AR=aretes DJ=dije CJ=conjunto TB=tobillera RS=rosario CA=cadena\n\n` +
-              `PASO 2 — Identifica con PRECISIÓN lo que ves:\n` +
-              `• Motivo: corazón, lazo, mariposa, hoja, luna creciente, media luna, sol, estrella fugaz, serpiente, infinito, flor sakura, flor de lis, rosa, loto, trebol, cruz calada, ángel, querubín, elefante, llave antigua, corona, gota, ola, espiral, nudo celta, rombo calado, óvalo, solitario, pavé, baguette, banda, entrelazado, canasta, marquesa, gota invertida, pétalo, arco iris, pluma, hoja de olivo, vid, concha, estrella de mar, delfín, golondrina, colibri, abeja, libélula, cactus, palmera, montaña, ola marina\n` +
-              `• Piedras: zirconia blanca, zirconia champagne, zirconia negra, zirconia azul zafiro, zirconia rojo rubí, zirconia verde esmeralda, zirconia morada amatista, zirconia rosa, ópalo sintético, perla cultivada, cristal, sin piedra\n` +
-              `• Acabado: pulido espejo, acabado satinado, textura martillada, filigrana, calado, esmaltado blanco/negro/colorido, enchapado oro amarillo, enchapado oro rosa, bicolor plata-oro, micro pavé\n\n` +
-              `VOCABULARIO SOFISTICADO para nombres — usa estas palabras cuando aplique:\n` +
-              `solitario · pavé · calado · entrelazado · facetado · engastado · trenzado · apilable · abierto · minimalista · eterno · celestial · halo · vintage · art déco · baguette · marquesa · pétalo · canasta · banda · bisel · pronged · cluster · infinity · crepuscular · nacarado · tornasolado\n\n` +
-              `REGLAS PARA EL NOMBRE:\n` +
-              `- Formato: [Tipo] + [adjetivo sofisticado o motivo] + [detalle piedra si hay]\n` +
-              `- Ejemplos BUENOS: "Anillo solitario zirconia oval", "Anillo pavé corazón", "Aretes luna creciente calada", "Collar mariposa nacarada", "Anillo entrelazado bicolor", "Anillo halo zirconia champagne"\n` +
-              `- Ejemplos MALOS (PROHIBIDOS): "Anillo geométrico", "Anillo decorativo", "Anillo abstracto", "Anillo elegante", "Anillo moderno", "Anillo bonito", "Anillo con diseño"\n` +
-              `- PROHIBIDO usar: geométrico, decorativo, abstracto, elegante, moderno, bonito, clásico, simple, diseño\n` +
-              `- PRIMERA letra en MAYÚSCULA, el resto en minúsculas\n` +
-              `- NO incluyas el material\n` +
-              `- Máximo 5 palabras\n\n` +
-              `REGLAS PARA DESCRIPCION:\n` +
-              `- Específica: menciona el motivo exacto, tipo de piedra y acabado. Sin mencionar ${material}\n` +
-              `- Máximo 12 palabras\n\n` +
-              `REGLAS PARA DESCRIPCION_TIENDA:\n` +
-              `- Frase poética de marketing: evoca emoción, sofisticación, ocasión de uso\n` +
-              `- Ejemplos: "Delicado pavé que captura la luz en cada movimiento", "Luna creciente que ilumina tu elegancia natural"\n` +
-              `- Máximo 18 palabras\n\n` +
-              `Responde SOLO con este JSON:\n` +
-              `{"categoria":"XX","nombre":"nombre sofisticado máx 5 palabras","descripcion":"descripción específica","descripcion_tienda":"frase poética de marketing"}`;
+              `CATEGORÍA — elige el código exacto:\n` +
+              `AN=anillo PU=pulsera CO=collar CD=collar con dije AR=aretes DJ=dije CJ=conjunto TB=tobillera RS=rosario CA=cadena\n\n` +
+              `IDENTIFICA CON PRECISIÓN:\n` +
+              `• Tipo de pieza: anillo, aretes, collar, pulsera, etc.\n` +
+              `• Motivo principal: corazón, mariposa, luna creciente, sol, estrella, serpiente, infinito, flor, rosa, cruz, ángel, corona, llave, gota, espiral, lazo, hoja, concha, delfín, abeja, libélula, pluma, arco iris, nudo, banda lisa, solitario, trébol, ola\n` +
+              `• Piedras: zirconia blanca/champagne/negra/azul/roja/verde/morada/rosa, ópalo, perla, cristal, sin piedra\n` +
+              `• Técnica: pavé, calado, filigrana, martillado, esmaltado, bicolor, halo, trenzado, entrelazado\n\n` +
+              `NOMBRE — sigue estas reglas ESTRICTAMENTE:\n` +
+              `• Debe ser ESPECÍFICO al motivo real que ves en la foto\n` +
+              `• Formato: [Tipo de joya] [motivo/técnica] [piedra si aplica]\n` +
+              `• EJEMPLOS CORRECTOS:\n` +
+              `  "Anillo corazón pavé zirconia"\n` +
+              `  "Aretes luna creciente calada"\n` +
+              `  "Collar mariposa ópalo"\n` +
+              `  "Pulsera infinito zirconia blanca"\n` +
+              `  "Anillo solitario zirconia oval"\n` +
+              `  "Aretes gota zirconia champagne"\n` +
+              `  "Collar estrella halo zirconia"\n` +
+              `  "Anillo serpiente entrelazada"\n` +
+              `  "Conjunto corazón bicolor"\n` +
+              `  "Pulsera trenzada perla cultivada"\n` +
+              `• PROHIBIDO — NUNCA uses estas palabras: geométrico, decorativo, abstracto, elegante, moderno, bonito, clásico, simple, diseño, estilizado, sofisticado, fino, delicado, exclusivo, único, especial, precioso\n` +
+              `• Primera letra mayúscula, resto minúsculas. Sin mencionar el material. Máximo 5 palabras.\n\n` +
+              `DESCRIPCION — máximo 12 palabras:\n` +
+              `• Describe exactamente lo que ves: motivo, piedra, técnica, forma. Sin mencionar ${material}.\n` +
+              `• Ejemplo: "Corazón calado con pavé de zirconia blanca en todo el contorno"\n\n` +
+              `DESCRIPCION_TIENDA — máximo 18 palabras:\n` +
+              `• Frase de marketing que evoca emoción y ocasión de uso\n` +
+              `• Ejemplos: "Captura cada mirada con el brillo eterno de este corazón iluminado", "La luna que siempre llevas contigo, radiante en plata"\n\n` +
+              `Responde SOLO con este JSON (sin markdown, sin texto extra):\n` +
+              `{"categoria":"XX","nombre":"nombre específico","descripcion":"descripción exacta","descripcion_tienda":"frase de marketing"}`;
 
             // ── Usar Groq (gratis, llama-3.2-11b-vision) ─────────────────
             const groqKey = env.GROQ_KEY;
@@ -1549,7 +1661,7 @@ export default {
                   ]
                 }],
                 max_tokens: 400,
-                temperature: 0.4
+                temperature: 0.6
               })
             });
 

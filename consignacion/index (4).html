@@ -4198,7 +4198,7 @@ function renderStock(items) {
         lista.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">` +
         items.map(item => {
             const sel = stockSeleccionados.includes(item.codigo);
-            const estadoNorm = normalizar(item.estado);
+            const estadoNorm = item.reservado ? "reservado" : normalizar(item.estado);
             const est = estadoColor[estadoNorm] || estadoColor["bodega"];
             return `<div data-codigo="${sanitizar(item.codigo)}" onclick="abrirEditarStockItem(${jsArg(item.codigo)})" style="background:#2C2C2E;border:${sel?"2px solid var(--dorado)":"1px solid var(--dorado)"};border-radius:12px;overflow:hidden;cursor:pointer;position:relative;">
                 <div onclick="event.stopPropagation();toggleSeleccionStock(${jsArg(item.codigo)})" style="position:absolute;top:6px;left:6px;width:18px;height:18px;border:2px solid ${sel?"var(--dorado)":"#666"};border-radius:4px;background:${sel?"var(--dorado)":"rgba(0,0,0,0.5)"};display:flex;align-items:center;justify-content:center;font-size:11px;z-index:2;">${sel?"✓":""}</div>
@@ -4217,6 +4217,7 @@ function renderStock(items) {
                         : `<div style="display:flex;justify-content:space-between;font-size:10px;color:#666;margin-top:2px;"><span>B:<b style="color:#fff">${item.stock_bodega||0}</b></span><span>T:<b style="color:#34D399">${item.stock_tienda||0}</b></span><span>C:<b style="color:var(--dorado)">${item.stock_consignacion||0}</b></span></div>`}
                     <div style="display:flex;gap:4px;margin-top:6px;position:relative;">
                         <button onclick="event.stopPropagation();abrirEditarStockItem(${jsArg(item.codigo)})" style="flex:1;padding:4px 0;font-size:10px;background:#5AC8FA;color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✏️</button>
+                        <button onclick="event.stopPropagation();toggleReservaStock(${jsArg(item.codigo)})" style="flex:1;padding:4px 0;font-size:10px;background:${item.reservado?"#e74c3c":"#4a4a4e"};color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;" title="${item.reservado?"Liberar reserva":"Reservar (ocultar de venta)"}">${item.reservado?"🔓":"🔒"}</button>
                         <button onclick="event.stopPropagation();toggleMenuMover(${jsArg(item.codigo)},this)" style="flex:2;padding:4px 6px;font-size:10px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">⇄ Mover ▾</button>
                         <div id="menu-mover-${sanitizar(item.codigo)}" style="display:none;position:absolute;bottom:30px;right:0;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
                             <button onclick="event.stopPropagation();moverItemDirecto(${jsArg(item.codigo)},'tienda')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4caf82;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🛍️ Enviar a Tienda</button>
@@ -4231,7 +4232,7 @@ function renderStock(items) {
     }
 
     lista.innerHTML = items.map(item => {
-        const estadoNorm = normalizar(item.estado);
+        const estadoNorm = item.reservado ? "reservado" : normalizar(item.estado);
         const est = estadoColor[estadoNorm] || estadoColor["bodega"];
         const sel = stockSeleccionados.includes(item.codigo);
         return `<div class="inv-item" data-codigo="${sanitizar(item.codigo)}" style="background:#2C2C2E;border-color:var(--dorado);cursor:pointer;" onclick="toggleSeleccionStock(${jsArg(item.codigo)})">
@@ -4256,6 +4257,7 @@ function renderStock(items) {
                     : `<div style="font-size:11px;color:#666;margin-top:4px;">Bodega: <b style="color:#fff;">${item.stock_bodega||0}</b> · Tienda: <b style="color:#34D399;">${item.stock_tienda||0}</b> · Consig: <b style="color:var(--dorado);">${item.stock_consignacion||0}</b></div>`}
                 <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px;position:relative;">
                     <button onclick="event.stopPropagation();abrirEditarStockItem(${jsArg(item.codigo)})" style="padding:4px 10px;font-size:11px;background:#5AC8FA;color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✏️ Editar</button>
+                    <button onclick="event.stopPropagation();toggleReservaStock(${jsArg(item.codigo)})" style="padding:4px 10px;font-size:11px;background:${item.reservado?"#e74c3c":"#4a4a4e"};color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">${item.reservado?"🔓 Liberar":"🔒 Reservar"}</button>
                     <button onclick="event.stopPropagation();toggleMenuMover(${jsArg(item.codigo)},this)" style="padding:4px 10px;font-size:11px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">⇄ Mover ▾</button>
                     <button onclick="event.stopPropagation();eliminarStockItem(${jsArg(item.codigo)})" style="padding:4px 10px;font-size:11px;background:#FF453A;color:#fff;border:none;border-radius:6px;cursor:pointer;">🗑️</button>
                     <div id="menu-mover-${sanitizar(item.codigo)}" style="display:none;position:absolute;bottom:32px;right:0;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
@@ -4374,6 +4376,17 @@ async function moverItemDirectoVendedor(codigo) {
     stockSeleccionados = [];
 }
 
+async function toggleReservaStock(codigo) {
+    const item = stockData.find(p => String(p.codigo) === String(codigo));
+    if (!item) return;
+    const nuevoValor = !item.reservado;
+    const res = await apiPost({ accion: "EDITAR_PRODUCTO", codigo, reservado: nuevoValor });
+    if (!res || res.ok === false) { toast("⚠️ Error al actualizar reserva"); return; }
+    item.reservado = nuevoValor;
+    toast(nuevoValor ? "⏳ Producto reservado — ya no aparece disponible en el catálogo" : "✅ Reserva liberada");
+    filtrarStock();
+}
+
 function toggleSeleccionStock(codigo) {
     const idx = stockSeleccionados.indexOf(codigo);
     if (idx >= 0) stockSeleccionados.splice(idx, 1);
@@ -4483,7 +4496,7 @@ function filtrarStock() {
                 case "bodega":       coincideEstado = (parseInt(i.stock_bodega)||0)       > 0; break;
                 case "tienda":       coincideEstado = (parseInt(i.stock_tienda)||0)        > 0; break;
                 case "consignacion": coincideEstado = (parseInt(i.stock_consignacion)||0)  > 0; break;
-                case "reservado":    coincideEstado = (parseInt(i.stock_reservado)||0)     > 0; break;
+                case "reservado":    coincideEstado = Boolean(i.reservado) || (parseInt(i.stock_reservado)||0) > 0; break;
                 case "vendido":      coincideEstado = (parseInt(i.stock_vendido)||0)       > 0; break;
                 default:             coincideEstado = normalizar(i.estado) === filtro;
             }
@@ -8524,7 +8537,7 @@ function renderHistorialVentas() {
             if (items.length > 2) itemsStr += ` +${items.length - 2} más`;
         } catch(_) {}
 
-        return `<div style="background:#fff;border:1px solid #ebebeb;border-left:4px solid ${tb.color};border-radius:10px;padding:12px;margin-bottom:8px;">
+        return `<div style="background:#fff;border:3.5px solid ${tb.color};border-radius:10px;padding:12px;margin-bottom:8px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                 <div style="flex:1;min-width:0;">
                     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
@@ -8532,9 +8545,9 @@ function renderHistorialVentas() {
                         <span style="font-size:10px;color:${eb.color};font-weight:600;">${eb.label}</span>
                     </div>
                     <div style="font-size:13px;font-weight:700;color:#1a1a1a;">${sanitizar(v.cliente)}</div>
-                    <div style="font-size:11px;color:#6b7280;margin-top:2px;">${fecha} · Ref: ${String(v.id||"").slice(-6)}</div>
-                    ${itemsStr ? `<div style="font-size:11px;color:#9ca3af;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sanitizar(itemsStr)}</div>` : ""}
-                    ${v.nota ? `<div style="font-size:11px;color:#9ca3af;font-style:italic;margin-top:2px;">${sanitizar(v.nota)}</div>` : ""}
+                    <div style="font-size:11px;color:#374151;margin-top:2px;">${fecha} · Ref: ${String(v.id||"").slice(-6)}</div>
+                    ${itemsStr ? `<div style="font-size:11px;color:#4b5563;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sanitizar(itemsStr)}</div>` : ""}
+                    ${v.nota ? `<div style="font-size:11px;color:#4b5563;font-style:italic;margin-top:2px;">${sanitizar(v.nota)}</div>` : ""}
                 </div>
                 <div style="text-align:right;flex-shrink:0;">
                     <div style="font-size:15px;font-weight:700;color:#C9A84C;">$${parseFloat(v.total||0).toFixed(2)}</div>
