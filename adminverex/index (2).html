@@ -2972,10 +2972,22 @@ function getCatKey(p) {
     // más confiable que el prefijo del código, que puede llevar prefijo de material (ej. "P-AN001T6")
     const catField = String(prod.categoria || "").toUpperCase().trim();
     if (CAT_MAP[catField]) return catField;
-    // Prioridad 2: prefijo del código (productos creados desde el admin, ej. "AN-1234")
+    // Prioridad 2: prefijo de categoría dentro del código, por segmento separado por guion
+    // (cubre tanto "AN-1234" como "PO-AN014DT6" con prefijo de material antes de la categoría)
     const c = String(prod.codigo || "").toUpperCase();
-    for (const k of Object.keys(CAT_MAP)) { if (c.startsWith(k)) return k; }
+    const segs = c.split("-");
+    for (const seg of segs) {
+        for (const k of Object.keys(CAT_MAP)) { if (seg.startsWith(k)) return k; }
+    }
     if (c.startsWith("U")) return "AN";
+    // Prioridad 3: palabras clave en el nombre del producto (último recurso)
+    const n = String(prod.nombre || "").toLowerCase();
+    if (/anillo|argolla|alianza|matrimonio|solitario|novio|pareja/.test(n)) return "AN";
+    if (/\barete|aretes|pendiente/.test(n))                                 return "AR";
+    if (/cadena|collar|gargantilla/.test(n))                                return "CD";
+    if (/pulsera|brazalete/.test(n))                                        return "PL";
+    if (/conjunto|\bset\b/.test(n))                                         return "CN";
+    if (/reloj/.test(n))                                                    return "RL";
     return "OT";
 }
 
