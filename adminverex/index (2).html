@@ -2889,7 +2889,7 @@ async function generarLinkCatalogo() {
                 p: parseFloat(p.precio||0).toFixed(2),
                 i: p.foto||p.img||"",
                 m: p.material||detectarMaterial(p.nombre)||"",
-                cat: p._catKey||getCatKey(p.codigo),
+                cat: p._catKey||getCatKey(p),
                 sizes:  p._sizes||[],
                 sizesD: p._sizesD||[],
                 sizesH: p._sizesH||[],
@@ -2942,8 +2942,15 @@ const CAT_MAP = {
     OT: "📦 Otros",
 };
 
-function getCatKey(codigo) {
-    const c = (codigo || "").toUpperCase();
+function getCatKey(p) {
+    // Acepta el producto completo (preferido) o solo el código (compatibilidad)
+    const prod = (p && typeof p === "object") ? p : { codigo: p };
+    // Prioridad 1: campo categoria explícito (viene de Consignación, ej. "AN") —
+    // más confiable que el prefijo del código, que puede llevar prefijo de material (ej. "P-AN001T6")
+    const catField = String(prod.categoria || "").toUpperCase().trim();
+    if (CAT_MAP[catField]) return catField;
+    // Prioridad 2: prefijo del código (productos creados desde el admin, ej. "AN-1234")
+    const c = String(prod.codigo || "").toUpperCase();
     for (const k of Object.keys(CAT_MAP)) { if (c.startsWith(k)) return k; }
     if (c.startsWith("U")) return "AN";
     return "OT";
@@ -2961,6 +2968,12 @@ function getPrefijoProd(p) {
 }
 
 function tieneStock(p, talla) {
+    // Consignación: campo talla plano + stock en stock_bodega/stock_tienda/stock_consignacion
+    if (p.talla !== undefined && p.talla !== null && String(p.talla).trim() !== "") {
+        const totalConsig = (parseInt(p.stock_bodega)||0) + (parseInt(p.stock_tienda)||0) + (parseInt(p.stock_consignacion)||0);
+        if (!talla || String(p.talla) === String(talla)) return totalConsig > 0;
+    }
+    // Admin (Nuevo Producto): JSON de tallas agregado
     let s = {};
     try { s = JSON.parse(p.caracteristicas || "{}"); } catch(_) {}
     if (talla) {
@@ -2994,7 +3007,7 @@ function agruparParaCatalogo(lista) {
 
     const map = new Map();
     lista.forEach(p => {
-        const catKey = getCatKey(p.codigo);
+        const catKey = getCatKey(p);
         const baseNombre = catKey === "AN" ? stripBase(p.nombre) : (p.nombre||"").trim();
         const key = catKey === "AN" ? baseNombre : (p.nombre||p.codigo);
         if (!map.has(key)) {
@@ -3038,7 +3051,7 @@ function agruparParaCatalogo(lista) {
 
         // If partner missing from filtered list, search the full products catalog
         if ((!dama || !cab) && typeof productos !== "undefined") {
-            const allAN = productos.filter(p => getCatKey(p.codigo) === "AN");
+            const allAN = productos.filter(p => getCatKey(p) === "AN");
             const partners = allAN.filter(p => !g._codigos.includes(p.codigo) && stripBase(p.nombre) === g.nombre);
             if (!dama) {
                 dama = partners.find(isDamaP);
@@ -3071,7 +3084,7 @@ function agruparParaCatalogo(lista) {
 }
 
 function poblarCategorias() {
-    const presentes = [...new Set(productos.map(p => getCatKey(p.codigo)))];
+    const presentes = [...new Set(productos.map(p => getCatKey(p)))];
     const orden = ["AN","AR","CD","PL","CN","RL","OT"];
     const pills = document.getElementById("cat-categoria-pills");
     if (!pills) return;
@@ -3174,20 +3187,20 @@ function filtrarParaCatalogo() {
     _actualizarResumenVariado();
 
     let lista = cats.length
-        ? productos.filter(p => cats.includes(getCatKey(p.codigo)))
+        ? productos.filter(p => cats.includes(getCatKey(p)))
         : [...productos];
 
     // Filtro por prefijo (C, D, U...) — solo aplica a AN
     const pfxTxt = (document.getElementById("cat-prefijo-txt")?.value||"").toUpperCase();
     const pfxSel = pfxTxt.split(/[,\s]+/).map(s=>s.trim()).filter(Boolean);
     if (hasAN && pfxSel.length) {
-        lista = lista.filter(p => getCatKey(p.codigo) !== "AN" || pfxSel.includes(getPrefijoProd(p)));
+        lista = lista.filter(p => getCatKey(p) !== "AN" || pfxSel.includes(getPrefijoProd(p)));
     }
 
     const tipoAN = document.getElementById("cat-tipo-an").value;
     if (hasAN && tipoAN) {
         lista = lista.filter(p => {
-            if (getCatKey(p.codigo) !== "AN") return true;
+            if (getCatKey(p) !== "AN") return true;
             let s = {};
             try { s = JSON.parse(p.caracteristicas || "{}"); } catch(_) {}
             const esPareja = Object.keys(s).some(k => k.startsWith("D") || k.startsWith("H"))
@@ -3197,6 +3210,16 @@ function filtrarParaCatalogo() {
     }
 
     const tieneTalla = (p, t) => {
+        // Consignación: campo "talla" plano por registro (una fila = una talla específica)
+        if (p.talla !== undefined && p.talla !== null && String(p.talla).trim() !== "") {
+            if (String(p.talla) === String(t)) {
+                if (!genero) return true;
+                const n = (p.nombre || "").toLowerCase();
+                if (genero === "dama")      return /\bdama\b|\bmujer\b/.test(n);
+                if (genero === "caballero") return /\bcaballero\b|\bhombre\b/.test(n);
+            }
+        }
+        // Admin (Nuevo Producto): JSON de tallas agregado en un solo registro
         let s = {};
         try { s = JSON.parse(p.caracteristicas || "{}"); } catch(_) {}
         if (genero === "dama")      return (s["D" + t] || 0) > 0;
@@ -3207,12 +3230,12 @@ function filtrarParaCatalogo() {
     };
 
     if (hasAN && talla) {
-        lista = lista.filter(p => getCatKey(p.codigo) !== "AN" || tieneTalla(p, talla));
+        lista = lista.filter(p => getCatKey(p) !== "AN" || tieneTalla(p, talla));
     }
 
     // Agrupar anillos; dejar el resto sin agrupar
-    const anLista    = lista.filter(p => getCatKey(p.codigo) === "AN");
-    const otherLista = lista.filter(p => getCatKey(p.codigo) !== "AN");
+    const anLista    = lista.filter(p => getCatKey(p) === "AN");
+    const otherLista = lista.filter(p => getCatKey(p) !== "AN");
     if (lista.length) console.log("[VEREX] campos producto:", Object.keys(lista[0]), "| caractEspecial:", lista[0].caractEspecial, "| getNotaEspecial:", getNotaEspecial(lista[0]));
     lista = [...agruparParaCatalogo(anLista), ...otherLista];
 
@@ -3293,9 +3316,20 @@ function generarIdAfiliado(nombre) {
 }
 
 function _stockTotalProd(p) {
+    // Grupo con varias tallas fusionadas (ej. anillo con una fila por talla) — sumar el stock real de cada fila
+    if (Array.isArray(p._codigos) && p._codigos.length > 1) {
+        return p._codigos.reduce((acc, cod) => {
+            const row = productos.find(x => x.codigo === cod);
+            return acc + (row ? _stockTotalProd(row) : 0);
+        }, 0);
+    }
+    // Admin (Nuevo Producto): JSON de tallas agregado en un solo registro
     let s = {};
     try { s = JSON.parse(p.caracteristicas || "{}"); } catch(_) {}
-    return Object.values(s).reduce((a, b) => a + (parseInt(b) || 0), 0);
+    const totalJSON = Object.values(s).reduce((a, b) => a + (parseInt(b) || 0), 0);
+    if (totalJSON > 0) return totalJSON;
+    // Consignación: stock repartido en campos planos por registro (una fila = una talla/unidad)
+    return (parseInt(p.stock_bodega)||0) + (parseInt(p.stock_tienda)||0) + (parseInt(p.stock_consignacion)||0);
 }
 
 function autoSeleccionarVariado() {
@@ -3307,7 +3341,7 @@ function autoSeleccionarVariado() {
 
     const porCat = {};
     _catFiltrada.forEach(p => {
-        const cat = p._catKey || getCatKey(p.codigo);
+        const cat = p._catKey || getCatKey(p);
         if (!porCat[cat]) porCat[cat] = [];
         porCat[cat].push(p);
     });
