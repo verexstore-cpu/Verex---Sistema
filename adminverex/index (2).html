@@ -3264,9 +3264,18 @@ function generarIdAfiliado(nombre) {
     if (el) el.value = id;
 }
 
+function _stockTotalProd(p) {
+    let s = {};
+    try { s = JSON.parse(p.caracteristicas || "{}"); } catch(_) {}
+    return Object.values(s).reduce((a, b) => a + (parseInt(b) || 0), 0);
+}
+
 function autoSeleccionarVariado() {
-    const DIST = { AN: 15, AR: 9, CD: 5, PL: 5 };
-    const TOTAL = 36;
+    const TOTAL = parseInt(document.getElementById("cat-var-size")?.value) || 36;
+    // Proporción base (sobre 36) — se escala al tamaño elegido
+    const DIST_BASE = { AN: 15, AR: 9, CD: 5, PL: 5 };
+    const DIST = {};
+    Object.entries(DIST_BASE).forEach(([cat, n]) => { DIST[cat] = Math.round(n * TOTAL / 36); });
 
     const porCat = {};
     _catFiltrada.forEach(p => {
@@ -3275,22 +3284,19 @@ function autoSeleccionarVariado() {
         porCat[cat].push(p);
     });
 
-    // Barajar cada categoría
+    // Ordenar cada categoría por stock descendente — prioriza lo que hay en más cantidad
     Object.values(porCat).forEach(arr => {
-        for (let i = arr.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [arr[i], arr[j]] = [arr[j], arr[i]];
-        }
+        arr.sort((a, b) => _stockTotalProd(b) - _stockTotalProd(a));
     });
 
     const selected = new Set();
 
-    // Seleccionar por distribución principal
+    // Seleccionar por distribución principal, priorizando stock alto
     Object.entries(DIST).forEach(([cat, count]) => {
         (porCat[cat] || []).slice(0, count).forEach(p => selected.add(p._codigos?.[0] || p.codigo));
     });
 
-    // Completar con otras categorías si hay espacio
+    // Completar con otras categorías si hay espacio (también por mayor stock)
     let restante = TOTAL - selected.size;
     Object.keys(porCat).filter(c => !DIST[c]).forEach(cat => {
         if (restante <= 0) return;
@@ -3301,9 +3307,20 @@ function autoSeleccionarVariado() {
         });
     });
 
+    // Si aún falta (categorías principales no tenían suficiente stock), completar con lo que sobre de cualquier categoría
+    if (selected.size < TOTAL) {
+        _catFiltrada
+            .slice()
+            .sort((a, b) => _stockTotalProd(b) - _stockTotalProd(a))
+            .forEach(p => {
+                if (selected.size >= TOTAL) return;
+                selected.add(p._codigos?.[0] || p.codigo);
+            });
+    }
+
     document.querySelectorAll(".cat-chk").forEach(c => { c.checked = selected.has(c.dataset.cod); });
     const count = document.querySelectorAll(".cat-chk:checked").length;
-    toast(`✅ ${count} productos seleccionados automáticamente`, "#22c55e");
+    toast(`✅ ${count} productos seleccionados automáticamente (variado, prioriza mayor stock)`, "#22c55e");
 }
 
 async function imgToBase64Cat(url) {
@@ -3579,7 +3596,11 @@ async function generarPDFCatalogo() {
         <div style="display:flex;gap:8px;margin-top:10px;margin-bottom:12px;flex-wrap:wrap;">
             <button class="btn bg" style="flex:1;font-size:12px;min-width:80px;" onclick="seleccionarTodosCatalogo(true)">✅ Todos</button>
             <button class="btn bg" style="flex:1;font-size:12px;min-width:80px;" onclick="seleccionarTodosCatalogo(false)">⬜ Ninguno</button>
-            <button class="btn ba" style="flex:2;font-size:12px;min-width:160px;" onclick="autoSeleccionarVariado()">🔀 Auto-seleccionar variado (36)</button>
+            <select id="cat-var-size" style="flex:0 0 auto;font-size:12px;padding:0 8px;border-radius:8px;border:1.5px solid var(--borde);background:var(--gris);color:inherit;font-weight:600;">
+                <option value="36">36 piezas</option>
+                <option value="50">50 piezas</option>
+            </select>
+            <button class="btn ba" style="flex:2;font-size:12px;min-width:160px;" onclick="autoSeleccionarVariado()">🔀 Auto-seleccionar variado</button>
         </div>
 
         <div style="margin-bottom:12px;">
