@@ -2856,6 +2856,25 @@ function getNotaEspecial(p) {
     return String(v).trim();
 }
 
+// Cuando hay un filtro de Talla activo, el catálogo exportado (Link/PDF/Imagen)
+// debe mostrar SOLO esa talla en la tarjeta — no todas las que el diseño tiene en stock.
+function _sizesParaExport(p, talla, genero) {
+    const catKey = p._catKey || getCatKey(p);
+    if (catKey !== "AN" || !talla) {
+        return { sizes: p._sizes||[], sizesD: p._sizesD||[], sizesH: p._sizesH||[] };
+    }
+    const tieneD = (p._sizesD||[]).includes(talla);
+    const tieneH = (p._sizesH||[]).includes(talla);
+    if (tieneD || tieneH) {
+        return {
+            sizes:  [],
+            sizesD: genero === "caballero" ? [] : (tieneD ? [talla] : []),
+            sizesH: genero === "dama"      ? [] : (tieneH ? [talla] : []),
+        };
+    }
+    return { sizes: (p._sizes||[]).includes(talla) ? [talla] : (p._sizes||[]), sizesD: [], sizesH: [] };
+}
+
 async function generarLinkCatalogo() {
     const codsSel=[...document.querySelectorAll(".cat-chk:checked")].map(c=>c.dataset.cod);
     if(!codsSel.length) return toast("⚠️ Selecciona al menos un producto","#f97316");
@@ -2867,6 +2886,7 @@ async function generarLinkCatalogo() {
         ? (document.getElementById("cat-afiliado-nombre")?.value||"").trim()
         : document.getElementById("cat-nombre").value.trim();
     const talla      = document.getElementById("cat-talla").value;
+    const genero     = document.getElementById("cat-genero")?.value || "";
     const dias       = parseInt(document.getElementById("cat-validez").value)||3;
     const wa         = (document.getElementById("cat-wa")?.value||localStorage.getItem("verex-wa")||"").trim();
     const afiliadoId = (document.getElementById("cat-afiliado-id")?.value||"").trim();
@@ -2884,21 +2904,24 @@ async function generarLinkCatalogo() {
             nombre, talla, wa, banner, dias,
             ...(esAfiliado && { afiliado: true }),
             ...(afiliadoId && { customId: afiliadoId }),
-            prods: lista.map(p=>({
+            prods: lista.map(p=>{
+                const szExport = _sizesParaExport(p, talla, genero);
+                return {
                 n: p.nombre||"—",
                 p: parseFloat(p.precio||0).toFixed(2),
                 i: p.foto||p.img||"",
                 m: p.material||detectarMaterial(p.nombre)||"",
                 cat: p._catKey||getCatKey(p),
-                sizes:  p._sizes||[],
-                sizesD: p._sizesD||[],
-                sizesH: p._sizesH||[],
+                sizes:  szExport.sizes,
+                sizesD: szExport.sizesD,
+                sizesH: szExport.sizesH,
                 par:    p._esPareja || /matrimonio|argolla|novios|pareja|alianza/i.test(p.nombre||"") || false,
                 pD:    p._precioDama||null,
                 pH:    p._precioCab||null,
                 ne:    getNotaEspecial(p),
                 nota: (document.querySelector(`.cat-nota[data-cod="${p._codigos?.[0]||p.codigo}"]`)?.value||"").trim()
-            }))
+                };
+            })
         };
 
         if(wa) localStorage.setItem("verex-wa", wa);
