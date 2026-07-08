@@ -436,6 +436,25 @@
             </div>
         </div>
 
+        <!-- Visitas al catálogo -->
+        <div class="card" style="margin-bottom:14px;">
+            <h2>👁 Visitas al Catálogo</h2>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;">
+                <div style="flex:1;min-width:120px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.2);border-radius:12px;padding:14px;text-align:center;">
+                    <div id="vis-hoy" style="font-size:28px;font-weight:800;color:#C9A84C;">—</div>
+                    <div style="font-size:12px;color:#aaa;margin-top:4px;">Hoy</div>
+                </div>
+                <div style="flex:1;min-width:120px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.2);border-radius:12px;padding:14px;text-align:center;">
+                    <div id="vis-semana" style="font-size:28px;font-weight:800;color:#C9A84C;">—</div>
+                    <div style="font-size:12px;color:#aaa;margin-top:4px;">Esta semana</div>
+                </div>
+                <div style="flex:1;min-width:120px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.2);border-radius:12px;padding:14px;text-align:center;">
+                    <div id="vis-total" style="font-size:28px;font-weight:800;color:#C9A84C;">—</div>
+                    <div style="font-size:12px;color:#aaa;margin-top:4px;">Total histórico</div>
+                </div>
+            </div>
+        </div>
+
         <!-- Métodos de pago + Pedidos recientes -->
         <div class="card">
             <h2>💳 Métodos de Pago</h2>
@@ -453,7 +472,7 @@
                 <select id="fil-estado" onchange="renderPedidos()" style="width:140px;">
                     <option value="">Todos los estados</option>
                     <option>Pendiente</option>
-                    <option>En camino</option>
+                    <option>Despachado</option>
                     <option>Entregado</option>
                     <option>Cancelado</option>
                 </select>
@@ -522,6 +541,10 @@
             <h2>📦 Catálogo Actual</h2>
             <div class="sb">
                 <input type="text" id="bus-prod" placeholder="Buscar..." oninput="renderProductos()">
+            </div>
+            <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+                <button class="btn bfull" style="background:#00bcd4;color:#fff;font-weight:700;flex:1;" onclick="abrirCatalogo('cliente')">📋 Catálogo Cliente</button>
+                <button class="btn bfull" style="background:#22c55e;color:#fff;font-weight:700;flex:1;" onclick="abrirCatalogo('afiliado')">🏅 Catálogo Afiliado</button>
             </div>
             <div id="lista-prod"></div>
         </div>
@@ -633,6 +656,7 @@
             <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
                 <input id="bus-cli" type="text" placeholder="Buscar por nombre, teléfono o código..."
                     oninput="renderClientes()" style="flex:1;min-width:200px;">
+                <button onclick="exportarClientesExcel()" style="background:#1a7a4a;color:#fff;border:none;padding:8px 16px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">📥 Exportar Excel</button>
             </div>
             <p id="resumen-cli" style="font-size:13px;color:#888;margin-bottom:12px;"></p>
 
@@ -1208,6 +1232,17 @@ async function cargarEstadisticas() {
         } else {
             pagEl.innerHTML = '<p style="color:#888;font-size:13px;">Sin datos aún.</p>';
         }
+        // Visitas catálogo
+        try {
+            const resVis = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_VISITAS", _pass: ADMIN_PASS }) });
+            const vis = await resVis.json();
+            if (vis.ok) {
+                document.getElementById("vis-hoy").textContent    = vis.hoy;
+                document.getElementById("vis-semana").textContent = vis.semana;
+                document.getElementById("vis-total").textContent  = vis.total;
+            }
+        } catch(_) {}
+
     } catch(e) {}
 }
 
@@ -1318,7 +1353,7 @@ function renderTop() {
 // ═════════════════════════════════════════════
 //  PEDIDOS
 // ═════════════════════════════════════════════
-const EST_COLOR = { "Pendiente":"bam2","En camino":"baz2","Entregado":"bv2","Cancelado":"br2" };
+const EST_COLOR = { "Pendiente":"bam2","Despachado":"baz2","Entregado":"bv2","Cancelado":"br2" };
 
 function filtrarPorPeriodo(lista) {
     const periodo = document.getElementById("fil-periodo").value;
@@ -1379,16 +1414,17 @@ function renderPedidos() {
     tb.innerHTML = list.map((p,i) => {
         const fecha = p.fecha ? new Date(p.fecha).toLocaleDateString("es-SV",{day:"2-digit",month:"2-digit"}) : "—";
         const tel   = String(p.telefono||"").replace(/\D/g,"");
-        const opts  = ["Pendiente","En camino","Entregado","Cancelado","No entregado"]
+        const opts  = ["Pendiente","Despachado","Entregado","Cancelado","No entregado"]
             .map(s=>`<option value="${s}" ${p.estado===s?"selected":""}>${s}</option>`).join('');
         const pagoCorto = (p.metodoPago||"—").replace("Contra Entrega (Efectivo)","Efectivo").replace("Pago con Tarjeta","Tarjeta");
-        const estadoColor = {Pendiente:"#f97316","En camino":"#3b82f6",Entregado:"#22c55e",Cancelado:"#ef4444","No entregado":"#888"}[p.estado]||"#888";
+        const estadoColor = {Pendiente:"#f97316","Despachado":"#3b82f6",Entregado:"#22c55e",Cancelado:"#ef4444","No entregado":"#888"}[p.estado]||"#888";
         return `<tr>
             <td style="font-family:monospace;font-size:11px;color:var(--azul);font-weight:700;white-space:nowrap;">${p.numeroPedido||"—"}</td>
             <td style="font-size:12px;white-space:nowrap;color:#888;">${fecha}</td>
             <td style="overflow:hidden;">
                 <div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.cliente)||"—"}</div>
                 <a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-size:11px;text-decoration:none;">${esc(p.telefono)||""}</a>
+                ${p.codigoCliente ? `<div style="font-size:10px;color:#C9A84C;font-weight:600;margin-top:1px;">${p.codigoCliente}</div>` : ""}
             </td>
             <td style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.municipio)||"—"}</td>
             <td style="font-size:11px;color:#777;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.productos)||"—"}</td>
@@ -1413,9 +1449,9 @@ function renderPedidos() {
     cards.innerHTML = list.map((p,i) => {
         const fecha = p.fecha ? new Date(p.fecha).toLocaleDateString("es-SV") : "—";
         const tel   = String(p.telefono||"").replace(/\D/g,"");
-        const opts  = ["Pendiente","En camino","Entregado","Cancelado"]
+        const opts  = ["Pendiente","Despachado","Entregado","Cancelado"]
             .map(s=>`<option value="${s}" ${p.estado===s?"selected":""}>${s}</option>`).join('');
-        const estColor = {"Pendiente":"bam2","En camino":"baz2","Entregado":"bv2","Cancelado":"br2"};
+        const estColor = {"Pendiente":"bam2","Despachado":"baz2","Entregado":"bv2","Cancelado":"br2"};
         return `<div class="ped-card">
             <div class="ped-card-header">
                 <span class="ped-card-num">${p.numeroPedido||"—"}</span>
@@ -1500,6 +1536,43 @@ function renderClientes() {
             </div>
         </div>`;
     }).join('');
+}
+
+function exportarClientesExcel() {
+    const busq = (document.getElementById("bus-cli")?.value || "").toLowerCase();
+    const list = clientes.filter(c =>
+        !busq ||
+        (c.nombre||"").toLowerCase().includes(busq) ||
+        (c.telefono||"").toString().includes(busq) ||
+        (c.codigo||"").toLowerCase().includes(busq)
+    );
+    if (!list.length) { toast("No hay clientes para exportar", "#ef4444"); return; }
+
+    const filas = [
+        ["Código", "Nombre", "Teléfono", "Correo", "Municipio", "Departamento", "Total Pedidos", "Fecha Registro"]
+    ];
+    list.forEach(c => {
+        filas.push([
+            c.codigo || "",
+            c.nombre || "",
+            c.telefono || "",
+            c.correo || "",
+            c.municipio || "",
+            c.departamento || "",
+            c.totalPedidos || 0,
+            c.fechaRegistro ? new Date(c.fechaRegistro).toLocaleDateString("es-SV") : ""
+        ]);
+    });
+
+    const csv = filas.map(f => f.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `clientes-verex-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`✅ ${list.length} clientes exportados`, "#1a7a4a");
 }
 
 async function generarCuponCliente(codigo, nombre, telefono) {
@@ -1734,7 +1807,7 @@ function mensajeWhatsApp(estado, p) {
     const numero = p.numeroPedido || "—";
     const metro  = esZonaMetro(p.municipio);
 
-    if (estado === "En camino") {
+    if (estado === "Despachado") {
         const tiempo = metro
             ? "Como estás cerca, lo tendrás en tus manos hoy o mañana."
             : "En 1 a 2 días hábiles estará en tus manos.";
@@ -1755,9 +1828,9 @@ async function cambiarEstado(sel, numeroPedido, cliente, fecha) {
         body: JSON.stringify({ accion:"ACTUALIZAR_ESTADO_PEDIDO", _pass:ADMIN_PASS, numeroPedido, cliente, fecha, estado })
     });
 
-    // Enviar mensaje de WhatsApp si aplica
+    // Enviar mensaje de WhatsApp solo si el pedido fue por WhatsApp (no por correo)
     const msg = mensajeWhatsApp(estado, p);
-    if (msg && p) {
+    if (msg && p && (p.canal || "whatsapp") !== "correo") {
         const tel = String(p.telefono || "").replace(/\D/g, "");
         if (tel) window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`);
     }
@@ -2313,10 +2386,11 @@ function mostrarGuiaC807(numeroPedido) {
     const tel = p.telLlamada || p.telefono || "—";
 
     const campos = [
-        { label: "Número de orden",     valor: String(p.numeroPedido || "—") },
-        { label: "Nombre",              valor: String(p.cliente      || "—") },
+        { label: "Número de orden",     valor: String(p.numeroPedido    || "—") },
+        { label: "Código de cliente",   valor: String(p.codigoCliente   || "—") },
+        { label: "Nombre",              valor: String(p.cliente         || "—") },
         { label: "Teléfono",            valor: String(tel) },
-        { label: "Correo",              valor: String(p.correo       || "—") },
+        { label: "Correo",              valor: String(p.correo          || "—") },
         { label: "Departamento",        valor: String(p.departamento || "—") },
         { label: "Municipio/Distrito",  valor: String(p.municipio    || "—") },
         { label: "Dirección",           valor: String(p.direccion    || "—") },
@@ -2565,7 +2639,402 @@ function filtrarVentasModal() {
 function cerrarModalVentas() {
     document.getElementById("modal-ventas-vend").classList.remove("open");
 }
+
+// ═══════════════════════════════════════════════════════════
+//  CATÁLOGOS TEMPORALES — Cliente y Afiliado
+// ═══════════════════════════════════════════════════════════
+
+const VEREX_WA = "50371250725";
+let _catMode = "cliente";
+let _catStock = [];
+let _catSel   = [];
+
+async function abrirCatalogo(mode) {
+    _catMode = mode;
+    _catSel  = [];
+    document.getElementById("cat-modal-titulo").textContent =
+        mode === "cliente" ? "📋 Catálogo Cliente" : "🏅 Catálogo Afiliado";
+    document.getElementById("cat-wa-wrap").style.display =
+        mode === "afiliado" ? "block" : "none";
+    document.getElementById("cat-grid").innerHTML =
+        `<p style="color:#aaa;font-size:13px;text-align:center;padding:16px;grid-column:1/-1;">Presiona "✨ Armar con IA" para seleccionar productos del stock</p>`;
+    document.getElementById("cat-output-btns").style.display = "none";
+    document.getElementById("cat-count").textContent = "";
+    document.getElementById("cat-modal").classList.add("open");
+
+    if (!_catStock.length) await _cargarCatStock();
+}
+
+function cerrarCatModal() {
+    document.getElementById("cat-modal").classList.remove("open");
+}
+
+async function _cargarCatStock() {
+    try {
+        const res  = await fetch(API_URL, { method: "POST",
+            body: JSON.stringify({ accion: "GET_STOCK", _pass: ADMIN_PASS }) });
+        const data = await res.json();
+        if (data.ok && data.stock) {
+            _catStock = data.stock.filter(p => {
+                const tot = (parseInt(p.stock_bodega)||0) + (parseInt(p.stock_tienda)||0);
+                return tot > 0 && p.estado !== "inactivo";
+            });
+        }
+    } catch(_) {
+        _catStock = productos.map(p => ({ ...p,
+            stock_bodega: parseInt(p.stock_bodega)||0,
+            stock_tienda: parseInt(p.stock_tienda)||0 }));
+    }
+}
+
+function armarCatalogoIA() {
+    const size = parseInt(document.getElementById("cat-size").value) || 36;
+    if (!_catStock.length) { toast("⚠️ No hay stock cargado", "#ef4444"); return; }
+
+    // Agrupar por categoría (primeras 2 letras del código)
+    const grupos = {};
+    _catStock.forEach(p => {
+        const cat = (p.codigo || p.codigo_base || "OT").substring(0, 2);
+        if (!grupos[cat]) grupos[cat] = [];
+        grupos[cat].push(p);
+    });
+
+    // Ordenar cada grupo por stock descendente
+    const totalProds = _catStock.length;
+    let pool = [];
+    Object.values(grupos).forEach(g => {
+        g.sort((a,b) => {
+            const sa = (parseInt(a.stock_bodega)||0)+(parseInt(a.stock_tienda)||0);
+            const sb = (parseInt(b.stock_bodega)||0)+(parseInt(b.stock_tienda)||0);
+            return sb - sa;
+        });
+        // Tomar proporcionalmente de cada categoría, al menos 1
+        const cuota = Math.max(1, Math.round((g.length / totalProds) * size));
+        pool.push(...g.slice(0, cuota));
+    });
+
+    // Deduplicar por codigo_base (agrupar tallas del mismo producto)
+    const seen = new Set();
+    let uniq = pool.filter(p => {
+        const key = p.codigo_base || p.codigo;
+        if (seen.has(key)) return false;
+        seen.add(key); return true;
+    });
+
+    // Si faltan, completar con los de mayor stock restantes
+    if (uniq.length < size) {
+        const seenSet = new Set(uniq.map(p => p.codigo_base || p.codigo));
+        const extra = _catStock
+            .filter(p => !seenSet.has(p.codigo_base || p.codigo))
+            .sort((a,b) => {
+                const sa = (parseInt(a.stock_bodega)||0)+(parseInt(a.stock_tienda)||0);
+                const sb = (parseInt(b.stock_bodega)||0)+(parseInt(b.stock_tienda)||0);
+                return sb - sa;
+            });
+        uniq.push(...extra.slice(0, size - uniq.length));
+    }
+
+    _catSel = uniq.slice(0, size);
+    _renderCatGrid();
+    document.getElementById("cat-output-btns").style.display = "flex";
+    document.getElementById("cat-count").textContent = `${_catSel.length} productos seleccionados`;
+    toast(`✅ ${_catSel.length} productos armados con IA`, "#22c55e");
+}
+
+function _renderCatGrid() {
+    document.getElementById("cat-grid").innerHTML = _catSel.map((p, i) => {
+        const img    = p.foto || p.img || "";
+        const nombre = p.nombre || p.nombre_base || "—";
+        const precio = parseFloat(p.precio || p.precioNum || 0).toFixed(2);
+        const stock  = (parseInt(p.stock_bodega)||0)+(parseInt(p.stock_tienda)||0);
+        const badge  = p.caracterEspecial
+            ? `<span style="display:block;background:rgba(201,168,76,.15);color:#C9A84C;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;border:1px solid rgba(201,168,76,.35);margin:2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">✦ ${p.caracterEspecial}</span>`
+            : "";
+        return `<div style="background:var(--gris);border:1px solid var(--borde);border-radius:9px;overflow:hidden;font-size:11px;position:relative;">
+            ${img
+                ? `<img src="${img}" style="width:100%;height:80px;object-fit:cover;" onerror="this.style.display='none'">`
+                : `<div style="height:80px;background:#222;display:flex;align-items:center;justify-content:center;font-size:22px;">💍</div>`}
+            <div style="padding:5px 6px;">
+                <div style="font-weight:700;font-size:10px;line-height:1.3;margin-bottom:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${nombre}</div>
+                ${badge}
+                <div style="color:var(--dorado);font-weight:800;font-size:12px;">$${precio}</div>
+                <div style="color:#666;font-size:9px;">Stock: ${stock}</div>
+            </div>
+            <button onclick="_catSel.splice(${i},1);_renderCatGrid();document.getElementById('cat-count').textContent=_catSel.length+' productos seleccionados';"
+                style="position:absolute;top:3px;right:3px;background:rgba(0,0,0,.65);color:#fff;border:none;border-radius:50%;width:17px;height:17px;font-size:9px;cursor:pointer;line-height:17px;text-align:center;padding:0;">✕</button>
+        </div>`;
+    }).join("");
+}
+
+// ── Generar HTML del catálogo (usado por Link y PDF) ──────────────────────────
+
+function _buildCatalogoHTML(prods, titulo, waNum) {
+    const cards = prods.map(p => {
+        const img    = p.foto || p.img || "";
+        const nombre = p.nombre || p.nombre_base || "—";
+        const precio = parseFloat(p.precio || p.precioNum || 0).toFixed(2);
+        const badge  = p.caracterEspecial
+            ? `<div class="badge-esp">✦ ${p.caracterEspecial}</div>` : "";
+        const msg = encodeURIComponent(
+            `Hola! Me interesa este producto de VEREX:\n\n${nombre}\nPrecio: $${precio}\nCódigo: ${p.codigo_base || p.codigo || ""}`);
+        return `<div class="card">
+            ${img ? `<img src="${img}" alt="" loading="lazy" onerror="this.style.display='none'">` : `<div class="no-img">💍</div>`}
+            <div class="info">
+                <div class="nombre">${nombre}</div>
+                ${badge}
+                <div class="precio">$${precio}</div>
+                <a class="btn-quiero" href="https://wa.me/${waNum}?text=${msg}" target="_blank">💬 QUIERO ESTE</a>
+            </div>
+        </div>`;
+    }).join("");
+
+    return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${titulo}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0d0d0d;color:#fff}
+header{background:linear-gradient(135deg,#111,#1a1a1a);border-bottom:2px solid #C9A84C;padding:20px;text-align:center}
+header h1{font-size:22px;color:#C9A84C;letter-spacing:2px}
+header p{color:#888;font-size:13px;margin-top:5px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;padding:16px;max-width:1100px;margin:0 auto}
+.card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.card img,.card .no-img{width:100%;height:160px;object-fit:cover}
+.card .no-img{display:flex;align-items:center;justify-content:center;font-size:40px;background:#222}
+.info{padding:10px;flex:1;display:flex;flex-direction:column;gap:5px}
+.nombre{font-weight:700;font-size:12px;line-height:1.3;color:#eee}
+.badge-esp{background:rgba(201,168,76,.15);color:#C9A84C;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1px solid rgba(201,168,76,.4);display:inline-block;width:fit-content}
+.precio{color:#C9A84C;font-weight:800;font-size:17px}
+.btn-quiero{display:block;background:#25D366;color:#fff;text-align:center;text-decoration:none;padding:9px;border-radius:8px;font-weight:700;font-size:13px;margin-top:auto}
+.btn-quiero:hover{background:#128C7E}
+footer{text-align:center;padding:20px;color:#555;font-size:12px;border-top:1px solid #222;margin-top:20px}
+@media(max-width:480px){.grid{grid-template-columns:repeat(2,1fr);gap:8px;padding:10px}}
+</style></head><body>
+<header><h1>${titulo}</h1><p>${prods.length} productos disponibles</p></header>
+<div class="grid">${cards}</div>
+<footer>Catálogo generado por VEREX STORE · verexstore.com</footer>
+</body></html>`;
+}
+
+// ── Link ──────────────────────────────────────────────────────────────────────
+
+function generarCatLink() {
+    if (!_catSel.length) { toast("⚠️ Sin productos seleccionados", "#ef4444"); return; }
+    const waAfil = (document.getElementById("cat-wa-afil")?.value || "").replace(/\D/g,"");
+    const waNum  = (_catMode === "afiliado" && waAfil) ? waAfil : VEREX_WA;
+    const titulo = _catMode === "afiliado" ? "🏅 Catálogo Afiliado VEREX" : "📋 Catálogo VEREX";
+    const html   = _buildCatalogoHTML(_catSel, titulo, waNum);
+    const blob   = new Blob([html], { type: "text/html;charset=utf-8" });
+    window.open(URL.createObjectURL(blob), "_blank");
+    toast("🔗 Catálogo abierto en nueva pestaña", "#22c55e");
+}
+
+// ── PDF ───────────────────────────────────────────────────────────────────────
+
+async function generarCatPDF(evt) {
+    if (!_catSel.length) { toast("⚠️ Sin productos seleccionados", "#ef4444"); return; }
+    if (!window.jspdf) { toast("⚠️ jsPDF no disponible", "#ef4444"); return; }
+    const btn = evt.currentTarget; btn.disabled = true; btn.textContent = "⏳ Generando...";
+    try {
+        const waAfil = (document.getElementById("cat-wa-afil")?.value || "").replace(/\D/g,"");
+        const waNum  = (_catMode === "afiliado" && waAfil) ? waAfil : VEREX_WA;
+        const titulo = _catMode === "afiliado" ? "Catálogo Afiliado VEREX" : "Catálogo Cliente VEREX";
+        const { jsPDF } = window.jspdf;
+        const COLS=3, CW=62, CH=82, GAP=4, MAR=8, HEADER=14;
+        const PW = COLS*CW + (COLS-1)*GAP + MAR*2;
+        const rowsPerPage = Math.floor((290 - HEADER - MAR) / (CH+GAP));
+        const doc = new jsPDF({ unit:"mm", format:[PW, 297], orientation:"portrait" });
+
+        const drawHeader = () => {
+            doc.setFillColor(17,17,17); doc.rect(0,0,PW,HEADER,"F");
+            doc.setTextColor(201,168,76); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+            doc.text(titulo, PW/2, HEADER-4, { align:"center" });
+        };
+        drawHeader();
+
+        for (let i = 0; i < _catSel.length; i++) {
+            const col = i % COLS;
+            const row = Math.floor(i / COLS) % rowsPerPage;
+            if (i > 0 && col === 0 && row === 0) { doc.addPage(); drawHeader(); }
+            const p  = _catSel[i];
+            const x  = MAR + col*(CW+GAP);
+            const y  = HEADER + MAR + row*(CH+GAP);
+
+            doc.setFillColor(26,26,26); doc.setDrawColor(42,42,42); doc.setLineWidth(0.3);
+            doc.roundedRect(x, y, CW, CH, 2, 2, "FD");
+
+            // Imagen
+            const imgUrl = p.foto || p.img || "";
+            if (imgUrl) {
+                try {
+                    const resp = await fetch(imgUrl);
+                    const blob = await resp.blob();
+                    const b64  = await new Promise(res => {
+                        const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(blob);
+                    });
+                    const fmt  = blob.type.includes("png") ? "PNG" : "JPEG";
+                    doc.addImage(b64, fmt, x+0.5, y+0.5, CW-1, 44);
+                } catch(_) {}
+            }
+
+            // Nombre
+            doc.setTextColor(238,238,238); doc.setFont("helvetica","normal"); doc.setFontSize(7);
+            const nombre = p.nombre || p.nombre_base || "—";
+            const lines  = doc.splitTextToSize(nombre, CW-3);
+            doc.text(lines.slice(0,2), x+1.5, y+48);
+
+            // Badge caracterEspecial
+            if (p.caracterEspecial) {
+                doc.setTextColor(201,168,76); doc.setFontSize(6);
+                doc.text("✦ " + p.caracterEspecial, x+1.5, y+57);
+            }
+
+            // Precio
+            doc.setTextColor(201,168,76); doc.setFont("helvetica","bold"); doc.setFontSize(10);
+            doc.text("$" + parseFloat(p.precio||p.precioNum||0).toFixed(2), x+CW/2, y+66, { align:"center" });
+
+            // WhatsApp
+            doc.setTextColor(37,211,102); doc.setFont("helvetica","normal"); doc.setFontSize(5.5);
+            doc.text("wa.me/"+waNum, x+CW/2, y+73, { align:"center" });
+        }
+
+        doc.save(`VEREX_Catalogo_${_catMode}_${new Date().toLocaleDateString("es-SV").replace(/\//g,"-")}.pdf`);
+        toast("📄 PDF generado", "#22c55e");
+    } catch(e) {
+        console.error(e); toast("⚠️ Error generando PDF", "#ef4444");
+    } finally { btn.disabled = false; btn.textContent = "🖨️ PDF"; }
+}
+
+// ── Imagen ────────────────────────────────────────────────────────────────────
+
+async function generarCatImagen(evt) {
+    if (!_catSel.length) { toast("⚠️ Sin productos seleccionados", "#ef4444"); return; }
+    const btn = evt.currentTarget; btn.disabled = true; btn.textContent = "⏳ Generando...";
+    try {
+        const COLS=4, CW=200, CH=250, GAP=12, MAR=20, HDRH=55;
+        const rows   = Math.ceil(_catSel.length / COLS);
+        const cW     = COLS*CW + (COLS-1)*GAP + MAR*2;
+        const cH     = HDRH + rows*(CH+GAP) - GAP + MAR;
+        const canvas = document.createElement("canvas");
+        canvas.width = cW; canvas.height = cH;
+        const ctx = canvas.getContext("2d");
+
+        ctx.fillStyle = "#0d0d0d"; ctx.fillRect(0,0,cW,cH);
+        ctx.fillStyle = "#111"; ctx.fillRect(0,0,cW,HDRH);
+        ctx.strokeStyle = "#C9A84C"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0,HDRH); ctx.lineTo(cW,HDRH); ctx.stroke();
+        ctx.fillStyle = "#C9A84C"; ctx.font = "bold 22px Arial"; ctx.textAlign = "center";
+        const titulo = _catMode === "afiliado" ? "Catálogo Afiliado VEREX" : "Catálogo Cliente VEREX";
+        ctx.fillText(titulo, cW/2, 35);
+
+        // Precargar imágenes
+        const imgs = await Promise.all(_catSel.map(p => new Promise(res => {
+            const url = p.foto || p.img || "";
+            if (!url) return res(null);
+            const img = new Image(); img.crossOrigin = "anonymous";
+            img.onload = () => res(img); img.onerror = () => res(null); img.src = url;
+        })));
+
+        const rr = (x,y,w,h,r) => {
+            ctx.beginPath(); ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
+            ctx.quadraticCurveTo(x+w,y,x+w,y+r); ctx.lineTo(x+w,y+h-r);
+            ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h); ctx.lineTo(x+r,y+h);
+            ctx.quadraticCurveTo(x,y+h,x,y+h-r); ctx.lineTo(x,y+r);
+            ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath();
+        };
+
+        for (let i = 0; i < _catSel.length; i++) {
+            const col = i % COLS, row = Math.floor(i / COLS);
+            const x = MAR + col*(CW+GAP), y = HDRH + MAR + row*(CH+GAP);
+            const p = _catSel[i];
+
+            // Fondo carta
+            ctx.fillStyle = "#1a1a1a"; ctx.strokeStyle = "#2a2a2a"; ctx.lineWidth = 1;
+            rr(x,y,CW,CH,10); ctx.fill(); ctx.stroke();
+
+            // Imagen
+            const IMH = 138;
+            if (imgs[i]) {
+                ctx.save(); rr(x,y,CW,IMH,10); ctx.clip();
+                ctx.drawImage(imgs[i],x,y,CW,IMH); ctx.restore();
+            } else {
+                ctx.fillStyle="#222"; rr(x,y,CW,IMH,10); ctx.fill();
+                ctx.fillStyle="#555"; ctx.font="36px Arial"; ctx.textAlign="center";
+                ctx.fillText("💍",x+CW/2,y+IMH/2+12);
+            }
+
+            // Nombre
+            ctx.fillStyle="#eee"; ctx.font="bold 12px Arial"; ctx.textAlign="left";
+            const nombre = p.nombre || p.nombre_base || "—";
+            const words = nombre.split(" ");
+            let line="",lines=[];
+            words.forEach(w => { if (ctx.measureText(line+w+" ").width<CW-16){line+=w+" ";}else{lines.push(line.trim());line=w+" ";} });
+            lines.push(line.trim());
+            lines.slice(0,2).forEach((l,li) => ctx.fillText(l, x+8, y+IMH+18+li*15));
+
+            // Badge caracterEspecial
+            let infoY = y+IMH+50;
+            if (p.caracterEspecial) {
+                const txt = "✦ "+p.caracterEspecial;
+                ctx.font="10px Arial"; ctx.textAlign="left";
+                const bw = ctx.measureText(txt).width+14;
+                ctx.fillStyle="rgba(201,168,76,.15)"; ctx.strokeStyle="rgba(201,168,76,.4)"; ctx.lineWidth=1;
+                rr(x+7,infoY-13,bw,18,9); ctx.fill(); ctx.stroke();
+                ctx.fillStyle="#C9A84C"; ctx.fillText(txt, x+14, infoY);
+                infoY += 22;
+            }
+
+            // Precio
+            ctx.fillStyle="#C9A84C"; ctx.font="bold 20px Arial"; ctx.textAlign="center";
+            ctx.fillText("$"+parseFloat(p.precio||p.precioNum||0).toFixed(2), x+CW/2, y+CH-14);
+        }
+
+        const a = document.createElement("a");
+        a.download = `VEREX_Catalogo_${_catMode}_${new Date().toLocaleDateString("es-SV").replace(/\//g,"-")}.png`;
+        a.href = canvas.toDataURL("image/png"); a.click();
+        toast("🖼️ Imagen generada", "#22c55e");
+    } catch(e) {
+        console.error(e); toast("⚠️ Error generando imagen", "#ef4444");
+    } finally { btn.disabled = false; btn.textContent = "🖼️ Imagen"; }
+}
 </script>
+
+<!-- Modal Catálogo Temporal -->
+<div class="mo" id="cat-modal">
+    <div class="mb" style="max-width:900px;width:95%;">
+        <button class="mc" onclick="cerrarCatModal()">✕</button>
+        <h3 id="cat-modal-titulo" style="margin-bottom:14px;">📋 Catálogo</h3>
+
+        <!-- WhatsApp afiliado -->
+        <div id="cat-wa-wrap" style="display:none;margin-bottom:12px;">
+            <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px;">📱 WhatsApp del Afiliado (con código de país)</label>
+            <input type="tel" id="cat-wa-afil" placeholder="Ej: 50312345678"
+                style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;">
+        </div>
+
+        <!-- Config IA -->
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+            <select id="cat-size" style="padding:9px 12px;border-radius:8px;border:1.5px solid var(--borde);background:var(--gris);color:inherit;font-size:13px;font-weight:600;">
+                <option value="36">36 productos</option>
+                <option value="50">50 productos</option>
+            </select>
+            <button class="btn bg" style="flex:1;min-width:140px;" onclick="armarCatalogoIA()">✨ Armar con IA</button>
+        </div>
+
+        <!-- Grid preview -->
+        <div id="cat-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;max-height:380px;overflow-y:auto;border:1px solid var(--borde);border-radius:8px;padding:10px;min-height:70px;margin-bottom:14px;">
+            <p style="color:#aaa;font-size:13px;text-align:center;padding:16px;grid-column:1/-1;">Presiona "✨ Armar con IA" para seleccionar productos del stock</p>
+        </div>
+        <div id="cat-count" style="font-size:12px;color:#888;margin-bottom:10px;"></div>
+
+        <!-- Output buttons -->
+        <div id="cat-output-btns" style="display:none;gap:10px;flex-wrap:wrap;">
+            <button class="btn bfull" style="background:#22c55e;color:#fff;font-weight:700;flex:1;" onclick="generarCatPDF(event)">🖨️ PDF</button>
+            <button class="btn bfull" style="background:#f97316;color:#fff;font-weight:700;flex:1;" onclick="generarCatImagen(event)">🖼️ Imagen</button>
+            <button class="btn bfull" style="background:#00bcd4;color:#fff;font-weight:700;flex:1;" onclick="generarCatLink()">🔗 Link</button>
+        </div>
+    </div>
+</div>
 
 <!-- Modal Cambiar Contraseña -->
 <div id="modal-pass" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10000;justify-content:center;align-items:center;padding:20px;">
