@@ -2991,12 +2991,13 @@ function getPrefijoProd(p) {
 }
 
 function tieneStock(p, talla) {
-    // Consignación: campo talla plano + stock en stock_bodega/stock_tienda/stock_consignacion
+    // Consignación: campo talla plano + stock en stock_bodega/stock_tienda/stock_consignacion — fuente de verdad
     if (p.talla !== undefined && p.talla !== null && String(p.talla).trim() !== "") {
+        if (talla && String(p.talla) !== String(talla)) return false; // otra talla: no cae al respaldo
         const totalConsig = (parseInt(p.stock_bodega)||0) + (parseInt(p.stock_tienda)||0) + (parseInt(p.stock_consignacion)||0);
-        if (!talla || String(p.talla) === String(talla)) return totalConsig > 0;
+        return totalConsig > 0;
     }
-    // Admin (Nuevo Producto): JSON de tallas agregado
+    // Admin (Nuevo Producto): JSON de tallas agregado (solo si no hay campo talla plano)
     let s = {};
     try { s = JSON.parse(p.caracteristicas || "{}"); } catch(_) {}
     if (talla) {
@@ -3233,16 +3234,18 @@ function filtrarParaCatalogo() {
     }
 
     const tieneTalla = (p, t) => {
-        // Consignación: campo "talla" plano por registro (una fila = una talla específica)
+        // Consignación: campo "talla" plano por registro (una fila = una talla específica) — fuente de verdad.
+        // Si existe y NO coincide, la fila es de otra talla: se descarta de inmediato sin caer al respaldo
+        // (el respaldo por substring del código puede dar falsos positivos, ej. "T6" dentro de "DT6"/"CT16").
         if (p.talla !== undefined && p.talla !== null && String(p.talla).trim() !== "") {
-            if (String(p.talla) === String(t)) {
-                if (!genero) return true;
-                const n = (p.nombre || "").toLowerCase();
-                if (genero === "dama")      return /\bdama\b|\bmujer\b/.test(n);
-                if (genero === "caballero") return /\bcaballero\b|\bhombre\b/.test(n);
-            }
+            if (String(p.talla) !== String(t)) return false;
+            if (!genero) return true;
+            const n = (p.nombre || "").toLowerCase();
+            if (genero === "dama")      return /\bdama\b|\bmujer\b/.test(n);
+            if (genero === "caballero") return /\bcaballero\b|\bhombre\b/.test(n);
+            return true;
         }
-        // Admin (Nuevo Producto): JSON de tallas agregado en un solo registro
+        // Admin (Nuevo Producto): JSON de tallas agregado en un solo registro (solo si no hay campo talla plano)
         let s = {};
         try { s = JSON.parse(p.caracteristicas || "{}"); } catch(_) {}
         if (genero === "dama")      return (s["D" + t] || 0) > 0;
