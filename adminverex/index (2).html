@@ -3106,7 +3106,7 @@ function abrirModalCatalogo(tipo) {
     document.getElementById("cat-nombre").value  = "";
     document.getElementById("cat-validez").value = esAfiliado ? "30" : "15";
     document.getElementById("cat-link-box").style.display  = "none";
-    document.getElementById("cat-sec-talla").style.display = "none";
+    document.getElementById("cat-sec-talla").style.display = "block";
 
     // Sección afiliado
     const afChk = document.getElementById("cat-es-afiliado");
@@ -3137,6 +3137,33 @@ function detectarMaterial(nombre) {
     return "";
 }
 
+function _actualizarResumenVariado() {
+    const box = document.getElementById("cat-var-resumen");
+    if (!box) return;
+    const talla  = document.getElementById("cat-talla")?.value || "";
+    const genero = document.getElementById("cat-genero")?.value || "";
+    const tipoAN = document.getElementById("cat-tipo-an")?.value || "";
+    const pfx    = (document.getElementById("cat-prefijo-txt")?.value || "").trim();
+    const cats   = [...document.querySelectorAll(".cat-cat-chk:checked")].map(c => c.value);
+
+    const partes = [];
+    if (cats.length) partes.push(`Solo: ${cats.map(k => CAT_MAP[k]).join(", ")}`);
+    const hasAN = cats.length === 0 || cats.includes("AN");
+    if (hasAN) {
+        if (talla)  partes.push(`Anillos → Talla ${talla}`);
+        if (genero) partes.push(`Anillos → ${genero === "dama" ? "Dama" : "Caballero"}`);
+        if (tipoAN) partes.push(`Anillos → ${tipoAN === "pareja" ? "Pareja/Argolla" : "Sencillos"}`);
+        if (pfx)    partes.push(`Anillos → Prefijo ${pfx}`);
+    }
+
+    if (!partes.length) {
+        box.style.display = "none";
+        return;
+    }
+    box.style.display = "block";
+    box.innerHTML = `🎯 <strong>Auto-seleccionar variado</strong> respetará: ${partes.join(" · ")}. El resto de categorías se incluyen sin restricción.`;
+}
+
 function filtrarParaCatalogo() {
     const talla  = document.getElementById("cat-talla").value;
     const genero = document.getElementById("cat-genero").value;
@@ -3144,6 +3171,7 @@ function filtrarParaCatalogo() {
     const info   = document.getElementById("cat-info");
     const cats   = [...document.querySelectorAll(".cat-cat-chk:checked")].map(c => c.value);
     const hasAN  = cats.length === 0 || cats.includes("AN");
+    _actualizarResumenVariado();
 
     let lista = cats.length
         ? productos.filter(p => cats.includes(getCatKey(p.codigo)))
@@ -3514,7 +3542,10 @@ async function generarPDFCatalogo() {
             <div id="cat-categoria-pills" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;"></div>
         </div>
 
-        <div id="cat-sec-talla" style="display:none;">
+        <div id="cat-sec-talla">
+            <div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:11px;color:#9a3412;">
+                💍 Estos filtros solo aplican a la sección de <strong>Anillos</strong> — el resto de categorías (aretes, cadenas, pulseras, etc.) no se ven afectadas y seguirán apareciendo completas en el catálogo variado.
+            </div>
             <div style="margin-bottom:10px;">
                 <label>Buscar por prefijo del código</label>
                 <div style="position:relative;">
@@ -3535,7 +3566,7 @@ async function generarPDFCatalogo() {
             </div>
             <div class="g2" style="margin-bottom:10px;">
                 <div>
-                    <label>Talla</label>
+                    <label>Talla (solo Anillos)</label>
                     <select id="cat-talla" onchange="filtrarParaCatalogo()">
                         <option value="">— Todas —</option>
                         <option value="5">Talla 5</option>
@@ -3551,7 +3582,7 @@ async function generarPDFCatalogo() {
                     </select>
                 </div>
                 <div>
-                    <label>Género (pareja)</label>
+                    <label>Género (pareja, solo Anillos)</label>
                     <select id="cat-genero" onchange="filtrarParaCatalogo()">
                         <option value="">— Todos —</option>
                         <option value="dama">👩 Dama</option>
@@ -3593,7 +3624,8 @@ async function generarPDFCatalogo() {
         <div id="cat-info" style="font-size:12px;color:#888;margin-bottom:8px;"></div>
         <div id="cat-lista" style="max-height:380px;overflow-y:auto;border:1px solid var(--borde);border-radius:8px;padding:8px;background:var(--gris);"></div>
 
-        <div style="display:flex;gap:8px;margin-top:10px;margin-bottom:12px;flex-wrap:wrap;">
+        <div id="cat-var-resumen" style="font-size:11px;color:#166534;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px;padding:7px 10px;margin-top:10px;display:none;"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;margin-bottom:12px;flex-wrap:wrap;">
             <button class="btn bg" style="flex:1;font-size:12px;min-width:80px;" onclick="seleccionarTodosCatalogo(true)">✅ Todos</button>
             <button class="btn bg" style="flex:1;font-size:12px;min-width:80px;" onclick="seleccionarTodosCatalogo(false)">⬜ Ninguno</button>
             <select id="cat-var-size" style="flex:0 0 auto;font-size:12px;padding:0 8px;border-radius:8px;border:1.5px solid var(--borde);background:var(--gris);color:inherit;font-weight:600;">
