@@ -3253,6 +3253,10 @@ function filtrarParaCatalogo() {
             if (String(p.talla) !== String(t)) return false;
             if (!genero) return true;
             const n = (p.nombre || "").toLowerCase();
+            // El filtro de Género solo aplica a sets de pareja (matrimonio/argolla/alianza) —
+            // un anillo simple/unisex no lleva "dama"/"caballero" en el nombre y no debe excluirse por esto.
+            const esParejaRow = /matrimonio|argolla|novios|pareja|alianza/i.test(p.nombre || "");
+            if (!esParejaRow) return true;
             if (genero === "dama")      return /\bdama\b|\bmujer\b/.test(n);
             if (genero === "caballero") return /\bcaballero\b|\bhombre\b/.test(n);
             return true;
