@@ -1881,7 +1881,7 @@ function generarContratoAfiliadoPDF(vendedor) {
             : "Cuando el Afiliado cierra una venta con un cliente, debe coordinar con VEREX la entrega de la pieza. VEREX confirma la venta al momento de la entrega; solo hasta esa confirmación se genera la comisión correspondiente."],
         ["3. PRECIOS", "El Afiliado ofrecerá las piezas al precio establecido por VEREX en el catálogo. No podrá modificar precios sin autorización escrita."],
         recibeFisico
-            ? ["4. RESPONSABILIDAD POR PIEZAS ENTREGADAS", "El Afiliado es responsable de las piezas físicas que reciba de VEREX. En caso de pérdida, robo o daño, deberá cubrir el valor de las mismas al precio de costo. Las piezas no vendidas deben devolverse en perfecto estado según lo acordado con VEREX."]
+            ? ["4. RESPONSABILIDAD POR PIEZAS ENTREGADAS", "El Afiliado es responsable de las piezas físicas que reciba de VEREX. En caso de pérdida, robo o daño, deberá pagar a VEREX el precio de venta de la pieza menos la comisión que le habría correspondido — el mismo monto que VEREX habría recibido si la pieza se hubiera vendido normalmente. Las piezas no vendidas deben devolverse en perfecto estado según lo acordado con VEREX."]
             : ["4. SIN RESPONSABILIDAD POR INVENTARIO", "Al no recibir mercancía física, el Afiliado no asume responsabilidad por pérdida, robo o daño de piezas — dicha responsabilidad es exclusiva de VEREX hasta el momento de la entrega al cliente final."],
         ["5. COMISIÓN", tieneComisionFija
             ? `El Afiliado recibirá una comisión fija del ${vendedor.comisionFija}% sobre cada venta confirmada por VEREX, independientemente del monto acumulado en el período.`
