@@ -952,6 +952,13 @@
         </div>
         <input type="text" id="v-nombre" placeholder="Nombre completo">
         <input type="tel"  id="v-tel"    placeholder="Teléfono WhatsApp">
+        <div style="display:flex;gap:8px;margin:10px 0;">
+            <button type="button" id="v-tipo-consig-btn" onclick="selTipoVendedor('consignacion')"
+                style="flex:1;padding:8px 0;border:1px solid var(--dorado);border-radius:8px;background:var(--dorado);color:#111;font-size:12px;font-weight:700;cursor:pointer;">📦 Consignación</button>
+            <button type="button" id="v-tipo-afiliado-btn" onclick="selTipoVendedor('afiliado')"
+                style="flex:1;padding:8px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:12px;font-weight:700;cursor:pointer;">🤝 Afiliado</button>
+        </div>
+        <div style="font-size:11px;color:var(--plateado);margin-bottom:10px;" id="v-tipo-desc">Recibe piezas físicas, vende, devuelve lo no vendido.</div>
         <button class="btn btn-dorado btn-full" onclick="guardarVendedor()">Guardar Vendedor</button>
     </div>
 </div>
@@ -1131,6 +1138,14 @@ const RANGOS_COMISION = [
     { min: 0,    max: 199.99,  pct: 25 },
     { min: 200,  max: 399.99,  pct: 30 },
     { min: 400,  max: 99999,   pct: 40 },
+];
+
+// Afiliados no manejan piezas físicas ni asumen riesgo de inventario no vendido —
+// comisión más baja que consignación, pero sigue subiendo por tramos según lo vendido.
+const RANGOS_COMISION_AFILIADO = [
+    { min: 0,    max: 199.99,  pct: 20 },
+    { min: 200,  max: 399.99,  pct: 25 },
+    { min: 400,  max: 99999,   pct: 30 },
 ];
 
 let vendedores   = [];
@@ -1516,14 +1531,36 @@ function renderVendedores() {
             <div class="vendedor-avatar">${inicial}</div>
             <div class="vendedor-nombre">${sanitizar(v.nombre)}</div>
             <div style="font-size:10px;color:var(--dorado);font-weight:600;letter-spacing:1px;margin-bottom:2px;">${sanitizar(v.codigo)}</div>
+            ${v.tipo === "afiliado"
+                ? '<div style="display:inline-block;font-size:9px;font-weight:700;color:#16a34a;background:rgba(22,163,74,0.15);border:1px solid rgba(22,163,74,0.35);border-radius:5px;padding:1px 6px;margin-bottom:4px;">🤝 AFILIADO</div>'
+                : ''}
             <div class="vendedor-stock">${stock} piezas</div>
         </div>`;
     }).join('') + `<button class="btn-nuevo-vendedor" onclick="abrirModalVendedor()">+ Nuevo Vendedor</button>`;
 }
 
+let _tipoVendedorSel = "consignacion";
+
+function selTipoVendedor(tipo) {
+    _tipoVendedorSel = tipo;
+    const btnConsig = document.getElementById("v-tipo-consig-btn");
+    const btnAfil   = document.getElementById("v-tipo-afiliado-btn");
+    const desc      = document.getElementById("v-tipo-desc");
+    if (tipo === "afiliado") {
+        btnAfil.style.background   = "var(--dorado)"; btnAfil.style.color   = "#111"; btnAfil.style.borderColor   = "var(--dorado)";
+        btnConsig.style.background = "var(--gris2)";  btnConsig.style.color = "var(--blanco)"; btnConsig.style.borderColor = "var(--borde)";
+        desc.textContent = "No maneja piezas físicas — cierra la venta por su cuenta y pide la pieza a VEREX para entregarla.";
+    } else {
+        btnConsig.style.background = "var(--dorado)"; btnConsig.style.color = "#111"; btnConsig.style.borderColor = "var(--dorado)";
+        btnAfil.style.background   = "var(--gris2)";  btnAfil.style.color   = "var(--blanco)"; btnAfil.style.borderColor   = "var(--borde)";
+        desc.textContent = "Recibe piezas físicas, vende, devuelve lo no vendido.";
+    }
+}
+
 function abrirModalVendedor() {
     document.getElementById("v-nombre").value = "";
     document.getElementById("v-tel").value = "";
+    selTipoVendedor("consignacion");
     abrirModal("modal-vendedor");
 }
 
@@ -1540,7 +1577,7 @@ async function guardarVendedor() {
     let codigo = base;
     let seq = 2;
     while (vendedores.some(v => v.codigo === codigo)) { codigo = base + "-" + seq++; }
-    const v = { codigo, nombre, telefono: tel };
+    const v = { codigo, nombre, telefono: tel, tipo: _tipoVendedorSel };
     vendedores.push(v);
     await apiPost({ accion: "GUARDAR_VENDEDOR", vendedor: v });
     cerrarModal("modal-vendedor");
@@ -3404,9 +3441,10 @@ let _corteValorVend = 0;
 let _cortePct = 25;
 let _corteGanancia = 0;
 
-function calcularComision(totalVendido) {
-    const rango = RANGOS_COMISION.slice().reverse().find(r => totalVendido >= r.min);
-    return rango ? rango.pct : 25;
+function calcularComision(totalVendido, tipoVendedor) {
+    const tabla = tipoVendedor === "afiliado" ? RANGOS_COMISION_AFILIADO : RANGOS_COMISION;
+    const rango = tabla.slice().reverse().find(r => totalVendido >= r.min);
+    return rango ? rango.pct : tabla[0].pct;
 }
 
 function abrirCorte() {
@@ -3414,7 +3452,7 @@ function abrirCorte() {
     const vendidos  = inv.reduce((s, c) => s + parseInt(c.vendido||0), 0);
     const valorVend = inv.reduce((s, c) => s + parseInt(c.vendido||0) * parseFloat(c.precio||0), 0);
     const sinVender = inv.filter(c => parseInt(c.cantidad||0) - parseInt(c.vendido||0) > 0);
-    const pct       = calcularComision(valorVend);
+    const pct       = calcularComision(valorVend, vendedorActual.tipo);
     const ganancia  = valorVend * pct / 100;
     _corteValorVend = valorVend; _cortePct = pct; _corteGanancia = ganancia;
     decisionesCorte = {};
