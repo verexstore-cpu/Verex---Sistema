@@ -2899,10 +2899,12 @@ async function generarLinkCatalogo() {
         const bannerTxt = (document.getElementById("cat-banner-txt")?.value||"").trim();
         const bannerSub = (document.getElementById("cat-banner-sub")?.value||"").trim();
         const banner = bannerTxt ? { txt: bannerTxt, sub: bannerSub, color: _bannerColor } : null;
+        const descPct = Math.min(90, Math.max(0, parseInt(document.getElementById("cat-banner-desc-pct")?.value) || 0));
 
         const data={
             expiry: Date.now()+dias*864e5,
             nombre, talla, wa, banner, dias,
+            ...(descPct > 0 && { descPct }),
             ...(esAfiliado && { afiliado: true }),
             ...(afiliadoId && { customId: afiliadoId }),
             prods: lista.map(p=>{
@@ -3155,6 +3157,8 @@ function abrirModalCatalogo(tipo) {
     document.getElementById("cat-genero").value  = "";
     document.getElementById("cat-nombre").value  = "";
     document.getElementById("cat-validez").value = esAfiliado ? "30" : "15";
+    const descPctEl = document.getElementById("cat-banner-desc-pct");
+    if (descPctEl) descPctEl.value = "";
     document.getElementById("cat-link-box").style.display  = "none";
     document.getElementById("cat-sec-talla").style.display = "block";
 
@@ -3681,6 +3685,10 @@ async function generarPDFCatalogo() {
             <label style="color:#92400e;font-weight:700;">🏷️ Banner de oferta (opcional)</label>
             <input type="text" id="cat-banner-txt" placeholder="Ej: 2x1 en aretes este fin de semana 🎉" style="margin-top:6px;">
             <input type="text" id="cat-banner-sub" placeholder="Subtítulo (ej: Solo hasta el domingo)" style="margin-top:6px;">
+            <div style="margin-top:8px;">
+                <label style="color:#92400e;font-weight:700;font-size:12px;">% Descuento (opcional — calcula el precio final en cada tarjeta)</label>
+                <input type="number" id="cat-banner-desc-pct" placeholder="Ej: 20" min="0" max="90" style="margin-top:4px;">
+            </div>
             <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
                 <span style="font-size:11px;color:#92400e;font-weight:700;">Color:</span>
                 <div id="banner-colors" style="display:flex;gap:6px;flex-wrap:wrap;">
