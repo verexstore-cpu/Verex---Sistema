@@ -86,6 +86,7 @@
         .tab[onclick*="tab(3)"]{--tc:#16a34a;--tg:linear-gradient(135deg,#052e16,#16a34a,#4ade80,#16a34a,#052e16);}  /* Envío — verde */
         .tab[onclick*="tab(4)"]{--tc:#db2777;--tg:linear-gradient(135deg,#500724,#db2777,#f472b6,#db2777,#500724);}  /* Cupones — rosa */
         .tab[onclick*="tab(6)"]{--tc:#C9A84C;--tg:linear-gradient(135deg,#7a5500,#C9A84C,#f0d060,#C9A84C,#7a5500);}  /* Vendedores — dorado */
+        .tab[onclick*="tab(7)"]{--tc:#059669;--tg:linear-gradient(135deg,#022c1d,#059669,#34d399,#059669,#022c1d);}  /* Ventas — esmeralda */
         .tab.active{
             background:var(--tg);
             color:#fff;
@@ -347,6 +348,7 @@
         <div class="tab" onclick="tab(3)">🚚 Envío</div>
         <div class="tab" onclick="tab(4)">🎟️ Cupones</div>
         <div class="tab" onclick="tab(6);cargarConsignacion()">👤 Vendedores</div>
+        <div class="tab" onclick="tab(7);cargarVentasAdmin()">💰 Ventas</div>
     </div>
 
     <!-- TAB 0: DASHBOARD -->
@@ -893,6 +895,45 @@
     </div>
 </div>
 
+<div class="tab-content" id="tab-7">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">
+        <div style="background:#1a1a1a;border:1px solid #333;border-top:3px solid #059669;border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Total Ventas</div>
+            <div id="av-total-ventas" style="font-size:26px;font-weight:800;color:#fff;">—</div>
+        </div>
+        <div style="background:#1a1a1a;border:1px solid #333;border-top:3px solid #C9A84C;border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Monto Total</div>
+            <div id="av-monto-total" style="font-size:26px;font-weight:800;color:#C9A84C;">—</div>
+        </div>
+        <div style="background:#1a1a1a;border:1px solid #333;border-top:3px solid #e74c3c;border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Por Cobrar</div>
+            <div id="av-por-cobrar" style="font-size:26px;font-weight:800;color:#e74c3c;">—</div>
+        </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">
+        <input type="text" id="av-buscar" placeholder="🔍 Buscar cliente o producto..."
+            oninput="renderVentasAdmin()"
+            style="flex:1;min-width:180px;padding:9px 12px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;">
+        <select id="av-tipo" onchange="renderVentasAdmin()"
+            style="padding:9px 10px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;">
+            <option value="">Todos los tipos</option>
+            <option value="directa">Directa</option>
+            <option value="catalogo">Catálogo</option>
+            <option value="consignacion">Consignación</option>
+        </select>
+        <select id="av-estado" onchange="renderVentasAdmin()"
+            style="padding:9px 10px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;">
+            <option value="">Todos los estados</option>
+            <option value="pagado">Pagado</option>
+            <option value="credito">Crédito</option>
+            <option value="pendiente">Pendiente</option>
+        </select>
+        <button onclick="cargarVentasAdmin()"
+            style="padding:9px 14px;background:#059669;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">&#x21BA; Actualizar</button>
+    </div>
+    <div id="av-lista"></div>
+</div>
+
 <!-- MODAL VENTAS VENDEDOR -->
 <div class="mo" id="modal-ventas-vend">
     <div class="mb" style="max-width:660px;">
@@ -1122,6 +1163,94 @@ function logout() {
         entrarConSesion(sesion.hash);
     }
 })()
+
+// ═════════════════════════════════════════════
+//  VENTAS UNIFICADAS
+// ═════════════════════════════════════════════
+let _adminVentas = [];
+
+async function cargarVentasAdmin() {
+    const lista = document.getElementById("av-lista");
+    lista.innerHTML = '<p style="color:#888;font-size:13px;text-align:center;padding:20px;">&#x23F3; Cargando ventas...</p>';
+    try {
+        const res = await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ accion: "GET_HISTORIAL_VENTAS", _pass: ADMIN_PASS })
+        }).then(r => r.json());
+        _adminVentas = (res.ventas || []).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+        actualizarKPIsVentas();
+        renderVentasAdmin();
+    } catch(e) {
+        lista.innerHTML = '<p style="color:#e74c3c;font-size:13px;text-align:center;padding:20px;">Error al cargar ventas.</p>';
+    }
+}
+
+function actualizarKPIsVentas() {
+    const monto  = _adminVentas.reduce((s, v) => s + parseFloat(v.total || 0), 0);
+    const cobrar = _adminVentas.reduce((s, v) => s + parseFloat(v.saldoPendiente || 0), 0);
+    document.getElementById("av-total-ventas").textContent = _adminVentas.length;
+    document.getElementById("av-monto-total").textContent  = "$" + monto.toFixed(2);
+    document.getElementById("av-por-cobrar").textContent   = "$" + cobrar.toFixed(2);
+}
+
+function renderVentasAdmin() {
+    const q      = (document.getElementById("av-buscar")?.value || "").toLowerCase();
+    const tipo   = document.getElementById("av-tipo")?.value   || "";
+    const estado = document.getElementById("av-estado")?.value || "";
+    const tipoCfg = {
+        directa:      { label:"Directa",     color:"#C9A84C", bg:"rgba(201,168,76,.15)"  },
+        catalogo:     { label:"Catálogo",    color:"#0ea5e9", bg:"rgba(14,165,233,.15)"  },
+        consignacion: { label:"Consignación",color:"#a78bfa", bg:"rgba(167,139,250,.15)" },
+    };
+    const estadoCfg = {
+        pagado:   { label:"Pagado",   color:"#059669" },
+        credito:  { label:"Crédito",  color:"#e85d04" },
+        pendiente:{ label:"Pendiente",color:"#e74c3c" },
+    };
+    const filtradas = _adminVentas.filter(v => {
+        if (tipo   && v.tipo   !== tipo)   return false;
+        if (estado && v.estado !== estado) return false;
+        if (q) {
+            const hay = (v.cliente || "").toLowerCase().includes(q) ||
+                (typeof v.items === "string" ? v.items : JSON.stringify(v.items || "")).toLowerCase().includes(q);
+            if (!hay) return false;
+        }
+        return true;
+    });
+    const lista = document.getElementById("av-lista");
+    if (!filtradas.length) {
+        lista.innerHTML = '<p style="color:#888;font-size:13px;text-align:center;padding:30px;">Sin resultados.</p>';
+        return;
+    }
+    lista.innerHTML = filtradas.map(v => {
+        const tc  = tipoCfg[v.tipo]    || { label: v.tipo    || "—", color:"#888", bg:"#222" };
+        const ec  = estadoCfg[v.estado] || { label: v.estado || "—", color:"#888" };
+        const fecha = v.fecha ? new Date(v.fecha).toLocaleDateString("es-CO", { day:"2-digit", month:"short", year:"numeric" }) : "—";
+        let itemsStr = "";
+        try {
+            const its = typeof v.items === "string" ? JSON.parse(v.items || "[]") : (v.items || []);
+            itemsStr = its.slice(0,2).map(i => i.nombre || i.producto || "").filter(Boolean).join(", ");
+            if (its.length > 2) itemsStr += ` +${its.length - 2} más`;
+        } catch(_) {}
+        return `<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-left:4px solid ${tc.color};border-radius:10px;padding:12px;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:5px;">
+                        <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:${tc.bg};color:${tc.color};font-weight:700;">${tc.label}</span>
+                        <span style="font-size:10px;color:${ec.color};font-weight:600;">${ec.label}</span>
+                    </div>
+                    <div style="font-size:13px;font-weight:700;color:#fff;">${v.cliente || "—"}</div>
+                    <div style="font-size:11px;color:#888;margin-top:2px;">${fecha} · Ref: ${String(v.id||"").slice(-6)}</div>
+                    ${itemsStr ? `<div style="font-size:11px;color:#666;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${itemsStr}</div>` : ""}
+                </div>
+                <div style="text-align:right;flex-shrink:0;">
+                    <div style="font-size:15px;font-weight:700;color:#C9A84C;">$${parseFloat(v.total||0).toFixed(2)}</div>
+                    ${parseFloat(v.saldoPendiente||0)>0 ? `<div style="font-size:11px;color:#e74c3c;font-weight:600;">Debe: $${parseFloat(v.saldoPendiente).toFixed(2)}</div>` : ""}
+                </div>
+            </div>
+        </div>`;
+    }).join("");
+}
 
 // ═════════════════════════════════════════════
 //  TABS
@@ -2896,10 +3025,12 @@ async function generarLinkCatalogo() {
     btn.textContent="⏳..."; btn.disabled=true;
 
     try {
-        const bannerTxt = (document.getElementById("cat-banner-txt")?.value||"").trim();
-        const bannerSub = (document.getElementById("cat-banner-sub")?.value||"").trim();
+        // Banner / % descuento: nunca aplica a catálogos de afiliado — ellos ganan
+        // comisión por venta y un descuento no acordado les afectaría esa comisión.
+        const bannerTxt = esAfiliado ? "" : (document.getElementById("cat-banner-txt")?.value||"").trim();
+        const bannerSub = esAfiliado ? "" : (document.getElementById("cat-banner-sub")?.value||"").trim();
         const banner = bannerTxt ? { txt: bannerTxt, sub: bannerSub, color: _bannerColor } : null;
-        const descPctRaw = Math.min(90, Math.max(0, parseInt(document.getElementById("cat-banner-desc-pct")?.value) || 0));
+        const descPctRaw = esAfiliado ? 0 : Math.min(90, Math.max(0, parseInt(document.getElementById("cat-banner-desc-pct")?.value) || 0));
         // El % de descuento solo se aplica si el banner está activo — así el cliente
         // siempre ve el contexto de la oferta junto al precio ya calculado.
         const descPct = banner ? descPctRaw : 0;
@@ -3152,6 +3283,23 @@ function onPillChange() {
     filtrarParaCatalogo();
 }
 
+function onToggleAfiliado(checked) {
+    const afFields = document.getElementById("cat-afiliado-fields");
+    if (afFields) afFields.style.display = checked ? "block" : "none";
+    // El banner de oferta / % descuento no aplica a catálogos de afiliado —
+    // ellos ganan comisión por venta y un descuento no acordado les afecta esa comisión.
+    const bannerWrap = document.getElementById("cat-banner-wrap");
+    if (bannerWrap) bannerWrap.style.display = checked ? "none" : "block";
+    if (checked) {
+        const txtEl = document.getElementById("cat-banner-txt");
+        const pctEl = document.getElementById("cat-banner-desc-pct");
+        if (txtEl) txtEl.value = "";
+        if (pctEl) pctEl.value = "";
+        const prev = document.getElementById("banner-preview");
+        if (prev) prev.style.display = "none";
+    }
+}
+
 function abrirModalCatalogo(tipo) {
     const esAfiliado = tipo === "afiliado";
     document.getElementById("modal-catalogo").classList.add("open");
@@ -3170,10 +3318,8 @@ function abrirModalCatalogo(tipo) {
 
     // Sección afiliado
     const afChk = document.getElementById("cat-es-afiliado");
-    if (afChk) {
-        afChk.checked = esAfiliado;
-        document.getElementById("cat-afiliado-fields").style.display = esAfiliado ? "block" : "none";
-    }
+    if (afChk) afChk.checked = esAfiliado;
+    onToggleAfiliado(esAfiliado);
     const waEl  = document.getElementById("cat-wa");            if (waEl)  waEl.value  = esAfiliado ? "" : (localStorage.getItem("verex-wa")||"");
     const afNom = document.getElementById("cat-afiliado-nombre"); if (afNom) afNom.value = "";
     const afId  = document.getElementById("cat-afiliado-id");     if (afId)  afId.value  = "";
@@ -3687,8 +3833,8 @@ async function generarPDFCatalogo() {
             <input type="text" id="cat-nombre" placeholder="Ej: María, Juan...">
         </div>
 
-        <div style="margin-bottom:12px;background:#fffef0;border:1px solid #fde68a;border-radius:8px;padding:10px;">
-            <label style="color:#92400e;font-weight:700;">🏷️ Banner de oferta (opcional)</label>
+        <div id="cat-banner-wrap" style="margin-bottom:12px;background:#fffef0;border:1px solid #fde68a;border-radius:8px;padding:10px;">
+            <label style="color:#92400e;font-weight:700;">🏷️ Banner de oferta (opcional — no disponible en catálogo de afiliado)</label>
             <input type="text" id="cat-banner-txt" placeholder="Ej: 2x1 en aretes este fin de semana 🎉" style="margin-top:6px;">
             <input type="text" id="cat-banner-sub" placeholder="Subtítulo (ej: Solo hasta el domingo)" style="margin-top:6px;">
             <div style="margin-top:8px;">
@@ -3744,7 +3890,7 @@ async function generarPDFCatalogo() {
         <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:12px;margin-bottom:12px;">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;color:#166534;font-size:12px;text-transform:uppercase;margin-bottom:0;">
                 <input type="checkbox" id="cat-es-afiliado" style="width:15px;height:15px;accent-color:#16a34a;"
-                    onchange="document.getElementById('cat-afiliado-fields').style.display=this.checked?'block':'none'">
+                    onchange="onToggleAfiliado(this.checked)">
                 🤝 Es catálogo de afiliado / distribuidor
             </label>
             <div id="cat-afiliado-fields" style="display:none;margin-top:10px;">
