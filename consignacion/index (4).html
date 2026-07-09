@@ -567,6 +567,9 @@
         <!-- Tab Venta Directa -->
         <div id="tab-content-ventadirecta" style="display:none;">
 
+            <!-- Botón flotante historial -->
+            <button onclick="irAHistorialVD()" style="position:fixed;bottom:80px;right:16px;z-index:900;background:linear-gradient(135deg,#2a1a5c,#7a4ad4);color:#ede0ff;border:none;border-radius:50px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(122,74,212,0.5);display:none;" id="fab-historial-vd">📊 Historial</button>
+
             <!-- Escáner QR modal -->
             <div class="modal-overlay" id="modal-qr-vd" style="display:none;">
                 <div class="modal-box" style="padding:16px;">
@@ -1254,7 +1257,8 @@ function cambiarTab(tab) {
     if (tab === 'dashboard')    renderDashboard();
     if (tab === 'etiquetas')  { refrescarProductosEtiquetas(); setTimeout(()=>{ const f=document.getElementById('bus-etiquetas'); if(f)f.focus(); },300); }
     if (tab === 'stock')      { cargarStock(); setTimeout(()=>{ const f=document.getElementById('bus-stock'); if(f)f.focus(); },300); }
-    if (tab === 'ventadirecta')    iniciarVentaDirecta();
+    if (tab === 'ventadirecta')    { iniciarVentaDirecta(); document.getElementById("fab-historial-vd").style.display = "flex"; }
+    else document.getElementById("fab-historial-vd").style.display = "none";
     if (tab === 'historialventas') cargarHistorialVentas();
 }
 
@@ -7156,7 +7160,13 @@ function toggleHistorialVD() {
     const abierto = panel.style.display !== "none";
     panel.style.display = abierto ? "none" : "block";
     btn.textContent = abierto ? "📊 Historial de Ventas" : "📊 Ocultar Historial";
-    if (!abierto) cargarHistorialVD();
+    if (!abierto) { cargarHistorialVD(); setTimeout(() => panel.scrollIntoView({ behavior:"smooth", block:"start" }), 200); }
+}
+
+function irAHistorialVD() {
+    const panel = document.getElementById("panel-historial-vd");
+    if (panel.style.display === "none") toggleHistorialVD();
+    else setTimeout(() => panel.scrollIntoView({ behavior:"smooth", block:"start" }), 50);
 }
 
 let _historialVD = [];
@@ -7243,8 +7253,146 @@ function renderHistorialVD() {
                     <div style="font-size:11px;color:var(--plateado);">Pagado $${pagado.toFixed(2)} · Pendiente <strong style="color:#e85555;">$${saldo.toFixed(2)}</strong></div>
                     ${saldo > 0 ? `<button onclick="abrirModalAbono('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1);color:#e0f7ff;font-size:11px;font-weight:700;cursor:pointer;">💰 Abono</button>` : '<span style="font-size:11px;color:#52d68a;font-weight:700;">✅ Saldado</span>'}
                 </div>` : ""}
+                <div style="margin-top:8px;text-align:right;">
+                    <button onclick="descargarReciboVD('${v.id}')" style="padding:5px 12px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #333;color:#C9A84C;font-size:11px;font-weight:700;cursor:pointer;">🧾 Recibo</button>
+                </div>
             </div>`;
         }).join("")}`;
+}
+
+function descargarReciboVD(id) {
+    const v = _historialVD.find(x => x.id === id);
+    if (!v) return toast("⚠️ Venta no encontrada");
+    if (!window.jspdf?.jsPDF) return toast("⚠️ No se pudo cargar jsPDF");
+    const { jsPDF } = window.jspdf;
+
+    let items = [];
+    try { items = typeof v.items==="string" ? JSON.parse(v.items) : (v.items||[]); } catch(e){}
+
+    const W  = 62;   // 62mm rollo Brother
+    const mX = 4;    // margen horizontal
+    const cX = W / 2;
+    const lH = 4.5;  // interlineado base
+    let y = 6;
+
+    const descuento = parseFloat(v.descuento || 0);
+
+    // Calcular alto dinámico
+    const altoItems  = items.reduce((s, it) => s + 12 + (it.material ? 6 : 0), 0);
+    const altoCuerpo = 46 + altoItems + (v.estado==="credito" ? 10 : 0) + (v.nota ? 6 : 0) + (descuento > 0 ? 5 : 0);
+    const H = altoCuerpo + 34; // footer ~34mm
+    const doc = new jsPDF({ unit:'mm', format:[W, H], orientation:'portrait' });
+
+    // ── HEADER ──────────────────────────────────────────────────────────
+    doc.setFont("helvetica","bold"); doc.setFontSize(18); doc.setTextColor(0,0,0);
+    doc.text("VEREX", cX, y, { align:"center" }); y += 5.5;
+    doc.setFont("helvetica","normal"); doc.setFontSize(6.5); doc.setTextColor(80,80,80);
+    doc.text("S T O R E", cX, y, { align:"center" }); y += 4;
+
+    doc.setDrawColor(180,140,50); doc.setLineWidth(0.5);
+    doc.line(mX, y, W-mX, y); y += 4;
+
+    doc.setFont("helvetica","bold"); doc.setFontSize(7.5); doc.setTextColor(0,0,0);
+    doc.text("RECIBO DE VENTA", cX, y, { align:"center" }); y += 4.5;
+
+    // ── DATOS ───────────────────────────────────────────────────────────
+    const fecha = new Date(v.fecha).toLocaleDateString("es-SV", { day:"2-digit", month:"2-digit", year:"numeric" });
+    const hora  = new Date(v.fecha).toLocaleTimeString("es-SV", { hour:"2-digit", minute:"2-digit" });
+    doc.setFontSize(7); doc.setTextColor(40,40,40);
+    [
+        ["Fecha:",   fecha + "  " + hora],
+        ["Cliente:", v.cliente || "Sin nombre"],
+        ["Tel:",     v.telefono || "—"],
+        ["Estado:",  v.estado==="credito" ? "Crédito" : "Contado"],
+    ].forEach(([label, val]) => {
+        doc.setFont("helvetica","bold");   doc.text(label, mX, y);
+        doc.setFont("helvetica","normal"); doc.text(String(val), mX+14, y);
+        y += lH;
+    });
+    if (v.nota) {
+        doc.setFont("helvetica","italic"); doc.setTextColor(100,100,100);
+        const notaLines = doc.splitTextToSize("Nota: " + v.nota, W - mX*2);
+        notaLines.forEach(l => { doc.text(l, mX, y); y += lH - 0.5; });
+        doc.setTextColor(40,40,40);
+    }
+    y += 2;
+
+    // ── LÍNEA SEPARADORA ────────────────────────────────────────────────
+    doc.setDrawColor(200,200,200); doc.setLineWidth(0.3);
+    doc.line(mX, y, W-mX, y); y += 3;
+
+    // ── PRODUCTOS ───────────────────────────────────────────────────────
+    doc.setFont("helvetica","bold"); doc.setFontSize(6.5); doc.setTextColor(0,0,0);
+    doc.text("PRODUCTO", mX, y);
+    doc.text("CANT", W-28, y);
+    doc.text("PRECIO", W-mX, y, { align:"right" });
+    y += 1.5;
+    doc.setDrawColor(200,200,200); doc.line(mX, y, W-mX, y); y += 3;
+
+    doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(20,20,20);
+    items.forEach(it => {
+        const nombre = it.nombre || it.codigo || "—";
+        const qty    = parseInt(it.cantidad || 1);
+        const pu     = parseFloat(it.precioUnitario || it.precio || 0);
+        const total  = pu * qty;
+        const nombreLines = doc.splitTextToSize(nombre, W - mX*2 - 24);
+        nombreLines.forEach((l, i) => { doc.text(l, mX, y + i*lH); });
+        doc.text(String(qty), W-28, y);
+        doc.text("$"+total.toFixed(2), W-mX, y, { align:"right" });
+        y += nombreLines.length * lH;
+        if (it.material) {
+            doc.setFont("helvetica","italic"); doc.setFontSize(6); doc.setTextColor(100,100,100);
+            doc.text(it.material, mX, y);
+            doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(20,20,20);
+            y += lH - 0.5;
+        }
+        y += 2;
+    });
+
+    // ── TOTALES ─────────────────────────────────────────────────────────
+    doc.setDrawColor(200,200,200); doc.line(mX, y, W-mX, y); y += 3.5;
+    const totalVenta = parseFloat(v.total || 0);
+    const saldo      = parseFloat(v.saldoPendiente || 0);
+    const pagado     = totalVenta - saldo;
+
+    if (descuento > 0) {
+        const subtotal = parseFloat(v.subtotal || 0) || (totalVenta + descuento);
+        doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(60,60,60);
+        doc.text("Subtotal:", mX, y); doc.text("$"+subtotal.toFixed(2), W-mX, y, { align:"right" }); y += 4;
+        doc.setTextColor(30,120,30);
+        const descLabel = v.descuentoTipo === 'porcentaje'
+            ? `Descuento (${v.descuentoValor || ''}%):`
+            : "Descuento:";
+        doc.text(descLabel, mX, y); doc.text("-$"+descuento.toFixed(2), W-mX, y, { align:"right" }); y += 4.5;
+        doc.setTextColor(0,0,0);
+    }
+
+    doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.setTextColor(0,0,0);
+    doc.text("TOTAL:", mX, y); doc.text("$"+totalVenta.toFixed(2), W-mX, y, { align:"right" }); y += 5;
+
+    if (v.estado === "credito") {
+        doc.setFont("helvetica","normal"); doc.setFontSize(7);
+        doc.text("Pagado:", mX, y); doc.text("$"+pagado.toFixed(2), W-mX, y, { align:"right" }); y += 4.5;
+        doc.setTextColor(180,30,30);
+        doc.text("Pendiente:", mX, y); doc.text("$"+saldo.toFixed(2), W-mX, y, { align:"right" }); y += 4.5;
+        doc.setTextColor(0,0,0);
+    }
+    y += 3;
+
+    // ── FOOTER ──────────────────────────────────────────────────────────
+    doc.setDrawColor(180,140,50); doc.setLineWidth(0.5);
+    doc.line(mX, y, W-mX, y); y += 5;
+
+    doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(40,40,40);
+    doc.text("WhatsApp: 7125-0725", cX, y, { align:"center" }); y += 4.5;
+    doc.setFont("helvetica","bold"); doc.setFontSize(7);
+    doc.text("Gracias por su preferencia  VEREX", cX, y, { align:"center" }); y += 5;
+
+    doc.setFont("helvetica","bolditalic"); doc.setFontSize(6.5); doc.setTextColor(160,110,30);
+    doc.text("El mundo es mas maravilloso", cX, y, { align:"center" }); y += 4;
+    doc.text("cuando brillas TU \u{1F49B}", cX, y, { align:"center" });
+
+    doc.save("Recibo_" + (v.cliente||"cliente").replace(/ /g,"_") + ".pdf");
 }
 
 function agregarAlVD(codigo) {
@@ -7377,6 +7525,7 @@ async function confirmarVentaDirecta() {
         subtotal,
         descuento,
         descuentoTipo: _vdModoDescuento,
+        descuentoValor: parseFloat(document.getElementById("vd-descuento-val")?.value || 0) || 0,
         costoEnvio,
         total,
         tipo: _vdTipo,
