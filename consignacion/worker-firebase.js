@@ -1132,7 +1132,7 @@ async function enviar(){
         case "GET_VENDEDORES_AFILIADOS": {
           if (!esAdmin) return forbidden();
           const vends = await sb.getAll("vendedores");
-          result = { ok: true, vendedores: vends.filter(v => v.tipo === "afiliado") };
+          result = { ok: true, vendedores: vends.filter(v => v.tipo === "afiliado" && v.activo !== false) };
           break;
         }
 

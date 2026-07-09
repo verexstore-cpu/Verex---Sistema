@@ -801,7 +801,12 @@
                 <div class="perfil-info">
                     <h2 id="perfil-nombre"></h2>
                     <p id="perfil-tel"></p>
+                    <p id="perfil-fecha-reg" style="font-size:11px;color:var(--plateado);margin-top:2px;"></p>
                 </div>
+            </div>
+            <div id="perfil-notas-wrap" style="display:none;background:var(--gris2);border:1px solid var(--borde);border-radius:8px;padding:10px 12px;margin-bottom:14px;cursor:pointer;" onclick="editarNotasVendedor()">
+                <div style="font-size:10px;color:var(--dorado);font-weight:700;text-transform:uppercase;margin-bottom:3px;">📝 Notas internas <span style="color:var(--plateado);font-weight:400;text-transform:none;">(toca para editar)</span></div>
+                <div id="perfil-notas-txt" style="font-size:13px;"></div>
             </div>
             <div id="recordatorio-corte" style="display:none;padding:10px 14px;border-radius:8px;border:1px solid;font-size:13px;font-weight:600;margin-bottom:14px;"></div>
             <div class="stats-grid">
@@ -960,7 +965,9 @@
                 style="flex:1;padding:8px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:12px;font-weight:700;cursor:pointer;">🤝 Afiliado</button>
         </div>
         <div style="font-size:11px;color:var(--plateado);margin-bottom:10px;" id="v-tipo-desc">Recibe piezas físicas, vende, devuelve lo no vendido.</div>
-        <button class="btn btn-dorado btn-full" onclick="guardarVendedor()">Guardar Vendedor</button>
+        <input type="number" id="v-comision-fija" placeholder="% Comisión fija (opcional — anula la tabla por tramos)" min="0" max="100" step="0.1">
+        <textarea id="v-notas" placeholder="Notas internas (opcional — acuerdos especiales, referencias, etc.)" rows="2" style="width:100%;resize:vertical;margin-top:8px;padding:10px 12px;background:var(--gris2);border:1px solid var(--borde);border-radius:8px;color:var(--blanco);font-size:13px;font-family:inherit;"></textarea>
+        <button class="btn btn-dorado btn-full" onclick="guardarVendedor()" style="margin-top:12px;">Guardar Vendedor</button>
     </div>
 </div>
 
@@ -1543,10 +1550,13 @@ function renderVendedores() {
         const stock = inv.reduce((s, c) => s + (parseInt(c.cantidad) - parseInt(c.vendido||0)), 0);
         const inicial = sanitizar((v.nombre || "?")[0].toUpperCase());
         const leadsPend = leadsData.filter(l => l.afiliado === v.codigo && (l.estado === "interesado" || l.estado === "reportado")).length;
-        return `<div class="vendedor-card" onclick="abrirPerfil(${jsArg(v.codigo)})" style="position:relative;">
+        const inactivo = v.activo === false;
+        return `<div class="vendedor-card" onclick="abrirPerfil(${jsArg(v.codigo)})" style="position:relative;${inactivo?'opacity:.5;':''}">
             <button onclick="event.stopPropagation();toggleMenuVendedor('menu-${sanitizar(v.codigo)}')"
                 style="position:absolute;top:8px;right:8px;background:var(--gris);border:none;color:var(--plateado);border-radius:50%;width:26px;height:26px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;">⋯</button>
-            <div id="menu-${sanitizar(v.codigo)}" style="display:none;position:absolute;top:36px;right:8px;background:var(--gris2);border:1px solid var(--borde);border-radius:8px;z-index:10;min-width:120px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+            <div id="menu-${sanitizar(v.codigo)}" style="display:none;position:absolute;top:36px;right:8px;background:var(--gris2);border:1px solid var(--borde);border-radius:8px;z-index:10;min-width:150px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+                <button onclick="event.stopPropagation();toggleActivoVendedor(${jsArg(v.codigo)})"
+                    style="width:100%;padding:10px 14px;background:none;border:none;color:${inactivo?'#27ae60':'#C9A84C'};font-size:13px;cursor:pointer;text-align:left;border-bottom:1px solid var(--borde);">${inactivo?'✅ Activar':'⏸️ Desactivar'}</button>
                 <button onclick="event.stopPropagation();eliminarVendedor(${jsArg(v.codigo)},${jsArg(v.nombre)})"
                     style="width:100%;padding:10px 14px;background:none;border:none;color:#e74c3c;font-size:13px;cursor:pointer;text-align:left;">🗑️ Eliminar</button>
             </div>
@@ -1556,9 +1566,13 @@ function renderVendedores() {
             <div class="vendedor-avatar">${inicial}</div>
             <div class="vendedor-nombre">${sanitizar(v.nombre)}</div>
             <div style="font-size:10px;color:var(--dorado);font-weight:600;letter-spacing:1px;margin-bottom:2px;">${sanitizar(v.codigo)}</div>
-            ${v.tipo === "afiliado"
-                ? '<div style="display:inline-block;font-size:9px;font-weight:700;color:#16a34a;background:rgba(22,163,74,0.15);border:1px solid rgba(22,163,74,0.35);border-radius:5px;padding:1px 6px;margin-bottom:4px;">🤝 AFILIADO</div>'
-                : ''}
+            <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin-bottom:4px;">
+                ${v.tipo === "afiliado"
+                    ? '<div style="display:inline-block;font-size:9px;font-weight:700;color:#16a34a;background:rgba(22,163,74,0.15);border:1px solid rgba(22,163,74,0.35);border-radius:5px;padding:1px 6px;">🤝 AFILIADO</div>'
+                    : ''}
+                ${inactivo ? '<div style="display:inline-block;font-size:9px;font-weight:700;color:#888;background:rgba(136,136,136,0.15);border:1px solid rgba(136,136,136,0.35);border-radius:5px;padding:1px 6px;">⏸️ INACTIVO</div>' : ''}
+                ${v.comisionFija !== undefined && v.comisionFija !== null ? `<div style="display:inline-block;font-size:9px;font-weight:700;color:#0277bd;background:rgba(2,119,189,0.15);border:1px solid rgba(2,119,189,0.35);border-radius:5px;padding:1px 6px;">${v.comisionFija}% fija</div>` : ''}
+            </div>
             <div class="vendedor-stock">${stock} piezas</div>
         </div>`;
     }).join('') + `<button class="btn-nuevo-vendedor" onclick="abrirModalVendedor()">+ Nuevo Vendedor</button>`;
@@ -1649,6 +1663,8 @@ function selTipoVendedor(tipo) {
 function abrirModalVendedor() {
     document.getElementById("v-nombre").value = "";
     document.getElementById("v-tel").value = "";
+    document.getElementById("v-comision-fija").value = "";
+    document.getElementById("v-notas").value = "";
     selTipoVendedor("consignacion");
     abrirModal("modal-vendedor");
 }
@@ -1666,7 +1682,15 @@ async function guardarVendedor() {
     let codigo = base;
     let seq = 2;
     while (vendedores.some(v => v.codigo === codigo)) { codigo = base + "-" + seq++; }
-    const v = { codigo, nombre, telefono: tel, tipo: _tipoVendedorSel };
+    const comisionFijaRaw = document.getElementById("v-comision-fija").value.trim();
+    const comisionFija    = comisionFijaRaw !== "" ? Math.min(100, Math.max(0, parseFloat(comisionFijaRaw))) : null;
+    const notas = document.getElementById("v-notas").value.trim();
+    const v = {
+        codigo, nombre, telefono: tel, tipo: _tipoVendedorSel,
+        activo: true, fechaRegistro: ahora.toISOString(),
+        ...(comisionFija !== null && { comisionFija }),
+        ...(notas && { notas })
+    };
     vendedores.push(v);
     await apiPost({ accion: "GUARDAR_VENDEDOR", vendedor: v });
     cerrarModal("modal-vendedor");
@@ -1851,6 +1875,46 @@ async function eliminarVendedor(codigo, nombre) {
     toast("🗑️ Vendedor eliminado");
 }
 
+async function editarNotasVendedor() {
+    if (!vendedorActual) return;
+    const nuevo = prompt("Notas internas (solo tú las ves):", vendedorActual.notas || "");
+    if (nuevo === null) return;
+    vendedorActual.notas = nuevo.trim();
+    if (!vendedorActual.notas) delete vendedorActual.notas;
+    await apiPost({ accion: "GUARDAR_VENDEDOR", vendedor: vendedorActual });
+    const notasTxt = document.getElementById("perfil-notas-txt");
+    notasTxt.textContent = vendedorActual.notas || "+ Agregar nota interna...";
+    notasTxt.style.color = vendedorActual.notas ? "" : "var(--plateado)";
+    toast("✅ Notas actualizadas");
+}
+
+async function editarComisionFija() {
+    if (!vendedorActual) return;
+    const actual = vendedorActual.comisionFija !== undefined && vendedorActual.comisionFija !== null ? String(vendedorActual.comisionFija) : "";
+    const nuevo = prompt("% de comisión fija (deja vacío para usar la tabla por tramos):", actual);
+    if (nuevo === null) return;
+    const val = nuevo.trim();
+    if (val === "") {
+        delete vendedorActual.comisionFija;
+    } else {
+        const num = Math.min(100, Math.max(0, parseFloat(val)));
+        if (isNaN(num)) { toast("⚠️ Ingresa un número válido"); return; }
+        vendedorActual.comisionFija = num;
+    }
+    await apiPost({ accion: "GUARDAR_VENDEDOR", vendedor: vendedorActual });
+    abrirPerfil(vendedorActual.codigo);
+    toast("✅ Comisión actualizada");
+}
+
+async function toggleActivoVendedor(codigo) {
+    const v = vendedores.find(x => x.codigo === codigo);
+    if (!v) return;
+    v.activo = v.activo === false ? true : false;
+    await apiPost({ accion: "GUARDAR_VENDEDOR", vendedor: v });
+    renderVendedores();
+    toast(v.activo ? "✅ Vendedor activado" : "⏸️ Vendedor desactivado — no aparecerá al generar catálogos");
+}
+
 function abrirPerfil(codigo) {
     vendedorActual = vendedores.find(v => v.codigo === codigo);
     if (!vendedorActual) return;
@@ -1860,6 +1924,19 @@ function abrirPerfil(codigo) {
     document.getElementById("perfil-avatar").textContent = inicial;
     document.getElementById("perfil-nombre").textContent = vendedorActual.nombre;
     document.getElementById("perfil-tel").textContent    = vendedorActual.codigo + " · " + vendedorActual.telefono;
+    const fReg = document.getElementById("perfil-fecha-reg");
+    if (fReg) {
+        const partes = ["Desde " + (vendedorActual.fechaRegistro ? new Date(vendedorActual.fechaRegistro).toLocaleDateString("es-SV",{day:"numeric",month:"short",year:"numeric"}) : "—")];
+        if (vendedorActual.comisionFija !== undefined && vendedorActual.comisionFija !== null) partes.push(vendedorActual.comisionFija + "% comisión fija");
+        fReg.innerHTML = partes.join(" · ") + ' <span onclick="event.stopPropagation();editarComisionFija()" style="color:#0277bd;cursor:pointer;text-decoration:underline;">✏️ comisión</span>';
+    }
+    const notasWrap = document.getElementById("perfil-notas-wrap");
+    const notasTxt  = document.getElementById("perfil-notas-txt");
+    if (notasWrap && notasTxt) {
+        notasWrap.style.display = "block";
+        notasTxt.textContent = vendedorActual.notas || "+ Agregar nota interna...";
+        notasTxt.style.color = vendedorActual.notas ? "" : "var(--plateado)";
+    }
 
     // Un afiliado nunca maneja piezas físicas — oculta lo que solo aplica a consignación
     const esAfil = vendedorActual.tipo === "afiliado";
@@ -3612,7 +3689,10 @@ let _corteValorVend = 0;
 let _cortePct = 25;
 let _corteGanancia = 0;
 
-function calcularComision(totalVendido, tipoVendedor) {
+function calcularComision(totalVendido, tipoVendedor, comisionFija) {
+    if (comisionFija !== undefined && comisionFija !== null && comisionFija !== "") {
+        return parseFloat(comisionFija);
+    }
     const tabla = tipoVendedor === "afiliado" ? RANGOS_COMISION_AFILIADO : RANGOS_COMISION;
     const rango = tabla.slice().reverse().find(r => totalVendido >= r.min);
     return rango ? rango.pct : tabla[0].pct;
@@ -3623,7 +3703,7 @@ function abrirCorte() {
     const vendidos  = inv.reduce((s, c) => s + parseInt(c.vendido||0), 0);
     const valorVend = inv.reduce((s, c) => s + parseInt(c.vendido||0) * parseFloat(c.precio||0), 0);
     const sinVender = inv.filter(c => parseInt(c.cantidad||0) - parseInt(c.vendido||0) > 0);
-    const pct       = calcularComision(valorVend, vendedorActual.tipo);
+    const pct       = calcularComision(valorVend, vendedorActual.tipo, vendedorActual.comisionFija);
     const ganancia  = valorVend * pct / 100;
     _corteValorVend = valorVend; _cortePct = pct; _corteGanancia = ganancia;
     decisionesCorte = {};
