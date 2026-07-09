@@ -811,28 +811,28 @@
             </div>
             <div class="acciones-menu">
                 <div class="acciones-fila2">
-                    <button class="menu-btn" data-color="#C9A84C" onclick="abrirEntrega()">
+                    <button class="menu-btn" id="btn-menu-entrega" data-color="#C9A84C" onclick="_esVentaDirectaAfiliado=false;abrirEntrega()">
                         <span class="menu-ico">📦</span><span class="menu-txt">Nueva Entrega</span><span class="menu-arr">›</span>
                     </button>
-                    <button class="menu-btn" data-color="#27ae60" onclick="abrirRegistrarVenta()">
+                    <button class="menu-btn" id="btn-menu-venta" data-color="#27ae60" onclick="abrirRegistrarVenta()">
                         <span class="menu-ico">💰</span><span class="menu-txt">Registrar Venta</span><span class="menu-arr">›</span>
                     </button>
                 </div>
                 <div class="acciones-fila2">
-                    <button class="menu-btn" data-color="#cd8c52" onclick="abrirCorte()">
+                    <button class="menu-btn" id="btn-menu-corte" data-color="#cd8c52" onclick="abrirCorte()">
                         <span class="menu-ico">📊</span><span class="menu-txt">Hacer Corte</span><span class="menu-arr">›</span>
                     </button>
-                    <button class="menu-btn" data-color="#9b59b6" onclick="verLinkInventario()">
+                    <button class="menu-btn" id="btn-menu-link-inv" data-color="#9b59b6" onclick="verLinkInventario()">
                         <span class="menu-ico">🔗</span><span class="menu-txt">Link Inventario</span><span class="menu-arr">›</span>
                     </button>
                 </div>
                 <button class="menu-btn menu-btn-full" data-color="#C9A84C" onclick="verHistorialCortes()">
                     <span class="menu-ico">📋</span><span class="menu-txt">Historial de Cortes</span><span class="menu-arr">›</span>
                 </button>
-                <button class="menu-btn menu-btn-full" data-color="#4a90d9" onclick="verHistorialEntregas()">
+                <button class="menu-btn menu-btn-full" id="btn-menu-hist-entregas" data-color="#4a90d9" onclick="verHistorialEntregas()">
                     <span class="menu-ico">📦</span><span class="menu-txt">Historial de Entregas</span><span class="menu-arr">›</span>
                 </button>
-                <button class="menu-btn menu-btn-full" data-color="#e74c3c" onclick="abrirDevolucion()">
+                <button class="menu-btn menu-btn-full" id="btn-menu-devolucion" data-color="#e74c3c" onclick="abrirDevolucion()">
                     <span class="menu-ico">↩️</span><span class="menu-txt">Registrar Devolución</span><span class="menu-arr">›</span>
                 </button>
             </div>
@@ -856,7 +856,7 @@
     <div id="pantalla-entrega" class="main" style="display:none;">
         <button class="btn btn-gris" onclick="volverPerfil()" style="margin-bottom:16px;">← Volver</button>
         <div class="card">
-            <h2>📦 Nueva Entrega</h2>
+            <h2 id="entrega-titulo">📦 Nueva Entrega</h2>
             <div class="search-bar">
                 <input type="text" id="bus-entrega" placeholder="Buscar producto..." oninput="filtrarProductosEntrega()">
                 <button class="btn btn-dorado" onclick="abrirModalProductoNuevo()">+ Nuevo</button>
@@ -870,9 +870,10 @@
             <div class="carrito-info">
                 <strong id="carrito-count">0</strong> productos · <strong id="carrito-valor">$0</strong>
             </div>
-            <div style="display:flex;gap:8px;">
-                <button class="btn btn-gris" onclick="abrirModalFirma()" title="El vendedor firma en este momento">✅ En Mano</button>
-                <button class="btn btn-dorado" onclick="enviarPorMensajeria()" title="Se genera un código para que el vendedor confirme al recibir">📦 Mensajería</button>
+            <div style="display:flex;gap:8px;" id="carrito-entrega-acciones">
+                <button class="btn btn-gris" id="btn-entrega-en-mano" onclick="abrirModalFirma()" title="El vendedor firma en este momento">✅ En Mano</button>
+                <button class="btn btn-dorado" id="btn-entrega-mensajeria" onclick="enviarPorMensajeria()" title="Se genera un código para que el vendedor confirme al recibir">📦 Mensajería</button>
+                <button class="btn" style="background:#27ae60;color:#fff;display:none;" id="btn-venta-afiliado" onclick="confirmarVentaAfiliado()" title="Registra la entrega y la venta al mismo tiempo — el afiliado ya cerró la venta por su cuenta">💰 Registrar Venta</button>
             </div>
         </div>
     </div>
@@ -1771,6 +1772,21 @@ function abrirPerfil(codigo) {
     document.getElementById("perfil-avatar").textContent = inicial;
     document.getElementById("perfil-nombre").textContent = vendedorActual.nombre;
     document.getElementById("perfil-tel").textContent    = vendedorActual.codigo + " · " + vendedorActual.telefono;
+
+    // Un afiliado nunca maneja piezas físicas — oculta lo que solo aplica a consignación
+    const esAfil = vendedorActual.tipo === "afiliado";
+    const btnEntrega   = document.getElementById("btn-menu-entrega");
+    const btnLinkInv   = document.getElementById("btn-menu-link-inv");
+    const btnHistEnt   = document.getElementById("btn-menu-hist-entregas");
+    const btnDevol     = document.getElementById("btn-menu-devolucion");
+    const btnVentaMenu = document.getElementById("btn-menu-venta");
+    const btnCorte     = document.getElementById("btn-menu-corte");
+    [btnEntrega, btnLinkInv, btnHistEnt, btnDevol].forEach(b => { if (b) b.style.display = esAfil ? "none" : ""; });
+    // Cuando su pareja en el grid de 2 columnas se oculta, el botón restante ocupa todo el ancho
+    if (btnVentaMenu) btnVentaMenu.style.gridColumn = esAfil ? "1 / -1" : "";
+    if (btnCorte)     btnCorte.style.gridColumn     = esAfil ? "1 / -1" : "";
+    if (btnVentaMenu) btnVentaMenu.querySelector(".menu-txt").textContent = esAfil ? "Registrar Venta (Afiliado)" : "Registrar Venta";
+
     const fechaCorte = vendedorActual.fechaCorte ? new Date(vendedorActual.fechaCorte) : null;
     const recordatorio = document.getElementById("recordatorio-corte");
     if (fechaCorte) {
@@ -2060,12 +2076,35 @@ function volverPerfil() {
     carritoEntrega = {};
 }
 
+let _esVentaDirectaAfiliado = false;
+
+function abrirVentaAfiliado() {
+    _esVentaDirectaAfiliado = true;
+    abrirEntrega();
+}
+
 async function abrirEntrega() {
     carritoEntrega = {};
     document.getElementById("pantalla-perfil").style.display = "none";
     document.getElementById("pantalla-entrega").style.display = "block";
     document.getElementById("bus-entrega").value = "";
     document.getElementById("grid-entrega").innerHTML = '<p style="color:var(--plateado);font-size:13px;padding:10px;">⏳ Cargando inventario...</p>';
+
+    const titulo = document.getElementById("entrega-titulo");
+    const btnMano = document.getElementById("btn-entrega-en-mano");
+    const btnMens = document.getElementById("btn-entrega-mensajeria");
+    const btnVenta = document.getElementById("btn-venta-afiliado");
+    if (_esVentaDirectaAfiliado) {
+        if (titulo) titulo.textContent = "💰 Registrar Venta de Afiliado";
+        if (btnMano) btnMano.style.display = "none";
+        if (btnMens) btnMens.style.display = "none";
+        if (btnVenta) btnVenta.style.display = "inline-flex";
+    } else {
+        if (titulo) titulo.textContent = "📦 Nueva Entrega";
+        if (btnMano) btnMano.style.display = "";
+        if (btnMens) btnMens.style.display = "";
+        if (btnVenta) btnVenta.style.display = "none";
+    }
 
     // Asegurar que el stock esté cargado antes de mostrar el grid
     if (stockData.length === 0) {
@@ -2472,6 +2511,47 @@ async function confirmarEntrega(firmaImg, codigoFirma) {
             toast("⚠️ Error al generar PDF: " + e.message);
         }
     }, 400);
+}
+
+async function confirmarVentaAfiliado() {
+    const items = Object.values(carritoEntrega).map(e => ({
+        id:          Date.now() + "_" + Math.random().toString(36).substr(2, 5),
+        codigo:      e.item.codigo,
+        codigoBase:  e.item.codigoBase || getCodigoBase(e.item.codigo),
+        talla:       e.item.talla || getTallaFromCodigo(e.item.codigo) || "",
+        nombre:      e.item.nombre,
+        nombre_base: e.item.nombre_base || (e.item.nombre || "").replace(/ T\d+$/i, "").trim(),
+        categoria:   e.item.categoria || getCodigoBase(e.item.codigo).match(/^[A-Z]+/)?.[0] || "GEN",
+        precio:      e.item.precio || e.item.precioNum || 0,
+        cantidad:    e.qty,
+        foto:        e.item.foto || e.item.img || ""
+    }));
+    if (!items.length) { toast("⚠️ Agrega al menos un producto"); return; }
+
+    const btn = document.getElementById("btn-venta-afiliado");
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Registrando..."; }
+
+    try {
+        // 1. Asigna las piezas al afiliado (mismo mecanismo que una entrega normal)
+        await apiPost({ accion: "REGISTRAR_ENTREGA", vendedor: vendedorActual.codigo, items });
+        // 2. Marca cada pieza como vendida de inmediato — el afiliado ya cerró la venta por su cuenta
+        for (const item of items) {
+            await apiPost({ accion: "REGISTRAR_VENTA", id: item.id, cantidad: item.cantidad });
+        }
+        items.forEach(item => consignacion.push({ ...item, vendedor: vendedorActual.codigo, vendido: item.cantidad, estado: "activo" }));
+
+        toast("✅ Venta de afiliado registrada");
+        _esVentaDirectaAfiliado = false;
+        volverPerfil();
+        renderPerfilStats();
+        renderInventario();
+        renderVentasPerfil();
+    } catch(e) {
+        console.error("Error registrando venta de afiliado:", e);
+        toast("⚠️ Error al registrar la venta: " + e.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "💰 Registrar Venta"; }
+    }
 }
 
 // ── MENSAJERÍA ───────────────────────────────────────────────────────
@@ -3397,6 +3477,9 @@ async function eliminarItemInventario(id, nombre) {
 }
 
 function abrirRegistrarVenta() {
+    // Afiliados no reciben entrega previa — eligen directo del stock general y
+    // se registra entrega+venta en un solo paso (abrirVentaAfiliado/confirmarVentaAfiliado).
+    if (vendedorActual?.tipo === "afiliado") { abrirVentaAfiliado(); return; }
     const inv = consignacion.filter(c =>
         c.vendedor === vendedorActual.codigo && c.estado === "activo" &&
         parseInt(c.cantidad||0) - parseInt(c.vendido||0) > 0
