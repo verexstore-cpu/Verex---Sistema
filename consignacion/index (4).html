@@ -965,6 +965,10 @@
                 style="flex:1;padding:8px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:12px;font-weight:700;cursor:pointer;">🤝 Afiliado</button>
         </div>
         <div style="font-size:11px;color:var(--plateado);margin-bottom:10px;" id="v-tipo-desc">Recibe piezas físicas, vende, devuelve lo no vendido.</div>
+        <label id="v-recibe-fisico-wrap" style="display:none;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--blanco);background:var(--gris2);border:1px solid var(--borde);border-radius:8px;padding:10px 12px;margin-bottom:10px;">
+            <input type="checkbox" id="v-recibe-fisico" style="width:15px;height:15px;accent-color:#C9A84C;">
+            📦 Este afiliado también recibirá piezas físicas para entregar a sus clientes
+        </label>
         <input type="number" id="v-comision-fija" placeholder="% Comisión fija (opcional — anula la tabla por tramos)" min="0" max="100" step="0.1">
         <textarea id="v-notas" placeholder="Notas internas (opcional — acuerdos especiales, referencias, etc.)" rows="2" style="width:100%;resize:vertical;margin-top:8px;padding:10px 12px;background:var(--gris2);border:1px solid var(--borde);border-radius:8px;color:var(--blanco);font-size:13px;font-family:inherit;"></textarea>
         <button class="btn btn-dorado btn-full" onclick="guardarVendedor()" style="margin-top:12px;">Guardar Vendedor</button>
@@ -1570,6 +1574,9 @@ function renderVendedores() {
                 ${v.tipo === "afiliado"
                     ? '<div style="display:inline-block;font-size:9px;font-weight:700;color:#16a34a;background:rgba(22,163,74,0.15);border:1px solid rgba(22,163,74,0.35);border-radius:5px;padding:1px 6px;">🤝 AFILIADO</div>'
                     : ''}
+                ${v.tipo === "afiliado" && v.recibeFisico
+                    ? '<div style="display:inline-block;font-size:9px;font-weight:700;color:#C9A84C;background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.35);border-radius:5px;padding:1px 6px;">📦 RECIBE PIEZAS</div>'
+                    : ''}
                 ${inactivo ? '<div style="display:inline-block;font-size:9px;font-weight:700;color:#888;background:rgba(136,136,136,0.15);border:1px solid rgba(136,136,136,0.35);border-radius:5px;padding:1px 6px;">⏸️ INACTIVO</div>' : ''}
                 ${v.comisionFija !== undefined && v.comisionFija !== null ? `<div style="display:inline-block;font-size:9px;font-weight:700;color:#0277bd;background:rgba(2,119,189,0.15);border:1px solid rgba(2,119,189,0.35);border-radius:5px;padding:1px 6px;">${v.comisionFija}% fija</div>` : ''}
             </div>
@@ -1649,14 +1656,17 @@ function selTipoVendedor(tipo) {
     const btnConsig = document.getElementById("v-tipo-consig-btn");
     const btnAfil   = document.getElementById("v-tipo-afiliado-btn");
     const desc      = document.getElementById("v-tipo-desc");
+    const fisicoWrap = document.getElementById("v-recibe-fisico-wrap");
     if (tipo === "afiliado") {
         btnAfil.style.background   = "var(--dorado)"; btnAfil.style.color   = "#111"; btnAfil.style.borderColor   = "var(--dorado)";
         btnConsig.style.background = "var(--gris2)";  btnConsig.style.color = "var(--blanco)"; btnConsig.style.borderColor = "var(--borde)";
         desc.textContent = "No maneja piezas físicas — cierra la venta por su cuenta y pide la pieza a VEREX para entregarla.";
+        if (fisicoWrap) fisicoWrap.style.display = "flex";
     } else {
         btnConsig.style.background = "var(--dorado)"; btnConsig.style.color = "#111"; btnConsig.style.borderColor = "var(--dorado)";
         btnAfil.style.background   = "var(--gris2)";  btnAfil.style.color   = "var(--blanco)"; btnAfil.style.borderColor   = "var(--borde)";
         desc.textContent = "Recibe piezas físicas, vende, devuelve lo no vendido.";
+        if (fisicoWrap) fisicoWrap.style.display = "none";
     }
 }
 
@@ -1665,6 +1675,7 @@ function abrirModalVendedor() {
     document.getElementById("v-tel").value = "";
     document.getElementById("v-comision-fija").value = "";
     document.getElementById("v-notas").value = "";
+    document.getElementById("v-recibe-fisico").checked = false;
     selTipoVendedor("consignacion");
     abrirModal("modal-vendedor");
 }
@@ -1685,11 +1696,13 @@ async function guardarVendedor() {
     const comisionFijaRaw = document.getElementById("v-comision-fija").value.trim();
     const comisionFija    = comisionFijaRaw !== "" ? Math.min(100, Math.max(0, parseFloat(comisionFijaRaw))) : null;
     const notas = document.getElementById("v-notas").value.trim();
+    const recibeFisico = _tipoVendedorSel === "afiliado" && document.getElementById("v-recibe-fisico").checked;
     const v = {
         codigo, nombre, telefono: tel, tipo: _tipoVendedorSel,
         activo: true, fechaRegistro: ahora.toISOString(),
         ...(comisionFija !== null && { comisionFija }),
-        ...(notas && { notas })
+        ...(notas && { notas }),
+        ...(recibeFisico && { recibeFisico: true })
     };
     vendedores.push(v);
     await apiPost({ accion: "GUARDAR_VENDEDOR", vendedor: v });
@@ -1855,12 +1868,21 @@ function generarContratoAfiliadoPDF(vendedor) {
     });
     y += 4;
 
-    // Cláusulas — adaptadas al modelo de afiliado (sin inventario físico)
+    // Cláusulas — adaptadas al modelo de afiliado. Si recibeFisico está activo,
+    // este afiliado SÍ recibe piezas físicas para entregar y asume la responsabilidad
+    // correspondiente sobre esas piezas, igual que un vendedor de consignación.
+    const recibeFisico = vendedor.recibeFisico === true;
     const clausulas = [
-        ["1. OBJETO", "VEREX entrega al Afiliado un catálogo digital personalizado para que lo comparta con sus propios clientes y gestione la venta por su cuenta. En ningún momento el Afiliado recibe mercancía física — el inventario permanece bajo custodia y propiedad de VEREX."],
-        ["2. FUNCIONAMIENTO", "Cuando el Afiliado cierra una venta con un cliente, debe coordinar con VEREX la entrega de la pieza. VEREX confirma la venta al momento de la entrega; solo hasta esa confirmación se genera la comisión correspondiente."],
+        ["1. OBJETO", recibeFisico
+            ? "VEREX entrega al Afiliado un catálogo digital personalizado para que lo comparta con sus propios clientes y gestione la venta por su cuenta. Adicionalmente, VEREX podrá entregarle piezas físicas para que el Afiliado realice la entrega directa a sus clientes, conservando la propiedad de dichas piezas hasta su venta efectiva."
+            : "VEREX entrega al Afiliado un catálogo digital personalizado para que lo comparta con sus propios clientes y gestione la venta por su cuenta. En ningún momento el Afiliado recibe mercancía física — el inventario permanece bajo custodia y propiedad de VEREX."],
+        ["2. FUNCIONAMIENTO", recibeFisico
+            ? "Cuando el Afiliado cierra una venta con un cliente, podrá entregarla directamente si ya tiene la pieza en su poder, o coordinar con VEREX la entrega. VEREX confirma cada venta al momento en que se le informa la entrega; solo hasta esa confirmación se genera la comisión correspondiente."
+            : "Cuando el Afiliado cierra una venta con un cliente, debe coordinar con VEREX la entrega de la pieza. VEREX confirma la venta al momento de la entrega; solo hasta esa confirmación se genera la comisión correspondiente."],
         ["3. PRECIOS", "El Afiliado ofrecerá las piezas al precio establecido por VEREX en el catálogo. No podrá modificar precios sin autorización escrita."],
-        ["4. SIN RESPONSABILIDAD POR INVENTARIO", "Al no recibir mercancía física, el Afiliado no asume responsabilidad por pérdida, robo o daño de piezas — dicha responsabilidad es exclusiva de VEREX hasta el momento de la entrega al cliente final."],
+        recibeFisico
+            ? ["4. RESPONSABILIDAD POR PIEZAS ENTREGADAS", "El Afiliado es responsable de las piezas físicas que reciba de VEREX. En caso de pérdida, robo o daño, deberá cubrir el valor de las mismas al precio de costo. Las piezas no vendidas deben devolverse en perfecto estado según lo acordado con VEREX."]
+            : ["4. SIN RESPONSABILIDAD POR INVENTARIO", "Al no recibir mercancía física, el Afiliado no asume responsabilidad por pérdida, robo o daño de piezas — dicha responsabilidad es exclusiva de VEREX hasta el momento de la entrega al cliente final."],
         ["5. COMISIÓN", tieneComisionFija
             ? `El Afiliado recibirá una comisión fija del ${vendedor.comisionFija}% sobre cada venta confirmada por VEREX, independientemente del monto acumulado en el período.`
             : "El Afiliado recibirá una comisión por tramos según el monto total de ventas confirmadas por VEREX en el período, conforme a la tabla incluida en este contrato."],
@@ -2071,19 +2093,22 @@ function abrirPerfil(codigo) {
         notasTxt.style.color = vendedorActual.notas ? "" : "var(--plateado)";
     }
 
-    // Un afiliado nunca maneja piezas físicas — oculta lo que solo aplica a consignación
+    // Un afiliado normal nunca maneja piezas físicas — oculta lo que solo aplica a consignación.
+    // Excepción: si recibeFisico está activo, este afiliado SÍ recibe piezas para entregar,
+    // así que se comporta igual que consignación en la parte logística.
     const esAfil = vendedorActual.tipo === "afiliado";
+    const ocultarFisico = esAfil && !vendedorActual.recibeFisico;
     const btnEntrega   = document.getElementById("btn-menu-entrega");
     const btnLinkInv   = document.getElementById("btn-menu-link-inv");
     const btnHistEnt   = document.getElementById("btn-menu-hist-entregas");
     const btnDevol     = document.getElementById("btn-menu-devolucion");
     const btnVentaMenu = document.getElementById("btn-menu-venta");
     const btnCorte     = document.getElementById("btn-menu-corte");
-    [btnEntrega, btnLinkInv, btnHistEnt, btnDevol].forEach(b => { if (b) b.style.display = esAfil ? "none" : ""; });
+    [btnEntrega, btnLinkInv, btnHistEnt, btnDevol].forEach(b => { if (b) b.style.display = ocultarFisico ? "none" : ""; });
     // Cuando su pareja en el grid de 2 columnas se oculta, el botón restante ocupa todo el ancho
-    if (btnVentaMenu) btnVentaMenu.style.gridColumn = esAfil ? "1 / -1" : "";
-    if (btnCorte)     btnCorte.style.gridColumn     = esAfil ? "1 / -1" : "";
-    if (btnVentaMenu) btnVentaMenu.querySelector(".menu-txt").textContent = esAfil ? "Registrar Venta (Afiliado)" : "Registrar Venta";
+    if (btnVentaMenu) btnVentaMenu.style.gridColumn = ocultarFisico ? "1 / -1" : "";
+    if (btnCorte)     btnCorte.style.gridColumn     = ocultarFisico ? "1 / -1" : "";
+    if (btnVentaMenu) btnVentaMenu.querySelector(".menu-txt").textContent = ocultarFisico ? "Registrar Venta (Afiliado)" : "Registrar Venta";
 
     const fechaCorte = vendedorActual.fechaCorte ? new Date(vendedorActual.fechaCorte) : null;
     const recordatorio = document.getElementById("recordatorio-corte");
@@ -3775,9 +3800,11 @@ async function eliminarItemInventario(id, nombre) {
 }
 
 function abrirRegistrarVenta() {
-    // Afiliados no reciben entrega previa — eligen directo del stock general y
-    // se registra entrega+venta en un solo paso (abrirVentaAfiliado/confirmarVentaAfiliado).
-    if (vendedorActual?.tipo === "afiliado") { abrirVentaAfiliado(); return; }
+    // Afiliados sin entrega física previa: eligen directo del stock general y se
+    // registra entrega+venta en un solo paso (abrirVentaAfiliado/confirmarVentaAfiliado).
+    // Si el afiliado SÍ recibe piezas físicas (recibeFisico), se comporta como
+    // consignación normal — vende de lo que ya tiene asignado.
+    if (vendedorActual?.tipo === "afiliado" && !vendedorActual?.recibeFisico) { abrirVentaAfiliado(); return; }
     const inv = consignacion.filter(c =>
         c.vendedor === vendedorActual.codigo && c.estado === "activo" &&
         parseInt(c.cantidad||0) - parseInt(c.vendido||0) > 0
