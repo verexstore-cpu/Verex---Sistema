@@ -577,7 +577,8 @@ async function enviar(){
           // (deduplicado por teléfono), para que aparezca en Clientes con su canal.
           if (d.telefono) {
             const clientesVD = await sb.getAll("clientes");
-            const cliExistVD = clientesVD.find(c => String(c.telefono) === String(d.telefono));
+            const normTelVD = t => String(t || "").replace(/\D/g, "");
+            const cliExistVD = clientesVD.find(c => normTelVD(c.telefono) === normTelVD(d.telefono));
             if (cliExistVD) {
               await sb.update("clientes", cliExistVD.codigo, {
                 totalPedidos: (parseInt(cliExistVD.totalPedidos)||0) + 1,
@@ -1009,48 +1010,93 @@ async function enviar(){
           break;
         }
 
-        // Migración única (segura de correr varias veces — recalcula, no incrementa):
-        // sincroniza clientes que solo existían dentro de ventas_directas hacia la
-        // colección "clientes", deduplicados por teléfono.
+        // Migración/sincronización (segura de correr varias veces — recalcula, no
+        // incrementa). Normaliza teléfonos (quita guiones/espacios) para detectar
+        // que son la misma persona, fusiona clientes duplicados por número mal
+        // formateado, y recalcula el conteo por canal desde los datos reales
+        // (pedidos = ecommerce, ventas_directas = directa).
         case "MIGRAR_CLIENTES_VENTA_DIRECTA": {
           if (!esAdmin) return forbidden();
-          const [ventasDirectas, clientesAll] = await Promise.all([
+          const normTel = t => String(t || "").replace(/\D/g, "");
+          const [ventasDirectas, pedidosAll, clientesAll] = await Promise.all([
             sb.getAll("ventas_directas"),
+            sb.getAll("pedidos"),
             sb.getAll("clientes")
           ]);
-          const porTelefono = {};
-          for (const vd of ventasDirectas) {
-            const tel = String(vd.telefono || "").trim();
-            if (!tel) continue;
-            if (!porTelefono[tel]) porTelefono[tel] = { nombre: "", count: 0 };
-            porTelefono[tel].count++;
-            if (!porTelefono[tel].nombre && vd.cliente) porTelefono[tel].nombre = vd.cliente;
+
+          // 1. Agrupar clientes existentes por teléfono normalizado y fusionar duplicados
+          const grupos = {};
+          for (const c of clientesAll) {
+            const tn = normTel(c.telefono);
+            if (!tn) continue;
+            (grupos[tn] = grupos[tn] || []).push(c);
           }
-          let creados = 0, actualizados = 0;
-          const clientes = [...clientesAll];
-          for (const [tel, info] of Object.entries(porTelefono)) {
-            const existente = clientes.find(c => String(c.telefono) === tel);
-            if (existente) {
-              const totalEco = parseInt(existente.totalPedidosEcommerce) || 0;
-              await sb.update("clientes", existente.codigo, {
-                totalPedidosDirecta: info.count,
-                totalPedidos: totalEco + info.count
+          let fusionados = 0;
+          const vivos = {}; // tn -> cliente representativo (ya actualizado en memoria)
+          for (const [tn, grupo] of Object.entries(grupos)) {
+            grupo.sort((a, b) => new Date(a.fechaRegistro || 0) - new Date(b.fechaRegistro || 0));
+            const principal = grupo[0];
+            if (grupo.length > 1) {
+              const sumaEco = grupo.reduce((s, c) => s + (parseInt(c.totalPedidosEcommerce) || 0), 0);
+              const sumaDir = grupo.reduce((s, c) => s + (parseInt(c.totalPedidosDirecta) || 0), 0);
+              await sb.update("clientes", principal.codigo, {
+                totalPedidosEcommerce: sumaEco,
+                totalPedidosDirecta: sumaDir,
+                totalPedidos: sumaEco + sumaDir
               });
-              actualizados++;
+              for (let i = 1; i < grupo.length; i++) { await sb.delete("clientes", grupo[i].codigo); fusionados++; }
+              vivos[tn] = { ...principal, totalPedidosEcommerce: sumaEco, totalPedidosDirecta: sumaDir, totalPedidos: sumaEco + sumaDir };
             } else {
-              const codigoCliente = `CVX-${String(clientes.length + 1).padStart(3, "0")}`;
-              const nuevoCliente = {
-                codigo: codigoCliente, nombre: info.nombre, telefono: tel,
+              vivos[tn] = principal;
+            }
+          }
+
+          // 2. Contar pedidos reales (ecommerce) y ventas directas por teléfono normalizado
+          const ecoPorTel = {};
+          for (const p of pedidosAll) {
+            const tn = normTel(p.telefono);
+            if (tn) ecoPorTel[tn] = (ecoPorTel[tn] || 0) + 1;
+          }
+          const dirPorTel = {};
+          for (const vd of ventasDirectas) {
+            const tn = normTel(vd.telefono);
+            if (!tn) continue;
+            if (!dirPorTel[tn]) dirPorTel[tn] = { nombre: "", count: 0 };
+            dirPorTel[tn].count++;
+            if (!dirPorTel[tn].nombre && vd.cliente) dirPorTel[tn].nombre = vd.cliente;
+          }
+
+          // 3. Aplicar conteos reales — crea el cliente si no existía, actualiza si sí
+          let creados = 0, actualizados = 0;
+          const todosTel = new Set([...Object.keys(ecoPorTel), ...Object.keys(dirPorTel), ...Object.keys(vivos)]);
+          let nextNum = clientesAll.length - fusionados + 1;
+          for (const tn of todosTel) {
+            const eco = ecoPorTel[tn] || 0;
+            const dir = dirPorTel[tn]?.count || 0;
+            const existente = vivos[tn];
+            if (existente) {
+              const ecoActual = parseInt(existente.totalPedidosEcommerce) || 0;
+              const dirActual = parseInt(existente.totalPedidosDirecta) || 0;
+              const nuevoEco = Math.max(ecoActual, eco);
+              const nuevoDir = Math.max(dirActual, dir);
+              if (nuevoEco !== ecoActual || nuevoDir !== dirActual) {
+                await sb.update("clientes", existente.codigo, {
+                  totalPedidosEcommerce: nuevoEco, totalPedidosDirecta: nuevoDir, totalPedidos: nuevoEco + nuevoDir
+                });
+                actualizados++;
+              }
+            } else if (dir > 0) {
+              const codigoCliente = `CVX-${String(nextNum++).padStart(3, "0")}`;
+              await sb.set("clientes", codigoCliente, {
+                codigo: codigoCliente, nombre: dirPorTel[tn].nombre, telefono: tn,
                 correo: "", municipio: "", direccion: "", departamento: "",
-                totalPedidos: info.count, totalPedidosEcommerce: 0, totalPedidosDirecta: info.count,
+                totalPedidos: dir, totalPedidosEcommerce: 0, totalPedidosDirecta: dir,
                 fechaRegistro: new Date().toISOString()
-              };
-              await sb.set("clientes", codigoCliente, nuevoCliente);
-              clientes.push(nuevoCliente);
+              });
               creados++;
             }
           }
-          result = { ok: true, creados, actualizados, totalVentasDirectas: ventasDirectas.length };
+          result = { ok: true, creados, actualizados, fusionados, totalVentasDirectas: ventasDirectas.length };
           break;
         }
 
@@ -1064,7 +1110,8 @@ async function enviar(){
           const correl   = todosLosPedidos.filter(p => (p.fecha || "").slice(0, 10) === hoyStr).length + 1;
           const numeroPedido = `${prefijo}-${String(correl).padStart(3, "0")}`;
           const clientes = await sb.getAll("clientes");
-          const cliExist = clientes.find(c => String(c.telefono) === String(d.telefono));
+          const normTelPed = t => String(t || "").replace(/\D/g, "");
+          const cliExist = clientes.find(c => normTelPed(c.telefono) === normTelPed(d.telefono));
           let codigoCliente = "";
           if (cliExist) {
             codigoCliente = cliExist.codigo;
