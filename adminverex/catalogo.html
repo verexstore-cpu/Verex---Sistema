@@ -121,13 +121,34 @@
     const params = new URLSearchParams(location.search);
     const c = params.get("c");
 
-    let _prods = [], _waNum = "", _szIdx = -1, _szD = "", _szH = "", _descPct = 0;
+    let _prods = [], _waNum = "", _szIdx = -1, _szD = "", _szH = "", _descPct = 0, _afiliadoCodigo = "";
 
     const SIZES   = ["5","5.5","6","6.5","7","7.5","8","8.5","9","9.5","10","10.5","11","12","13","14"];
     const ES_PAR  = /matrimonio|argolla|novios|pareja|alianza/i;
+    const API_URL = "https://verex-api.verexstore.workers.dev/";
 
     function esc(s){
         const d=document.createElement("div"); d.textContent=String(s||""); return d.innerHTML;
+    }
+
+    // Registro silencioso del interés del cliente ANTES de abrir WhatsApp — no bloquea
+    // la apertura del chat aunque falle (la venta nunca debe depender de esto).
+    function registrarLead(p){
+        if (!_afiliadoCodigo || !p?.c) return;
+        try {
+            fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    accion: "REGISTRAR_LEAD",
+                    afiliado: _afiliadoCodigo,
+                    codigo: p.c,
+                    nombre: p.n || "",
+                    precio: precioFinal(p.p),
+                    foto: p.i || ""
+                })
+            }).catch(()=>{});
+        } catch(_){}
     }
 
     function precioFinal(precio){
@@ -153,6 +174,7 @@
         _prods = data.prods || [];
         _waNum = data.wa    || "";
         _descPct = Math.min(90, Math.max(0, parseInt(data.descPct) || 0));
+        _afiliadoCodigo = data.afiliadoCodigo || "";
 
         const exp    = new Date(data.expiry);
         const expStr = exp.toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"});
@@ -234,12 +256,14 @@
                 ? `Precio dama: $${precioFinal(p.pD).toFixed(2)} por pieza\nPrecio caballero: $${precioFinal(p.pH).toFixed(2)} por pieza`
                 : `Precio individual: $${precioFinal(p.p).toFixed(2)} por pieza`;
             const msg = `Hola, me interesan estas argollas del catálogo VEREX:\n\n${p.n}\n${precioInfo}${sizesInfo ? `\n\nTallas disponibles:\n${sizesInfo}` : ''}\n\n¿Qué tallas necesita para dama y caballero?`;
+            registrarLead(p);
             window.open(`https://wa.me/${_waNum}?text=${encodeURIComponent(msg)}`,"_blank");
             return;
         }
 
         if(p.cat && p.cat !== "AN"){
             const msg=`Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\nPrecio: $${precioFinal(p.p).toFixed(2)}`;
+            registrarLead(p);
             window.open(`https://wa.me/${_waNum}?text=${encodeURIComponent(msg)}`,"_blank");
             return;
         }
@@ -273,6 +297,7 @@
     function confirmarTalla(){
         const p = _prods[_szIdx];
         const msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\nPrecio: $${precioFinal(p.p).toFixed(2)}\nTalla: T${_szD}`;
+        registrarLead(p);
         cerrarTallas();
         window.open(`https://wa.me/${_waNum}?text=${encodeURIComponent(msg)}`,"_blank");
     }

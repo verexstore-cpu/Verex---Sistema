@@ -897,32 +897,32 @@
 
 <div class="tab-content" id="tab-7">
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">
-        <div style="background:#1a1a1a;border:1px solid #333;border-top:3px solid #059669;border-radius:10px;padding:14px;text-align:center;">
-            <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Total Ventas</div>
-            <div id="av-total-ventas" style="font-size:26px;font-weight:800;color:#fff;">—</div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #059669;border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Total Ventas</div>
+            <div id="av-total-ventas" style="font-size:26px;font-weight:800;color:#1a1a1a;">—</div>
         </div>
-        <div style="background:#1a1a1a;border:1px solid #333;border-top:3px solid #C9A84C;border-radius:10px;padding:14px;text-align:center;">
-            <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Monto Total</div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #C9A84C;border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Monto Total</div>
             <div id="av-monto-total" style="font-size:26px;font-weight:800;color:#C9A84C;">—</div>
         </div>
-        <div style="background:#1a1a1a;border:1px solid #333;border-top:3px solid #e74c3c;border-radius:10px;padding:14px;text-align:center;">
-            <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Por Cobrar</div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #e74c3c;border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Por Cobrar</div>
             <div id="av-por-cobrar" style="font-size:26px;font-weight:800;color:#e74c3c;">—</div>
         </div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">
         <input type="text" id="av-buscar" placeholder="🔍 Buscar cliente o producto..."
             oninput="renderVentasAdmin()"
-            style="flex:1;min-width:180px;padding:9px 12px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;">
+            style="flex:1;min-width:180px;padding:9px 12px;background:#fff;border:1px solid #d1d5db;border-radius:8px;color:#1a1a1a;font-size:13px;">
         <select id="av-tipo" onchange="renderVentasAdmin()"
-            style="padding:9px 10px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;">
+            style="padding:9px 10px;background:#fff;border:1px solid #d1d5db;border-radius:8px;color:#1a1a1a;font-size:13px;">
             <option value="">Todos los tipos</option>
             <option value="directa">Directa</option>
             <option value="catalogo">Catálogo</option>
             <option value="consignacion">Consignación</option>
         </select>
         <select id="av-estado" onchange="renderVentasAdmin()"
-            style="padding:9px 10px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;">
+            style="padding:9px 10px;background:#fff;border:1px solid #d1d5db;border-radius:8px;color:#1a1a1a;font-size:13px;">
             <option value="">Todos los estados</option>
             <option value="pagado">Pagado</option>
             <option value="credito">Crédito</option>
@@ -1232,19 +1232,19 @@ function renderVentasAdmin() {
             itemsStr = its.slice(0,2).map(i => i.nombre || i.producto || "").filter(Boolean).join(", ");
             if (its.length > 2) itemsStr += ` +${its.length - 2} más`;
         } catch(_) {}
-        return `<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-left:4px solid ${tc.color};border-radius:10px;padding:12px;margin-bottom:8px;">
+        return `<div style="background:#fff;border:3.5px solid ${tc.color};border-radius:10px;padding:12px;margin-bottom:8px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                 <div style="flex:1;min-width:0;">
                     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:5px;">
                         <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:${tc.bg};color:${tc.color};font-weight:700;">${tc.label}</span>
                         <span style="font-size:10px;color:${ec.color};font-weight:600;">${ec.label}</span>
                     </div>
-                    <div style="font-size:13px;font-weight:700;color:#fff;">${v.cliente || "—"}</div>
-                    <div style="font-size:11px;color:#888;margin-top:2px;">${fecha} · Ref: ${String(v.id||"").slice(-6)}</div>
-                    ${itemsStr ? `<div style="font-size:11px;color:#666;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${itemsStr}</div>` : ""}
+                    <div style="font-size:13px;font-weight:700;color:#1a1a1a;">${v.cliente || "—"}</div>
+                    <div style="font-size:11px;color:#374151;margin-top:2px;">${fecha} · Ref: ${String(v.id||"").slice(-6)}</div>
+                    ${itemsStr ? `<div style="font-size:11px;color:#4b5563;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${itemsStr}</div>` : ""}
                 </div>
                 <div style="text-align:right;flex-shrink:0;">
-                    <div style="font-size:15px;font-weight:700;color:#C9A84C;">$${parseFloat(v.total||0).toFixed(2)}</div>
+                    <div style="font-size:15px;font-weight:700;color:#1e3a8a;">$${parseFloat(v.total||0).toFixed(2)}</div>
                     ${parseFloat(v.saldoPendiente||0)>0 ? `<div style="font-size:11px;color:#e74c3c;font-weight:600;">Debe: $${parseFloat(v.saldoPendiente).toFixed(2)}</div>` : ""}
                 </div>
             </div>
@@ -3020,6 +3020,11 @@ async function generarLinkCatalogo() {
     const dias       = parseInt(document.getElementById("cat-validez").value)||3;
     const wa         = (document.getElementById("cat-wa")?.value||localStorage.getItem("verex-wa")||"").trim();
     const afiliadoId = (document.getElementById("cat-afiliado-id")?.value||"").trim();
+    const afiliadoCodigo = (document.getElementById("cat-afiliado-codigo")?.value||"").trim();
+
+    if (esAfiliado && !afiliadoCodigo) {
+        return toast("⚠️ Selecciona un afiliado de la lista (Consignación → Vendedores) para poder rastrear sus Leads y comisión", "#f97316");
+    }
 
     const btn=document.getElementById("btn-gen-link");
     btn.textContent="⏳..."; btn.disabled=true;
@@ -3044,6 +3049,7 @@ async function generarLinkCatalogo() {
             ...(descPct > 0 && { descPct }),
             ...(esAfiliado && { afiliado: true }),
             ...(afiliadoId && { customId: afiliadoId }),
+            ...(afiliadoCodigo && { afiliadoCodigo }),
             prods: lista.map(p=>{
                 const szExport = _sizesParaExport(p, talla, genero);
                 return {
@@ -3052,6 +3058,7 @@ async function generarLinkCatalogo() {
                 i: p.foto||p.img||"",
                 m: p.material||detectarMaterial(p.nombre)||"",
                 cat: p._catKey||getCatKey(p),
+                c: p._codigos?.[0] || p.codigo || "",
                 sizes:  szExport.sizes,
                 sizesD: szExport.sizesD,
                 sizesH: szExport.sizesH,
@@ -3297,7 +3304,40 @@ function onToggleAfiliado(checked) {
         if (pctEl) pctEl.value = "";
         const prev = document.getElementById("banner-preview");
         if (prev) prev.style.display = "none";
+        cargarVendedoresAfiliados();
     }
+}
+
+let _vendedoresAfiliados = [];
+
+async function cargarVendedoresAfiliados() {
+    const sel = document.getElementById("cat-afiliado-select");
+    if (!sel) return;
+    sel.innerHTML = '<option value="">⏳ Cargando afiliados...</option>';
+    try {
+        const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_VENDEDORES_AFILIADOS", _pass: ADMIN_PASS }) });
+        const data = await res.json();
+        _vendedoresAfiliados = data.vendedores || [];
+        if (!_vendedoresAfiliados.length) {
+            sel.innerHTML = '<option value="">— Ninguno registrado aún —</option>';
+            return;
+        }
+        sel.innerHTML = '<option value="">— Selecciona un afiliado —</option>' +
+            _vendedoresAfiliados.map(v => `<option value="${esc(v.codigo)}">${esc(v.nombre)} (${esc(v.codigo)})</option>`).join("");
+    } catch(e) {
+        sel.innerHTML = '<option value="">⚠️ Error cargando afiliados</option>';
+    }
+}
+
+function onSeleccionarAfiliado() {
+    const sel = document.getElementById("cat-afiliado-select");
+    const codigo = sel?.value || "";
+    const v = _vendedoresAfiliados.find(x => x.codigo === codigo);
+    document.getElementById("cat-afiliado-codigo").value = codigo;
+    document.getElementById("cat-afiliado-nombre").value = v?.nombre || "";
+    const waEl = document.getElementById("cat-wa");
+    if (waEl && v?.telefono) waEl.value = v.telefono;
+    if (v) generarIdAfiliado(v.nombre);
 }
 
 function abrirModalCatalogo(tipo) {
@@ -3323,6 +3363,8 @@ function abrirModalCatalogo(tipo) {
     const waEl  = document.getElementById("cat-wa");            if (waEl)  waEl.value  = esAfiliado ? "" : (localStorage.getItem("verex-wa")||"");
     const afNom = document.getElementById("cat-afiliado-nombre"); if (afNom) afNom.value = "";
     const afId  = document.getElementById("cat-afiliado-id");     if (afId)  afId.value  = "";
+    const afCod = document.getElementById("cat-afiliado-codigo"); if (afCod) afCod.value = "";
+    const afSel = document.getElementById("cat-afiliado-select"); if (afSel) afSel.value = "";
 
     poblarCategorias();
     const pf = document.getElementById("cat-prefijo-txt");
@@ -3895,10 +3937,16 @@ async function generarPDFCatalogo() {
             </label>
             <div id="cat-afiliado-fields" style="display:none;margin-top:10px;">
                 <div style="margin-bottom:8px;">
-                    <label style="color:#166534;">Nombre del afiliado</label>
-                    <input type="text" id="cat-afiliado-nombre" placeholder="Ej: Juan Pérez" style="margin-top:4px;"
-                        oninput="generarIdAfiliado(this.value)">
+                    <label style="color:#166534;">Afiliado (registrado en Consignación → Vendedores)</label>
+                    <select id="cat-afiliado-select" style="margin-top:4px;" onchange="onSeleccionarAfiliado()">
+                        <option value="">— Selecciona un afiliado —</option>
+                    </select>
+                    <div style="font-size:10px;color:#166534;margin-top:3px;">
+                        Si no aparece, créalo primero en Consignación → Vendedores → tipo 🤝 Afiliado.
+                    </div>
                 </div>
+                <input type="hidden" id="cat-afiliado-nombre">
+                <input type="hidden" id="cat-afiliado-codigo">
                 <div style="margin-bottom:8px;">
                     <label style="color:#166534;">WhatsApp del afiliado</label>
                     <input type="text" id="cat-wa" placeholder="Ej: 573001234567" inputmode="numeric" style="margin-top:4px;">
@@ -3906,7 +3954,7 @@ async function generarPDFCatalogo() {
                 </div>
                 <div>
                     <label style="color:#166534;">ID del afiliado (link fijo)</label>
-                    <input type="text" id="cat-afiliado-id" placeholder="Ej: juan-perez (sin espacios)" style="margin-top:4px;"
+                    <input type="text" id="cat-afiliado-id" placeholder="Se llena automático al elegir el afiliado" style="margin-top:4px;"
                         oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')">
                     <div style="font-size:10px;color:#166534;margin-top:3px;">El link siempre será el mismo — actualizable sin cambiar URL</div>
                 </div>

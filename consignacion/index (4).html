@@ -964,6 +964,16 @@
     </div>
 </div>
 
+<div class="modal-overlay" id="modal-leads">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="leads-titulo">🔔 Leads pendientes</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-leads')">×</button>
+        </div>
+        <div id="leads-lista"></div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="modal-prod-nuevo">
     <div class="modal-box">
         <div class="modal-header">
@@ -1222,6 +1232,15 @@ function cerrarSesion() {
     document.getElementById("inp-pass").value = "";
 }
 
+let leadsData = [];
+
+async function cargarLeads() {
+    try {
+        const res = await apiPost({ accion: "GET_LEADS_ADMIN" });
+        leadsData = res.leads || [];
+    } catch(e) { leadsData = []; }
+}
+
 async function cargarDatos() {
     const grid = document.getElementById("grid-vendedores");
     grid.innerHTML = '<div style="color:var(--plateado);font-size:13px;padding:10px;">⏳ Cargando...</div>';
@@ -1231,6 +1250,7 @@ async function cargarDatos() {
         vendedores           = data.vendedores   || [];
         consignacion         = data.consignacion || [];
         productosDisponibles = data.productos    || [];
+        await cargarLeads();
         renderVendedores();
         cargarSolicitudes(); // Verificar solicitudes pendientes
     } catch(e) {
@@ -1522,6 +1542,7 @@ function renderVendedores() {
         const inv = consignacion.filter(c => c.vendedor === v.codigo && c.estado === "activo");
         const stock = inv.reduce((s, c) => s + (parseInt(c.cantidad) - parseInt(c.vendido||0)), 0);
         const inicial = sanitizar((v.nombre || "?")[0].toUpperCase());
+        const leadsPend = leadsData.filter(l => l.afiliado === v.codigo && (l.estado === "interesado" || l.estado === "reportado")).length;
         return `<div class="vendedor-card" onclick="abrirPerfil(${jsArg(v.codigo)})" style="position:relative;">
             <button onclick="event.stopPropagation();toggleMenuVendedor('menu-${sanitizar(v.codigo)}')"
                 style="position:absolute;top:8px;right:8px;background:var(--gris);border:none;color:var(--plateado);border-radius:50%;width:26px;height:26px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;">⋯</button>
@@ -1529,6 +1550,9 @@ function renderVendedores() {
                 <button onclick="event.stopPropagation();eliminarVendedor(${jsArg(v.codigo)},${jsArg(v.nombre)})"
                     style="width:100%;padding:10px 14px;background:none;border:none;color:#e74c3c;font-size:13px;cursor:pointer;text-align:left;">🗑️ Eliminar</button>
             </div>
+            ${leadsPend > 0
+                ? `<div onclick="event.stopPropagation();abrirLeadsVendedor(${jsArg(v.codigo)})" title="Leads pendientes de confirmar" style="position:absolute;top:8px;left:8px;background:#e74c3c;color:#fff;border-radius:50%;width:22px;height:22px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;z-index:2;cursor:pointer;">${leadsPend}</div>`
+                : ''}
             <div class="vendedor-avatar">${inicial}</div>
             <div class="vendedor-nombre">${sanitizar(v.nombre)}</div>
             <div style="font-size:10px;color:var(--dorado);font-weight:600;letter-spacing:1px;margin-bottom:2px;">${sanitizar(v.codigo)}</div>
@@ -1538,6 +1562,70 @@ function renderVendedores() {
             <div class="vendedor-stock">${stock} piezas</div>
         </div>`;
     }).join('') + `<button class="btn-nuevo-vendedor" onclick="abrirModalVendedor()">+ Nuevo Vendedor</button>`;
+}
+
+const LEAD_ESTADO_INFO = {
+    interesado: { label: "🔵 Interesado",  color: "#4a90d9" },
+    reportado:  { label: "🟡 Reportado — pendiente de confirmar", color: "#C9A84C" },
+    vendido:    { label: "✅ Vendido",      color: "#27ae60" },
+    cancelado:  { label: "❌ Cancelado",    color: "#888" },
+};
+
+function abrirLeadsVendedor(codigo) {
+    const v = vendedores.find(x => x.codigo === codigo);
+    document.getElementById("leads-titulo").textContent = "🔔 Leads — " + (v?.nombre || codigo);
+    renderLeadsModal(codigo);
+    abrirModal("modal-leads");
+}
+
+function renderLeadsModal(codigo) {
+    const propios = leadsData
+        .filter(l => l.afiliado === codigo)
+        .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+    const cont = document.getElementById("leads-lista");
+    if (!propios.length) {
+        cont.innerHTML = '<p style="color:var(--plateado);font-size:13px;">Sin Leads registrados.</p>';
+        return;
+    }
+    cont.innerHTML = propios.map(l => {
+        const info = LEAD_ESTADO_INFO[l.estado] || LEAD_ESTADO_INFO.interesado;
+        const fecha = l.fecha ? new Date(l.fecha).toLocaleDateString("es-SV", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" }) : "";
+        const accionable = l.estado === "interesado" || l.estado === "reportado";
+        return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--gris2);border:1px solid var(--borde);border-radius:10px;margin-bottom:8px;">
+            ${l.foto ? `<img src="${sanitizar(ikFoto(l.foto,120))}" onerror="this.style.display='none'" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0;">` : ''}
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:12px;font-weight:700;">${sanitizar(l.nombre||l.codigo)}</div>
+                <div style="font-size:11px;color:var(--plateado);">$${parseFloat(l.precio||0).toFixed(2)} · ${fecha}</div>
+                <div style="font-size:11px;font-weight:600;color:${info.color};margin-top:2px;">${info.label}</div>
+            </div>
+            ${accionable ? `<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+                <button onclick="confirmarLeadVenta('${sanitizar(l.id)}')" style="padding:5px 10px;font-size:11px;background:#27ae60;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✅ Confirmar</button>
+                <button onclick="cancelarLeadUI('${sanitizar(l.id)}')" style="padding:5px 10px;font-size:11px;background:#e74c3c;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">❌ Cancelar</button>
+            </div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+async function confirmarLeadVenta(id) {
+    const res = await apiPost({ accion: "CONFIRMAR_LEAD_VENTA", id });
+    if (!res.ok) { toast("⚠️ " + (res.error || "No se pudo confirmar")); return; }
+    toast("✅ Venta confirmada — stock y comisión actualizados");
+    const lead = leadsData.find(l => l.id === id);
+    const codigoVend = lead?.afiliado;
+    await cargarDatos();
+    if (codigoVend) renderLeadsModal(codigoVend);
+}
+
+async function cancelarLeadUI(id) {
+    if (!confirm("¿Cancelar este Lead? No se registrará como venta.")) return;
+    const res = await apiPost({ accion: "CANCELAR_LEAD", id });
+    if (!res.ok) { toast("⚠️ No se pudo cancelar"); return; }
+    toast("❌ Lead cancelado");
+    const lead = leadsData.find(l => l.id === id);
+    const codigoVend = lead?.afiliado;
+    await cargarLeads();
+    renderVendedores();
+    if (codigoVend) renderLeadsModal(codigoVend);
 }
 
 let _tipoVendedorSel = "consignacion";

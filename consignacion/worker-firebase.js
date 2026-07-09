@@ -1127,6 +1127,107 @@ async function enviar(){
           break;
         }
 
+        // Lista liviana de vendedores tipo afiliado — usada por el admin (adminverex)
+        // para vincular un catálogo temporal a un afiliado real ya registrado.
+        case "GET_VENDEDORES_AFILIADOS": {
+          if (!esAdmin) return forbidden();
+          const vends = await sb.getAll("vendedores");
+          result = { ok: true, vendedores: vends.filter(v => v.tipo === "afiliado") };
+          break;
+        }
+
+        // ══ LEADS DE AFILIADOS ═══════════════════════════════════════
+        // Público — se llama desde el catálogo temporal cuando el cliente
+        // presiona "Quiero este", antes de abrir WhatsApp. Registro silencioso,
+        // no requiere sesión de admin ni token del afiliado.
+        case "REGISTRAR_LEAD": {
+          if (!d.afiliado || !d.codigo) { result = { ok: false, error: "Datos incompletos" }; break; }
+          const leadId = "LEAD_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+          await sb.set("leads", leadId, {
+            id: leadId,
+            afiliado: d.afiliado,
+            codigo: d.codigo,
+            nombre: d.nombre || "",
+            precio: parseFloat(d.precio) || 0,
+            foto: d.foto || "",
+            fecha: new Date().toISOString(),
+            estado: "interesado",
+            historial: [{ estado: "interesado", fecha: new Date().toISOString() }]
+          });
+          result = { ok: true, leadId };
+          break;
+        }
+
+        // Portal del afiliado (protegido por token, igual que VERIFICAR_TOKEN)
+        case "GET_LEADS_AFILIADO": {
+          const todos = await sb.getAll("leads");
+          const propios = todos.filter(l => l.afiliado === d.vendedor);
+          result = { ok: true, leads: propios };
+          break;
+        }
+
+        // El afiliado autorreporta que cerró la venta — NO descuenta stock ni
+        // genera comisión todavía, solo avisa al admin para que confirme.
+        case "MARCAR_LEAD_VENDIDO": {
+          const lead = await sb.get("leads", d.id);
+          if (!lead) { result = { ok: false, error: "Lead no encontrado" }; break; }
+          if (lead.afiliado !== d.vendedor) { result = { ok: false, error: "No autorizado" }; break; }
+          const historial = [...(lead.historial || []), { estado: "reportado", fecha: new Date().toISOString() }];
+          await sb.update("leads", d.id, { estado: "reportado", historial });
+          result = { ok: true };
+          break;
+        }
+
+        case "GET_LEADS_ADMIN": {
+          if (!esAdmin) return forbidden();
+          const todos = await sb.getAll("leads");
+          result = { ok: true, leads: todos };
+          break;
+        }
+
+        // El admin confirma un lead reportado — esto SÍ mueve stock y genera
+        // la venta real (mismo efecto que REGISTRAR_ENTREGA + REGISTRAR_VENTA).
+        case "CONFIRMAR_LEAD_VENTA": {
+          if (!esAdmin) return forbidden();
+          const lead = await sb.get("leads", d.id);
+          if (!lead) { result = { ok: false, error: "Lead no encontrado" }; break; }
+          if (lead.estado === "vendido") { result = { ok: false, error: "Este lead ya fue confirmado" }; break; }
+          const s = await sb.get("stock", lead.codigo);
+          if (!s) { result = { ok: false, error: "El producto ya no existe en stock" }; break; }
+          const disponible = (parseInt(s.stock_bodega)||0) + (parseInt(s.stock_tienda)||0);
+          if (disponible < 1) { result = { ok: false, error: "Sin stock disponible para confirmar esta venta" }; break; }
+          const consId = "CONS_" + Date.now() + "_" + lead.codigo;
+          await sb.set("consignacion", consId, {
+            id: consId, vendedor: lead.afiliado, codigo: lead.codigo,
+            nombre: lead.nombre, codigoBase: s.codigoBase || lead.codigo,
+            talla: s.talla || "", nombre_base: s.nombre_base || lead.nombre,
+            categoria: s.categoria || "", precio: lead.precio || s.precio || 0,
+            cantidad: 1, vendido: 1,
+            foto: lead.foto || s.foto || "", fecha: new Date().toISOString(), estado: "activo"
+          });
+          const restaDeBodega = Math.min(1, parseInt(s.stock_bodega)||0);
+          await sb.update("stock", lead.codigo, {
+            stock_bodega:       Math.max(0, (parseInt(s.stock_bodega)||0) - restaDeBodega),
+            stock_tienda:       Math.max(0, (parseInt(s.stock_tienda)||0) - (1 - restaDeBodega)),
+            stock_consignacion: (parseInt(s.stock_consignacion)||0) + 1,
+            stock_vendido:      (parseInt(s.stock_vendido)||0) + 1
+          });
+          const historial = [...(lead.historial || []), { estado: "vendido", fecha: new Date().toISOString() }];
+          await sb.update("leads", d.id, { estado: "vendido", historial, consignacionId: consId });
+          result = { ok: true };
+          break;
+        }
+
+        case "CANCELAR_LEAD": {
+          if (!esAdmin) return forbidden();
+          const lead = await sb.get("leads", d.id);
+          if (!lead) { result = { ok: false, error: "Lead no encontrado" }; break; }
+          const historial = [...(lead.historial || []), { estado: "cancelado", fecha: new Date().toISOString() }];
+          await sb.update("leads", d.id, { estado: "cancelado", historial });
+          result = { ok: true };
+          break;
+        }
+
         case "VERIFICAR_TOKEN": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, razon: "no_encontrado" }; break; }
