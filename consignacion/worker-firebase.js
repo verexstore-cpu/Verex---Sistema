@@ -573,6 +573,26 @@ async function enviar(){
             nota: d.nota || "",
             estado: d.estado || "pagado"
           });
+          // Registrar/actualizar el cliente en el mismo directorio que usa el ecommerce
+          // (deduplicado por teléfono), para que aparezca en Clientes con su canal.
+          if (d.telefono) {
+            const clientesVD = await sb.getAll("clientes");
+            const cliExistVD = clientesVD.find(c => String(c.telefono) === String(d.telefono));
+            if (cliExistVD) {
+              await sb.update("clientes", cliExistVD.codigo, {
+                totalPedidos: (parseInt(cliExistVD.totalPedidos)||0) + 1,
+                totalPedidosDirecta: (parseInt(cliExistVD.totalPedidosDirecta)||0) + 1
+              });
+            } else {
+              const codigoClienteVD = `CVX-${String(clientesVD.length + 1).padStart(3, "0")}`;
+              await sb.set("clientes", codigoClienteVD, {
+                codigo: codigoClienteVD, nombre: d.cliente || "", telefono: d.telefono,
+                correo: "", municipio: "", direccion: "", departamento: "",
+                totalPedidos: 1, totalPedidosEcommerce: 0, totalPedidosDirecta: 1,
+                fechaRegistro: new Date().toISOString()
+              });
+            }
+          }
           for (const item of (d.items || [])) {
             const s = await sb.get("stock", item.codigo);
             if (s) {
@@ -1003,7 +1023,10 @@ async function enviar(){
           let codigoCliente = "";
           if (cliExist) {
             codigoCliente = cliExist.codigo;
-            const updCli = { totalPedidos: (parseInt(cliExist.totalPedidos)||0) + 1 };
+            const updCli = {
+              totalPedidos: (parseInt(cliExist.totalPedidos)||0) + 1,
+              totalPedidosEcommerce: (parseInt(cliExist.totalPedidosEcommerce)||0) + 1
+            };
             if (d.correo && !cliExist.correo) updCli.correo = d.correo;
             await sb.update("clientes", codigoCliente, updCli);
           } else {
@@ -1013,6 +1036,7 @@ async function enviar(){
               correo: d.correo || "",
               municipio: d.municipio || "", direccion: d.direccion || "",
               departamento: d.departamento || "", totalPedidos: 1,
+              totalPedidosEcommerce: 1, totalPedidosDirecta: 0,
               fechaRegistro: new Date().toISOString()
             });
           }

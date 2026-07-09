@@ -668,7 +668,7 @@
                 <table>
                     <thead><tr>
                         <th>Código</th><th>Cliente</th><th>WhatsApp</th>
-                        <th>Municipio</th><th>Pedidos</th><th>Registro</th><th>Cupón</th>
+                        <th>Municipio</th><th>Pedidos</th><th>Canal</th><th>Registro</th><th>Cupón</th>
                     </tr></thead>
                     <tbody id="tb-cli"></tbody>
                 </table>
@@ -1617,6 +1617,15 @@ function renderPedidos() {
 // ═════════════════════════════════════════════
 let clientes = [];
 
+function badgeCanalCliente(c) {
+    const eco = parseInt(c.totalPedidosEcommerce) || 0;
+    const dir = parseInt(c.totalPedidosDirecta) || 0;
+    const partes = [];
+    if (eco > 0) partes.push(`<span style="display:inline-block;font-size:10px;font-weight:700;color:#0277bd;background:rgba(2,119,189,0.12);border:1px solid rgba(2,119,189,0.3);border-radius:5px;padding:1px 6px;margin:1px;">🛒 Ecommerce (${eco})</span>`);
+    if (dir > 0) partes.push(`<span style="display:inline-block;font-size:10px;font-weight:700;color:#16a34a;background:rgba(22,163,74,0.12);border:1px solid rgba(22,163,74,0.3);border-radius:5px;padding:1px 6px;margin:1px;">🤝 Directa (${dir})</span>`);
+    return partes.length ? partes.join(" ") : '<span style="font-size:11px;color:#aaa;">—</span>';
+}
+
 function renderClientes() {
     const busq = (document.getElementById("bus-cli")?.value || "").toLowerCase();
     const list = clientes.filter(c =>
@@ -1640,6 +1649,7 @@ function renderClientes() {
             <td><a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-weight:600;text-decoration:none;">${esc(c.telefono)||"—"}</a></td>
             <td>${esc(c.municipio)||"—"}</td>
             <td style="text-align:center;"><b>${c.totalPedidos||0}</b></td>
+            <td>${badgeCanalCliente(c)}</td>
             <td style="font-size:12px;color:#888;">${fecha}</td>
             <td><button class="btn" style="background:#111;color:#fff;padding:4px 10px;font-size:12px;"
                 onclick='generarCuponCliente("${c.codigo}","${c.nombre}","${c.telefono}")'>🎫 Generar</button></td>
@@ -1661,6 +1671,7 @@ function renderClientes() {
                 <span>📱 <a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-weight:600;text-decoration:none;">${esc(c.telefono)||"—"}</a></span>
                 <span>📍 ${esc(c.municipio)||"—"}</span>
                 <span>🛍️ <b>${c.totalPedidos||0}</b> pedidos</span>
+                <span>${badgeCanalCliente(c)}</span>
             </div>
             <div class="ped-card-footer">
                 <button class="btn" style="background:#111;color:#fff;padding:6px 14px;font-size:13px;width:100%;"
@@ -1681,7 +1692,7 @@ function exportarClientesExcel() {
     if (!list.length) { toast("No hay clientes para exportar", "#ef4444"); return; }
 
     const filas = [
-        ["Código", "Nombre", "Teléfono", "Correo", "Municipio", "Departamento", "Total Pedidos", "Fecha Registro"]
+        ["Código", "Nombre", "Teléfono", "Correo", "Municipio", "Departamento", "Total Pedidos", "Pedidos Ecommerce", "Pedidos Directa", "Fecha Registro"]
     ];
     list.forEach(c => {
         filas.push([
@@ -1692,6 +1703,8 @@ function exportarClientesExcel() {
             c.municipio || "",
             c.departamento || "",
             c.totalPedidos || 0,
+            c.totalPedidosEcommerce || 0,
+            c.totalPedidosDirecta || 0,
             c.fechaRegistro ? new Date(c.fechaRegistro).toLocaleDateString("es-SV") : ""
         ]);
     });
