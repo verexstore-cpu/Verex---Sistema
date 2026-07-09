@@ -1754,6 +1754,10 @@ function generarContratoConsignacionPDF(vendedor) {
     const textW = pageW - mL - mR;
     let y = 20;
 
+    function checkPage(needed) {
+        if (y + needed > 280) { doc.addPage(); y = 20; }
+    }
+
     // Header
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
@@ -1800,16 +1804,18 @@ function generarContratoConsignacionPDF(vendedor) {
     doc.text("CLÁUSULAS DEL CONTRATO", mL, y); y += 6;
 
     clausulas.forEach(([titulo, texto]) => {
-        doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
+        const lines = doc.splitTextToSize(texto, textW);
+        checkPage(5 + lines.length * 5 + 4);
+        doc.setFont("helvetica", "bold");
         doc.setTextColor(40, 40, 40);
         doc.text(titulo, mL, y); y += 5;
         doc.setFont("helvetica", "normal");
-        const lines = doc.splitTextToSize(texto, textW);
         doc.text(lines, mL, y); y += lines.length * 5 + 4;
     });
 
     // Tabla comisiones
+    checkPage(45);
     y += 2;
     doc.setFont("helvetica", "bold");
     doc.setTextColor(201, 168, 76);
@@ -1831,6 +1837,7 @@ function generarContratoConsignacionPDF(vendedor) {
     });
 
     // Firmas
+    checkPage(45);
     y += 16;
     if (vendedor.firmaContrato) {
         try { doc.addImage(vendedor.firmaContrato, "PNG", mL, y - 14, 60, 16); } catch(_) {}
@@ -1857,7 +1864,7 @@ function generarContratoConsignacionPDF(vendedor) {
     // Footer
     doc.setFontSize(8);
     doc.setTextColor(180, 180, 180);
-    doc.text("VEREX — Sistema de Consignación • " + fecha, pageW / 2, 285, { align: "center" });
+    doc.text("VEREX — Sistema de Consignación • " + fecha, pageW / 2, Math.min(y + 12, 290), { align: "center" });
 
     doc.save("Contrato_" + vendedor.nombre.replace(/ /g, "_") + ".pdf");
     toast("📄 Contrato generado");
@@ -1873,6 +1880,10 @@ function generarContratoAfiliadoPDF(vendedor) {
     let y = 20;
 
     const tieneComisionFija = vendedor.comisionFija !== undefined && vendedor.comisionFija !== null;
+
+    function checkPage(needed) {
+        if (y + needed > 280) { doc.addPage(); y = 20; }
+    }
 
     // Header
     doc.setFont("helvetica", "bold");
@@ -1931,16 +1942,18 @@ function generarContratoAfiliadoPDF(vendedor) {
     doc.text("CLÁUSULAS DEL CONTRATO", mL, y); y += 6;
 
     clausulas.forEach(([titulo, texto]) => {
-        doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
+        const lines = doc.splitTextToSize(texto, textW);
+        checkPage(5 + lines.length * 5 + 4);
+        doc.setFont("helvetica", "bold");
         doc.setTextColor(40, 40, 40);
         doc.text(titulo, mL, y); y += 5;
         doc.setFont("helvetica", "normal");
-        const lines = doc.splitTextToSize(texto, textW);
         doc.text(lines, mL, y); y += lines.length * 5 + 4;
     });
 
     // Tabla / condición de comisión
+    checkPage(45);
     y += 2;
     doc.setFont("helvetica", "bold");
     doc.setTextColor(201, 168, 76);
@@ -1977,6 +1990,7 @@ function generarContratoAfiliadoPDF(vendedor) {
     }
 
     // Firmas
+    checkPage(45);
     y += 16;
     if (vendedor.firmaContrato) {
         try { doc.addImage(vendedor.firmaContrato, "PNG", mL, y - 14, 60, 16); } catch(_) {}
@@ -2003,7 +2017,7 @@ function generarContratoAfiliadoPDF(vendedor) {
     // Footer
     doc.setFontSize(8);
     doc.setTextColor(180, 180, 180);
-    doc.text("VEREX — Programa de Afiliados • " + fecha, pageW / 2, 285, { align: "center" });
+    doc.text("VEREX — Programa de Afiliados • " + fecha, pageW / 2, Math.min(y + 12, 290), { align: "center" });
 
     doc.save("Contrato_Afiliado_" + vendedor.nombre.replace(/ /g, "_") + ".pdf");
     toast("📄 Contrato de afiliado generado");
