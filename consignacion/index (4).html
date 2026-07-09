@@ -1701,6 +1701,11 @@ async function guardarVendedor() {
 }
 
 function generarContratoPDF(vendedor) {
+    const esAfiliado = vendedor.tipo === "afiliado";
+    return esAfiliado ? generarContratoAfiliadoPDF(vendedor) : generarContratoConsignacionPDF(vendedor);
+}
+
+function generarContratoConsignacionPDF(vendedor) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const fecha = new Date().toLocaleDateString("es-SV", { year: "numeric", month: "long", day: "numeric" });
@@ -1807,6 +1812,134 @@ function generarContratoPDF(vendedor) {
 
     doc.save("Contrato_" + vendedor.nombre.replace(/ /g, "_") + ".pdf");
     toast("📄 Contrato generado");
+}
+
+function generarContratoAfiliadoPDF(vendedor) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const fecha = new Date().toLocaleDateString("es-SV", { year: "numeric", month: "long", day: "numeric" });
+    const pageW = 210;
+    const mL = 20, mR = 20;
+    const textW = pageW - mL - mR;
+    let y = 20;
+
+    const tieneComisionFija = vendedor.comisionFija !== undefined && vendedor.comisionFija !== null;
+
+    // Header
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(201, 168, 76);
+    doc.text("VEREX", pageW / 2, y, { align: "center" }); y += 8;
+    doc.setFontSize(11);
+    doc.setTextColor(80, 80, 80);
+    doc.text("CONTRATO DE AFILIADO", pageW / 2, y, { align: "center" }); y += 12;
+
+    // Intro
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(40, 40, 40);
+    const intro = `Conste por el presente documento el acuerdo de afiliación celebrado el ${fecha}, entre VEREX y la persona identificada a continuación (El Afiliado), para la promoción y venta de productos VEREX a través de un catálogo digital personalizado.`;
+    const introLines = doc.splitTextToSize(intro, textW);
+    doc.text(introLines, mL, y); y += introLines.length * 5 + 6;
+
+    // Datos afiliado
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(201, 168, 76);
+    doc.text("DATOS DEL AFILIADO", mL, y); y += 6;
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(40, 40, 40);
+    [["Nombre:", vendedor.nombre], ["Teléfono:", vendedor.telefono], ["Código:", vendedor.codigo], ["Fecha inicio:", fecha]].forEach(([label, val]) => {
+        doc.setFont("helvetica", "bold"); doc.text(label, mL, y);
+        doc.setFont("helvetica", "normal"); doc.text(val, mL + 35, y); y += 6;
+    });
+    y += 4;
+
+    // Cláusulas — adaptadas al modelo de afiliado (sin inventario físico)
+    const clausulas = [
+        ["1. OBJETO", "VEREX entrega al Afiliado un catálogo digital personalizado para que lo comparta con sus propios clientes y gestione la venta por su cuenta. En ningún momento el Afiliado recibe mercancía física — el inventario permanece bajo custodia y propiedad de VEREX."],
+        ["2. FUNCIONAMIENTO", "Cuando el Afiliado cierra una venta con un cliente, debe coordinar con VEREX la entrega de la pieza. VEREX confirma la venta al momento de la entrega; solo hasta esa confirmación se genera la comisión correspondiente."],
+        ["3. PRECIOS", "El Afiliado ofrecerá las piezas al precio establecido por VEREX en el catálogo. No podrá modificar precios sin autorización escrita."],
+        ["4. SIN RESPONSABILIDAD POR INVENTARIO", "Al no recibir mercancía física, el Afiliado no asume responsabilidad por pérdida, robo o daño de piezas — dicha responsabilidad es exclusiva de VEREX hasta el momento de la entrega al cliente final."],
+        ["5. COMISIÓN", tieneComisionFija
+            ? `El Afiliado recibirá una comisión fija del ${vendedor.comisionFija}% sobre cada venta confirmada por VEREX, independientemente del monto acumulado en el período.`
+            : "El Afiliado recibirá una comisión por tramos según el monto total de ventas confirmadas por VEREX en el período, conforme a la tabla incluida en este contrato."],
+        ["6. PAGOS", "La comisión se liquida en cada corte de cuentas, únicamente sobre las ventas que VEREX haya confirmado como entregadas."],
+    ];
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(201, 168, 76);
+    doc.text("CLÁUSULAS DEL CONTRATO", mL, y); y += 6;
+
+    clausulas.forEach(([titulo, texto]) => {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(40, 40, 40);
+        doc.text(titulo, mL, y); y += 5;
+        doc.setFont("helvetica", "normal");
+        const lines = doc.splitTextToSize(texto, textW);
+        doc.text(lines, mL, y); y += lines.length * 5 + 4;
+    });
+
+    // Tabla / condición de comisión
+    y += 2;
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(201, 168, 76);
+    doc.text("COMISIÓN DEL AFILIADO", mL, y); y += 6;
+
+    if (tieneComisionFija) {
+        doc.setFillColor(30, 30, 30);
+        doc.rect(mL, y, textW, 8, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(9);
+        doc.text("Comisión fija acordada", mL + 4, y + 5); y += 8;
+        doc.setFillColor(248, 248, 248);
+        doc.rect(mL, y, textW, 7, 'F');
+        doc.setTextColor(40, 40, 40);
+        doc.setFont("helvetica", "bold");
+        doc.text(vendedor.comisionFija + "% sobre cada venta confirmada", mL + 4, y + 5); y += 7;
+    } else {
+        doc.setFillColor(30, 30, 30);
+        doc.rect(mL, y, textW, 8, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(9);
+        doc.text("Ventas confirmadas del período", mL + 4, y + 5);
+        doc.text("Comisión del afiliado", mL + 100, y + 5); y += 8;
+        RANGOS_COMISION_AFILIADO.forEach((r, i) => {
+            const rango = r.max >= 99999 ? `$${r.min} o más` : `$${r.min} — $${r.max}`;
+            doc.setFillColor(i % 2 === 0 ? 248 : 255, i % 2 === 0 ? 248 : 255, i % 2 === 0 ? 248 : 255);
+            doc.rect(mL, y, textW, 7, 'F');
+            doc.setTextColor(40, 40, 40);
+            doc.setFont("helvetica", "normal");
+            doc.text(rango, mL + 4, y + 5);
+            doc.setFont("helvetica", "bold");
+            doc.text(r.pct + "%", mL + 100, y + 5); y += 7;
+        });
+    }
+
+    // Firmas
+    y += 16;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(40, 40, 40);
+    doc.line(mL, y, mL + 70, y);
+    doc.line(pageW - mR - 70, y, pageW - mR, y);
+    y += 5;
+    doc.text("Firma del Afiliado", mL, y);
+    doc.text("Firma VEREX", pageW - mR - 70, y); y += 5;
+    doc.setFontSize(9);
+    doc.setTextColor(120, 120, 120);
+    doc.text(vendedor.nombre, mL, y);
+    doc.text("Administrador", pageW - mR - 70, y);
+
+    // Footer
+    doc.setFontSize(8);
+    doc.setTextColor(180, 180, 180);
+    doc.text("VEREX — Programa de Afiliados • " + fecha, pageW / 2, 285, { align: "center" });
+
+    doc.save("Contrato_Afiliado_" + vendedor.nombre.replace(/ /g, "_") + ".pdf");
+    toast("📄 Contrato de afiliado generado");
 }
 
 function toggleMenuProducto(id) {
