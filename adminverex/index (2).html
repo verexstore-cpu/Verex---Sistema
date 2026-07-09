@@ -660,6 +660,7 @@
                 <input id="bus-cli" type="text" placeholder="Buscar por nombre, teléfono o código..."
                     oninput="renderClientes()" style="flex:1;min-width:200px;">
                 <button onclick="exportarClientesExcel()" style="background:#1a7a4a;color:#fff;border:none;padding:8px 16px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">📥 Exportar Excel</button>
+                <button onclick="migrarClientesVentaDirecta(this)" style="background:#0277bd;color:#fff;border:none;padding:8px 16px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">🔄 Sincronizar clientes de Venta Directa</button>
             </div>
             <p id="resumen-cli" style="font-size:13px;color:#888;margin-bottom:12px;"></p>
 
@@ -1616,6 +1617,22 @@ function renderPedidos() {
 //  CLIENTES
 // ═════════════════════════════════════════════
 let clientes = [];
+
+async function migrarClientesVentaDirecta(btn) {
+    if (!confirm("Esto sincroniza los clientes que ya compraron por Venta Directa hacia esta lista, deduplicados por teléfono. Es seguro correrlo más de una vez. ¿Continuar?")) return;
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Sincronizando..."; }
+    try {
+        const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"MIGRAR_CLIENTES_VENTA_DIRECTA", _pass: ADMIN_PASS }) });
+        const data = await res.json();
+        if (!data.ok) { toast("⚠️ No se pudo sincronizar", "#ef4444"); return; }
+        toast(`✅ ${data.creados} cliente(s) nuevo(s), ${data.actualizados} actualizado(s) — de ${data.totalVentasDirectas} ventas directas`, "#22c55e");
+        await cargarDatos();
+    } catch(e) {
+        toast("⚠️ Error de conexión", "#ef4444");
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "🔄 Sincronizar clientes de Venta Directa"; }
+    }
+}
 
 function badgeCanalCliente(c) {
     const eco = parseInt(c.totalPedidosEcommerce) || 0;

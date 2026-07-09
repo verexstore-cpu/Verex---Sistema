@@ -1009,6 +1009,51 @@ async function enviar(){
           break;
         }
 
+        // Migración única (segura de correr varias veces — recalcula, no incrementa):
+        // sincroniza clientes que solo existían dentro de ventas_directas hacia la
+        // colección "clientes", deduplicados por teléfono.
+        case "MIGRAR_CLIENTES_VENTA_DIRECTA": {
+          if (!esAdmin) return forbidden();
+          const [ventasDirectas, clientesAll] = await Promise.all([
+            sb.getAll("ventas_directas"),
+            sb.getAll("clientes")
+          ]);
+          const porTelefono = {};
+          for (const vd of ventasDirectas) {
+            const tel = String(vd.telefono || "").trim();
+            if (!tel) continue;
+            if (!porTelefono[tel]) porTelefono[tel] = { nombre: "", count: 0 };
+            porTelefono[tel].count++;
+            if (!porTelefono[tel].nombre && vd.cliente) porTelefono[tel].nombre = vd.cliente;
+          }
+          let creados = 0, actualizados = 0;
+          const clientes = [...clientesAll];
+          for (const [tel, info] of Object.entries(porTelefono)) {
+            const existente = clientes.find(c => String(c.telefono) === tel);
+            if (existente) {
+              const totalEco = parseInt(existente.totalPedidosEcommerce) || 0;
+              await sb.update("clientes", existente.codigo, {
+                totalPedidosDirecta: info.count,
+                totalPedidos: totalEco + info.count
+              });
+              actualizados++;
+            } else {
+              const codigoCliente = `CVX-${String(clientes.length + 1).padStart(3, "0")}`;
+              const nuevoCliente = {
+                codigo: codigoCliente, nombre: info.nombre, telefono: tel,
+                correo: "", municipio: "", direccion: "", departamento: "",
+                totalPedidos: info.count, totalPedidosEcommerce: 0, totalPedidosDirecta: info.count,
+                fechaRegistro: new Date().toISOString()
+              };
+              await sb.set("clientes", codigoCliente, nuevoCliente);
+              clientes.push(nuevoCliente);
+              creados++;
+            }
+          }
+          result = { ok: true, creados, actualizados, totalVentasDirectas: ventasDirectas.length };
+          break;
+        }
+
         case "NUEVO_PEDIDO": {
           const now      = new Date();
           const dd       = String(now.getDate()).padStart(2, "0");
