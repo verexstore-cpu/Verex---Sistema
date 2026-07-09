@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Firmar contrato — VEREX</title>
+<style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Segoe UI',sans-serif;background:#f0f2f5;min-height:100vh;color:#1a1a1a;}
+    header{background:#111;text-align:center;padding:18px 16px;}
+    header .logo{color:#C9A84C;font-size:26px;font-weight:800;letter-spacing:2px;}
+    header .sub{color:#888;font-size:12px;margin-top:2px;}
+    .wrap{max-width:520px;margin:0 auto;padding:16px;}
+    .card{background:#fff;border-radius:12px;padding:16px 18px;margin-bottom:14px;box-shadow:0 2px 10px rgba(0,0,0,.06);}
+    .card h2{font-size:15px;color:#C9A84C;margin-bottom:4px;}
+    .card h3{font-size:12px;font-weight:700;margin:12px 0 4px;}
+    .card p{font-size:13px;line-height:1.5;color:#333;}
+    .datos{font-size:13px;line-height:1.9;}
+    .datos b{display:inline-block;min-width:90px;color:#555;}
+    canvas{width:100%;height:180px;border-radius:10px;display:block;touch-action:none;cursor:crosshair;background:#fff;border:1.5px solid #e2e2e2;}
+    .canvas-wrap{position:relative;margin:10px 0;}
+    .placeholder{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#ccc;font-size:13px;pointer-events:none;}
+    .btn{display:block;width:100%;text-align:center;padding:13px;border-radius:10px;font-size:14px;font-weight:700;border:none;cursor:pointer;margin-top:8px;}
+    .btn-dorado{background:linear-gradient(135deg,#7a5500,#C9A84C,#f0d060,#C9A84C,#7a5500);color:#1a0e00;}
+    .btn-gris{background:#eee;color:#555;}
+    .estado{text-align:center;padding:60px 20px;}
+    .estado .icon{font-size:56px;margin-bottom:16px;}
+    .estado h2{font-size:18px;margin-bottom:8px;}
+    .estado p{font-size:13px;color:#666;line-height:1.6;}
+    table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px;}
+    th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #eee;}
+    th{background:#1a1a1a;color:#fff;}
+    .firma-preview{max-width:200px;max-height:80px;margin:10px auto;display:block;}
+</style>
+</head>
+<body>
+<header>
+    <div class="logo">VEREX</div>
+    <div class="sub">La expresión de tu mejor versión</div>
+</header>
+<div class="wrap" id="app">
+    <div class="estado"><p>⏳ Cargando contrato...</p></div>
+</div>
+
+<script>
+(function(){
+    const API_URL = "https://verex-api.verexstore.workers.dev/";
+    const params = new URLSearchParams(location.search);
+    const vCodigo = params.get("v") || "";
+    const token   = params.get("token") || "";
+    let _firmaActiva = false;
+    let _vendedor = null;
+
+    function esc(s){ const d=document.createElement("div"); d.textContent=String(s||""); return d.innerHTML; }
+
+    function estado(icon, titulo, texto){
+        document.getElementById("app").innerHTML = `<div class="estado"><div class="icon">${icon}</div><h2>${esc(titulo)}</h2><p>${texto}</p></div>`;
+    }
+
+    const RANGOS_COMISION_AFILIADO = [
+        { min: 0,   max: 199.99, pct: 20 },
+        { min: 200, max: 399.99, pct: 25 },
+        { min: 400, max: 99999,  pct: 30 },
+    ];
+    const RANGOS_COMISION = [
+        { min: 0,   max: 199.99, pct: 25 },
+        { min: 200, max: 399.99, pct: 30 },
+        { min: 400, max: 99999,  pct: 40 },
+    ];
+
+    function clausulasAfiliado(v, fecha){
+        const recibeFisico = v.recibeFisico === true;
+        const tieneFija = v.comisionFija !== undefined && v.comisionFija !== null;
+        return [
+            ["1. Objeto", recibeFisico
+                ? "VEREX entrega al Afiliado un catálogo digital personalizado para que lo comparta con sus propios clientes y gestione la venta por su cuenta. Adicionalmente, VEREX podrá entregarle piezas físicas para que el Afiliado realice la entrega directa a sus clientes, conservando la propiedad de dichas piezas hasta su venta efectiva."
+                : "VEREX entrega al Afiliado un catálogo digital personalizado para que lo comparta con sus propios clientes y gestione la venta por su cuenta. En ningún momento el Afiliado recibe mercancía física — el inventario permanece bajo custodia y propiedad de VEREX."],
+            ["2. Funcionamiento", recibeFisico
+                ? "Cuando el Afiliado cierra una venta con un cliente, podrá entregarla directamente si ya tiene la pieza en su poder, o coordinar con VEREX la entrega. VEREX confirma cada venta al momento en que se le informa la entrega; solo hasta esa confirmación se genera la comisión correspondiente."
+                : "Cuando el Afiliado cierra una venta con un cliente, debe coordinar con VEREX la entrega de la pieza. VEREX confirma la venta al momento de la entrega; solo hasta esa confirmación se genera la comisión correspondiente."],
+            ["3. Precios", "El Afiliado ofrecerá las piezas al precio establecido por VEREX en el catálogo. No podrá modificar precios sin autorización escrita."],
+            recibeFisico
+                ? ["4. Responsabilidad por piezas entregadas", "El Afiliado es responsable de las piezas físicas que reciba de VEREX. En caso de pérdida, robo o daño, deberá pagar a VEREX el precio de venta de la pieza menos la comisión que le habría correspondido. Las piezas no vendidas deben devolverse en perfecto estado según lo acordado con VEREX."]
+                : ["4. Sin responsabilidad por inventario", "Al no recibir mercancía física, el Afiliado no asume responsabilidad por pérdida, robo o daño de piezas — dicha responsabilidad es exclusiva de VEREX hasta el momento de la entrega al cliente final."],
+            ["5. Comisión", tieneFija
+                ? `El Afiliado recibirá una comisión fija del ${v.comisionFija}% sobre cada venta confirmada por VEREX.`
+                : "El Afiliado recibirá una comisión por tramos según el monto total de ventas confirmadas por VEREX en el período."],
+            ["6. Pagos", "La comisión se liquida en cada corte de cuentas, únicamente sobre las ventas que VEREX haya confirmado como entregadas."],
+        ];
+    }
+
+    function clausulasConsignacion(){
+        return [
+            ["1. Objeto", "El Consignante entrega joyería al Consignatario para su venta en consignación, conservando la propiedad de los bienes hasta su venta efectiva."],
+            ["2. Plazo", "El período de consignación será de 30 días calendario, al cabo de los cuales se realizará un corte de cuentas. Las piezas no vendidas podrán renovarse por acuerdo mutuo."],
+            ["3. Precios", "El Consignatario venderá las piezas al precio establecido por VEREX. No podrá modificar precios sin autorización escrita."],
+            ["4. Responsabilidad", "El Consignatario es responsable de las piezas recibidas. En caso de pérdida, robo o daño, deberá cubrir el valor de las mismas al precio de costo."],
+            ["5. Devoluciones", "Las piezas no vendidas deben devolverse en perfecto estado al momento del corte. El deterioro por mal manejo será responsabilidad del Consignatario."],
+            ["6. Pagos", "El Consignatario pagará a VEREX el monto correspondiente (precio de venta menos su comisión) en cada corte de cuentas."],
+        ];
+    }
+
+    function renderTablaComision(v){
+        if (v.comisionFija !== undefined && v.comisionFija !== null){
+            return `<p style="margin-top:8px;"><b>Comisión fija acordada:</b> ${esc(v.comisionFija)}% sobre cada venta confirmada.</p>`;
+        }
+        const tabla = v.tipo === "afiliado" ? RANGOS_COMISION_AFILIADO : RANGOS_COMISION;
+        const filas = tabla.map(r => {
+            const rango = r.max >= 99999 ? `$${r.min} o más` : `$${r.min} — $${r.max}`;
+            return `<tr><td>${rango}</td><td>${r.pct}%</td></tr>`;
+        }).join("");
+        return `<table><tr><th>Ventas del período</th><th>Comisión</th></tr>${filas}</table>`;
+    }
+
+    function render(v){
+        _vendedor = v;
+        const fecha = new Date().toLocaleDateString("es-SV", { year:"numeric", month:"long", day:"numeric" });
+        const esAfiliado = v.tipo === "afiliado";
+        const clausulas = esAfiliado ? clausulasAfiliado(v, fecha) : clausulasConsignacion();
+        const titulo = esAfiliado ? "Contrato de Afiliado" : "Contrato de Consignación";
+        const rolLabel = esAfiliado ? "El Afiliado" : "El Consignatario";
+
+        if (v.firmaContrato){
+            document.getElementById("app").innerHTML = `
+                <div class="card" style="text-align:center;">
+                    <div style="font-size:40px;margin-bottom:8px;">✅</div>
+                    <h2>Este contrato ya fue firmado</h2>
+                    <p style="margin-top:6px;">Firmado el ${esc(new Date(v.firmaContratoFecha).toLocaleDateString("es-SV",{day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}))}</p>
+                    <img class="firma-preview" src="${v.firmaContrato}" alt="Firma">
+                </div>`;
+            return;
+        }
+
+        const clausulasHtml = clausulas.map(([t, txt]) => `<h3>${esc(t)}</h3><p>${esc(txt)}</p>`).join("");
+
+        document.getElementById("app").innerHTML = `
+            <div class="card">
+                <h2>${esc(titulo)}</h2>
+                <p style="color:#888;margin-top:4px;">Celebrado el ${esc(fecha)} entre VEREX y ${esc(rolLabel)}.</p>
+                <div class="datos" style="margin-top:10px;">
+                    <div><b>Nombre:</b> ${esc(v.nombre)}</div>
+                    <div><b>Teléfono:</b> ${esc(v.telefono)}</div>
+                    <div><b>Código:</b> ${esc(v.codigo)}</div>
+                </div>
+            </div>
+            <div class="card">
+                ${clausulasHtml}
+                <h3>Comisión</h3>
+                ${renderTablaComision(v)}
+            </div>
+            <div class="card">
+                <h2>Tu firma</h2>
+                <p>Firma con el dedo para aceptar los términos de este contrato:</p>
+                <div class="canvas-wrap">
+                    <canvas id="firma-canvas" width="430" height="200"></canvas>
+                    <div class="placeholder" id="firma-placeholder">Firma aquí</div>
+                </div>
+                <button class="btn btn-gris" onclick="window.limpiarFirma()">🗑️ Limpiar</button>
+                <button class="btn btn-dorado" id="btn-firmar" onclick="window.confirmarFirma()">✅ Firmar contrato</button>
+                <p id="firma-error" style="color:#c0392b;margin-top:8px;display:none;"></p>
+            </div>`;
+
+        inicializarCanvas();
+    }
+
+    function inicializarCanvas(){
+        const canvas = document.getElementById("firma-canvas");
+        const ctx = canvas.getContext("2d");
+        ctx.strokeStyle = "#1a1a2e";
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        let dibujando = false;
+
+        function getPos(e){
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            if (e.touches) return { x:(e.touches[0].clientX-rect.left)*scaleX, y:(e.touches[0].clientY-rect.top)*scaleY };
+            return { x:(e.clientX-rect.left)*scaleX, y:(e.clientY-rect.top)*scaleY };
+        }
+        function iniciar(e){
+            e.preventDefault(); dibujando = true; _firmaActiva = true;
+            document.getElementById("firma-placeholder").style.display = "none";
+            const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y);
+        }
+        function dibujar(e){
+            e.preventDefault(); if (!dibujando) return;
+            const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(p.x, p.y);
+        }
+        function terminar(e){ e.preventDefault(); dibujando = false; }
+
+        canvas.addEventListener("mousedown", iniciar);
+        canvas.addEventListener("mousemove", dibujar);
+        canvas.addEventListener("mouseup", terminar);
+        canvas.addEventListener("touchstart", iniciar, { passive:false });
+        canvas.addEventListener("touchmove", dibujar, { passive:false });
+        canvas.addEventListener("touchend", terminar, { passive:false });
+    }
+
+    window.limpiarFirma = function(){
+        const canvas = document.getElementById("firma-canvas");
+        canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+        _firmaActiva = false;
+        document.getElementById("firma-placeholder").style.display = "block";
+    };
+
+    window.confirmarFirma = async function(){
+        const err = document.getElementById("firma-error");
+        if (!_firmaActiva){ err.textContent = "⚠️ Falta firmar"; err.style.display = "block"; return; }
+        const btn = document.getElementById("btn-firmar");
+        btn.textContent = "⏳ Enviando..."; btn.disabled = true;
+        const firma = document.getElementById("firma-canvas").toDataURL("image/png");
+        try {
+            const res = await fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ accion: "FIRMAR_CONTRATO_REMOTO", vendedor: vCodigo, token, firma })
+            });
+            const data = await res.json();
+            if (!data.ok) { err.textContent = "⚠️ " + (data.error || "No se pudo firmar"); err.style.display = "block"; btn.textContent = "✅ Firmar contrato"; btn.disabled = false; return; }
+            _vendedor.firmaContrato = firma;
+            _vendedor.firmaContratoFecha = data.firmaContratoFecha;
+            render(_vendedor);
+        } catch(e) {
+            err.textContent = "⚠️ Error de conexión — intenta de nuevo"; err.style.display = "block";
+            btn.textContent = "✅ Firmar contrato"; btn.disabled = false;
+        }
+    };
+
+    async function init(){
+        if (!vCodigo || !token) { estado("⚠️", "Link inválido", "Falta información en el enlace. Pide a VEREX que te envíe el link nuevamente."); return; }
+        try {
+            const res = await fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ accion: "GET_VENDEDOR_FIRMA", vendedor: vCodigo, token })
+            });
+            const data = await res.json();
+            if (!data.ok) { estado("⚠️", "Link inválido o vencido", "Pide a VEREX que te envíe un nuevo link para firmar."); return; }
+            render(data.vendedor);
+        } catch(e) {
+            estado("⚠️", "Error de conexión", "No se pudo cargar el contrato. Verifica tu internet e intenta de nuevo.");
+        }
+    }
+
+    init();
+})();
+</script>
+</body>
+</html>

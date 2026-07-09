@@ -936,6 +936,7 @@
         <div style="display:flex;gap:8px;margin-bottom:14px;">
             <button class="btn btn-gris" style="flex:1;padding:8px;" onclick="limpiarFirmaContrato()">🗑️ Limpiar</button>
         </div>
+        <button class="btn" style="width:100%;background:#25D366;color:#fff;margin-bottom:10px;" onclick="enviarLinkFirmaRemota()">📱 El afiliado no está aquí — enviarle link para firmar a distancia</button>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
             <button class="btn btn-gris" onclick="omitirFirmaContrato()">Firmar después (físico)</button>
             <button class="btn btn-dorado" id="btn-confirmar-firma-contrato" onclick="confirmarFirmaContrato()">✅ Firmar y Generar PDF</button>
@@ -2946,6 +2947,21 @@ function omitirFirmaContrato() {
     const v = _vendedorPendienteFirma;
     cerrarModal("modal-firma-contrato");
     generarContratoPDF(v);
+    _vendedorPendienteFirma = null;
+}
+
+async function enviarLinkFirmaRemota() {
+    if (!_vendedorPendienteFirma) return;
+    const v = _vendedorPendienteFirma;
+    const token = generarLinkId();
+    await apiPost({ accion: "GUARDAR_TOKEN_FIRMA", vendedor: v.codigo, token });
+    v.tokenFirma = token;
+    const link = "https://verex-consignacion.pages.dev/firmar.html?v=" + encodeURIComponent(v.codigo) + "&token=" + encodeURIComponent(token);
+    const tel = String(v.telefono || "").replace(/\D/g, "");
+    const msg = "Hola " + v.nombre + "! Para completar tu registro con VEREX, por favor firma tu contrato aquí:\n" + link;
+    cerrarModal("modal-firma-contrato");
+    window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg));
+    toast("📱 Link de firma enviado — el contrato se generará automáticamente cuando firme");
     _vendedorPendienteFirma = null;
 }
 

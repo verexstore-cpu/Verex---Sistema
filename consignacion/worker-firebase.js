@@ -371,6 +371,44 @@ async function enviar(){
           break;
         }
 
+        case "GUARDAR_TOKEN_FIRMA": {
+          if (!esAdmin) return forbidden();
+          await sb.update("vendedores", d.vendedor, { tokenFirma: d.token });
+          result = { ok: true };
+          break;
+        }
+
+        // Público — página de firma remota (sin sesión de admin, protegida por token)
+        case "GET_VENDEDOR_FIRMA": {
+          const vend = await sb.get("vendedores", d.vendedor);
+          if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
+          if (!vend.tokenFirma || String(vend.tokenFirma) !== String(d.token)) {
+            result = { ok: false, error: "Link inválido" }; break;
+          }
+          result = { ok: true, vendedor: {
+            nombre: vend.nombre, codigo: vend.codigo, telefono: vend.telefono,
+            tipo: vend.tipo, comisionFija: vend.comisionFija ?? null,
+            recibeFisico: vend.recibeFisico === true,
+            firmaContrato: vend.firmaContrato || null,
+            firmaContratoFecha: vend.firmaContratoFecha || null
+          } };
+          break;
+        }
+
+        case "FIRMAR_CONTRATO_REMOTO": {
+          const vend = await sb.get("vendedores", d.vendedor);
+          if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
+          if (!vend.tokenFirma || String(vend.tokenFirma) !== String(d.token)) {
+            result = { ok: false, error: "Link inválido" }; break;
+          }
+          if (vend.firmaContrato) { result = { ok: false, error: "Este contrato ya fue firmado" }; break; }
+          if (!d.firma) { result = { ok: false, error: "Falta la firma" }; break; }
+          const fecha = new Date().toISOString();
+          await sb.update("vendedores", d.vendedor, { firmaContrato: d.firma, firmaContratoFecha: fecha });
+          result = { ok: true, firmaContratoFecha: fecha };
+          break;
+        }
+
         // ══ CONSIGNACION ══════════════════════════════════════════
         case "GET_CONSIGNACION": {
           if (!esAdmin) return forbidden();
