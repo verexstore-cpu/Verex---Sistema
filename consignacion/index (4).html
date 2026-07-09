@@ -916,6 +916,33 @@
     </div>
 </div>
 
+<div class="modal-overlay" id="modal-firma-contrato">
+    <div class="modal-box" style="max-width:480px;">
+        <div class="modal-header">
+            <h3>✍️ Firma del Contrato</h3>
+            <button class="modal-close" onclick="omitirFirmaContrato()">×</button>
+        </div>
+        <p style="font-size:13px;color:var(--plateado);margin-bottom:6px;">
+            <strong id="firma-contrato-vendedor-nombre"></strong> — firma para aceptar los términos del contrato:
+        </p>
+        <div style="background:#fff;border-radius:10px;margin-bottom:10px;position:relative;">
+            <canvas id="firma-contrato-canvas" width="430" height="200"
+                style="width:100%;height:200px;border-radius:10px;display:block;cursor:crosshair;touch-action:none;">
+            </canvas>
+            <div id="firma-contrato-placeholder" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#ccc;font-size:13px;pointer-events:none;">
+                Firma aquí con el dedo o el mouse
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:14px;">
+            <button class="btn btn-gris" style="flex:1;padding:8px;" onclick="limpiarFirmaContrato()">🗑️ Limpiar</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <button class="btn btn-gris" onclick="omitirFirmaContrato()">Firmar después (físico)</button>
+            <button class="btn btn-dorado" id="btn-confirmar-firma-contrato" onclick="confirmarFirmaContrato()">✅ Firmar y Generar PDF</button>
+        </div>
+    </div>
+</div>
+
 <!-- Modal Mensajería -->
 <div class="modal-overlay" id="modal-mensajeria">
     <div class="modal-box" style="max-width:420px;">
@@ -1709,8 +1736,8 @@ async function guardarVendedor() {
     cerrarModal("modal-vendedor");
     renderVendedores();
     toast("✅ Vendedor registrado");
-    // Generar contrato PDF
-    setTimeout(() => generarContratoPDF(v), 500);
+    // Firma digital del contrato (o "firmar después" para PDF con líneas en blanco)
+    setTimeout(() => abrirFirmaContrato(v), 500);
 }
 
 function generarContratoPDF(vendedor) {
@@ -1805,6 +1832,9 @@ function generarContratoConsignacionPDF(vendedor) {
 
     // Firmas
     y += 16;
+    if (vendedor.firmaContrato) {
+        try { doc.addImage(vendedor.firmaContrato, "PNG", mL, y - 14, 60, 16); } catch(_) {}
+    }
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.setTextColor(40, 40, 40);
@@ -1816,7 +1846,13 @@ function generarContratoConsignacionPDF(vendedor) {
     doc.setFontSize(9);
     doc.setTextColor(120, 120, 120);
     doc.text(vendedor.nombre, mL, y);
-    doc.text("Administrador", pageW - mR - 70, y);
+    doc.text("Administrador", pageW - mR - 70, y); y += 5;
+    if (vendedor.firmaContrato) {
+        doc.setFontSize(7.5);
+        doc.setTextColor(140, 140, 140);
+        const fFirma = vendedor.firmaContratoFecha ? new Date(vendedor.firmaContratoFecha).toLocaleDateString("es-SV",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+        doc.text("Firmado digitalmente el " + fFirma, mL, y);
+    }
 
     // Footer
     doc.setFontSize(8);
@@ -1942,6 +1978,9 @@ function generarContratoAfiliadoPDF(vendedor) {
 
     // Firmas
     y += 16;
+    if (vendedor.firmaContrato) {
+        try { doc.addImage(vendedor.firmaContrato, "PNG", mL, y - 14, 60, 16); } catch(_) {}
+    }
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.setTextColor(40, 40, 40);
@@ -1953,7 +1992,13 @@ function generarContratoAfiliadoPDF(vendedor) {
     doc.setFontSize(9);
     doc.setTextColor(120, 120, 120);
     doc.text(vendedor.nombre, mL, y);
-    doc.text("Administrador", pageW - mR - 70, y);
+    doc.text("Administrador", pageW - mR - 70, y); y += 5;
+    if (vendedor.firmaContrato) {
+        doc.setFontSize(7.5);
+        doc.setTextColor(140, 140, 140);
+        const fFirma = vendedor.firmaContratoFecha ? new Date(vendedor.firmaContratoFecha).toLocaleDateString("es-SV",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+        doc.text("Firmado digitalmente el " + fFirma, mL, y);
+    }
 
     // Footer
     doc.setFontSize(8);
@@ -2782,6 +2827,112 @@ async function confirmarEntregaConFirma() {
     const firmaImg = document.getElementById("firma-canvas").toDataURL("image/png");
     cerrarModal("modal-firma");
     await confirmarEntrega(firmaImg, _firmaCodigoActual);
+}
+
+// ── Firma digital del contrato de vendedor/afiliado ──────────────────
+let _vendedorPendienteFirma = null;
+let _firmaContratoActiva = false;
+
+function abrirFirmaContrato(vendedor) {
+    _vendedorPendienteFirma = vendedor;
+    _firmaContratoActiva = false;
+    document.getElementById("firma-contrato-vendedor-nombre").textContent = vendedor.nombre;
+    limpiarFirmaContrato();
+    abrirModal("modal-firma-contrato");
+    inicializarCanvasGenerico("firma-contrato-canvas", "firma-contrato-placeholder", () => { _firmaContratoActiva = true; });
+}
+
+function inicializarCanvasGenerico(canvasId, placeholderId, onFirstStroke) {
+    const canvas = document.getElementById(canvasId);
+    const ctx = canvas.getContext("2d");
+    ctx.strokeStyle = "#1a1a2e";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    let dibujando = false;
+    let ultimoX = 0, ultimoY = 0;
+
+    function getPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        if (e.touches) {
+            return { x: (e.touches[0].clientX - rect.left) * scaleX, y: (e.touches[0].clientY - rect.top) * scaleY };
+        }
+        return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+    }
+
+    function iniciar(e) {
+        e.preventDefault();
+        dibujando = true;
+        if (onFirstStroke) onFirstStroke();
+        const ph = document.getElementById(placeholderId);
+        if (ph) ph.style.display = "none";
+        const pos = getPos(e);
+        ultimoX = pos.x; ultimoY = pos.y;
+        ctx.beginPath();
+        ctx.moveTo(ultimoX, ultimoY);
+    }
+
+    function dibujar(e) {
+        e.preventDefault();
+        if (!dibujando) return;
+        const pos = getPos(e);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y);
+        ultimoX = pos.x; ultimoY = pos.y;
+    }
+
+    function terminar(e) { e.preventDefault(); dibujando = false; }
+
+    canvas.removeEventListener("mousedown", canvas._mousedown);
+    canvas.removeEventListener("mousemove", canvas._mousemove);
+    canvas.removeEventListener("mouseup", canvas._mouseup);
+    canvas.removeEventListener("touchstart", canvas._touchstart);
+    canvas.removeEventListener("touchmove", canvas._touchmove);
+    canvas.removeEventListener("touchend", canvas._touchend);
+
+    canvas._mousedown = iniciar; canvas._mousemove = dibujar; canvas._mouseup = terminar;
+    canvas._touchstart = iniciar; canvas._touchmove = dibujar; canvas._touchend = terminar;
+
+    canvas.addEventListener("mousedown", iniciar);
+    canvas.addEventListener("mousemove", dibujar);
+    canvas.addEventListener("mouseup", terminar);
+    canvas.addEventListener("touchstart", iniciar, { passive: false });
+    canvas.addEventListener("touchmove", dibujar, { passive: false });
+    canvas.addEventListener("touchend", terminar, { passive: false });
+}
+
+function limpiarFirmaContrato() {
+    const canvas = document.getElementById("firma-contrato-canvas");
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    _firmaContratoActiva = false;
+    document.getElementById("firma-contrato-placeholder").style.display = "block";
+}
+
+async function confirmarFirmaContrato() {
+    if (!_vendedorPendienteFirma) return;
+    if (!_firmaContratoActiva) { toast("⚠️ Falta la firma"); return; }
+    const firmaImg = document.getElementById("firma-contrato-canvas").toDataURL("image/png");
+    const v = _vendedorPendienteFirma;
+    v.firmaContrato = firmaImg;
+    v.firmaContratoFecha = new Date().toISOString();
+    await apiPost({ accion: "GUARDAR_VENDEDOR", vendedor: v });
+    cerrarModal("modal-firma-contrato");
+    generarContratoPDF(v);
+    _vendedorPendienteFirma = null;
+    toast("✅ Contrato firmado digitalmente");
+}
+
+function omitirFirmaContrato() {
+    if (!_vendedorPendienteFirma) { cerrarModal("modal-firma-contrato"); return; }
+    const v = _vendedorPendienteFirma;
+    cerrarModal("modal-firma-contrato");
+    generarContratoPDF(v);
+    _vendedorPendienteFirma = null;
 }
 
 async function confirmarEntrega(firmaImg, codigoFirma) {
