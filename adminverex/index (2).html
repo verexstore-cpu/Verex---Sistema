@@ -1085,6 +1085,7 @@ let cfg = {
     reglasEnvio: [{ min:0, max:49.99, costo:2 }, { min:50, max:9999, costo:0 }]
 };
 let productos=[], pedidos=[], cupones=[];
+let _ventasUnificadas = null; // ecommerce + venta directa, cargado por cargarVentasUnificadas()
 let notifLeidas = new Set(JSON.parse(localStorage.getItem("vx_notif")||"[]"));
 
 // ═════════════════════════════════════════════
@@ -1302,6 +1303,7 @@ async function cargarDatos(silencioso=false) {
             localStorage.setItem("vx_cfg", JSON.stringify(cfg));
         }
         renderAll(silencioso);
+        cargarVentasUnificadas().then(() => renderStats());
     } catch(e) {
         if (!silencioso) toast("⚠️ Error conectando con la API","#ef4444");
     }
@@ -1412,22 +1414,47 @@ function limpiarBadgeCorreo() {
     if (badge) badge.style.display = "none";
 }
 
+// Cuenta lo que el cliente realmente ve en el catálogo público: agrupa pares/tríos
+// de anillos como un solo ítem y excluye reservados y agotados — a diferencia de
+// productos.length, que cuenta cada fila de Supabase por separado (ej. dama +
+// caballero = 2 filas para 1 solo producto visible).
+function productosVisiblesCount() {
+    const visibles = productos.filter(p => !p.reservado && _stockTotalProd(p) > 0);
+    const anLista  = visibles.filter(p => getCatKey(p) === "AN");
+    const otros    = visibles.filter(p => getCatKey(p) !== "AN");
+    return agruparParaCatalogo(anLista).length + otros.length;
+}
+
+// Ventas + pedidos totales combinan Ecommerce (pedidos) y Venta Directa
+// (ventas_directas) — antes solo se contaban los pedidos del ecommerce.
+async function cargarVentasUnificadas() {
+    try {
+        const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_HISTORIAL_VENTAS", _pass: ADMIN_PASS }) });
+        const data = await res.json();
+        _ventasUnificadas = (data.ventas || []).filter(v => v.tipo === "catalogo" || v.tipo === "directa");
+    } catch(e) { _ventasUnificadas = null; }
+}
+
 function renderStats() {
     const hoy  = new Date();
     const iniMes  = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
     const iniSem  = new Date(hoy); iniSem.setDate(hoy.getDate() - hoy.getDay());
     const iniHoy  = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
 
-    const pedMes  = pedidos.filter(p => p.fecha && new Date(p.fecha) >= iniMes);
-    const pedSem  = pedidos.filter(p => p.fecha && new Date(p.fecha) >= iniSem);
-    const pedHoy  = pedidos.filter(p => p.fecha && new Date(p.fecha) >= iniHoy);
+    // Si ya cargaron las ventas unificadas (ecommerce + venta directa), usarlas;
+    // si no, usar solo pedidos de ecommerce como respaldo.
+    const fuenteVentas = _ventasUnificadas || pedidos;
+
+    const pedMes  = fuenteVentas.filter(p => p.fecha && new Date(p.fecha) >= iniMes);
+    const pedSem  = fuenteVentas.filter(p => p.fecha && new Date(p.fecha) >= iniSem);
+    const pedHoy  = fuenteVentas.filter(p => p.fecha && new Date(p.fecha) >= iniHoy);
     const pedPend = pedidos.filter(p => p.estado === "Pendiente");
 
     const ingMes  = pedMes.reduce((s,p)=>s+(parseFloat(String(p.total).replace(/[^0-9.]/g,""))||0),0);
     const ingSem  = pedSem.reduce((s,p)=>s+(parseFloat(String(p.total).replace(/[^0-9.]/g,""))||0),0);
 
-    document.getElementById("s-prod").textContent    = productos.length;
-    document.getElementById("s-ped").textContent     = pedidos.length;
+    document.getElementById("s-prod").textContent    = productosVisiblesCount();
+    document.getElementById("s-ped").textContent     = fuenteVentas.length;
     document.getElementById("s-ped-hoy").textContent = `${pedHoy.length} hoy`;
     document.getElementById("s-mes").textContent     = `$${ingMes.toFixed(0)}`;
     document.getElementById("s-mes-sem").textContent = `$${ingSem.toFixed(0)} esta semana`;
