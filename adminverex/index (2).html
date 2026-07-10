@@ -3458,6 +3458,9 @@ function filtrarParaCatalogo() {
     // Excluir productos marcados como Reservados en Consignación — no deben ofrecerse en ningún catálogo
     lista = lista.filter(p => !p.reservado);
 
+    // Excluir productos agotados (sin stock disponible en ninguna talla/ubicación)
+    lista = lista.filter(p => _stockTotalProd(p) > 0);
+
     // Filtro por prefijo (C, D, U...) — solo aplica a AN
     const pfxTxt = (document.getElementById("cat-prefijo-txt")?.value||"").toUpperCase();
     const pfxSel = pfxTxt.split(/[,\s]+/).map(s=>s.trim()).filter(Boolean);
