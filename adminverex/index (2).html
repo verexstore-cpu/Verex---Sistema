@@ -3128,6 +3128,31 @@ async function generarLinkCatalogo() {
     finally { btn.textContent="🔗 Link"; btn.disabled=false; }
 }
 
+async function desactivarLinkCatalogo(linkOrId) {
+    const raw = (linkOrId||"").trim();
+    if (!raw) return toast("⚠️ Pega el link o código a desactivar","#f97316");
+    // Acepta URL completa (.../c/abc123) o solo el código
+    const m = raw.match(/\/c\/([a-z0-9-]+)/i);
+    const id = m ? m[1] : raw.replace(/[^a-z0-9-]/gi,"");
+    if (!id) return toast("⚠️ No se pudo leer el código del link","#f97316");
+    if (!confirm(`¿Desactivar el catálogo "${id}"? El link dejará de funcionar de inmediato.`)) return;
+
+    try {
+        const res = await fetch("/deactivate-catalog", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id })
+        });
+        const out = await res.json();
+        if (!res.ok) throw new Error(out.error || "No se pudo desactivar");
+        toast("🚫 Link desactivado","#22c55e");
+        document.getElementById("cat-link-desactivar").value = "";
+    } catch(e) {
+        console.error(e);
+        toast("❌ Error: "+e.message,"#ef4444");
+    }
+}
+
 // ═════════════════════════════════════════════
 //  CATÁLOGO PARA CLIENTE
 // ═════════════════════════════════════════════
@@ -4014,6 +4039,18 @@ async function generarPDFCatalogo() {
                     style="flex:1;background:#111;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📋 Copiar</button>
                 <button onclick="window.open('https://wa.me/?text='+encodeURIComponent('Hola, aquí está tu catálogo VEREX: '+document.getElementById('cat-link-out').textContent))"
                     style="flex:1;background:#25D366;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📱 WhatsApp</button>
+            </div>
+            <button onclick="desactivarLinkCatalogo(document.getElementById('cat-link-out').textContent)"
+                style="width:100%;margin-top:8px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">🚫 Desactivar este link</button>
+        </div>
+
+        <div style="margin-top:14px;background:#fef2f2;border-radius:8px;padding:12px;border:1px solid #fecaca;">
+            <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">🚫 Desactivar un link ya generado antes</div>
+            <div style="font-size:11px;color:#7f1d1d;margin-bottom:8px;">Pega aquí el link completo o solo el código (ej. verexstore.com/c/abc123) para dejarlo sin efecto de inmediato.</div>
+            <div style="display:flex;gap:8px;">
+                <input type="text" id="cat-link-desactivar" placeholder="Link o código a desactivar" style="flex:1;">
+                <button onclick="desactivarLinkCatalogo(document.getElementById('cat-link-desactivar').value)"
+                    style="background:#dc2626;color:#fff;border:none;padding:0 14px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">Desactivar</button>
             </div>
         </div>
     </div>
