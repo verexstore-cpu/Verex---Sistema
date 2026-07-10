@@ -48,6 +48,18 @@
             border:none;cursor:pointer;
         }
 
+        /* Agotado (verificado en tiempo real contra el stock actual) */
+        .card.agotado{opacity:.6;}
+        .card.agotado .card-img,.card.agotado .card-img-ph{filter:grayscale(1);}
+        .card-agotado-badge{
+            display:none;position:absolute;top:8px;left:8px;
+            background:#ef4444;color:#fff;font-size:10px;font-weight:800;
+            padding:3px 8px;border-radius:5px;letter-spacing:.3px;z-index:2;
+        }
+        .card.agotado .card-agotado-badge{display:block;}
+        .card.agotado .wa-order{background:#9ca3af;cursor:not-allowed;}
+        .card-img-wrap{position:relative;}
+
         /* Vencido */
         .expired{
             display:flex;flex-direction:column;align-items:center;
@@ -200,10 +212,13 @@
                 }
             }
             return `
-            <div class="card">
-                ${p.i
-                    ?`<img class="card-img" src="${esc(p.i)}" alt="${esc(p.n)}" loading="lazy" onerror="this.outerHTML='<div class=\'card-img-ph\'>💍</div>'">`
-                    :`<div class="card-img-ph">💍</div>`}
+            <div class="card" data-idx="${i}" data-cod="${esc(p.c||'')}">
+                <div class="card-img-wrap">
+                    <span class="card-agotado-badge">AGOTADO</span>
+                    ${p.i
+                        ?`<img class="card-img" src="${esc(p.i)}" alt="${esc(p.n)}" loading="lazy" onerror="this.outerHTML='<div class=\'card-img-ph\'>💍</div>'">`
+                        :`<div class="card-img-ph">💍</div>`}
+                </div>
                 <div class="card-body">
                     <div class="card-name">${esc(p.n)}</div>
                     ${p.m?`<div class="card-material">${esc(p.m)}</div>`:''}
@@ -262,6 +277,7 @@
     function elegirTalla(i){
         const p = _prods[i];
         if(!p) return;
+        if(p._agotado){ alert("Este producto ya no está disponible — el stock se agotó."); return; }
 
         const esPareja = ES_PAR.test(p.n) || p.par;
 
@@ -325,6 +341,34 @@
         document.getElementById("sz-overlay").classList.remove("open");
     }
 
+    // Verifica el stock real contra el catálogo (que es una foto fija tomada al
+    // generar el link) y marca "AGOTADO" lo que ya se vendió por otro canal
+    // (consignación, ecommerce u otro afiliado) desde entonces.
+    async function actualizarDisponibilidad(){
+        try{
+            const res = await fetch(API_URL, {
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body: JSON.stringify({ accion:"GET_STOCK" })
+            });
+            const data = await res.json();
+            const stock = data.stock || [];
+            const mapa = new Map(stock.map(s => [s.codigo, s]));
+
+            _prods.forEach((p,i) => {
+                if(!p.c) return;
+                const s = mapa.get(p.c);
+                // Si el código ya no existe en stock (eliminado) o quedó sin
+                // unidades disponibles o fue reservado, se marca agotado.
+                const agotado = !s || s.reservado || (parseInt(s.stock_total)||0) <= 0;
+                if(!agotado) return;
+                p._agotado = true;
+                const card = document.querySelector(`.card[data-idx="${i}"]`);
+                if(card) card.classList.add("agotado");
+            });
+        } catch(_){ /* si falla la verificación, se deja el catálogo como estaba */ }
+    }
+
     window.elegirTalla    = elegirTalla;
     window.selSz          = selSz;
     window.confirmarTalla = confirmarTalla;
@@ -356,7 +400,7 @@
         }
     }
     if(data.expiry && Date.now()>data.expiry) showExpired(data.nombre, data.wa);
-    else render(data);
+    else { render(data); actualizarDisponibilidad(); }
 })();
 </script>
 </body>
