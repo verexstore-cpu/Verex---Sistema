@@ -840,6 +840,9 @@
                 <button class="menu-btn menu-btn-full" id="btn-menu-devolucion" data-color="#e74c3c" onclick="abrirDevolucion()">
                     <span class="menu-ico">↩️</span><span class="menu-txt">Registrar Devolución</span><span class="menu-arr">›</span>
                 </button>
+                <button class="menu-btn menu-btn-full" data-color="#0277bd" onclick="descargarContratoActual()">
+                    <span class="menu-ico">📄</span><span class="menu-txt" id="btn-menu-contrato-txt">Descargar Contrato</span><span class="menu-arr">›</span>
+                </button>
             </div>
         </div>
         <div class="card">
@@ -2170,6 +2173,13 @@ function abrirPerfil(codigo) {
     if (btnCorte)     btnCorte.style.gridColumn     = ocultarFisico ? "1 / -1" : "";
     if (btnVentaMenu) btnVentaMenu.querySelector(".menu-txt").textContent = ocultarFisico ? "Registrar Venta (Afiliado)" : "Registrar Venta";
 
+    const btnContratoTxt = document.getElementById("btn-menu-contrato-txt");
+    if (btnContratoTxt) {
+        btnContratoTxt.textContent = vendedorActual.firmaContrato
+            ? "Descargar Contrato — ✅ Firmado"
+            : "Descargar Contrato — sin firmar";
+    }
+
     const fechaCorte = vendedorActual.fechaCorte ? new Date(vendedorActual.fechaCorte) : null;
     const recordatorio = document.getElementById("recordatorio-corte");
     if (fechaCorte) {
@@ -2948,6 +2958,21 @@ function omitirFirmaContrato() {
     cerrarModal("modal-firma-contrato");
     generarContratoPDF(v);
     _vendedorPendienteFirma = null;
+}
+
+async function descargarContratoActual() {
+    if (!vendedorActual) return;
+    // Refrescar por si el afiliado firmó a distancia después de la última carga
+    try {
+        const res = await fetch(API_URL, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ accion: "GET_CONSIGNACION", _pass: _sessionPass }) });
+        const data = await res.json();
+        if (data.vendedores) {
+            vendedores = data.vendedores;
+            const actualizado = vendedores.find(v => v.codigo === vendedorActual.codigo);
+            if (actualizado) vendedorActual = actualizado;
+        }
+    } catch(_) {}
+    generarContratoPDF(vendedorActual);
 }
 
 async function enviarLinkFirmaRemota() {
