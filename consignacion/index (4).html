@@ -1813,11 +1813,25 @@ function generarHojaInformativaAfiliadoPDF() {
     bullet("Vendes al precio que aparece en el catálogo — no puedes cambiar precios sin autorización de VEREX.");
     bullet("El catálogo se actualiza en tiempo real: si un producto se agota, se marca automáticamente y ya no se puede ofrecer.");
 
-    seccion("6. GARANTÍA — OSCURECIMIENTO DE LA PLATA");
-    parrafo("Es normal que una pieza de plata se oscurezca u oxide con el tiempo. Esto NO es un defecto de fábrica — ocurre por el contacto con la piel (el pH de cada persona es distinto), sudor, perfumes, cremas, cloro o humedad. Es una reacción química natural de la plata, no una falla del producto.");
-    bullet("La garantía de VEREX cubre defectos de fabricación (piedras que se caen, broches rotos, soldaduras defectuosas) — NO cubre el oscurecimiento por uso normal.");
-    bullet("Explícale esto a tu cliente ANTES de la venta, para evitar reclamos por algo que no es defecto. Recomiéndale limpiar la pieza con un paño seco y evitar el contacto con perfume, cloro o crema directamente sobre la joya.");
-    bullet("Si tienes dudas sobre si un caso específico es defecto o desgaste normal, consúltalo con VEREX antes de prometerle algo al cliente.");
+    seccion("6. GARANTÍA LIMITADA — LÉELA ANTES DE VENDER");
+    parrafo("VEREX tiene una Garantía Limitada de 30 días, válida únicamente contra defectos de fabricación (piedras mal engastadas de fábrica, broches o soldaduras defectuosas). NO cubre golpes, mal uso, cadenas reventadas por jalones, ni el oscurecimiento/oxidación de la plata — eso es una reacción natural del material con el pH de la piel, sudor, perfumes, cremas o cloro, no un defecto.");
+    checkPage(30);
+    doc.setFillColor(240, 249, 255);
+    doc.rect(mL, y, textW, 22, 'F');
+    doc.setDrawColor(14, 165, 233);
+    doc.rect(mL, y, textW, 22);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(14, 116, 144);
+    doc.text("📄 Lee la política completa de Garantía Limitada aquí:", mL + 4, y + 8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(2, 132, 199);
+    doc.textWithLink("admin-tienda.pages.dev/garantia.html", mL + 4, y + 15, { url: "https://admin-tienda.pages.dev/garantia.html" });
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 100, 100);
+    doc.text("(o pide a VEREX el QR para escanearlo)", mL + 4, y + 20);
+    y += 27;
+    bullet("Antes de ofrecerle algo a un cliente (cambio, reembolso, reparación), consulta esa página o pregúntale a VEREX — así no le prometes algo que la garantía no cubre.");
 
     seccion("7. ¿CUÁNDO SE PAGA?");
     parrafo("Tu comisión se liquida en el corte de cuentas, que se realiza cada 30 días, únicamente sobre las ventas que VEREX ya confirmó como entregadas.");
