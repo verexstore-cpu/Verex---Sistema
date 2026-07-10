@@ -1001,6 +1001,10 @@
             <input type="checkbox" id="v-recibe-fisico" style="width:15px;height:15px;accent-color:#C9A84C;">
             📦 Este afiliado también recibirá piezas físicas para entregar a sus clientes
         </label>
+        <button type="button" id="v-btn-hoja-info" onclick="generarHojaInformativaAfiliadoPDF()"
+            style="display:none;width:100%;padding:9px 0;margin-bottom:10px;border:1px solid var(--dorado);border-radius:8px;background:transparent;color:var(--dorado);font-size:12px;font-weight:700;cursor:pointer;">
+            📄 Ver / Descargar hoja informativa para el afiliado
+        </button>
         <input type="number" id="v-comision-fija" placeholder="% Comisión fija (opcional — anula la tabla por tramos)" min="0" max="100" step="0.1">
         <textarea id="v-notas" placeholder="Notas internas (opcional — acuerdos especiales, referencias, etc.)" rows="2" style="width:100%;resize:vertical;margin-top:8px;padding:10px 12px;background:var(--gris2);border:1px solid var(--borde);border-radius:8px;color:var(--blanco);font-size:13px;font-family:inherit;"></textarea>
         <button class="btn btn-dorado btn-full" onclick="guardarVendedor()" style="margin-top:12px;">Guardar Vendedor</button>
@@ -1703,17 +1707,126 @@ function selTipoVendedor(tipo) {
     const btnAfil   = document.getElementById("v-tipo-afiliado-btn");
     const desc      = document.getElementById("v-tipo-desc");
     const fisicoWrap = document.getElementById("v-recibe-fisico-wrap");
+    const btnHojaInfo = document.getElementById("v-btn-hoja-info");
     if (tipo === "afiliado") {
         btnAfil.style.background   = "var(--dorado)"; btnAfil.style.color   = "#111"; btnAfil.style.borderColor   = "var(--dorado)";
         btnConsig.style.background = "var(--gris2)";  btnConsig.style.color = "var(--blanco)"; btnConsig.style.borderColor = "var(--borde)";
         desc.textContent = "No maneja piezas físicas — cierra la venta por su cuenta y pide la pieza a VEREX para entregarla.";
         if (fisicoWrap) fisicoWrap.style.display = "flex";
+        if (btnHojaInfo) btnHojaInfo.style.display = "block";
     } else {
         btnConsig.style.background = "var(--dorado)"; btnConsig.style.color = "#111"; btnConsig.style.borderColor = "var(--dorado)";
         btnAfil.style.background   = "var(--gris2)";  btnAfil.style.color   = "var(--blanco)"; btnAfil.style.borderColor   = "var(--borde)";
         desc.textContent = "Recibe piezas físicas, vende, devuelve lo no vendido.";
         if (fisicoWrap) fisicoWrap.style.display = "none";
+        if (btnHojaInfo) btnHojaInfo.style.display = "none";
     }
+}
+
+// Hoja informativa para el afiliado — explica la dinámica de venta y comisiones
+// ANTES de llenar la ficha y generar el contrato. No usa datos de ningún vendedor
+// en particular (aún no existe), es información general del programa.
+function generarHojaInformativaAfiliadoPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const pageW = 210;
+    const mL = 20, mR = 20;
+    const textW = pageW - mL - mR;
+    let y = 20;
+
+    function checkPage(needed) {
+        if (y + needed > 280) { doc.addPage(); y = 20; }
+    }
+    function seccion(titulo) {
+        checkPage(12);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(201, 168, 76);
+        doc.text(titulo, mL, y); y += 6;
+    }
+    function parrafo(texto) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        doc.setTextColor(40, 40, 40);
+        const lines = doc.splitTextToSize(texto, textW);
+        checkPage(lines.length * 5 + 3);
+        doc.text(lines, mL, y); y += lines.length * 5 + 5;
+    }
+    function bullet(texto) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        doc.setTextColor(40, 40, 40);
+        const lines = doc.splitTextToSize(texto, textW - 6);
+        checkPage(lines.length * 5 + 2);
+        doc.text("•", mL, y);
+        doc.text(lines, mL + 5, y); y += lines.length * 5 + 3;
+    }
+
+    // Header
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(201, 168, 76);
+    doc.text("VEREX", pageW / 2, y, { align: "center" }); y += 8;
+    doc.setFontSize(12);
+    doc.setTextColor(80, 80, 80);
+    doc.text("PROGRAMA DE AFILIADOS — CÓMO FUNCIONA", pageW / 2, y, { align: "center" }); y += 12;
+
+    parrafo("Esta hoja explica la dinámica de venta y comisiones del Programa de Afiliados VEREX antes de registrarte. Léela con calma — si tienes dudas, pregúntanos antes de firmar el contrato.");
+
+    seccion("1. ¿QUÉ ES SER AFILIADO?");
+    parrafo("Recibes un catálogo digital personalizado con los productos VEREX que definamos juntos. Tú lo compartes con tus clientes (WhatsApp, redes sociales, boca a boca) y gestionas la venta por tu cuenta. No necesitas comprar inventario ni arriesgar tu dinero — VEREX es dueña de las piezas hasta que se venden.");
+
+    seccion("2. CÓMO SE REGISTRA UNA VENTA");
+    bullet("Un cliente ve tu catálogo digital y da clic en \"Quiero este\" — eso queda registrado automáticamente como un interesado (Lead) a tu nombre.");
+    bullet("Tú cierras la venta directamente con el cliente por WhatsApp.");
+    bullet("Le coordinas con VEREX la entrega de la pieza (o tú mismo la entregas si ya la tienes, en caso de que manejes piezas físicas).");
+    bullet("La venta se confirma oficialmente cuando VEREX verifica que la pieza fue entregada — solo hasta ese momento se genera tu comisión. Esto protege a ambas partes: ni tú cargas con inventario no vendido, ni se paga comisión por ventas que no se concretaron.");
+
+    seccion("3. TU COMISIÓN");
+    parrafo("Ganas comisión por tramos según el total de ventas confirmadas en el período — entre más vendas, mayor tu porcentaje:");
+
+    checkPage(35);
+    doc.setFillColor(30, 30, 30);
+    doc.rect(mL, y, textW, 8, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.text("Ventas confirmadas del período", mL + 4, y + 5);
+    doc.text("Tu comisión", mL + 120, y + 5); y += 8;
+    RANGOS_COMISION_AFILIADO.forEach((r, i) => {
+        const rango = r.max >= 99999 ? `$${r.min} o más` : `$${r.min} — $${r.max}`;
+        doc.setFillColor(i % 2 === 0 ? 248 : 255, i % 2 === 0 ? 248 : 255, i % 2 === 0 ? 248 : 255);
+        doc.rect(mL, y, textW, 7, 'F');
+        doc.setTextColor(40, 40, 40);
+        doc.setFont("helvetica", "normal");
+        doc.text(rango, mL + 4, y + 5);
+        doc.setFont("helvetica", "bold");
+        doc.text(r.pct + "%", mL + 120, y + 5); y += 7;
+    });
+    y += 3;
+    parrafo("En algunos casos VEREX puede acordar una comisión fija distinta a la tabla — si aplica para ti, se detallará en tu contrato.");
+
+    seccion("4. ¿RECIBES PIEZAS FÍSICAS O NO?");
+    bullet("Sin piezas físicas (lo más común): tú solo cierras la venta, VEREX se encarga de la entrega. No tienes responsabilidad sobre el inventario.");
+    bullet("Con piezas físicas (si se acuerda contigo): VEREX te entrega algunas piezas para que tú mismo las entregues a tus clientes. En ese caso, eres responsable de esas piezas — si se pierden, roban o dañan, se descuenta el valor de venta menos tu comisión.");
+
+    seccion("5. PRECIOS Y REGLAS");
+    bullet("Vendes al precio que aparece en el catálogo — no puedes cambiar precios sin autorización de VEREX.");
+    bullet("El catálogo se actualiza en tiempo real: si un producto se agota, se marca automáticamente y ya no se puede ofrecer.");
+
+    seccion("6. ¿CUÁNDO SE PAGA?");
+    parrafo("Tu comisión se liquida en cada corte de cuentas, únicamente sobre las ventas que VEREX ya confirmó como entregadas. Coordina con VEREX la frecuencia de tu corte.");
+
+    seccion("7. SIGUIENTE PASO");
+    parrafo("Si estás de acuerdo con esta dinámica, VEREX registrará tu ficha y generará tu contrato de afiliado con estas mismas condiciones para que lo firmes (en persona o a distancia).");
+
+    // Footer
+    doc.setFontSize(8);
+    doc.setTextColor(180, 180, 180);
+    doc.text("VEREX — Programa de Afiliados · Información general, sujeta a lo acordado en tu contrato", pageW / 2, 292, { align: "center" });
+
+    doc.save("VEREX_Programa_Afiliados_Info.pdf");
+    toast("📄 Hoja informativa generada");
 }
 
 function abrirModalVendedor() {
