@@ -3168,6 +3168,61 @@ function abrirModalGarantia() {
     document.getElementById("modal-garantia").style.display = "flex";
 }
 
+// Valores por defecto — deben coincidir con los de garantia.html para que
+// el editor muestre lo mismo que ve el cliente antes de la primera edición.
+const GARANTIA_DEFAULTS = {
+    dias: 30,
+    intro: "En VEREX nos comprometemos a ofrecer joyas de alta calidad. Por ello, todas nuestras piezas cuentan con una Garantía Limitada de {dias} días calendario, válida únicamente contra defectos de fabricación.",
+    cubre: "- Piedras que se desprendan debido a un defecto en el engaste de fábrica (sin golpe ni mal uso de por medio).\n- Broches o cierres que presenten fallas de fabricación.\n- Soldaduras defectuosas.\n- Desprendimiento del baño (cuando aplique) por defectos de fabricación y bajo condiciones normales de uso.",
+    no_cubre: "- Piedras desprendidas por golpes, caídas, jalones o manipulación inadecuada.\n- Cadenas, pulseras, aretes u otras joyas dañadas por enganches, tirones o uso brusco.\n- Rayones, deformaciones o desgaste normal ocasionado por el uso.\n- Oscurecimiento, oxidación o pérdida de brillo de la plata — es una reacción natural del material y puede variar según el pH de la piel, el sudor, perfumes, cremas, cloro, humedad y otros agentes externos. No afecta la calidad ni la autenticidad de la joya, y puede revertirse con una limpieza y mantenimiento adecuados.\n- Daños ocasionados por accidentes, mal uso, almacenamiento inadecuado o reparaciones realizadas por terceros.\n- Pérdida total o parcial de la joya o de cualquiera de sus componentes por causas ajenas a un defecto de fabricación.",
+    promo: "Los productos adquiridos con promociones o descuentos no aplican para cambios, devoluciones o reembolsos por decisión del cliente. No obstante, conservan la Garantía Limitada por defectos de fabricación establecida en esta política.\n\nEn productos vendidos como liquidación, saldo, o con un defecto previamente informado y aceptado por el cliente, la garantía no cubrirá la condición específica que motivó el descuento.",
+    solicitud: "Comunícate con VEREX dentro del período de garantía a través de nuestros canales oficiales de atención, proporcionando:\n- Número de pedido.\n- Fotografías o videos donde se observe el inconveniente.\n\nVEREX podrá solicitar información adicional cuando sea necesaria para evaluar el caso.",
+    evaluacion: "Toda solicitud será evaluada para determinar si el inconveniente corresponde a un defecto de fabricación o a una situación no cubierta por esta política. Si la garantía es aprobada, VEREX podrá, según corresponda:\n- Reparar la joya.\n- Sustituirla por una igual o de características similares.\n- Reemplazarla por otro producto de igual valor cuando la reparación o sustitución no sea posible.\n\nSi se determina que existe un defecto de fabricación, VEREX asumirá los costos de envío relacionados con la garantía. En caso contrario, cualquier costo de envío será responsabilidad del cliente.",
+    destacado: "Válida solo en canales oficiales VEREX. Esta Garantía Limitada aplica únicamente a productos adquiridos directamente a través de los canales oficiales de VEREX, y podrá hacerse efectiva utilizando el número de pedido registrado en nuestro sistema. VEREX se reserva el derecho de rechazar solicitudes cuando no sea posible verificar el origen de la compra."
+};
+
+async function abrirEditorGarantia() {
+    document.getElementById("modal-garantia-editor").style.display = "flex";
+    let g = null;
+    try {
+        const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_GARANTIA", _pass: ADMIN_PASS }) });
+        const data = await res.json();
+        g = data.garantia;
+    } catch(e) { toast("⚠️ No se pudo cargar el contenido actual, mostrando valores por defecto","#f97316"); }
+    const c = { ...GARANTIA_DEFAULTS, ...(g||{}) };
+    document.getElementById("ge-dias").value       = c.dias;
+    document.getElementById("ge-intro").value      = c.intro;
+    document.getElementById("ge-cubre").value      = c.cubre;
+    document.getElementById("ge-no-cubre").value   = c.no_cubre;
+    document.getElementById("ge-promo").value      = c.promo;
+    document.getElementById("ge-solicitud").value  = c.solicitud;
+    document.getElementById("ge-evaluacion").value = c.evaluacion;
+    document.getElementById("ge-destacado").value  = c.destacado;
+}
+
+async function guardarEditorGarantia() {
+    const btn = document.getElementById("btn-ge-guardar");
+    btn.textContent = "⏳ Guardando..."; btn.disabled = true;
+    try {
+        await fetch(API_URL, { method:'POST', body: JSON.stringify({
+            accion: "GUARDAR_GARANTIA", _pass: ADMIN_PASS,
+            dias:       document.getElementById("ge-dias").value,
+            intro:      document.getElementById("ge-intro").value,
+            cubre:      document.getElementById("ge-cubre").value,
+            no_cubre:   document.getElementById("ge-no-cubre").value,
+            promo:      document.getElementById("ge-promo").value,
+            solicitud:  document.getElementById("ge-solicitud").value,
+            evaluacion: document.getElementById("ge-evaluacion").value,
+            destacado:  document.getElementById("ge-destacado").value,
+        })});
+        toast("✅ Página de Garantía actualizada","#22c55e");
+        document.getElementById("modal-garantia-editor").style.display = "none";
+    } catch(e) {
+        toast("❌ Error al guardar: " + e.message, "#ef4444");
+    }
+    btn.textContent = "💾 Guardar y publicar"; btn.disabled = false;
+}
+
 async function desactivarLinkCatalogo(linkOrId) {
     const raw = (linkOrId||"").trim();
     if (!raw) return toast("⚠️ Pega el link o código a desactivar","#f97316");
@@ -4132,11 +4187,52 @@ async function generarPDFCatalogo() {
         <p style="font-size:12px;color:#666;text-align:left;margin-bottom:14px;">Página pública e independiente del catálogo — no vende nada, solo explica la garantía. Segura de compartir con clientes de afiliados sin riesgo de desviar la venta.</p>
         <img id="garantia-qr-img" src="" alt="QR Garantía" style="width:200px;height:200px;border:1px solid #e2e2e2;border-radius:8px;margin-bottom:14px;">
         <div id="garantia-link-out" style="font-size:12px;color:#0277bd;word-break:break-all;margin-bottom:14px;font-weight:600;background:#f0f2f5;padding:8px 10px;border-radius:6px;"></div>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
             <button onclick="navigator.clipboard.writeText(document.getElementById('garantia-link-out').textContent);toast('✅ Copiado','#22c55e')"
                 style="flex:1;background:#111;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📋 Copiar Link</button>
             <a id="garantia-qr-download" download="VEREX_QR_Garantia.png"
                 style="flex:1;background:#0ea5e9;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none;">⬇️ Descargar QR</a>
+        </div>
+        <button onclick="abrirEditorGarantia()" style="width:100%;background:#fff;color:#111;border:1.5px solid #111;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">✏️ Editar contenido de la página</button>
+    </div>
+</div>
+
+<!-- Modal Editor de contenido — Garantía -->
+<div id="modal-garantia-editor" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10001;justify-content:center;align-items:center;padding:20px;">
+    <div style="background:#fff;border-radius:16px;padding:24px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.4);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <h3 style="margin:0;font-size:16px;font-weight:700;">✏️ Editar Garantía Limitada</h3>
+            <button onclick="document.getElementById('modal-garantia-editor').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;">✕</button>
+        </div>
+        <p style="font-size:11px;color:#888;margin-bottom:16px;">Los cambios se publican de inmediato en <strong>admin-tienda.pages.dev/garantia.html</strong>. En cada cuadro: una línea en blanco separa párrafos; una línea que empieza con <code>- </code> se convierte en viñeta.</p>
+
+        <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px;">Días de garantía</label>
+        <input type="number" id="ge-dias" value="30" min="1" style="width:120px;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;margin-bottom:12px;">
+
+        <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px;">Introducción (usa {dias} para el número de días)</label>
+        <textarea id="ge-intro" rows="3" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
+
+        <label style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;display:block;margin-bottom:4px;">✅ La garantía cubre (una viñeta por línea)</label>
+        <textarea id="ge-cubre" rows="4" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
+
+        <label style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;display:block;margin-bottom:4px;">❌ La garantía NO cubre (una viñeta por línea)</label>
+        <textarea id="ge-no-cubre" rows="6" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
+
+        <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px;">Productos en promoción o descuento</label>
+        <textarea id="ge-promo" rows="4" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
+
+        <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px;">Cómo solicitar la garantía</label>
+        <textarea id="ge-solicitud" rows="5" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
+
+        <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px;">Evaluación y resolución</label>
+        <textarea id="ge-evaluacion" rows="6" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
+
+        <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px;">Recuadro destacado final</label>
+        <textarea id="ge-destacado" rows="3" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:16px;"></textarea>
+
+        <div style="display:flex;gap:8px;">
+            <a href="https://admin-tienda.pages.dev/garantia.html" target="_blank" style="flex:1;text-align:center;background:#f0f2f5;color:#111;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;">👁️ Ver página en vivo</a>
+            <button id="btn-ge-guardar" onclick="guardarEditorGarantia()" style="flex:1;background:#111;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">💾 Guardar y publicar</button>
         </div>
     </div>
 </div>

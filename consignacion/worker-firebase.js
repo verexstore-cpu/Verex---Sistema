@@ -1477,6 +1477,28 @@ async function enviar(){
           break;
         }
 
+        // ══ GARANTÍA LIMITADA (editable desde el Admin) ═══════════
+        case "GET_GARANTIA": {
+          // Pública — la lee garantia.html sin necesidad de login
+          const g = await sb.get("config", "garantia");
+          result = { ok: true, garantia: g || null };
+          break;
+        }
+
+        case "GUARDAR_GARANTIA": {
+          if (!esAdmin) return forbidden();
+          const { intro, dias, cubre, no_cubre, promo, solicitud, evaluacion, destacado } = d;
+          await sb.set("config", "garantia", {
+            intro: intro || "", dias: parseInt(dias) || 30,
+            cubre: cubre || "", no_cubre: no_cubre || "",
+            promo: promo || "", solicitud: solicitud || "",
+            evaluacion: evaluacion || "", destacado: destacado || "",
+            actualizado: new Date().toISOString()
+          });
+          result = { ok: true };
+          break;
+        }
+
         // ══ ALIAS ════════════════════════════════════════════════
         case "GET_STOCK": {
           const stock = await sb.getAll("stock");

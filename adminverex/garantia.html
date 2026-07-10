@@ -21,65 +21,83 @@
     .no-cubre li::marker{color:#dc2626;}
     .box{background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:16px 18px;margin-bottom:14px;}
     .destacado{background:#111;color:#fff;border-radius:10px;padding:16px 18px;font-size:13px;margin-top:24px;}
-    .destacado b{color:#C9A84C;}
     footer{text-align:center;padding:24px 20px;font-size:11px;color:#999;}
+    #loading{text-align:center;padding:80px 20px;color:#888;font-size:14px;}
 </style>
 </head>
 <body>
     <header><img src="/images/logo.webp" alt="VEREX"></header>
-    <main>
-        <h1>Garantía Limitada VEREX</h1>
-        <span class="subt">⏱️ 30 días calendario desde la compra</span>
-
-        <p>En VEREX nos comprometemos a ofrecer joyas de alta calidad. Por ello, todas nuestras piezas cuentan con una <strong>Garantía Limitada de 30 días calendario</strong>, válida únicamente contra <strong>defectos de fabricación</strong>.</p>
-
-        <h2>✅ La garantía cubre exclusivamente</h2>
-        <div class="box">
-            <ul class="cubre">
-                <li>Piedras que se desprendan debido a un defecto en el engaste de fábrica (sin golpe ni mal uso de por medio).</li>
-                <li>Broches o cierres que presenten fallas de fabricación.</li>
-                <li>Soldaduras defectuosas.</li>
-                <li>Desprendimiento del baño (cuando aplique) por defectos de fabricación y bajo condiciones normales de uso.</li>
-            </ul>
-        </div>
-
-        <h2>❌ La garantía no cubre</h2>
-        <div class="box">
-            <ul class="no-cubre">
-                <li>Piedras desprendidas por golpes, caídas, jalones o manipulación inadecuada.</li>
-                <li>Cadenas, pulseras, aretes u otras joyas dañadas por enganches, tirones o uso brusco.</li>
-                <li>Rayones, deformaciones o desgaste normal ocasionado por el uso.</li>
-                <li>Oscurecimiento, oxidación o pérdida de brillo de la plata — es una reacción natural del material y puede variar según el pH de la piel, el sudor, perfumes, cremas, cloro, humedad y otros agentes externos. No afecta la calidad ni la autenticidad de la joya, y puede revertirse con una limpieza y mantenimiento adecuados.</li>
-                <li>Daños ocasionados por accidentes, mal uso, almacenamiento inadecuado o reparaciones realizadas por terceros.</li>
-                <li>Pérdida total o parcial de la joya o de cualquiera de sus componentes por causas ajenas a un defecto de fabricación.</li>
-            </ul>
-        </div>
-
-        <h2>🏷️ Productos en promoción o con descuento</h2>
-        <p>Los productos adquiridos con promociones o descuentos <strong>no aplican para cambios, devoluciones o reembolsos por decisión del cliente</strong>. No obstante, conservan la Garantía Limitada por defectos de fabricación establecida en esta política.</p>
-        <p>En productos vendidos como liquidación, saldo, o con un defecto previamente informado y aceptado por el cliente, la garantía no cubrirá la condición específica que motivó el descuento.</p>
-
-        <h2>📋 Cómo solicitar la garantía</h2>
-        <p>Comunícate con VEREX dentro del período de garantía a través de nuestros canales oficiales de atención, proporcionando:</p>
-        <ul>
-            <li>Número de pedido.</li>
-            <li>Fotografías o videos donde se observe el inconveniente.</li>
-        </ul>
-        <p>VEREX podrá solicitar información adicional cuando sea necesaria para evaluar el caso.</p>
-
-        <h2>🔍 Evaluación y resolución</h2>
-        <p>Toda solicitud será evaluada para determinar si el inconveniente corresponde a un defecto de fabricación o a una situación no cubierta por esta política. Si la garantía es aprobada, VEREX podrá, según corresponda:</p>
-        <ul>
-            <li>Reparar la joya.</li>
-            <li>Sustituirla por una igual o de características similares.</li>
-            <li>Reemplazarla por otro producto de igual valor cuando la reparación o sustitución no sea posible.</li>
-        </ul>
-        <p>Si se determina que existe un defecto de fabricación, VEREX asumirá los costos de envío relacionados con la garantía. En caso contrario, cualquier costo de envío será responsabilidad del cliente.</p>
-
-        <div class="destacado">
-            <b>Válida solo en canales oficiales VEREX.</b> Esta Garantía Limitada aplica únicamente a productos adquiridos directamente a través de los canales oficiales de VEREX, y podrá hacerse efectiva utilizando el número de pedido registrado en nuestro sistema. VEREX se reserva el derecho de rechazar solicitudes cuando no sea posible verificar el origen de la compra.
-        </div>
-    </main>
+    <div id="app"><div id="loading">Cargando…</div></div>
     <footer>VEREX · La expresión de tu mejor versión</footer>
+
+<script>
+    const API_URL = "https://verex-api.verexstore.workers.dev/";
+
+    // Valores por defecto — se usan si el Admin todavía no ha guardado nada
+    // desde el editor de Garantía. Formato: párrafos separados por línea en
+    // blanco; una línea que empieza con "- " se convierte en viñeta.
+    const DEFAULTS = {
+        dias: 30,
+        intro: "En VEREX nos comprometemos a ofrecer joyas de alta calidad. Por ello, todas nuestras piezas cuentan con una Garantía Limitada de {dias} días calendario, válida únicamente contra defectos de fabricación.",
+        cubre: "Piedras que se desprendan debido a un defecto en el engaste de fábrica (sin golpe ni mal uso de por medio).\nBroches o cierres que presenten fallas de fabricación.\nSoldaduras defectuosas.\nDesprendimiento del baño (cuando aplique) por defectos de fabricación y bajo condiciones normales de uso.",
+        no_cubre: "Piedras desprendidas por golpes, caídas, jalones o manipulación inadecuada.\nCadenas, pulseras, aretes u otras joyas dañadas por enganches, tirones o uso brusco.\nRayones, deformaciones o desgaste normal ocasionado por el uso.\nOscurecimiento, oxidación o pérdida de brillo de la plata — es una reacción natural del material y puede variar según el pH de la piel, el sudor, perfumes, cremas, cloro, humedad y otros agentes externos. No afecta la calidad ni la autenticidad de la joya, y puede revertirse con una limpieza y mantenimiento adecuados.\nDaños ocasionados por accidentes, mal uso, almacenamiento inadecuado o reparaciones realizadas por terceros.\nPérdida total o parcial de la joya o de cualquiera de sus componentes por causas ajenas a un defecto de fabricación.",
+        promo: "Los productos adquiridos con promociones o descuentos no aplican para cambios, devoluciones o reembolsos por decisión del cliente. No obstante, conservan la Garantía Limitada por defectos de fabricación establecida en esta política.\n\nEn productos vendidos como liquidación, saldo, o con un defecto previamente informado y aceptado por el cliente, la garantía no cubrirá la condición específica que motivó el descuento.",
+        solicitud: "Comunícate con VEREX dentro del período de garantía a través de nuestros canales oficiales de atención, proporcionando:\n- Número de pedido.\n- Fotografías o videos donde se observe el inconveniente.\n\nVEREX podrá solicitar información adicional cuando sea necesaria para evaluar el caso.",
+        evaluacion: "Toda solicitud será evaluada para determinar si el inconveniente corresponde a un defecto de fabricación o a una situación no cubierta por esta política. Si la garantía es aprobada, VEREX podrá, según corresponda:\n- Reparar la joya.\n- Sustituirla por una igual o de características similares.\n- Reemplazarla por otro producto de igual valor cuando la reparación o sustitución no sea posible.\n\nSi se determina que existe un defecto de fabricación, VEREX asumirá los costos de envío relacionados con la garantía. En caso contrario, cualquier costo de envío será responsabilidad del cliente.",
+        destacado: "Válida solo en canales oficiales VEREX. Esta Garantía Limitada aplica únicamente a productos adquiridos directamente a través de los canales oficiales de VEREX, y podrá hacerse efectiva utilizando el número de pedido registrado en nuestro sistema. VEREX se reserva el derecho de rechazar solicitudes cuando no sea posible verificar el origen de la compra."
+    };
+
+    function esc(s){ const d=document.createElement("div"); d.textContent=String(s||""); return d.innerHTML; }
+
+    // Convierte texto plano (párrafos separados por línea en blanco, "- " = viñeta) a HTML
+    function renderTexto(txt, ulClass){
+        const bloques = String(txt||"").split(/\n\s*\n/);
+        return bloques.map(bloque => {
+            const lineas = bloque.split("\n").map(l=>l.trim()).filter(Boolean);
+            if (!lineas.length) return "";
+            if (lineas.every(l => l.startsWith("- "))) {
+                return `<ul${ulClass?` class="${ulClass}"`:""}>${lineas.map(l=>`<li>${esc(l.slice(2))}</li>`).join("")}</ul>`;
+            }
+            return `<p>${esc(bloque.replace(/\n/g," "))}</p>`;
+        }).join("");
+    }
+
+    async function cargar(){
+        let g = null;
+        try {
+            const res = await fetch(API_URL, { method:"POST", body: JSON.stringify({ accion:"GET_GARANTIA" }) });
+            const data = await res.json();
+            g = data.garantia;
+        } catch(_) {}
+        const c = { ...DEFAULTS, ...(g||{}) };
+        const dias = c.dias || 30;
+        const intro = String(c.intro||"").replace("{dias}", dias);
+
+        document.getElementById("app").innerHTML = `
+            <main>
+                <h1>Garantía Limitada VEREX</h1>
+                <span class="subt">⏱️ ${esc(dias)} días calendario desde la compra</span>
+                <p>${esc(intro)}</p>
+
+                <h2>✅ La garantía cubre exclusivamente</h2>
+                <div class="box">${renderTexto(c.cubre, "cubre")}</div>
+
+                <h2>❌ La garantía no cubre</h2>
+                <div class="box">${renderTexto(c.no_cubre, "no-cubre")}</div>
+
+                <h2>🏷️ Productos en promoción o con descuento</h2>
+                ${renderTexto(c.promo)}
+
+                <h2>📋 Cómo solicitar la garantía</h2>
+                ${renderTexto(c.solicitud)}
+
+                <h2>🔍 Evaluación y resolución</h2>
+                ${renderTexto(c.evaluacion)}
+
+                <div class="destacado">${esc(c.destacado)}</div>
+            </main>`;
+    }
+    cargar();
+</script>
 </body>
 </html>
