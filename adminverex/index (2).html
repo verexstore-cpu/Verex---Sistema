@@ -3093,6 +3093,7 @@ async function generarLinkCatalogo() {
                 sizesD: szExport.sizesD,
                 sizesH: szExport.sizesH,
                 par:    p._esPareja || /matrimonio|argolla|novios|pareja|alianza/i.test(p.nombre||"") || false,
+                piezas: p._piezas || (p._esPareja ? 2 : null),
                 pD:    p._precioDama||null,
                 pH:    p._precioCab||null,
                 ne:    getNotaEspecial(p),
@@ -3255,40 +3256,45 @@ function agruparParaCatalogo(lista) {
     const sortNum = arr => arr.sort((a,b) => parseFloat(a)-parseFloat(b));
     map.forEach(g => { sortNum(g._sizes); sortNum(g._sizesD); sortNum(g._sizesH); });
 
-    // Pair pricing: sum dama + caballero prices
+    // Set pricing: suma precios de todas las piezas dama + caballero del grupo.
+    // Un set normal es 1 dama + 1 caballero (pareja). Cuando hay 2 piezas dama
+    // (ej. compromiso + matrimonio) + 1 caballero, es un trío — se detecta solo,
+    // sin requerir ninguna opción nueva al ingresar stock.
     map.forEach(g => {
         if (!ES_PAR_GRP.test(g.nombre)) return;
         const originals = lista.filter(p => g._codigos.includes(p.codigo));
-        let dama = originals.find(isDamaP);
-        let cab  = originals.find(isCabP);
+        let damas = originals.filter(isDamaP);
+        let cabs  = originals.filter(isCabP);
 
-        // If partner missing from filtered list, search the full products catalog
-        if ((!dama || !cab) && typeof productos !== "undefined") {
+        // Si faltan piezas en la lista filtrada, buscar en el catálogo completo
+        if ((!damas.length || !cabs.length) && typeof productos !== "undefined") {
             const allAN = productos.filter(p => getCatKey(p) === "AN");
             const partners = allAN.filter(p => !g._codigos.includes(p.codigo) && stripBase(p.nombre) === g.nombre);
-            if (!dama) {
-                dama = partners.find(isDamaP);
-                if (dama) { // pull in dama sizes
+            if (!damas.length) {
+                damas = partners.filter(isDamaP);
+                damas.forEach(dama => {
                     let s2 = {}; try { s2 = JSON.parse(dama.caracteristicas||"{}"); } catch(_) {}
                     Object.entries(s2).forEach(([k,v]) => { if ((parseInt(v)||0)>0 && /^D\d/i.test(k)) addSz(g._sizesD, k.replace(/^D/i,"")); });
-                    sortNum(g._sizesD);
-                }
+                });
+                sortNum(g._sizesD);
             }
-            if (!cab) {
-                cab = partners.find(isCabP);
-                if (cab) { // pull in caballero sizes
+            if (!cabs.length) {
+                cabs = partners.filter(isCabP);
+                cabs.forEach(cab => {
                     let s2 = {}; try { s2 = JSON.parse(cab.caracteristicas||"{}"); } catch(_) {}
                     Object.entries(s2).forEach(([k,v]) => { if ((parseInt(v)||0)>0 && /^[HC]\d/i.test(k)) addSz(g._sizesH, k.replace(/^[HC]/i,"")); });
-                    sortNum(g._sizesH);
-                }
+                });
+                sortNum(g._sizesH);
             }
         }
 
-        if (dama && cab) {
+        if (damas.length && cabs.length) {
             g._esPareja = true;
-            if (dama.codigo !== cab.codigo) {
-                g._precioDama = parseFloat(dama.precio||0).toFixed(2);
-                g._precioCab  = parseFloat(cab.precio||0).toFixed(2);
+            g._piezas = damas.length + cabs.length; // 2 = pareja, 3 = trío, etc.
+            const codigosUnicos = new Set([...damas, ...cabs].map(p => p.codigo));
+            if (codigosUnicos.size > 1) {
+                g._precioDama = damas.reduce((sum,d) => sum + parseFloat(d.precio||0), 0).toFixed(2);
+                g._precioCab  = cabs.reduce((sum,c) => sum + parseFloat(c.precio||0), 0).toFixed(2);
             }
         }
     });
