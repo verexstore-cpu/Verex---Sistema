@@ -232,7 +232,13 @@ async function enviar(){
 
         case "STOCK_REGISTRAR": {
           if (!esAdmin) return forbidden();
-          const items = Array.isArray(d.items) ? d.items : [d];
+          // Nunca guardar campos de control de la petición (contraseña, nombre de
+          // acción, etc.) dentro del documento — GET_STOCK es público y los expondría.
+          const limpiarControl = obj => {
+            const { _pass, accion, items, ...limpio } = obj;
+            return limpio;
+          };
+          const items = (Array.isArray(d.items) ? d.items : [d]).map(limpiarControl);
           const codigos = [];
           // Cargar stock UNA sola vez fuera del loop (evita race condition y N queries)
           const allStockCache = await sb.getAll("stock");
@@ -313,6 +319,22 @@ async function enviar(){
             }
           }
           result = { ok: true, reparados, total: todos.length };
+          break;
+        }
+
+        // Limpieza única: purgar campos de control (contraseña, nombre de acción)
+        // que quedaron guardados por error en filas de stock ya existentes.
+        case "STOCK_LIMPIAR_CAMPOS_SENSIBLES": {
+          if (!esAdmin) return forbidden();
+          const todos = await sb.getAll("stock");
+          let limpiados = 0;
+          for (const p of todos) {
+            if (p._pass === undefined && p.accion === undefined) continue;
+            const { _pass, accion, id, ...limpio } = p;
+            await sb.set("stock", p.id || p.codigo, limpio);
+            limpiados++;
+          }
+          result = { ok: true, limpiados, total: todos.length };
           break;
         }
 
