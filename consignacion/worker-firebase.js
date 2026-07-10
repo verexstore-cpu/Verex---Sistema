@@ -1346,27 +1346,31 @@ async function enviar(){
           const lead = await sb.get("leads", d.id);
           if (!lead) { result = { ok: false, error: "Lead no encontrado" }; break; }
           if (lead.estado === "vendido") { result = { ok: false, error: "Este lead ya fue confirmado" }; break; }
-          const s = await sb.get("stock", lead.codigo);
-          if (!s) { result = { ok: false, error: "El producto ya no existe en stock" }; break; }
+          // Para diseños de pareja el código guardado en el Lead puede ser ambiguo
+          // (se eligió arbitrariamente al agrupar el catálogo) — el admin puede
+          // corregirlo antes de confirmar, verificando cuál pieza se vendió realmente.
+          const codigoReal = (d.codigoOverride && String(d.codigoOverride).trim()) || lead.codigo;
+          const s = await sb.get("stock", codigoReal);
+          if (!s) { result = { ok: false, error: "El producto (" + codigoReal + ") ya no existe en stock" }; break; }
           const disponible = (parseInt(s.stock_bodega)||0) + (parseInt(s.stock_tienda)||0);
           if (disponible < 1) { result = { ok: false, error: "Sin stock disponible para confirmar esta venta" }; break; }
-          const consId = "CONS_" + Date.now() + "_" + lead.codigo;
+          const consId = "CONS_" + Date.now() + "_" + codigoReal;
           await sb.set("consignacion", consId, {
-            id: consId, vendedor: lead.afiliado, codigo: lead.codigo,
-            nombre: lead.nombre, codigoBase: s.codigoBase || lead.codigo,
+            id: consId, vendedor: lead.afiliado, codigo: codigoReal,
+            nombre: lead.nombre, codigoBase: s.codigoBase || codigoReal,
             talla: s.talla || "", nombre_base: s.nombre_base || lead.nombre,
             categoria: s.categoria || "", precio: lead.precio || s.precio || 0,
             cantidad: 1, vendido: 1,
             foto: lead.foto || s.foto || "", fecha: new Date().toISOString(), estado: "activo"
           });
           const restaDeBodega = Math.min(1, parseInt(s.stock_bodega)||0);
-          await sb.update("stock", lead.codigo, {
+          await sb.update("stock", codigoReal, {
             stock_bodega:       Math.max(0, (parseInt(s.stock_bodega)||0) - restaDeBodega),
             stock_tienda:       Math.max(0, (parseInt(s.stock_tienda)||0) - (1 - restaDeBodega)),
             stock_consignacion: (parseInt(s.stock_consignacion)||0) + 1,
             stock_vendido:      (parseInt(s.stock_vendido)||0) + 1
           });
-          const historial = [...(lead.historial || []), { estado: "vendido", fecha: new Date().toISOString() }];
+          const historial = [...(lead.historial || []), { estado: "vendido", fecha: new Date().toISOString(), codigoConfirmado: codigoReal }];
           await sb.update("leads", d.id, { estado: "vendido", historial, consignacionId: consId });
           result = { ok: true };
           break;

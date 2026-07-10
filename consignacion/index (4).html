@@ -1659,10 +1659,24 @@ function renderLeadsModal(codigo) {
 }
 
 async function confirmarLeadVenta(id) {
-    const res = await apiPost({ accion: "CONFIRMAR_LEAD_VENTA", id });
+    const lead = leadsData.find(l => l.id === id);
+    let codigoOverride = null;
+    // Los diseños de pareja (dama+caballero) se agrupan en el catálogo bajo un solo
+    // código elegido al azar — al confirmar, hay que verificar cuál pieza fue la real.
+    const esPareja = /matrimonio|argolla|novios|pareja|alianza/i.test(lead?.nombre || "");
+    if (esPareja) {
+        const nuevo = prompt(
+            "Este es un diseño de pareja (dama/caballero) — el código pudo quedar ambiguo al agrupar el catálogo.\n\n" +
+            "Verifica o corrige el código EXACTO de la pieza que realmente se vendió (dama o caballero) antes de descontar stock:",
+            lead?.codigo || ""
+        );
+        if (nuevo === null) return; // canceló
+        codigoOverride = nuevo.trim();
+        if (!codigoOverride) { toast("⚠️ Código vacío — cancelado"); return; }
+    }
+    const res = await apiPost({ accion: "CONFIRMAR_LEAD_VENTA", id, codigoOverride });
     if (!res.ok) { toast("⚠️ " + (res.error || "No se pudo confirmar")); return; }
     toast("✅ Venta confirmada — stock y comisión actualizados");
-    const lead = leadsData.find(l => l.id === id);
     const codigoVend = lead?.afiliado;
     await cargarDatos();
     if (codigoVend) renderLeadsModal(codigoVend);
@@ -4094,11 +4108,15 @@ function abrirCorte() {
             </div>
         </div>`;
     }).join('') : '<p style="color:var(--plateado);font-size:13px;">¡Todo vendido! 🎉</p>';
+    const afiliadoSinStockResumen = vendedorActual.tipo === "afiliado" && !vendedorActual.recibeFisico;
+    const filaFinalResumen = afiliadoSinStockResumen
+        ? `<span style="color:var(--plateado);">VEREX te debe:</span><strong style="font-size:16px;color:#27ae60;">$${ganancia.toFixed(2)}</strong>`
+        : `<span style="color:var(--plateado);">A recibir por VEREX:</span><strong style="font-size:16px;">$${(valorVend - ganancia).toFixed(2)}</strong>`;
     document.getElementById("totales-corte").innerHTML = `
         <div style="font-size:13px;display:flex;flex-direction:column;gap:8px;">
             <div style="display:flex;justify-content:space-between;"><span style="color:var(--plateado);">Total vendido:</span><strong>$${valorVend.toFixed(2)}</strong></div>
             <div style="display:flex;justify-content:space-between;"><span style="color:var(--plateado);">Comisión vendedor (${pct}%):</span><strong style="color:var(--dorado);">$${ganancia.toFixed(2)}</strong></div>
-            <div style="display:flex;justify-content:space-between;border-top:1px solid var(--borde);padding-top:8px;"><span style="color:var(--plateado);">A recibir por VEREX:</span><strong style="font-size:16px;">$${(valorVend - ganancia).toFixed(2)}</strong></div>
+            <div style="display:flex;justify-content:space-between;border-top:1px solid var(--borde);padding-top:8px;">${filaFinalResumen}</div>
         </div>`;
     abrirModal("modal-corte");
 }
@@ -4128,10 +4146,16 @@ async function confirmarCorte() {
     const invCorte = consignacion.filter(c => c.vendedor === vendedorActual.codigo);
     generarPDFCorte(vendedorActual, invCorte, _corteValorVend, _cortePct, _corteGanancia);
     const tel = String(vendedorActual.telefono||"").replace(/\D/g,"");
+    // Un afiliado sin stock físico nunca cobra al cliente — VEREX cobra directo y
+    // le debe la comisión al afiliado, al revés que consignación (donde el vendedor
+    // ya tiene el dinero del cliente en mano y le remite el saldo a VEREX).
+    const afiliadoSinStock = vendedorActual.tipo === "afiliado" && !vendedorActual.recibeFisico;
     const msg = "Corte VEREX - " + vendedorActual.nombre + "\n"
         + "Total vendido: $" + _corteValorVend.toFixed(2) + "\n"
-        + "Tu ganancia (" + _cortePct + "%): $" + _corteGanancia.toFixed(2) + "\n"
-        + "A pagar a VEREX: $" + (_corteValorVend - _corteGanancia).toFixed(2);
+        + "Tu comisión (" + _cortePct + "%): $" + _corteGanancia.toFixed(2) + "\n"
+        + (afiliadoSinStock
+            ? "VEREX te debe pagar: $" + _corteGanancia.toFixed(2)
+            : "A pagar a VEREX: $" + (_corteValorVend - _corteGanancia).toFixed(2));
     window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg));
 }
 
@@ -4195,8 +4219,11 @@ function generarPDFCorte(vendedor, inv, valorVend, pct, ganancia) {
     const doc = new jsPDF({ unit: 'in', format: [4, 6] });
     const pageW = 4, mL = 0.35, lh = 0.18;
     let y = 0.45;
+    // Un afiliado sin stock físico nunca cobra al cliente — VEREX cobra directo y
+    // le debe la comisión al afiliado, al revés que consignación.
+    const afiliadoSinStock = vendedor.tipo === "afiliado" && !vendedor.recibeFisico;
     doc.setFont("helvetica","bold"); doc.setFontSize(13);
-    doc.text("VEREX - Corte de Consignacion", pageW/2, y, {align:"center"}); y += 0.28;
+    doc.text(afiliadoSinStock ? "VEREX - Corte de Comision" : "VEREX - Corte de Consignacion", pageW/2, y, {align:"center"}); y += 0.28;
     doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(100,100,100);
     doc.text("Fecha: " + new Date().toLocaleDateString("es-SV"), pageW/2, y, {align:"center"}); y += 0.28;
     doc.setTextColor(0,0,0);
@@ -4219,7 +4246,10 @@ function generarPDFCorte(vendedor, inv, valorVend, pct, ganancia) {
         y += rowH;
     });
     y += 0.1;
-    [["TOTAL VENDIDO:","$"+valorVend.toFixed(2),false],["COMISION ("+pct+"%):","$"+ganancia.toFixed(2),false],["A PAGAR A VEREX:","$"+(valorVend-ganancia).toFixed(2),true]].forEach(([label,valor,bold]) => {
+    const filaFinal = afiliadoSinStock
+        ? ["VEREX TE DEBE:", "$"+ganancia.toFixed(2)]
+        : ["A PAGAR A VEREX:", "$"+(valorVend-ganancia).toFixed(2)];
+    [["TOTAL VENDIDO:","$"+valorVend.toFixed(2),false],["COMISION ("+pct+"%):","$"+ganancia.toFixed(2),false],[filaFinal[0],filaFinal[1],true]].forEach(([label,valor,bold]) => {
         doc.setDrawColor(190,190,190); doc.setLineWidth(0.005); doc.rect(mL,y,tW,rowH,'S');
         doc.setFont("helvetica", bold?"bold":"normal"); doc.setFontSize(bold?9:8);
         doc.text(label, cols[2].x-0.06, y+rowH/2+0.03, {align:"right"});
