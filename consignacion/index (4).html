@@ -1803,8 +1803,7 @@ function generarHojaInformativaAfiliadoPDF() {
         doc.setFont("helvetica", "bold");
         doc.text(r.pct + "%", mL + 120, y + 5); y += 7;
     });
-    y += 3;
-    parrafo("En algunos casos VEREX puede acordar una comisión fija distinta a la tabla — si aplica para ti, se detallará en tu contrato.");
+    y += 2;
 
     seccion("4. ¿RECIBES PIEZAS FÍSICAS O NO?");
     bullet("Sin piezas físicas (lo más común): tú solo cierras la venta, VEREX se encarga de la entrega. No tienes responsabilidad sobre el inventario.");
@@ -1814,10 +1813,16 @@ function generarHojaInformativaAfiliadoPDF() {
     bullet("Vendes al precio que aparece en el catálogo — no puedes cambiar precios sin autorización de VEREX.");
     bullet("El catálogo se actualiza en tiempo real: si un producto se agota, se marca automáticamente y ya no se puede ofrecer.");
 
-    seccion("6. ¿CUÁNDO SE PAGA?");
+    seccion("6. GARANTÍA — OSCURECIMIENTO DE LA PLATA");
+    parrafo("Es normal que una pieza de plata se oscurezca u oxide con el tiempo. Esto NO es un defecto de fábrica — ocurre por el contacto con la piel (el pH de cada persona es distinto), sudor, perfumes, cremas, cloro o humedad. Es una reacción química natural de la plata, no una falla del producto.");
+    bullet("La garantía de VEREX cubre defectos de fabricación (piedras que se caen, broches rotos, soldaduras defectuosas) — NO cubre el oscurecimiento por uso normal.");
+    bullet("Explícale esto a tu cliente ANTES de la venta, para evitar reclamos por algo que no es defecto. Recomiéndale limpiar la pieza con un paño seco y evitar el contacto con perfume, cloro o crema directamente sobre la joya.");
+    bullet("Si tienes dudas sobre si un caso específico es defecto o desgaste normal, consúltalo con VEREX antes de prometerle algo al cliente.");
+
+    seccion("7. ¿CUÁNDO SE PAGA?");
     parrafo("Tu comisión se liquida en cada corte de cuentas, únicamente sobre las ventas que VEREX ya confirmó como entregadas. Coordina con VEREX la frecuencia de tu corte.");
 
-    seccion("7. SIGUIENTE PASO");
+    seccion("8. SIGUIENTE PASO");
     parrafo("Si estás de acuerdo con esta dinámica, VEREX registrará tu ficha y generará tu contrato de afiliado con estas mismas condiciones para que lo firmes (en persona o a distancia).");
 
     // Footer
