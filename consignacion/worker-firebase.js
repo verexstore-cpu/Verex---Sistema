@@ -327,14 +327,13 @@ async function enviar(){
         case "STOCK_LIMPIAR_CAMPOS_SENSIBLES": {
           if (!esAdmin) return forbidden();
           const todos = await sb.getAll("stock");
-          let limpiados = 0;
-          for (const p of todos) {
-            if (p._pass === undefined && p.accion === undefined) continue;
+          const pendientes = todos.filter(p => p._pass !== undefined || p.accion !== undefined);
+          const lote = pendientes.slice(0, parseInt(d.limit) || 40); // límite de subrequests por invocación
+          for (const p of lote) {
             const { _pass, accion, id, ...limpio } = p;
             await sb.set("stock", p.id || p.codigo, limpio);
-            limpiados++;
           }
-          result = { ok: true, limpiados, total: todos.length };
+          result = { ok: true, limpiados: lote.length, quedan: pendientes.length - lote.length, total: todos.length };
           break;
         }
 
