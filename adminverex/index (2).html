@@ -325,6 +325,7 @@
             </a>
             <a href="https://verexstore.com" target="_blank" class="btn-header">👁️ Ver Tienda</a>
             <a href="https://verex-consignacion.pages.dev" target="_blank" class="btn-header">📦 Consignación</a>
+            <button class="btn-header" onclick="abrirModalGarantia()" style="border-color:#0ea5e9;color:#0ea5e9;">🛡️ Link/QR Garantía</button>
             <button class="btn-header" onclick="abrirCambiarClave()" style="border-color:#f59e0b;color:#f59e0b;">🔑 Cambiar Clave</button>
             <button class="btn-header btn-logout" onclick="logout()">Salir</button>
         </div>
@@ -3155,6 +3156,18 @@ async function generarLinkCatalogo() {
     finally { btn.textContent="🔗 Link"; btn.disabled=false; }
 }
 
+// Link/QR fijo hacia la página de Garantía Limitada — vive en el dominio
+// admin-tienda.pages.dev (independiente de verexstore.com) para que un
+// cliente de afiliado pueda consultarla sin terminar en la tienda directa
+// de VEREX y sin riesgo de que el afiliado pierda la venta.
+const GARANTIA_URL = "https://admin-tienda.pages.dev/garantia.html";
+function abrirModalGarantia() {
+    document.getElementById("garantia-link-out").textContent = GARANTIA_URL;
+    document.getElementById("garantia-qr-img").src = "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=" + encodeURIComponent(GARANTIA_URL);
+    document.getElementById("garantia-qr-download").href = "https://api.qrserver.com/v1/create-qr-code/?size=800x800&data=" + encodeURIComponent(GARANTIA_URL);
+    document.getElementById("modal-garantia").style.display = "flex";
+}
+
 async function desactivarLinkCatalogo(linkOrId) {
     const raw = (linkOrId||"").trim();
     if (!raw) return toast("⚠️ Pega el link o código a desactivar","#f97316");
@@ -4106,6 +4119,25 @@ async function generarPDFCatalogo() {
         <button onclick="guardarNuevaClave()" style="width:100%;padding:12px;background:#111;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;">
             💾 Guardar Nueva Contraseña
         </button>
+    </div>
+</div>
+
+<!-- Modal Link/QR Garantía -->
+<div id="modal-garantia" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10000;justify-content:center;align-items:center;padding:20px;">
+    <div style="background:#fff;border-radius:16px;padding:28px;max-width:380px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.4);text-align:center;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;text-align:left;">
+            <h3 style="margin:0;font-size:16px;font-weight:700;">🛡️ Garantía Limitada — Link / QR</h3>
+            <button onclick="document.getElementById('modal-garantia').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;">✕</button>
+        </div>
+        <p style="font-size:12px;color:#666;text-align:left;margin-bottom:14px;">Página pública e independiente del catálogo — no vende nada, solo explica la garantía. Segura de compartir con clientes de afiliados sin riesgo de desviar la venta.</p>
+        <img id="garantia-qr-img" src="" alt="QR Garantía" style="width:200px;height:200px;border:1px solid #e2e2e2;border-radius:8px;margin-bottom:14px;">
+        <div id="garantia-link-out" style="font-size:12px;color:#0277bd;word-break:break-all;margin-bottom:14px;font-weight:600;background:#f0f2f5;padding:8px 10px;border-radius:6px;"></div>
+        <div style="display:flex;gap:8px;">
+            <button onclick="navigator.clipboard.writeText(document.getElementById('garantia-link-out').textContent);toast('✅ Copiado','#22c55e')"
+                style="flex:1;background:#111;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📋 Copiar Link</button>
+            <a id="garantia-qr-download" download="VEREX_QR_Garantia.png"
+                style="flex:1;background:#0ea5e9;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none;">⬇️ Descargar QR</a>
+        </div>
     </div>
 </div>
 
