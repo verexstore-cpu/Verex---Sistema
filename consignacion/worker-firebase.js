@@ -399,6 +399,77 @@ async function enviar(){
           break;
         }
 
+        case "GUARDAR_TOKEN_PEDIDOS": {
+          if (!esAdmin) return forbidden();
+          await sb.update("vendedores", d.vendedor, { tokenPedidos: d.token });
+          result = { ok: true };
+          break;
+        }
+
+        // Público — portal del afiliado para completar pedidos (protegido por token)
+        case "GET_LEADS_PORTAL_AFILIADO": {
+          const vend = await sb.get("vendedores", d.vendedor);
+          if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
+          if (!vend.tokenPedidos || String(vend.tokenPedidos) !== String(d.token)) {
+            result = { ok: false, error: "Link inválido" }; break;
+          }
+          const todos = await sb.getAll("leads");
+          // Solo leads propios, activos y que todavía no tienen datos de cliente completados
+          const pendientes = todos.filter(l => l.afiliado === d.vendedor && l.estado === "interesado" && !l.cliente);
+          result = { ok: true, leads: pendientes, vendedorNombre: vend.nombre };
+          break;
+        }
+
+        // Público — el afiliado completa un pedido (uno o más Leads del mismo
+        // cliente) con nombre, teléfono y dirección. NO mueve stock ni genera
+        // comisión — solo adjunta los datos; el admin sigue confirmando desde
+        // Consignación → Leads como ya lo hacía, ahora con el pedido completo.
+        case "COMPLETAR_PEDIDO_LEADS": {
+          const vend = await sb.get("vendedores", d.vendedor);
+          if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
+          if (!vend.tokenPedidos || String(vend.tokenPedidos) !== String(d.token)) {
+            result = { ok: false, error: "Link inválido" }; break;
+          }
+          const cliente = d.cliente || {};
+          if (!cliente.nombre || !cliente.telefono || !cliente.departamento || !cliente.municipio || !cliente.direccion) {
+            result = { ok: false, error: "Faltan datos del cliente" }; break;
+          }
+          const leadIds = Array.isArray(d.leadIds) ? d.leadIds : [];
+          if (!leadIds.length) { result = { ok: false, error: "Selecciona al menos un producto" }; break; }
+
+          const leads = [];
+          for (const id of leadIds) {
+            const lead = await sb.get("leads", id);
+            if (lead && lead.afiliado === d.vendedor && lead.estado === "interesado" && !lead.cliente) leads.push(lead);
+          }
+          if (!leads.length) { result = { ok: false, error: "Esos productos ya no están disponibles para completar" }; break; }
+
+          const subtotal = leads.reduce((s, l) => s + (parseFloat(l.precio) || 0), 0);
+          let envio = subtotal >= 30 ? 0 : 2;
+          try {
+            const cfg = await sb.get("config", "settings");
+            if (cfg?.reglasEnvio?.length) {
+              const regla = cfg.reglasEnvio.slice().sort((a,b) => a.min - b.min).find(r => subtotal >= r.min && subtotal <= r.max);
+              if (regla) envio = regla.costo;
+            }
+          } catch(_) {}
+          const total = subtotal + envio;
+          const pedidoId = "PEDAF_" + Date.now();
+          const fecha = new Date().toISOString();
+
+          for (const lead of leads) {
+            const historial = [...(lead.historial || []), { estado: "pedido_completado", fecha }];
+            await sb.update("leads", lead.id, {
+              cliente, metodoPago: "efectivo", tipoPago: "contra_entrega",
+              pedidoId, pedidoFecha: fecha,
+              envioInfo: { subtotal, envio, total },
+              historial
+            });
+          }
+          result = { ok: true, pedidoId, subtotal, envio, total };
+          break;
+        }
+
         // Público — página de firma remota (sin sesión de admin, protegida por token)
         case "GET_VENDEDOR_FIRMA": {
           const vend = await sb.get("vendedores", d.vendedor);

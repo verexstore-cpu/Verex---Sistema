@@ -848,6 +848,9 @@
                 <button class="menu-btn menu-btn-full" data-color="#0277bd" onclick="descargarContratoActual()">
                     <span class="menu-ico">📄</span><span class="menu-txt" id="btn-menu-contrato-txt">Descargar Contrato</span><span class="menu-arr">›</span>
                 </button>
+                <button class="menu-btn menu-btn-full" id="btn-menu-link-pedidos" data-color="#C9A84C" onclick="enviarLinkPedidos()" style="display:none;">
+                    <span class="menu-ico">🔗</span><span class="menu-txt">Link para Completar Pedidos</span><span class="menu-arr">›</span>
+                </button>
                 <button class="menu-btn menu-btn-full" id="btn-marcar-firmado-fisico" data-color="#16a34a" onclick="marcarFirmadoFisico()" style="display:none;">
                     <span class="menu-ico">✅</span><span class="menu-txt">Marcar como firmado en papel</span><span class="menu-arr">›</span>
                 </button>
@@ -1657,17 +1660,27 @@ function renderLeadsModal(codigo) {
         const info = LEAD_ESTADO_INFO[l.estado] || LEAD_ESTADO_INFO.interesado;
         const fecha = l.fecha ? new Date(l.fecha).toLocaleDateString("es-SV", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" }) : "";
         const accionable = l.estado === "interesado" || l.estado === "reportado";
-        return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--gris2);border:1px solid var(--borde);border-radius:10px;margin-bottom:8px;">
-            ${l.foto ? `<img src="${sanitizar(ikFoto(l.foto,120))}" onerror="this.style.display='none'" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0;">` : ''}
-            <div style="flex:1;min-width:0;">
-                <div style="font-size:12px;font-weight:700;">${sanitizar(l.nombre||l.codigo)}</div>
-                <div style="font-size:11px;color:var(--plateado);">$${parseFloat(l.precio||0).toFixed(2)} · ${fecha}</div>
-                <div style="font-size:11px;font-weight:600;color:${info.color};margin-top:2px;">${info.label}</div>
+        const c = l.cliente;
+        const clienteHtml = c ? `<div style="margin-top:6px;padding:8px 10px;background:var(--negro);border:1px solid var(--borde);border-radius:8px;font-size:11px;line-height:1.7;">
+                <div style="color:#16a34a;font-weight:700;">✅ Pedido completado por el afiliado</div>
+                <div><b>${sanitizar(c.nombre)}</b> · ${sanitizar(c.telefono)}</div>
+                <div>${sanitizar(c.direccion)}, ${sanitizar(c.municipio)}, ${sanitizar(c.departamento)}</div>
+                <div>💵 Contra entrega en efectivo${l.envioInfo ? ` · Envío: ${l.envioInfo.envio===0?'GRATIS':'$'+l.envioInfo.envio.toFixed(2)} · Total: $${l.envioInfo.total.toFixed(2)}` : ''}</div>
+            </div>` : '';
+        return `<div style="padding:10px 12px;background:var(--gris2);border:1px solid var(--borde);border-radius:10px;margin-bottom:8px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                ${l.foto ? `<img src="${sanitizar(ikFoto(l.foto,120))}" onerror="this.style.display='none'" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0;">` : ''}
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:12px;font-weight:700;">${sanitizar(l.nombre||l.codigo)}</div>
+                    <div style="font-size:11px;color:var(--plateado);">$${parseFloat(l.precio||0).toFixed(2)} · ${fecha}</div>
+                    <div style="font-size:11px;font-weight:600;color:${info.color};margin-top:2px;">${info.label}</div>
+                </div>
+                ${accionable ? `<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+                    <button onclick="confirmarLeadVenta('${sanitizar(l.id)}')" style="padding:5px 10px;font-size:11px;background:#27ae60;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✅ Confirmar</button>
+                    <button onclick="cancelarLeadUI('${sanitizar(l.id)}')" style="padding:5px 10px;font-size:11px;background:#e74c3c;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">❌ Cancelar</button>
+                </div>` : ''}
             </div>
-            ${accionable ? `<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
-                <button onclick="confirmarLeadVenta('${sanitizar(l.id)}')" style="padding:5px 10px;font-size:11px;background:#27ae60;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✅ Confirmar</button>
-                <button onclick="cancelarLeadUI('${sanitizar(l.id)}')" style="padding:5px 10px;font-size:11px;background:#e74c3c;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">❌ Cancelar</button>
-            </div>` : ''}
+            ${clienteHtml}
         </div>`;
     }).join('');
 }
@@ -2357,6 +2370,9 @@ function abrirPerfil(codigo) {
     if (btnMarcarFisico) {
         btnMarcarFisico.style.display = (!vendedorActual.firmaContrato && !vendedorActual.firmadoFisico) ? "" : "none";
     }
+    // El portal de "Completar Pedidos" solo aplica a afiliados (catálogo digital + Leads)
+    const btnLinkPedidos = document.getElementById("btn-menu-link-pedidos");
+    if (btnLinkPedidos) btnLinkPedidos.style.display = (vendedorActual.tipo === "afiliado") ? "" : "none";
 
     const fechaCorte = vendedorActual.fechaCorte ? new Date(vendedorActual.fechaCorte) : null;
     const recordatorio = document.getElementById("recordatorio-corte");
@@ -3179,6 +3195,25 @@ async function enviarLinkFirmaRemota() {
     window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg));
     toast("📱 Link de firma enviado — el contrato se generará automáticamente cuando firme");
     _vendedorPendienteFirma = null;
+}
+
+// Genera (o reusa) el token del portal de pedidos del afiliado y comparte el
+// link por WhatsApp — ahí completa nombre/teléfono/dirección de sus ventas
+// cerradas antes de que VEREX las confirme.
+async function enviarLinkPedidos() {
+    if (!vendedorActual) return;
+    let token = vendedorActual.tokenPedidos;
+    if (!token) {
+        token = generarLinkId();
+        await apiPost({ accion: "GUARDAR_TOKEN_PEDIDOS", vendedor: vendedorActual.codigo, token });
+        vendedorActual.tokenPedidos = token;
+    }
+    const link = "https://verex-consignacion.pages.dev/pedido.html?v=" + encodeURIComponent(vendedorActual.codigo) + "&token=" + encodeURIComponent(token);
+    const tel = String(vendedorActual.telefono || "").replace(/\D/g, "");
+    const msg = "Hola " + vendedorActual.nombre + "! Aquí completas los datos (nombre, teléfono y dirección) de tus pedidos cerrados, para que VEREX pueda confirmarlos:\n" + link;
+    try { await navigator.clipboard.writeText(link); } catch(_){}
+    window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg));
+    toast("🔗 Link copiado y enviado por WhatsApp");
 }
 
 async function confirmarEntrega(firmaImg, codigoFirma) {

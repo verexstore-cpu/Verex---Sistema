@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Completar pedido — VEREX</title>
+<style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Segoe UI',sans-serif;background:#f0f2f5;min-height:100vh;color:#1a1a1a;}
+    header{background:#111;text-align:center;padding:18px 16px;}
+    header .logo{color:#C9A84C;font-size:26px;font-weight:800;letter-spacing:2px;}
+    header .sub{color:#888;font-size:12px;margin-top:2px;}
+    .wrap{max-width:520px;margin:0 auto;padding:16px;}
+    .card{background:#fff;border-radius:12px;padding:16px 18px;margin-bottom:14px;box-shadow:0 2px 10px rgba(0,0,0,.06);}
+    .card h2{font-size:15px;color:#C9A84C;margin-bottom:10px;}
+    label{display:block;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.3px;margin:10px 0 4px;}
+    label:first-child{margin-top:0;}
+    input[type=text],input[type=tel],select,textarea{
+        width:100%;padding:11px 12px;border:1.5px solid #e2e2e2;border-radius:8px;
+        font-size:14px;font-family:inherit;background:#f9f9f9;
+    }
+    textarea{resize:vertical;}
+    .item{display:flex;align-items:center;gap:10px;padding:10px;background:#f7f7f7;border:1.5px solid #e2e2e2;border-radius:10px;margin-bottom:8px;cursor:pointer;}
+    .item.checked{border-color:#C9A84C;background:#fffbf0;}
+    .item img{width:42px;height:42px;object-fit:cover;border-radius:6px;flex-shrink:0;}
+    .item .nom{font-size:13px;font-weight:700;}
+    .item .prc{font-size:12px;color:#666;}
+    .item input[type=checkbox]{width:18px;height:18px;accent-color:#C9A84C;flex-shrink:0;}
+    .badge-pago{background:#111;color:#C9A84C;font-size:12px;font-weight:700;text-align:center;padding:10px;border-radius:8px;margin-bottom:14px;}
+    .resumen{font-size:13px;line-height:1.9;border-top:1px solid #eee;margin-top:10px;padding-top:10px;}
+    .resumen .fila{display:flex;justify-content:space-between;}
+    .resumen .total{font-weight:800;font-size:15px;color:#111;}
+    .envio-gratis{color:#16a34a;font-weight:700;}
+    .btn{display:block;width:100%;text-align:center;padding:14px;border-radius:10px;font-size:14px;font-weight:700;border:none;cursor:pointer;margin-top:8px;}
+    .btn-dorado{background:linear-gradient(135deg,#7a5500,#C9A84C,#f0d060,#C9A84C,#7a5500);color:#1a0e00;}
+    .btn-dorado:disabled{opacity:.5;cursor:not-allowed;}
+    .estado{text-align:center;padding:60px 20px;}
+    .estado .icon{font-size:56px;margin-bottom:16px;}
+    .estado h2{font-size:18px;margin-bottom:8px;}
+    .estado p{font-size:13px;color:#666;line-height:1.6;}
+</style>
+</head>
+<body>
+<header>
+    <div class="logo">VEREX</div>
+    <div class="sub">La expresión de tu mejor versión</div>
+</header>
+<div class="wrap" id="app">
+    <div class="estado"><p>⏳ Cargando pedidos pendientes...</p></div>
+</div>
+
+<script>
+(function(){
+    const API_URL = "https://verex-api.verexstore.workers.dev/";
+    const params = new URLSearchParams(location.search);
+    const vCodigo = params.get("v") || "";
+    const token   = params.get("token") || "";
+    let _leads = [];
+    let _seleccionados = new Set();
+
+    const DEPARTAMENTOS = ["Ahuachapán","Cabañas","Chalatenango","Cuscatlán","La Libertad","La Paz","La Unión","Morazán","San Miguel","San Salvador","San Vicente","Santa Ana","Sonsonate","Usulután"];
+
+    function esc(s){ const d=document.createElement("div"); d.textContent=String(s||""); return d.innerHTML; }
+
+    function estado(icon, titulo, texto){
+        document.getElementById("app").innerHTML = `<div class="estado"><div class="icon">${icon}</div><h2>${esc(titulo)}</h2><p>${texto||""}</p></div>`;
+    }
+
+    function calcularEnvio(subtotal){
+        return subtotal >= 30 ? 0 : (subtotal >= 1 ? 2 : 0);
+    }
+
+    function toggleItem(id){
+        if (_seleccionados.has(id)) _seleccionados.delete(id); else _seleccionados.add(id);
+        render();
+    }
+
+    function actualizarResumen(){
+        const items = _leads.filter(l => _seleccionados.has(l.id));
+        const subtotal = items.reduce((s,l) => s + (parseFloat(l.precio)||0), 0);
+        const envio = calcularEnvio(subtotal);
+        const total = subtotal + envio;
+        const r = document.getElementById("resumen");
+        if (!r) return;
+        r.innerHTML = `
+            <div class="fila"><span>Subtotal</span><span>$${subtotal.toFixed(2)}</span></div>
+            <div class="fila"><span>Envío</span><span class="${envio===0?'envio-gratis':''}">${envio===0?'GRATIS':'$'+envio.toFixed(2)}</span></div>
+            <div class="fila total"><span>Total</span><span>$${total.toFixed(2)}</span></div>
+            ${subtotal>0 && subtotal<30 ? `<div style="font-size:11px;color:#888;margin-top:4px;">Envío gratis en pedidos desde $30 — te faltan $${(30-subtotal).toFixed(2)}</div>` : ''}
+        `;
+        const btn = document.getElementById("btn-enviar");
+        if (btn) btn.disabled = items.length === 0;
+    }
+
+    function render(){
+        const itemsHtml = _leads.map(l => `
+            <div class="item ${_seleccionados.has(l.id)?'checked':''}" onclick="window.__toggle('${l.id}')">
+                <input type="checkbox" ${_seleccionados.has(l.id)?'checked':''} onclick="event.stopPropagation();window.__toggle('${l.id}')">
+                ${l.foto ? `<img src="${esc(l.foto)}" onerror="this.style.display='none'">` : ''}
+                <div style="flex:1;min-width:0;">
+                    <div class="nom">${esc(l.nombre||l.codigo)}</div>
+                    <div class="prc">$${parseFloat(l.precio||0).toFixed(2)}</div>
+                </div>
+            </div>`).join('');
+
+        document.getElementById("app").innerHTML = `
+            <div class="card">
+                <h2>📦 Completar pedido</h2>
+                <p style="font-size:12px;color:#666;margin-bottom:10px;">Marca los productos que le pertenecen al MISMO cliente (si compró varias cosas), y llena sus datos abajo. VEREX confirmará el pedido antes de moverse cualquier inventario o comisión.</p>
+                ${itemsHtml}
+            </div>
+            <div class="card">
+                <div class="badge-pago">💵 Pago: Contra entrega, en efectivo</div>
+                <h2 style="margin-bottom:6px;">Datos del cliente</h2>
+                <label>Nombre completo</label>
+                <input type="text" id="p-nombre" placeholder="Nombre y apellidos">
+                <label>Teléfono de llamada directa</label>
+                <input type="tel" id="p-telefono" placeholder="Ej: 7000-0000" inputmode="numeric">
+                <label>Departamento</label>
+                <select id="p-depto">
+                    <option value="">— Selecciona —</option>
+                    ${DEPARTAMENTOS.map(d=>`<option value="${d}">${d}</option>`).join('')}
+                </select>
+                <label>Municipio</label>
+                <input type="text" id="p-municipio" placeholder="Ej: Santa Tecla">
+                <label>Dirección completa</label>
+                <textarea id="p-direccion" rows="3" placeholder="Calle, número de casa, colonia, referencia..."></textarea>
+                <div class="resumen" id="resumen"></div>
+                <button class="btn btn-dorado" id="btn-enviar" onclick="window.__enviar()" disabled>✅ Registrar pedido</button>
+            </div>`;
+        actualizarResumen();
+    }
+
+    window.__toggle = toggleItem;
+
+    window.__enviar = async function(){
+        const nombre     = document.getElementById("p-nombre").value.trim();
+        const telefono   = document.getElementById("p-telefono").value.trim();
+        const departamento = document.getElementById("p-depto").value;
+        const municipio  = document.getElementById("p-municipio").value.trim();
+        const direccion  = document.getElementById("p-direccion").value.trim();
+        if (!nombre || !telefono || !departamento || !municipio || !direccion) {
+            alert("Completa todos los datos del cliente antes de continuar.");
+            return;
+        }
+        if (!_seleccionados.size) { alert("Selecciona al menos un producto."); return; }
+
+        const btn = document.getElementById("btn-enviar");
+        btn.textContent = "⏳ Enviando..."; btn.disabled = true;
+        try {
+            const res = await fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    accion: "COMPLETAR_PEDIDO_LEADS",
+                    vendedor: vCodigo, token,
+                    leadIds: [..._seleccionados],
+                    cliente: { nombre, telefono, departamento, municipio, direccion }
+                })
+            });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error || "Error al registrar el pedido");
+            estado("✅", "Pedido registrado", "VEREX ya tiene los datos completos de este pedido y lo confirmará pronto. Gracias.");
+        } catch(e) {
+            alert("❌ " + e.message);
+            btn.textContent = "✅ Registrar pedido"; btn.disabled = false;
+        }
+    };
+
+    async function cargar(){
+        if (!vCodigo || !token) { estado("⚠️", "Link inválido", "Falta información en el link. Pide a VEREX que te lo reenvíe."); return; }
+        try {
+            const res = await fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ accion: "GET_LEADS_PORTAL_AFILIADO", vendedor: vCodigo, token })
+            });
+            const data = await res.json();
+            if (!data.ok) { estado("⚠️", "Link inválido o vencido", data.error||""); return; }
+            _leads = data.leads || [];
+            if (!_leads.length) {
+                estado("✅", "Todo al día", "No tienes pedidos pendientes de completar en este momento.");
+                return;
+            }
+            _seleccionados = new Set(_leads.map(l => l.id));
+            render();
+        } catch(e) {
+            estado("⚠️", "Error de conexión", "Intenta de nuevo en unos minutos.");
+        }
+    }
+    cargar();
+})();
+</script>
+</body>
+</html>
