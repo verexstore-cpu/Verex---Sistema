@@ -323,11 +323,11 @@
                 ✉️ Correo
                 <span id="correo-badge" style="display:none;position:absolute;top:-7px;right:-7px;background:#ef4444;color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;font-weight:700;align-items:center;justify-content:center;"></span>
             </a>
-            <a href="https://verexstore.com" target="_blank" class="btn-header">👁️ Ver Tienda</a>
-            <a href="https://verex-consignacion.pages.dev" target="_blank" class="btn-header">📦 Consignación</a>
-            <button class="btn-header" onclick="abrirModalGarantia()" style="border-color:#0ea5e9;color:#0ea5e9;">🛡️ Link/QR Garantía</button>
-            <button class="btn-header" onclick="abrirCambiarClave()" style="border-color:#f59e0b;color:#f59e0b;">🔑 Cambiar Clave</button>
-            <button class="btn-header btn-logout" onclick="logout()">Salir</button>
+            <a href="https://verexstore.com" target="_blank" class="btn-header" title="Abre la tienda pública en una pestaña nueva">👁️ Ver Tienda</a>
+            <a href="https://verex-consignacion.pages.dev" target="_blank" class="btn-header" title="Abre el panel de Consignación (vendedores, afiliados, stock físico)">📦 Consignación</a>
+            <button class="btn-header" onclick="abrirModalGarantia()" style="border-color:#0ea5e9;color:#0ea5e9;" title="Ver/copiar el link o QR de la página pública de Garantía Limitada, y editar su contenido">🛡️ Link/QR Garantía</button>
+            <button class="btn-header" onclick="abrirCambiarClave()" style="border-color:#f59e0b;color:#f59e0b;" title="Cambiar la contraseña de acceso a este Admin">🔑 Cambiar Clave</button>
+            <button class="btn-header btn-logout" onclick="logout()" title="Cerrar sesión de este Admin en este dispositivo">Salir</button>
         </div>
     </header>
 
@@ -3152,11 +3152,12 @@ async function generarLinkCatalogo() {
         document.getElementById("cat-link-box").style.display="block";
         toast("🔗 Link listo — cópialo o compártelo por WhatsApp","#22c55e");
 
-        // Guardar los criterios usados — permite "Refrescar" este mismo catálogo
-        // más adelante (con stock actualizado) sin rearmar la selección.
+        // Guardar los criterios usados y los códigos mostrados — permite
+        // "Refrescar" este mismo catálogo más adelante con stock actualizado
+        // y priorizando variedad (evitar repetir lo mismo del mes pasado).
         if (esAfiliado && afiliadoCodigo) {
             const cats = [...document.querySelectorAll(".cat-cat-chk:checked")].map(c => c.value);
-            const receta = { categorias: cats, talla, genero, tipoAN: document.getElementById("cat-tipo-an")?.value || "", cantidad: codsSel.length };
+            const receta = { categorias: cats, talla, genero, tipoAN: document.getElementById("cat-tipo-an")?.value || "", cantidad: codsSel.length, ultimosCodigos: codsSel };
             fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GUARDAR_RECETA_CATALOGO", _pass: ADMIN_PASS, vendedor: afiliadoCodigo, receta }) }).catch(()=>{});
         }
 
@@ -3505,6 +3506,8 @@ function onSeleccionarAfiliado() {
 
     const btnRefrescar = document.getElementById("btn-refrescar-catalogo-afiliado");
     if (btnRefrescar) btnRefrescar.style.display = (v?.catalogoReceta) ? "block" : "none";
+    const notaRefrescar = document.getElementById("txt-refrescar-nota");
+    if (notaRefrescar) notaRefrescar.style.display = (v?.catalogoReceta) ? "block" : "none";
 }
 
 // Vuelve a aplicar los mismos criterios (categorías, talla, género, cantidad)
@@ -3526,8 +3529,7 @@ function refrescarCatalogoAfiliado() {
     if (document.getElementById("cat-var-size")) document.getElementById("cat-var-size").value = receta.cantidad || 36;
 
     filtrarParaCatalogo();
-    autoSeleccionarVariado();
-    toast(`🔄 Catálogo refrescado con stock actual — revisa la selección y da clic en "Link" para publicar`, "#0ea5e9");
+    autoSeleccionarVariado(receta.ultimosCodigos || []);
 }
 
 function abrirModalCatalogo(tipo) {
@@ -3769,7 +3771,11 @@ function _stockTotalProd(p) {
     return (parseInt(p.stock_bodega)||0) + (parseInt(p.stock_tienda)||0) + (parseInt(p.stock_consignacion)||0);
 }
 
-function autoSeleccionarVariado() {
+// evitarCodigos (opcional): códigos que se prefiere NO repetir (ej. lo que ya
+// se mostró el mes pasado a este afiliado) — se usan solo como preferencia,
+// si no hay suficiente variedad con stock se completa repitiéndolos igual.
+function autoSeleccionarVariado(evitarCodigos) {
+    const evitar = evitarCodigos instanceof Set ? evitarCodigos : new Set(evitarCodigos || []);
     const TOTAL = parseInt(document.getElementById("cat-var-size")?.value) || 36;
     // Proporción base (sobre 36) — se escala al tamaño elegido
     const DIST_BASE = { AN: 15, AR: 9, CD: 5, PL: 5 };
@@ -3783,19 +3789,24 @@ function autoSeleccionarVariado() {
         porCat[cat].push(p);
     });
 
-    // Ordenar cada categoría por stock descendente — prioriza lo que hay en más cantidad
-    Object.values(porCat).forEach(arr => {
-        arr.sort((a, b) => _stockTotalProd(b) - _stockTotalProd(a));
-    });
+    // Orden: primero lo NO mostrado antes (variedad), y dentro de cada grupo por
+    // mayor stock. Si evitar está vacío, esto se comporta igual que antes.
+    const cmp = (a, b) => {
+        const codA = a._codigos?.[0] || a.codigo, codB = b._codigos?.[0] || b.codigo;
+        const evA = evitar.has(codA) ? 1 : 0, evB = evitar.has(codB) ? 1 : 0;
+        if (evA !== evB) return evA - evB;
+        return _stockTotalProd(b) - _stockTotalProd(a);
+    };
+    Object.values(porCat).forEach(arr => arr.sort(cmp));
 
     const selected = new Set();
 
-    // Seleccionar por distribución principal, priorizando stock alto
+    // Seleccionar por distribución principal, priorizando variedad y stock alto
     Object.entries(DIST).forEach(([cat, count]) => {
         (porCat[cat] || []).slice(0, count).forEach(p => selected.add(p._codigos?.[0] || p.codigo));
     });
 
-    // Completar con otras categorías si hay espacio (también por mayor stock)
+    // Completar con otras categorías si hay espacio (mismo criterio)
     let restante = TOTAL - selected.size;
     Object.keys(porCat).filter(c => !DIST[c]).forEach(cat => {
         if (restante <= 0) return;
@@ -3810,7 +3821,7 @@ function autoSeleccionarVariado() {
     if (selected.size < TOTAL) {
         _catFiltrada
             .slice()
-            .sort((a, b) => _stockTotalProd(b) - _stockTotalProd(a))
+            .sort(cmp)
             .forEach(p => {
                 if (selected.size >= TOTAL) return;
                 selected.add(p._codigos?.[0] || p.codigo);
@@ -3819,7 +3830,10 @@ function autoSeleccionarVariado() {
 
     document.querySelectorAll(".cat-chk").forEach(c => { c.checked = selected.has(c.dataset.cod); });
     const count = document.querySelectorAll(".cat-chk:checked").length;
-    toast(`✅ ${count} productos seleccionados automáticamente (variado, prioriza mayor stock)`, "#22c55e");
+    const nuevos = [...selected].filter(c => !evitar.has(c)).length;
+    toast(evitar.size
+        ? `✅ ${count} productos seleccionados (${nuevos} nuevos vs. la última vez, prioriza variedad + stock)`
+        : `✅ ${count} productos seleccionados automáticamente (variado, prioriza mayor stock)`, "#22c55e");
 }
 
 async function imgToBase64Cat(url) {
@@ -4139,8 +4153,11 @@ async function generarPDFCatalogo() {
                     </div>
                     <button type="button" id="btn-refrescar-catalogo-afiliado" onclick="refrescarCatalogoAfiliado()"
                         style="display:none;width:100%;margin-top:8px;padding:8px 0;border:1px solid #0ea5e9;border-radius:8px;background:#f0f9ff;color:#0369a1;font-size:12px;font-weight:700;cursor:pointer;">
-                        🔄 Refrescar catálogo con stock actual (mismos criterios)
+                        🔄 Refrescar catálogo con stock actual
                     </button>
+                    <div id="txt-refrescar-nota" style="display:none;font-size:10px;color:#0369a1;margin-top:3px;">
+                        Repone lo agotado y prioriza productos que NO se mostraron la vez anterior (variedad mensual). Solo prellena la selección — falta darle "🔗 Link" para publicar.
+                    </div>
                 </div>
                 <input type="hidden" id="cat-afiliado-nombre">
                 <input type="hidden" id="cat-afiliado-codigo">
@@ -4158,10 +4175,15 @@ async function generarPDFCatalogo() {
             </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:4px;">
             <button class="btn bv" id="btn-gen-pdf"  onclick="generarPDFCatalogo()"    style="justify-content:center;padding:11px 6px;">📥 PDF</button>
             <button class="btn bn" id="btn-gen-img"  onclick="generarImagenCatalogo()" style="justify-content:center;padding:11px 6px;">🖼️ Imagen</button>
             <button class="btn ba" id="btn-gen-link" onclick="generarLinkCatalogo()"   style="justify-content:center;padding:11px 6px;">🔗 Link</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;font-size:9.5px;color:#888;line-height:1.3;">
+            <div>Descarga un PDF estático — para imprimir o enviar como archivo.</div>
+            <div>Genera una imagen (JPG) del catálogo — ideal para estado de WhatsApp.</div>
+            <div>Crea/actualiza el link web interactivo — el que se comparte y detecta stock en vivo.</div>
         </div>
 
         <div id="cat-link-box" style="display:none;background:#f0f2f5;border-radius:8px;padding:12px;border:1px solid var(--borde);">
