@@ -545,6 +545,9 @@
                         <option value="reservado">⏳ Reservado</option>
                         <option value="vendido">✅ Vendido</option>
                     </select>
+                    <select id="fil-stock-material" onchange="filtrarStock()" style="width:150px;">
+                        <option value="">Todo material</option>
+                    </select>
                     <button class="btn btn-dorado" onclick="abrirStockNuevoProd()" style="padding:8px 14px;font-size:13px;">+ Agregar</button>
                     <button class="btn" style="background:#4a6fa5;color:#fff;padding:8px 14px;font-size:13px;" onclick="abrirStockNuevoLote()">📦 Lote</button>
                     <button class="btn" style="background:#27ae60;color:#fff;padding:8px 14px;font-size:13px;" onclick="abrirImportarExcel()">📥 Importar</button>
@@ -5004,6 +5007,7 @@ async function cargarStock() {
     try {
         const res = await apiPost({ accion: "STOCK_GET_ALL" });
         stockData = res.stock || [];
+        poblarFiltroMaterial();
         renderStock(stockData);
     } catch(e) {
         document.getElementById("lista-stock").innerHTML = '<p style="color:#e74c3c;font-size:13px;">⚠️ Error cargando stock</p>';
@@ -5330,11 +5334,13 @@ function buscarEtiquetasPorScanner(cod) {
 
 function filtrarStock() {
     const filtro = document.getElementById("fil-stock-estado").value;
+    const material = document.getElementById("fil-stock-material")?.value || "";
     const busq = document.getElementById("bus-stock").value.toLowerCase();
     const filtrados = stockData.filter(i => {
         const coincideBusq = !busq ||
             (i.nombre||"").toLowerCase().includes(busq) ||
             (i.codigo||"").toLowerCase().includes(busq);
+        const coincideMaterial = !material || (i.material||"") === material;
         let coincideEstado = true;
         if (filtro) {
             switch (filtro) {
@@ -5346,9 +5352,21 @@ function filtrarStock() {
                 default:             coincideEstado = normalizar(i.estado) === filtro;
             }
         }
-        return coincideEstado && coincideBusq;
+        return coincideEstado && coincideMaterial && coincideBusq;
     });
     renderStock(filtrados);
+}
+
+// Llena el filtro de materiales con los valores distintos presentes en el
+// stock actual — se llama cada vez que se recarga la lista completa.
+function poblarFiltroMaterial() {
+    const sel = document.getElementById("fil-stock-material");
+    if (!sel) return;
+    const actual = sel.value;
+    const materiales = [...new Set(stockData.map(i => (i.material||"").trim()).filter(Boolean))].sort();
+    sel.innerHTML = '<option value="">Todo material</option>' +
+        materiales.map(m => `<option value="${m.replace(/"/g,'&quot;')}">${m}</option>`).join("");
+    if (materiales.includes(actual)) sel.value = actual;
 }
 
 function normalizar(estado) {
