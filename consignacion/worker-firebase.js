@@ -408,6 +408,7 @@ async function enviar(){
           }
           result = { ok: true, vendedor: {
             nombre: vend.nombre, codigo: vend.codigo, telefono: vend.telefono,
+            dui: vend.dui || null,
             tipo: vend.tipo, comisionFija: vend.comisionFija ?? null,
             recibeFisico: vend.recibeFisico === true,
             firmaContrato: vend.firmaContrato || null,

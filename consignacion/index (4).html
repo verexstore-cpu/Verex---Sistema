@@ -805,6 +805,7 @@
                 <div class="perfil-info">
                     <h2 id="perfil-nombre"></h2>
                     <p id="perfil-tel"></p>
+                    <p id="perfil-dui" onclick="editarDui()" style="font-size:12px;color:var(--plateado);cursor:pointer;margin-top:2px;"></p>
                     <p id="perfil-fecha-reg" style="font-size:11px;color:var(--plateado);margin-top:2px;"></p>
                 </div>
             </div>
@@ -996,6 +997,8 @@
         </div>
         <input type="text" id="v-nombre" placeholder="Nombre completo">
         <input type="tel"  id="v-tel"    placeholder="Teléfono WhatsApp">
+        <input type="text" id="v-dui" placeholder="Documento Único de Identidad (DUI)" maxlength="10"
+            style="margin-top:8px;" oninput="this.value=this.value.replace(/[^0-9-]/g,'')">
         <div style="display:flex;gap:8px;margin:10px 0;">
             <button type="button" id="v-tipo-consig-btn" onclick="selTipoVendedor('consignacion')"
                 style="flex:1;padding:8px 0;border:1px solid var(--dorado);border-radius:8px;background:var(--dorado);color:#111;font-size:12px;font-weight:700;cursor:pointer;">📦 Consignación</button>
@@ -1857,6 +1860,7 @@ function generarHojaInformativaAfiliadoPDF() {
 function abrirModalVendedor() {
     document.getElementById("v-nombre").value = "";
     document.getElementById("v-tel").value = "";
+    document.getElementById("v-dui").value = "";
     document.getElementById("v-comision-fija").value = "";
     document.getElementById("v-notas").value = "";
     document.getElementById("v-recibe-fisico").checked = false;
@@ -1867,6 +1871,7 @@ function abrirModalVendedor() {
 async function guardarVendedor() {
     const nombre = document.getElementById("v-nombre").value.trim();
     const tel    = document.getElementById("v-tel").value.trim();
+    const dui    = document.getElementById("v-dui").value.trim();
     if (!nombre || !tel) { toast("⚠️ Completa todos los campos"); return; }
     // Código: iniciales del nombre + YYMM (ej: EN-2501)
     const iniciales = nombre.split(" ").map(p => p[0]).filter(Boolean).slice(0,2).join("").toUpperCase();
@@ -1884,6 +1889,7 @@ async function guardarVendedor() {
     const v = {
         codigo, nombre, telefono: tel, tipo: _tipoVendedorSel,
         activo: true, fechaRegistro: ahora.toISOString(),
+        ...(dui && { dui }),
         ...(comisionFija !== null && { comisionFija }),
         ...(notas && { notas }),
         ...(recibeFisico && { recibeFisico: true })
@@ -1939,7 +1945,7 @@ function generarContratoConsignacionPDF(vendedor) {
     doc.text("DATOS DEL CONSIGNATARIO", mL, y); y += 6;
     doc.setFont("helvetica", "normal");
     doc.setTextColor(40, 40, 40);
-    [["Nombre:", vendedor.nombre], ["Teléfono:", vendedor.telefono], ["Código:", vendedor.codigo], ["Fecha inicio:", fecha]].forEach(([label, val]) => {
+    [["Nombre:", vendedor.nombre], ["Teléfono:", vendedor.telefono], ...(vendedor.dui ? [["DUI:", vendedor.dui]] : []), ["Código:", vendedor.codigo], ["Fecha inicio:", fecha]].forEach(([label, val]) => {
         doc.setFont("helvetica", "bold"); doc.text(label, mL, y);
         doc.setFont("helvetica", "normal"); doc.text(val, mL + 35, y); y += 6;
     });
@@ -2066,7 +2072,7 @@ function generarContratoAfiliadoPDF(vendedor) {
     doc.text("DATOS DEL AFILIADO", mL, y); y += 6;
     doc.setFont("helvetica", "normal");
     doc.setTextColor(40, 40, 40);
-    [["Nombre:", vendedor.nombre], ["Teléfono:", vendedor.telefono], ["Código:", vendedor.codigo], ["Fecha inicio:", fecha]].forEach(([label, val]) => {
+    [["Nombre:", vendedor.nombre], ["Teléfono:", vendedor.telefono], ...(vendedor.dui ? [["DUI:", vendedor.dui]] : []), ["Código:", vendedor.codigo], ["Fecha inicio:", fecha]].forEach(([label, val]) => {
         doc.setFont("helvetica", "bold"); doc.text(label, mL, y);
         doc.setFont("helvetica", "normal"); doc.text(val, mL + 35, y); y += 6;
     });
@@ -2277,6 +2283,17 @@ async function editarComisionFija() {
     toast("✅ Comisión actualizada");
 }
 
+async function editarDui() {
+    if (!vendedorActual) return;
+    const nuevo = prompt("Documento Único de Identidad (DUI):", vendedorActual.dui || "");
+    if (nuevo === null) return;
+    const val = nuevo.trim();
+    if (val === "") { delete vendedorActual.dui; } else { vendedorActual.dui = val; }
+    await apiPost({ accion: "GUARDAR_VENDEDOR", vendedor: vendedorActual });
+    abrirPerfil(vendedorActual.codigo);
+    toast("✅ DUI actualizado");
+}
+
 async function toggleActivoVendedor(codigo) {
     const v = vendedores.find(x => x.codigo === codigo);
     if (!v) return;
@@ -2295,6 +2312,7 @@ function abrirPerfil(codigo) {
     document.getElementById("perfil-avatar").textContent = inicial;
     document.getElementById("perfil-nombre").textContent = vendedorActual.nombre;
     document.getElementById("perfil-tel").textContent    = vendedorActual.codigo + " · " + vendedorActual.telefono;
+    document.getElementById("perfil-dui").textContent    = vendedorActual.dui ? ("DUI: " + vendedorActual.dui) : "+ Agregar DUI...";
     const fReg = document.getElementById("perfil-fecha-reg");
     if (fReg) {
         const partes = ["Desde " + (vendedorActual.fechaRegistro ? new Date(vendedorActual.fechaRegistro).toLocaleDateString("es-SV",{day:"numeric",month:"short",year:"numeric"}) : "—")];

@@ -140,6 +140,7 @@
                 <div class="datos" style="margin-top:10px;">
                     <div><b>Nombre:</b> ${esc(v.nombre)}</div>
                     <div><b>Teléfono:</b> ${esc(v.telefono)}</div>
+                    ${v.dui ? `<div><b>DUI:</b> ${esc(v.dui)}</div>` : ""}
                     <div><b>Código:</b> ${esc(v.codigo)}</div>
                 </div>
             </div>
