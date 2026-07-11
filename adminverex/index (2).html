@@ -3084,6 +3084,15 @@ async function generarLinkCatalogo() {
         return toast("⚠️ Selecciona un afiliado de la lista (Consignación → Vendedores) para poder rastrear sus Leads y comisión", "#f97316");
     }
 
+    // No generar el catálogo de un afiliado que todavía no tiene contrato
+    // firmado (ni digital ni en papel) — evita operar sin el acuerdo firmado.
+    if (esAfiliado && afiliadoCodigo) {
+        const v = _vendedoresAfiliados.find(x => x.codigo === afiliadoCodigo);
+        if (v && !v.firmaContrato && !v.firmadoFisico) {
+            return toast("⚠️ Este afiliado no tiene contrato firmado — firma el contrato (digital o en papel) en Consignación antes de generar su catálogo", "#ef4444");
+        }
+    }
+
     const btn=document.getElementById("btn-gen-link");
     btn.textContent="⏳..."; btn.disabled=true;
 

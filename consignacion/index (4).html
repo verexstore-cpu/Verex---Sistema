@@ -844,6 +844,9 @@
                 <button class="menu-btn menu-btn-full" data-color="#0277bd" onclick="descargarContratoActual()">
                     <span class="menu-ico">📄</span><span class="menu-txt" id="btn-menu-contrato-txt">Descargar Contrato</span><span class="menu-arr">›</span>
                 </button>
+                <button class="menu-btn menu-btn-full" id="btn-marcar-firmado-fisico" data-color="#16a34a" onclick="marcarFirmadoFisico()" style="display:none;">
+                    <span class="menu-ico">✅</span><span class="menu-txt">Marcar como firmado en papel</span><span class="menu-arr">›</span>
+                </button>
             </div>
         </div>
         <div class="card">
@@ -2323,8 +2326,15 @@ function abrirPerfil(codigo) {
     const btnContratoTxt = document.getElementById("btn-menu-contrato-txt");
     if (btnContratoTxt) {
         btnContratoTxt.textContent = vendedorActual.firmaContrato
-            ? "Descargar Contrato — ✅ Firmado"
-            : "Descargar Contrato — sin firmar";
+            ? "Descargar Contrato — ✅ Firmado (digital)"
+            : vendedorActual.firmadoFisico
+                ? "Descargar Contrato — ✅ Firmado (papel)"
+                : "Descargar Contrato — sin firmar";
+    }
+    // Solo se ofrece marcar "firmado en papel" si aún no hay ninguna firma registrada
+    const btnMarcarFisico = document.getElementById("btn-marcar-firmado-fisico");
+    if (btnMarcarFisico) {
+        btnMarcarFisico.style.display = (!vendedorActual.firmaContrato && !vendedorActual.firmadoFisico) ? "" : "none";
     }
 
     const fechaCorte = vendedorActual.fechaCorte ? new Date(vendedorActual.fechaCorte) : null;
@@ -3105,6 +3115,19 @@ function omitirFirmaContrato() {
     cerrarModal("modal-firma-contrato");
     generarContratoPDF(v);
     _vendedorPendienteFirma = null;
+}
+
+// El admin marca esto cuando YA tiene en mano el papel firmado (después de
+// "Firmar después (físico)"). Sin esto, un afiliado que firmó en papel
+// quedaría bloqueado para generar su catálogo, igual que uno que nunca firmó.
+async function marcarFirmadoFisico() {
+    if (!vendedorActual) return;
+    if (!confirm(`¿Confirmas que ya tienes en mano el contrato de ${vendedorActual.nombre} firmado en papel?`)) return;
+    vendedorActual.firmadoFisico = true;
+    vendedorActual.firmadoFisicoFecha = new Date().toISOString();
+    await apiPost({ accion: "GUARDAR_VENDEDOR", vendedor: vendedorActual });
+    toast("✅ Marcado como firmado en papel");
+    abrirPerfil(vendedorActual.codigo);
 }
 
 async function descargarContratoActual() {
