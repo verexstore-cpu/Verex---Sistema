@@ -3152,6 +3152,14 @@ async function generarLinkCatalogo() {
         document.getElementById("cat-link-box").style.display="block";
         toast("🔗 Link listo — cópialo o compártelo por WhatsApp","#22c55e");
 
+        // Guardar los criterios usados — permite "Refrescar" este mismo catálogo
+        // más adelante (con stock actualizado) sin rearmar la selección.
+        if (esAfiliado && afiliadoCodigo) {
+            const cats = [...document.querySelectorAll(".cat-cat-chk:checked")].map(c => c.value);
+            const receta = { categorias: cats, talla, genero, tipoAN: document.getElementById("cat-tipo-an")?.value || "", cantidad: codsSel.length };
+            fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GUARDAR_RECETA_CATALOGO", _pass: ADMIN_PASS, vendedor: afiliadoCodigo, receta }) }).catch(()=>{});
+        }
+
     } catch(e){ console.error(e); toast("❌ Error al generar link: "+e.message,"#ef4444"); }
     finally { btn.textContent="🔗 Link"; btn.disabled=false; }
 }
@@ -3494,6 +3502,32 @@ function onSeleccionarAfiliado() {
     const waEl = document.getElementById("cat-wa");
     if (waEl && v?.telefono) waEl.value = v.telefono;
     if (v) generarIdAfiliado(v.nombre);
+
+    const btnRefrescar = document.getElementById("btn-refrescar-catalogo-afiliado");
+    if (btnRefrescar) btnRefrescar.style.display = (v?.catalogoReceta) ? "block" : "none";
+}
+
+// Vuelve a aplicar los mismos criterios (categorías, talla, género, cantidad)
+// usados la última vez que se generó el catálogo de este afiliado, pero
+// contra el stock actual — así lo agotado se reemplaza por lo disponible
+// en vez de que el catálogo se vaya achicando con cada venta. Deja la
+// selección lista para revisar; el admin igual debe darle a "🔗 Link" para publicar.
+function refrescarCatalogoAfiliado() {
+    const codigo = document.getElementById("cat-afiliado-select")?.value || "";
+    const v = _vendedoresAfiliados.find(x => x.codigo === codigo);
+    const receta = v?.catalogoReceta;
+    if (!receta) return toast("⚠️ Este afiliado no tiene criterios guardados aún","#f97316");
+
+    document.querySelectorAll(".cat-cat-chk").forEach(chk => { chk.checked = (receta.categorias||[]).includes(chk.value); });
+    onPillChange();
+    if (document.getElementById("cat-talla"))   document.getElementById("cat-talla").value   = receta.talla   || "";
+    if (document.getElementById("cat-genero"))  document.getElementById("cat-genero").value  = receta.genero  || "";
+    if (document.getElementById("cat-tipo-an")) document.getElementById("cat-tipo-an").value = receta.tipoAN  || "";
+    if (document.getElementById("cat-var-size")) document.getElementById("cat-var-size").value = receta.cantidad || 36;
+
+    filtrarParaCatalogo();
+    autoSeleccionarVariado();
+    toast(`🔄 Catálogo refrescado con stock actual — revisa la selección y da clic en "Link" para publicar`, "#0ea5e9");
 }
 
 function abrirModalCatalogo(tipo) {
@@ -4103,6 +4137,10 @@ async function generarPDFCatalogo() {
                     <div style="font-size:10px;color:#166534;margin-top:3px;">
                         Si no aparece, créalo primero en Consignación → Vendedores → tipo 🤝 Afiliado.
                     </div>
+                    <button type="button" id="btn-refrescar-catalogo-afiliado" onclick="refrescarCatalogoAfiliado()"
+                        style="display:none;width:100%;margin-top:8px;padding:8px 0;border:1px solid #0ea5e9;border-radius:8px;background:#f0f9ff;color:#0369a1;font-size:12px;font-weight:700;cursor:pointer;">
+                        🔄 Refrescar catálogo con stock actual (mismos criterios)
+                    </button>
                 </div>
                 <input type="hidden" id="cat-afiliado-nombre">
                 <input type="hidden" id="cat-afiliado-codigo">

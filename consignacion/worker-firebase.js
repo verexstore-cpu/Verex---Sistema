@@ -1311,6 +1311,16 @@ async function enviar(){
           break;
         }
 
+        // Guarda los criterios (categorías, talla, género, cantidad) usados al
+        // generar el catálogo de un afiliado, para poder "refrescarlo" después
+        // con stock actualizado sin rearmar la selección desde cero.
+        case "GUARDAR_RECETA_CATALOGO": {
+          if (!esAdmin) return forbidden();
+          await sb.update("vendedores", d.vendedor, { catalogoReceta: d.receta });
+          result = { ok: true };
+          break;
+        }
+
         // ══ LEADS DE AFILIADOS ═══════════════════════════════════════
         // Público — se llama desde el catálogo temporal cuando el cliente
         // presiona "Quiero este", antes de abrir WhatsApp. Registro silencioso,

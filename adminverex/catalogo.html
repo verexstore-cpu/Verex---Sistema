@@ -363,8 +363,10 @@
                 const agotado = !s || s.reservado || (parseInt(s.stock_total)||0) <= 0;
                 if(!agotado) return;
                 p._agotado = true;
+                // Ocultar en vez de tachar — más limpio para el cliente, y evita
+                // que quede un producto "muerto" ocupando espacio en la lista.
                 const card = document.querySelector(`.card[data-idx="${i}"]`);
-                if(card) card.classList.add("agotado");
+                if(card) card.style.display = "none";
             });
         } catch(_){ /* si falla la verificación, se deja el catálogo como estaba */ }
     }
