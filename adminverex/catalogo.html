@@ -358,6 +358,16 @@
             _prods.forEach((p,i) => {
                 if(!p.c) return;
                 const s = mapa.get(p.c);
+                const card = document.querySelector(`.card[data-idx="${i}"]`);
+
+                // Refrescar la foto si cambió en Stock desde que se generó el link —
+                // así no hace falta regenerar el catálogo solo por una foto nueva.
+                if(s?.foto && s.foto !== p.i){
+                    p.i = s.foto;
+                    const img = card?.querySelector(".card-img");
+                    if(img) img.src = s.foto;
+                }
+
                 // Si el código ya no existe en stock (eliminado) o quedó sin
                 // unidades disponibles o fue reservado, se marca agotado.
                 const agotado = !s || s.reservado || (parseInt(s.stock_total)||0) <= 0;
@@ -365,7 +375,6 @@
                 p._agotado = true;
                 // Ocultar en vez de tachar — más limpio para el cliente, y evita
                 // que quede un producto "muerto" ocupando espacio en la lista.
-                const card = document.querySelector(`.card[data-idx="${i}"]`);
                 if(card) card.style.display = "none";
             });
         } catch(_){ /* si falla la verificación, se deja el catálogo como estaba */ }
