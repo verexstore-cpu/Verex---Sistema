@@ -1033,6 +1033,17 @@
     </div>
 </div>
 
+<!-- Resumen rápido de stock desde un Lead — confirmar la venta sin salir de aquí -->
+<div class="modal-overlay" id="modal-lead-stock" style="z-index:10002;">
+    <div class="modal-box" style="max-width:380px;">
+        <div class="modal-header">
+            <h3>🔎 Verificar en Stock</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-lead-stock')">×</button>
+        </div>
+        <div id="lead-stock-resumen"></div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="modal-prod-nuevo">
     <div class="modal-box">
         <div class="modal-header">
@@ -1669,12 +1680,12 @@ function renderLeadsModal(codigo) {
             </div>` : '';
         return `<div style="padding:10px 12px;background:var(--gris2);border:1px solid var(--borde);border-radius:10px;margin-bottom:8px;">
             <div style="display:flex;align-items:center;gap:10px;">
-                ${l.foto ? `<img src="${sanitizar(ikFoto(l.foto,120))}" onerror="this.style.display='none'" onclick="irAStockDesdeLead('${sanitizar(l.codigo)}')" title="Buscar este producto en Stock" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0;cursor:pointer;">` : ''}
+                ${l.foto ? `<img src="${sanitizar(ikFoto(l.foto,120))}" onerror="this.style.display='none'" onclick="verStockLead('${sanitizar(l.id)}','${sanitizar(l.codigo)}')" title="Ver stock y confirmar" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0;cursor:pointer;">` : ''}
                 <div style="flex:1;min-width:0;">
                     <div style="font-size:12px;font-weight:700;">${sanitizar(l.nombre||l.codigo)}</div>
                     <div style="font-size:11px;color:var(--plateado);">$${parseFloat(l.precio||0).toFixed(2)} · ${fecha}</div>
                     <div style="font-size:11px;font-weight:600;color:${info.color};margin-top:2px;">${info.label}</div>
-                    <div style="font-size:10px;color:var(--dorado);margin-top:2px;cursor:pointer;text-decoration:underline;" onclick="irAStockDesdeLead('${sanitizar(l.codigo)}')">🔎 ${sanitizar(l.codigo)} — buscar en Stock</div>
+                    <div style="font-size:10px;color:var(--dorado);margin-top:2px;cursor:pointer;text-decoration:underline;" onclick="verStockLead('${sanitizar(l.id)}','${sanitizar(l.codigo)}')">🔎 ${sanitizar(l.codigo)} — ver stock y confirmar</div>
                 </div>
                 ${accionable ? `<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
                     <button onclick="confirmarLeadVenta('${sanitizar(l.id)}')" style="padding:5px 10px;font-size:11px;background:#27ae60;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✅ Confirmar</button>
@@ -1686,16 +1697,53 @@ function renderLeadsModal(codigo) {
     }).join('');
 }
 
-// Salta directo a Stock con el código del producto de este Lead ya buscado,
-// para ubicarlo rápido y generar la venta/entrega sin escribirlo a mano.
-function irAStockDesdeLead(codigo) {
-    if (!codigo) return toast("⚠️ Este Lead no tiene código de producto");
-    cerrarModal("modal-leads");
-    cambiarTab("stock");
-    setTimeout(() => {
-        const inp = document.getElementById("bus-stock");
-        if (inp) { inp.value = codigo; filtrarStock(); inp.focus(); }
-    }, 400);
+// Muestra un resumen rápido del stock del producto de este Lead (talla,
+// ubicación, disponibilidad) con el botón de Confirmar justo ahí — es el
+// paso exacto para verificar que existe la pieza y descontarla, sin salir
+// del modal de Leads ni ir y volver a la pestaña Stock.
+let _leadStockActual = null;
+async function verStockLead(id, codigo) {
+    _leadStockActual = id;
+    const cont = document.getElementById("lead-stock-resumen");
+    cont.innerHTML = '<p style="color:var(--plateado);font-size:13px;text-align:center;padding:20px;">⏳ Buscando...</p>';
+    abrirModal("modal-lead-stock");
+
+    if (!codigo) { cont.innerHTML = '<p style="color:#e74c3c;font-size:13px;">Este Lead no tiene código de producto.</p>'; return; }
+    if (!stockData || !stockData.length) {
+        try { const res = await apiPost({ accion: "GET_STOCK" }); stockData = res.stock || []; } catch(_) { stockData = []; }
+    }
+    const s = stockData.find(p => p.codigo === codigo);
+    if (!s) {
+        cont.innerHTML = `<p style="color:#e74c3c;font-size:13px;">⚠️ El código <b>${sanitizar(codigo)}</b> ya no existe en Stock — puede haberse eliminado.</p>`;
+        return;
+    }
+    const bodega = parseInt(s.stock_bodega)||0, tienda = parseInt(s.stock_tienda)||0;
+    const disponible = bodega + tienda;
+    cont.innerHTML = `
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;">
+            ${s.foto ? `<img src="${sanitizar(ikFoto(s.foto,160))}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;flex-shrink:0;">` : ''}
+            <div>
+                <div style="font-weight:700;font-size:14px;">${sanitizar(s.nombre||codigo)}</div>
+                <div style="font-size:11px;color:var(--plateado);">${sanitizar(codigo)}${s.talla?` · Talla ${sanitizar(s.talla)}`:''}</div>
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+            <div class="stat-box"><div class="stat-num" style="font-size:18px;">${bodega}</div><div class="stat-label">Bodega</div></div>
+            <div class="stat-box"><div class="stat-num" style="font-size:18px;">${tienda}</div><div class="stat-label">Tienda</div></div>
+        </div>
+        ${disponible > 0
+            ? `<div style="background:rgba(39,174,96,0.15);border:1px solid #27ae60;color:#27ae60;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;margin-bottom:14px;">✅ Disponible (${disponible} en total) — lista para confirmar</div>`
+            : `<div style="background:rgba(231,76,60,0.15);border:1px solid #e74c3c;color:#e74c3c;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;margin-bottom:14px;">⚠️ Sin stock disponible — no se podrá confirmar hasta reponer</div>`
+        }
+        <button class="btn btn-dorado btn-full" ${disponible<=0?'disabled':''} onclick="confirmarDesdeResumenStock()">✅ Confirmar y descontar stock</button>
+    `;
+}
+
+async function confirmarDesdeResumenStock() {
+    if (!_leadStockActual) return;
+    cerrarModal("modal-lead-stock");
+    await confirmarLeadVenta(_leadStockActual);
+    _leadStockActual = null;
 }
 
 async function confirmarLeadVenta(id) {
