@@ -1669,11 +1669,12 @@ function renderLeadsModal(codigo) {
             </div>` : '';
         return `<div style="padding:10px 12px;background:var(--gris2);border:1px solid var(--borde);border-radius:10px;margin-bottom:8px;">
             <div style="display:flex;align-items:center;gap:10px;">
-                ${l.foto ? `<img src="${sanitizar(ikFoto(l.foto,120))}" onerror="this.style.display='none'" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0;">` : ''}
+                ${l.foto ? `<img src="${sanitizar(ikFoto(l.foto,120))}" onerror="this.style.display='none'" onclick="irAStockDesdeLead('${sanitizar(l.codigo)}')" title="Buscar este producto en Stock" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0;cursor:pointer;">` : ''}
                 <div style="flex:1;min-width:0;">
                     <div style="font-size:12px;font-weight:700;">${sanitizar(l.nombre||l.codigo)}</div>
                     <div style="font-size:11px;color:var(--plateado);">$${parseFloat(l.precio||0).toFixed(2)} · ${fecha}</div>
                     <div style="font-size:11px;font-weight:600;color:${info.color};margin-top:2px;">${info.label}</div>
+                    <div style="font-size:10px;color:var(--dorado);margin-top:2px;cursor:pointer;text-decoration:underline;" onclick="irAStockDesdeLead('${sanitizar(l.codigo)}')">🔎 ${sanitizar(l.codigo)} — buscar en Stock</div>
                 </div>
                 ${accionable ? `<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
                     <button onclick="confirmarLeadVenta('${sanitizar(l.id)}')" style="padding:5px 10px;font-size:11px;background:#27ae60;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✅ Confirmar</button>
@@ -1683,6 +1684,18 @@ function renderLeadsModal(codigo) {
             ${clienteHtml}
         </div>`;
     }).join('');
+}
+
+// Salta directo a Stock con el código del producto de este Lead ya buscado,
+// para ubicarlo rápido y generar la venta/entrega sin escribirlo a mano.
+function irAStockDesdeLead(codigo) {
+    if (!codigo) return toast("⚠️ Este Lead no tiene código de producto");
+    cerrarModal("modal-leads");
+    cambiarTab("stock");
+    setTimeout(() => {
+        const inp = document.getElementById("bus-stock");
+        if (inp) { inp.value = codigo; filtrarStock(); inp.focus(); }
+    }, 400);
 }
 
 async function confirmarLeadVenta(id) {
