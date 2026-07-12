@@ -1890,7 +1890,7 @@ async function generarReciboLeadPDF(lead, codigoConfirmado){
 
     doc.setFont("helvetica","bolditalic"); doc.setFontSize(6.5); doc.setTextColor(160,110,30);
     doc.text("El mundo es mas maravilloso", cX, y, { align:"center" }); y += 4;
-    doc.text("cuando brillas TU \u{1F49B}", cX, y, { align:"center" });
+    doc.text("cuando brillas TU", cX, y, { align:"center" });
 
     doc.save("Recibo_" + (c.nombre||"cliente").replace(/ /g,"_") + ".pdf");
 }
@@ -8538,7 +8538,7 @@ function descargarReciboVD(id) {
 
     doc.setFont("helvetica","bolditalic"); doc.setFontSize(6.5); doc.setTextColor(160,110,30);
     doc.text("El mundo es mas maravilloso", cX, y, { align:"center" }); y += 4;
-    doc.text("cuando brillas TU \u{1F49B}", cX, y, { align:"center" });
+    doc.text("cuando brillas TU", cX, y, { align:"center" });
 
     doc.save("Recibo_" + (v.cliente||"cliente").replace(/ /g,"_") + ".pdf");
 }
