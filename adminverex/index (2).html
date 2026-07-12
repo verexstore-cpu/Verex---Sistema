@@ -3373,8 +3373,19 @@ function agruparParaCatalogo(lista) {
     // C keys (Caballero) and H keys (Hombre) both mark a caballero variant
     const hasCHKey = p => { try { return Object.keys(JSON.parse(p.caracteristicas||"{}")).some(k=>/^[HC]\d/i.test(k)); } catch(_){return false;} };
 
-    const isDamaP = p => ES_DAMA_GRP.test(p.nombre||"") || hasDKey(p);
-    const isCabP  = p => ES_CAB_GRP.test(p.nombre||"")  || hasCHKey(p);
+    // Al registrar un Set Par/Trío con precio Diferenciado, el sistema genera el
+    // código con "DT" (dama) o "CT"/"HT" (caballero) justo después del codigoBase
+    // (ej. ANP175DT7, ANP175CT10) — es la señal MÁS confiable, más que el nombre,
+    // que puede quedar incompleto si se agregó una talla después manualmente.
+    const sufijoCodigo = p => {
+        const base = p.codigoBase || "";
+        return (base && p.codigo && p.codigo.startsWith(base)) ? p.codigo.slice(base.length) : (p.codigo || "");
+    };
+    const codigoEsDama = p => /^D/i.test(sufijoCodigo(p));
+    const codigoEsCab  = p => /^[CH]/i.test(sufijoCodigo(p));
+
+    const isDamaP = p => codigoEsDama(p) || ES_DAMA_GRP.test(p.nombre||"") || hasDKey(p);
+    const isCabP  = p => codigoEsCab(p)  || ES_CAB_GRP.test(p.nombre||"")  || hasCHKey(p);
 
     const addSz = (arr, sz) => { if (sz && !isNaN(parseFloat(sz)) && !arr.includes(sz)) arr.push(sz); };
 
