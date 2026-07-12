@@ -1623,9 +1623,7 @@ function renderVendedores() {
                 <button onclick="event.stopPropagation();eliminarVendedor(${jsArg(v.codigo)},${jsArg(v.nombre)})"
                     style="width:100%;padding:10px 14px;background:none;border:none;color:#e74c3c;font-size:13px;cursor:pointer;text-align:left;">🗑️ Eliminar</button>
             </div>
-            ${leadsPend > 0
-                ? `<div onclick="event.stopPropagation();abrirLeadsVendedor(${jsArg(v.codigo)})" title="Leads pendientes de confirmar" style="position:absolute;top:8px;left:8px;background:#16a34a;color:#fff;border-radius:50%;width:30px;height:30px;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center;z-index:2;cursor:pointer;box-shadow:0 2px 6px rgba(22,163,74,.5);">${leadsPend}</div>`
-                : ''}
+            <div onclick="event.stopPropagation();abrirLeadsVendedor(${jsArg(v.codigo)})" title="${leadsPend > 0 ? 'Leads pendientes de confirmar' : 'Sin Leads pendientes'}" style="position:absolute;top:8px;left:8px;background:${leadsPend > 0 ? '#16a34a' : 'var(--dorado)'};color:${leadsPend > 0 ? '#fff' : '#111'};border-radius:50%;width:30px;height:30px;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center;z-index:2;cursor:pointer;box-shadow:0 2px 6px ${leadsPend > 0 ? 'rgba(22,163,74,.5)' : 'rgba(201,168,76,.5)'};">${leadsPend}</div>
             <div class="vendedor-avatar">${inicial}</div>
             <div class="vendedor-nombre">${sanitizar(v.nombre)}</div>
             <div style="font-size:10px;color:var(--dorado);font-weight:600;letter-spacing:1px;margin-bottom:2px;">${sanitizar(v.codigo)}</div>
