@@ -1623,7 +1623,10 @@ function renderVendedores() {
                 <button onclick="event.stopPropagation();eliminarVendedor(${jsArg(v.codigo)},${jsArg(v.nombre)})"
                     style="width:100%;padding:10px 14px;background:none;border:none;color:#e74c3c;font-size:13px;cursor:pointer;text-align:left;">🗑️ Eliminar</button>
             </div>
-            <div class="vendedor-avatar" onclick="${leadsPend > 0 ? `event.stopPropagation();abrirLeadsVendedor(${jsArg(v.codigo)})` : ''}" title="${leadsPend > 0 ? leadsPend + ' Lead(s) pendientes de confirmar — toca para verlos' : 'Sin Leads pendientes'}" style="${leadsPend > 0 ? 'background:#16a34a;color:#fff;cursor:pointer;box-shadow:0 0 0 3px rgba(22,163,74,.35);' : ''}">${inicial}</div>
+            <div style="position:relative;width:54px;margin:0 auto 10px;">
+                <div class="vendedor-avatar" onclick="${leadsPend > 0 ? `event.stopPropagation();abrirLeadsVendedor(${jsArg(v.codigo)})` : ''}" title="${leadsPend > 0 ? leadsPend + ' Lead(s) pendientes de confirmar — toca para verlos' : 'Sin Leads pendientes'}" style="margin:0;${leadsPend > 0 ? 'background:#16a34a;color:#fff;cursor:pointer;box-shadow:0 0 0 3px rgba(22,163,74,.35);' : ''}">${inicial}</div>
+                <div onclick="event.stopPropagation();abrirLeadsVendedor(${jsArg(v.codigo)})" title="${leadsPend} Lead(s) pendientes" style="position:absolute;top:-4px;right:-4px;background:#111;color:${leadsPend > 0 ? '#4ade80' : 'var(--dorado)'};border:2px solid ${leadsPend > 0 ? '#16a34a' : 'var(--dorado)'};border-radius:50%;width:20px;height:20px;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;cursor:pointer;">${leadsPend}</div>
+            </div>
             <div class="vendedor-nombre">${sanitizar(v.nombre)}</div>
             <div style="font-size:10px;color:var(--dorado);font-weight:600;letter-spacing:1px;margin-bottom:2px;">${sanitizar(v.codigo)}</div>
             <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin-bottom:4px;">
