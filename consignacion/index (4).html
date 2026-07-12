@@ -1987,7 +1987,8 @@ function generarHojaInformativaAfiliadoPDF() {
     seccion("2. CÓMO SE REGISTRA UNA VENTA");
     bullet("Un cliente ve tu catálogo digital y da clic en \"Quiero este\" — eso queda registrado automáticamente como un interesado (Lead) a tu nombre.");
     bullet("Tú cierras la venta directamente con el cliente por WhatsApp.");
-    bullet("Le coordinas con VEREX la entrega de la pieza (o tú mismo la entregas si ya la tienes, en caso de que manejes piezas físicas).");
+    bullet("Completa el pedido en tu link personal de \"Completar Pedidos\" (te lo comparte VEREX) — ahí ingresas el nombre completo, teléfono y dirección exacta del cliente (departamento, municipio y dirección con referencia) para cada venta cerrada. Es obligatorio antes de que VEREX pueda confirmar y coordinar la entrega.");
+    bullet("Le coordinas con VEREX la entrega de la pieza (o tú mismo la entregas si ya la tienes, en caso de que manejes piezas físicas). Las ventas de afiliado son contra entrega, en efectivo, con envío gratis en pedidos desde $30.");
     bullet("La venta se confirma oficialmente cuando VEREX verifica que la pieza fue entregada — solo hasta ese momento se genera tu comisión. Esto protege a ambas partes: ni tú cargas con inventario no vendido, ni se paga comisión por ventas que no se concretaron.");
 
     seccion("3. TU COMISIÓN");
@@ -2288,14 +2289,15 @@ function generarContratoAfiliadoPDF(vendedor) {
         ["2. FUNCIONAMIENTO", recibeFisico
             ? "Cuando el Afiliado cierra una venta con un cliente, podrá entregarla directamente si ya tiene la pieza en su poder, o coordinar con VEREX la entrega. VEREX confirma cada venta al momento en que se le informa la entrega; solo hasta esa confirmación se genera la comisión correspondiente."
             : "Cuando el Afiliado cierra una venta con un cliente, debe coordinar con VEREX la entrega de la pieza. VEREX confirma la venta al momento de la entrega; solo hasta esa confirmación se genera la comisión correspondiente."],
-        ["3. PRECIOS", "El Afiliado ofrecerá las piezas al precio establecido por VEREX en el catálogo. No podrá modificar precios sin autorización escrita."],
+        ["3. DATOS DEL CLIENTE", "El Afiliado se obliga a proporcionar los datos completos del cliente (nombre, dirección y teléfono) para cada venta, a través de los medios que VEREX disponga para ello, como condición previa a la confirmación de la venta y a la liquidación de la comisión correspondiente."],
+        ["4. PRECIOS", "El Afiliado ofrecerá las piezas al precio establecido por VEREX en el catálogo. No podrá modificar precios sin autorización escrita."],
         recibeFisico
-            ? ["4. RESPONSABILIDAD POR PIEZAS ENTREGADAS", "El Afiliado es responsable de las piezas físicas que reciba de VEREX. En caso de pérdida, robo o daño, deberá pagar a VEREX el precio de venta de la pieza menos la comisión que le habría correspondido — el mismo monto que VEREX habría recibido si la pieza se hubiera vendido normalmente. Las piezas no vendidas deben devolverse en perfecto estado según lo acordado con VEREX."]
-            : ["4. SIN RESPONSABILIDAD POR INVENTARIO", "Al no recibir mercancía física, el Afiliado no asume responsabilidad por pérdida, robo o daño de piezas — dicha responsabilidad es exclusiva de VEREX hasta el momento de la entrega al cliente final."],
-        ["5. COMISIÓN", tieneComisionFija
+            ? ["5. RESPONSABILIDAD POR PIEZAS ENTREGADAS", "El Afiliado es responsable de las piezas físicas que reciba de VEREX. En caso de pérdida, robo o daño, deberá pagar a VEREX el precio de venta de la pieza menos la comisión que le habría correspondido — el mismo monto que VEREX habría recibido si la pieza se hubiera vendido normalmente. Las piezas no vendidas deben devolverse en perfecto estado según lo acordado con VEREX."]
+            : ["5. SIN RESPONSABILIDAD POR INVENTARIO", "Al no recibir mercancía física, el Afiliado no asume responsabilidad por pérdida, robo o daño de piezas — dicha responsabilidad es exclusiva de VEREX hasta el momento de la entrega al cliente final."],
+        ["6. COMISIÓN", tieneComisionFija
             ? `El Afiliado recibirá una comisión fija del ${vendedor.comisionFija}% sobre cada venta confirmada por VEREX, independientemente del monto acumulado en el período.`
             : "El Afiliado recibirá una comisión por tramos según el monto total de ventas confirmadas por VEREX en el período, conforme a la tabla incluida en este contrato."],
-        ["6. PAGOS", "La comisión se liquida en cada corte de cuentas, únicamente sobre las ventas que VEREX haya confirmado como entregadas."],
+        ["7. PAGOS", "La comisión se liquida en cada corte de cuentas, únicamente sobre las ventas que VEREX haya confirmado como entregadas."],
     ];
 
     doc.setFont("helvetica", "bold");
