@@ -5245,6 +5245,9 @@ function selSetSN(btn) {
     const esSet = btn.dataset.set !== "";
     document.getElementById("sn-precio").style.display = esSet ? "none" : "";
     document.getElementById("sn-precio-set").style.display = esSet ? "flex" : "none";
+    const esTrioSet = btn.dataset.set === "2+1";
+    const wrapDama2 = document.getElementById("sn-precio-dama2-wrap");
+    if (wrapDama2) wrapDama2.style.display = esTrioSet ? "block" : "none";
     if (esSet) selPrecioTipoSN('unisex');
     if (esSet) renderTallaSetSN();
     // Show set talla container only if categoria is anillo/conjunto and visible
@@ -6274,6 +6277,30 @@ async function guardarStockNuevo() {
                         set_config: setConfig || undefined
                     });
                     if (res.ok) { guardados++; codigosEtiq.push({ codigo, qty }); }
+                }
+                // Trío 2+1: segunda pieza de dama (ej. compromiso) — mismas tallas
+                // que la pieza 1, pero con codigoBase propio y su propio precio,
+                // para que el catálogo la reconozca como una pieza distinta.
+                const precioDama2Raw = document.getElementById("sn-precio-dama2")?.value;
+                if (setConfigSN === "2+1" && precioDama2Raw) {
+                    const precioDama2 = parseFloat(precioDama2Raw) || 0;
+                    const codigoBase2 = codigoBase + "B";
+                    for (const [talla, qty] of Object.entries(_snTallasQtyDama)) {
+                        const codigo = codigoBase2 + "DT" + talla;
+                        const res = await apiPost({
+                            accion: "STOCK_REGISTRAR",
+                            codigo, codigoBase: codigoBase2, talla,
+                            nombre: `${nombreVal} Dama T${talla}`,
+                            nombre_base: nombreVal,
+                            categoria, precio: precioDama2,
+                            foto: fotoUrl, cantidad: qty,
+                            material: _snMaterial || "",
+                            descripcion: desc, descripcionTienda: descTienda,
+                            caracterEspecial: caractEspecial,
+                            set_config: setConfig || undefined
+                        });
+                        if (res.ok) { guardados++; codigosEtiq.push({ codigo, qty }); }
+                    }
                 }
             }
             toast(`✅ ${guardados} variante${guardados > 1 ? 's' : ''} de set guardada${guardados > 1 ? 's' : ''} en stock`);
@@ -9276,6 +9303,10 @@ function enviarWAEstadoCuenta(ventaId) {
                     <div style="display:flex;gap:8px;">
                         <div style="flex:1;"><label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">💃 Precio Dama $</label><input type="number" id="sn-precio-dama" placeholder="0.00" step="0.01" onkeydown="if(event.key==='Enter')event.preventDefault()"></div>
                         <div style="flex:1;"><label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">🕺 Precio Caballero $</label><input type="number" id="sn-precio-caballero" placeholder="0.00" step="0.01" onkeydown="if(event.key==='Enter')event.preventDefault()"></div>
+                    </div>
+                    <div id="sn-precio-dama2-wrap" style="display:none;">
+                        <label style="font-size:11px;color:var(--plateado);display:block;margin-bottom:3px;">💍 Precio Dama — 2da pieza (trío) $ <span style="color:#888;">mismas tallas de dama, código propio</span></label>
+                        <input type="number" id="sn-precio-dama2" placeholder="0.00" step="0.01" onkeydown="if(event.key==='Enter')event.preventDefault()">
                     </div>
                 </div>
             </div>
