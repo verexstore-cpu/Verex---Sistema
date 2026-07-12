@@ -1818,7 +1818,7 @@ async function generarReciboLeadPDF(lead, codigoConfirmado){
         + (envio ? 8.5 : 0)                               // subtotal/envio
         + 5 + 5                                           // total + forma pago
         + 5 + (vend ? 4.5*2 : 4.5) + 5                     // footer contacto
-        + 8 + 8;                                          // ref afiliado + frase icónica + margen final
+        + 8 + 8 + 8;                                      // ref afiliado + frase icónica + margen final
     const H = Math.max(78, Math.ceil(alturaEstim));
     const doc = new jsPDF({ unit:'mm', format:[W, H], orientation:'portrait' });
     let y = 6;
