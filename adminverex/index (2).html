@@ -349,6 +349,8 @@
         <div class="tab" onclick="tab(3)">🚚 Envío</div>
         <div class="tab" onclick="tab(4)">🎟️ Cupones</div>
         <div class="tab" onclick="tab(6);cargarConsignacion()">👤 Vendedores</div>
+        <div class="tab" onclick="abrirModalCatalogo('cliente')">📋 Catálogo Cliente</div>
+        <div class="tab" onclick="abrirModalCatalogo('afiliado')">🤝 Catálogo Afiliado</div>
         <div class="tab" onclick="tab(7);cargarVentasAdmin()">💰 Ventas</div>
     </div>
 
@@ -545,10 +547,6 @@
             <h2>📦 Catálogo Actual</h2>
             <div class="sb">
                 <input type="text" id="bus-prod" placeholder="Buscar..." oninput="renderProductos()">
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
-                <button class="btn ba" style="justify-content:center;" onclick="abrirModalCatalogo('cliente')">📋 Catálogo Cliente</button>
-                <button class="btn" style="justify-content:center;background:#16a34a;color:#fff;" onclick="abrirModalCatalogo('afiliado')">🤝 Catálogo Afiliado</button>
             </div>
             <div id="lista-prod"></div>
         </div>
