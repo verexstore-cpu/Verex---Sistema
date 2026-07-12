@@ -1426,13 +1426,17 @@ function productosVisiblesCount() {
     return agruparParaCatalogo(anLista).length + otros.length;
 }
 
-// Ventas + pedidos totales combinan Ecommerce (pedidos) y Venta Directa
-// (ventas_directas) — antes solo se contaban los pedidos del ecommerce.
+// Ventas + pedidos totales combinan Ecommerce (pedidos), Venta Directa
+// (ventas_directas) y ventas de afiliados SIN piezas físicas — en ese caso
+// VEREX entrega y cobra directo al cliente, así que ese dinero ya está en
+// caja (solo falta pagarle la comisión al afiliado). Se deja fuera la
+// consignación tradicional (con piezas físicas), donde el vendedor cobra
+// primero y liquida después — ese dinero no ha entrado a VEREX todavía.
 async function cargarVentasUnificadas() {
     try {
         const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_HISTORIAL_VENTAS", _pass: ADMIN_PASS }) });
         const data = await res.json();
-        _ventasUnificadas = (data.ventas || []).filter(v => v.tipo === "catalogo" || v.tipo === "directa");
+        _ventasUnificadas = (data.ventas || []).filter(v => v.tipo === "catalogo" || v.tipo === "directa" || v.tipo === "afiliado_sin_stock");
     } catch(e) { _ventasUnificadas = null; }
 }
 
@@ -1453,12 +1457,18 @@ function renderStats() {
 
     const ingMes  = pedMes.reduce((s,p)=>s+(parseFloat(String(p.total).replace(/[^0-9.]/g,""))||0),0);
     const ingSem  = pedSem.reduce((s,p)=>s+(parseFloat(String(p.total).replace(/[^0-9.]/g,""))||0),0);
+    // Cuánto de ese ingreso del mes vino de afiliados — para no olvidar que
+    // ahí falta descontar la comisión antes de ser ganancia neta.
+    const ingMesAfiliados = pedMes.filter(p => p.tipo === "afiliado_sin_stock")
+        .reduce((s,p)=>s+(parseFloat(String(p.total).replace(/[^0-9.]/g,""))||0),0);
 
     document.getElementById("s-prod").textContent    = productosVisiblesCount();
     document.getElementById("s-ped").textContent     = fuenteVentas.length;
     document.getElementById("s-ped-hoy").textContent = `${pedHoy.length} hoy`;
     document.getElementById("s-mes").textContent     = `$${ingMes.toFixed(0)}`;
-    document.getElementById("s-mes-sem").textContent = `$${ingSem.toFixed(0)} esta semana`;
+    document.getElementById("s-mes-sem").textContent = ingMesAfiliados > 0
+        ? `$${ingSem.toFixed(0)} esta semana · 🤝 $${ingMesAfiliados.toFixed(0)} de afiliados (falta comisión)`
+        : `$${ingSem.toFixed(0)} esta semana`;
     document.getElementById("s-cup").textContent     = cupones.filter(c=>c.activo).length;
     document.getElementById("s-pend").textContent    = `${pedPend.length} pendientes`;
 }

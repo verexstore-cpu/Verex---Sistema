@@ -763,11 +763,13 @@ async function enviar(){
 
         case "GET_HISTORIAL_VENTAS": {
           if (!esAdmin) return forbidden();
-          const [vd, peds, consig] = await Promise.all([
+          const [vd, peds, consig, vends] = await Promise.all([
             sb.getAll("ventas_directas"),
             sb.getAll("pedidos"),
-            sb.getAll("consignacion")
+            sb.getAll("consignacion"),
+            sb.getAll("vendedores")
           ]);
+          const vendMap = new Map(vends.map(v => [v.codigo, v]));
           const unificadas = [
             ...vd.map(v => ({
               id: v.id, fecha: v.fecha, tipo: "directa",
@@ -789,15 +791,27 @@ async function enviar(){
               ),
               nota: p.municipio || ""
             })),
-            ...consig.filter(c => parseInt(c.vendido) > 0).map(c => ({
-              id: c.id, fecha: c.fecha, tipo: "consignacion",
-              cliente: c.vendedor || "—", telefono: "",
-              total: parseFloat(c.precio || 0) * parseInt(c.vendido || 1),
-              estado: "pagado",
-              saldoPendiente: 0,
-              items: JSON.stringify([{ nombre: c.nombre || c.codigo, cantidad: c.vendido, precio: c.precio }]),
-              nota: ""
-            }))
+            // Un vendedor de consignación tradicional (con piezas físicas) cobra él
+            // mismo al cliente y liquida con VEREX después — esa venta NO es dinero
+            // que ya entró a la caja de VEREX, así que se etiqueta aparte.
+            // Un afiliado SIN piezas físicas es distinto: VEREX entrega y cobra
+            // directo al cliente, así que ese dinero sí es ingreso real de VEREX
+            // ya en caja (solo falta pagarle la comisión al afiliado).
+            ...consig.filter(c => parseInt(c.vendido) > 0).map(c => {
+              const vend = vendMap.get(c.vendedor);
+              const esAfiliadoSinStock = vend?.tipo === "afiliado" && !vend?.recibeFisico;
+              return {
+                id: c.id, fecha: c.fecha,
+                tipo: esAfiliadoSinStock ? "afiliado_sin_stock" : "consignacion",
+                cliente: c.vendedor || "—", telefono: "",
+                afiliadoNombre: vend?.nombre || c.vendedor || "",
+                total: parseFloat(c.precio || 0) * parseInt(c.vendido || 1),
+                estado: "pagado",
+                saldoPendiente: 0,
+                items: JSON.stringify([{ nombre: c.nombre || c.codigo, cantidad: c.vendido, precio: c.precio }]),
+                nota: ""
+              };
+            })
           ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
           result = { ok: true, ventas: unificadas };
           break;
