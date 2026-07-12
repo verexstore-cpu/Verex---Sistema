@@ -648,6 +648,24 @@ async function enviar(){
           break;
         }
 
+        // Todos los cortes (de cualquier vendedor), marcando cuáles son de un
+        // afiliado sin stock físico — el Dashboard usa esto para descontar del
+        // ingreso bruto la comisión YA pagada a esos afiliados.
+        case "GET_CORTES_HISTORIAL_TODOS": {
+          if (!esAdmin) return forbidden();
+          const [cortes, vends] = await Promise.all([
+            sb.getAll("cortes_historial"),
+            sb.getAll("vendedores")
+          ]);
+          const vendMap = new Map(vends.map(v => [v.codigo, v]));
+          const enriquecidos = cortes.map(c => {
+            const vend = vendMap.get(c.vendedor);
+            return { ...c, esAfiliadoSinStock: vend?.tipo === "afiliado" && !vend?.recibeFisico };
+          });
+          result = { ok: true, cortes: enriquecidos };
+          break;
+        }
+
         // ══ VENTAS DIRECTAS ═══════════════════════════════════════
         case "REGISTRAR_VENTA_DIRECTA": {
           if (!esAdmin) return forbidden();
