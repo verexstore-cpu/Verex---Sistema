@@ -169,6 +169,32 @@
         return Math.round(n * (1 - _descPct / 100) * 100) / 100;
     }
 
+    // Genera el bloque de precio de una tarjeta — usado en el render inicial
+    // y de nuevo por actualizarDisponibilidad() cuando el precio cambió en
+    // Stock desde que se generó el catálogo (sin necesidad de regenerar el link).
+    function renderPrecioHtml(p){
+        const totalSet = (p.par && p.pD != null && p.pH != null)
+            ? parseFloat(p.pD) + parseFloat(p.pH) : null;
+        if (totalSet != null) {
+            const piezas = p.piezas || 2;
+            const nDama = piezas - 1; // hoy: 1 o 2 anillos dama + 1 caballero
+            const label = piezas === 2
+                ? "Precio del par (dama + caballero)"
+                : piezas === 3
+                    ? "Precio del trío (2 anillos dama + 1 caballero)"
+                    : `Precio del set (${piezas} piezas)`;
+            const precioTxt = _descPct
+                ? `<span class="card-price-orig">$${totalSet.toFixed(2)}</span> <span class="card-price-final">$${precioFinal(totalSet).toFixed(2)}</span>`
+                : `$${totalSet.toFixed(2)}`;
+            return `${precioTxt}<span style="display:block;font-size:10px;font-weight:700;color:#7c3aed;margin-top:2px;">${label}</span>
+                <span style="display:block;font-size:10px;font-weight:500;color:#9ca3af;margin-top:1px;">Dama $${parseFloat(p.pD).toFixed(2)}${nDama>1?` (${nDama} piezas)`:""} · Caballero $${parseFloat(p.pH).toFixed(2)}</span>`;
+        }
+        const base = _descPct
+            ? `<span class="card-price-orig">$${esc(p.p)}</span> <span class="card-price-final">$${precioFinal(p.p).toFixed(2)}</span>`
+            : `$${esc(p.p)}`;
+        return `${base}${p.par?`<span style="display:block;font-size:10px;font-weight:500;color:#7c3aed;margin-top:2px;">Precio por pieza</span>`:""}`;
+    }
+
     function showExpired(nombre, wa){
         document.getElementById("app").innerHTML=`
             <header><img class="logo" src="/images/logo.webp" alt="VEREX"></header>
@@ -224,28 +250,7 @@
                     ${p.m?`<div class="card-material">${esc(p.m)}</div>`:''}
                     ${sizesHtml}
                     ${p.ne?`<div class="card-ne">♦ ${esc(p.ne)}</div>`:''}
-                    <div class="card-price">${(() => {
-                        const totalSet = (p.par && p.pD != null && p.pH != null)
-                            ? parseFloat(p.pD) + parseFloat(p.pH) : null;
-                        if (totalSet != null) {
-                            const piezas = p.piezas || 2;
-                            const nDama = piezas - 1; // hoy: 1 o 2 anillos dama + 1 caballero
-                            const label = piezas === 2
-                                ? "Precio del par (dama + caballero)"
-                                : piezas === 3
-                                    ? "Precio del trío (2 anillos dama + 1 caballero)"
-                                    : `Precio del set (${piezas} piezas)`;
-                            const precioTxt = _descPct
-                                ? `<span class="card-price-orig">$${totalSet.toFixed(2)}</span> <span class="card-price-final">$${precioFinal(totalSet).toFixed(2)}</span>`
-                                : `$${totalSet.toFixed(2)}`;
-                            return `${precioTxt}<span style="display:block;font-size:10px;font-weight:700;color:#7c3aed;margin-top:2px;">${label}</span>
-                                <span style="display:block;font-size:10px;font-weight:500;color:#9ca3af;margin-top:1px;">Dama $${parseFloat(p.pD).toFixed(2)}${nDama>1?` (${nDama} piezas)`:""} · Caballero $${parseFloat(p.pH).toFixed(2)}</span>`;
-                        }
-                        const base = _descPct
-                            ? `<span class="card-price-orig">$${esc(p.p)}</span> <span class="card-price-final">$${precioFinal(p.p).toFixed(2)}</span>`
-                            : `$${esc(p.p)}`;
-                        return `${base}${p.par?`<span style="display:block;font-size:10px;font-weight:500;color:#7c3aed;margin-top:2px;">Precio por pieza</span>`:""}`;
-                    })()}</div>
+                    <div class="card-price" id="price-${i}">${renderPrecioHtml(p)}</div>
                     ${p.nota?`<div class="card-nota">${esc(p.nota)}</div>`:''}
                 </div>
                 <div class="card-footer">
@@ -366,6 +371,16 @@
                     p.i = s.foto;
                     const img = card?.querySelector(".card-img");
                     if(img) img.src = s.foto;
+                }
+
+                // Refrescar el precio si cambió en Stock — así un ajuste de precio
+                // aplica solo, sin tener que regenerar el link. (Los pares/tríos no
+                // se recalculan aquí porque el catálogo solo guarda el código de una
+                // de las piezas del set — su precio sigue el que tenía al generarse.)
+                if(!p.par && s && s.precio != null && parseFloat(s.precio) !== parseFloat(p.p)){
+                    p.p = parseFloat(s.precio).toFixed(2);
+                    const priceEl = document.getElementById(`price-${i}`);
+                    if(priceEl) priceEl.innerHTML = renderPrecioHtml(p);
                 }
 
                 // Si el código ya no existe en stock (eliminado) o quedó sin
