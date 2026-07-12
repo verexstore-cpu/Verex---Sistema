@@ -1694,6 +1694,7 @@ function renderLeadsModal(codigo) {
                     <button onclick="confirmarLeadVenta('${sanitizar(l.id)}')" style="padding:5px 10px;font-size:11px;background:#27ae60;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✅ Confirmar</button>
                     <button onclick="cancelarLeadUI('${sanitizar(l.id)}')" style="padding:5px 10px;font-size:11px;background:#e74c3c;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">❌ Cancelar</button>
                 </div>` : ''}
+                ${l.estado === "vendido" ? `<button onclick="reimprimirReciboLead('${sanitizar(l.id)}')" style="padding:5px 10px;font-size:11px;background:#111;border:1px solid var(--dorado);color:var(--dorado);border-radius:6px;cursor:pointer;font-weight:600;flex-shrink:0;">🧾 Recibo</button>` : ''}
             </div>
             ${clienteHtml}
         </div>`;
@@ -1747,6 +1748,17 @@ async function confirmarDesdeResumenStock() {
     cerrarModal("modal-lead-stock");
     await confirmarLeadVenta(_leadStockActual);
     _leadStockActual = null;
+}
+
+// Reimprime el recibo de un Lead que ya se confirmó como vendido antes de
+// que existiera esta función — los datos del cliente y el producto siguen
+// guardados en el Lead, así que se puede generar en cualquier momento.
+function reimprimirReciboLead(id) {
+    const lead = leadsData.find(l => l.id === id);
+    if (!lead) return toast("⚠️ Lead no encontrado");
+    const historialVendido = (lead.historial || []).find(h => h.estado === "vendido");
+    const codigoConfirmado = historialVendido?.codigoConfirmado || lead.codigo;
+    generarReciboLeadPDF(lead, codigoConfirmado);
 }
 
 async function confirmarLeadVenta(id) {
