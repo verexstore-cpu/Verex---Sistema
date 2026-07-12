@@ -548,6 +548,9 @@
                     <select id="fil-stock-material" onchange="filtrarStock()" style="width:150px;">
                         <option value="">Todo material</option>
                     </select>
+                    <select id="fil-stock-categoria" onchange="filtrarStock()" style="width:150px;">
+                        <option value="">Todo tipo</option>
+                    </select>
                     <button class="btn btn-dorado" onclick="abrirStockNuevoProd()" style="padding:8px 14px;font-size:13px;">+ Agregar</button>
                     <button class="btn" style="background:#4a6fa5;color:#fff;padding:8px 14px;font-size:13px;" onclick="abrirStockNuevoLote()">📦 Lote</button>
                     <button class="btn" style="background:#27ae60;color:#fff;padding:8px 14px;font-size:13px;" onclick="abrirImportarExcel()">📥 Importar</button>
@@ -5122,6 +5125,7 @@ async function cargarStock() {
         const res = await apiPost({ accion: "STOCK_GET_ALL" });
         stockData = res.stock || [];
         poblarFiltroMaterial();
+        poblarFiltroCategoria();
         renderStock(stockData);
     } catch(e) {
         document.getElementById("lista-stock").innerHTML = '<p style="color:#e74c3c;font-size:13px;">⚠️ Error cargando stock</p>';
@@ -5449,15 +5453,25 @@ function buscarEtiquetasPorScanner(cod) {
     }, 80);
 }
 
+// Etiquetas legibles para las categorías estándar — cualquier categoría
+// personalizada que no esté aquí se muestra tal cual viene en el dato.
+const CATEGORIA_LABELS_STOCK = {
+    AN: "💍 Anillos", PU: "📿 Pulseras", CO: "📿 Collares", AR: "👂 Aretes",
+    CJ: "✨ Conjuntos", DJ: "🔗 Dijes", TB: "🦶 Tobilleras", CD: "⛓️ Cadenas con Dije",
+    CA: "⛓️ Cadenas solas", RS: "📿 Rosarios", RE: "⌚ Relojes",
+};
+
 function filtrarStock() {
     const filtro = document.getElementById("fil-stock-estado").value;
     const material = document.getElementById("fil-stock-material")?.value || "";
+    const categoria = document.getElementById("fil-stock-categoria")?.value || "";
     const busq = document.getElementById("bus-stock").value.toLowerCase();
     const filtrados = stockData.filter(i => {
         const coincideBusq = !busq ||
             (i.nombre||"").toLowerCase().includes(busq) ||
             (i.codigo||"").toLowerCase().includes(busq);
         const coincideMaterial = !material || (i.material||"") === material;
+        const coincideCategoria = !categoria || (i.categoria||"").toUpperCase() === categoria;
         let coincideEstado = true;
         if (filtro) {
             switch (filtro) {
@@ -5469,7 +5483,7 @@ function filtrarStock() {
                 default:             coincideEstado = normalizar(i.estado) === filtro;
             }
         }
-        return coincideEstado && coincideMaterial && coincideBusq;
+        return coincideEstado && coincideMaterial && coincideCategoria && coincideBusq;
     });
     renderStock(filtrados);
 }
@@ -5484,6 +5498,18 @@ function poblarFiltroMaterial() {
     sel.innerHTML = '<option value="">Todo material</option>' +
         materiales.map(m => `<option value="${m.replace(/"/g,'&quot;')}">${m}</option>`).join("");
     if (materiales.includes(actual)) sel.value = actual;
+}
+
+// Llena el filtro de tipo de producto (categoría) con los valores distintos
+// presentes en el stock actual — igual que el de material.
+function poblarFiltroCategoria() {
+    const sel = document.getElementById("fil-stock-categoria");
+    if (!sel) return;
+    const actual = sel.value;
+    const categorias = [...new Set(stockData.map(i => (i.categoria||"").trim().toUpperCase()).filter(Boolean))].sort();
+    sel.innerHTML = '<option value="">Todo tipo</option>' +
+        categorias.map(c => `<option value="${c}">${CATEGORIA_LABELS_STOCK[c] || c}</option>`).join("");
+    if (categorias.includes(actual)) sel.value = actual;
 }
 
 function normalizar(estado) {
