@@ -1768,9 +1768,87 @@ async function confirmarLeadVenta(id) {
     const res = await apiPost({ accion: "CONFIRMAR_LEAD_VENTA", id, codigoOverride });
     if (!res.ok) { toast("⚠️ " + (res.error || "No se pudo confirmar")); return; }
     toast("✅ Venta confirmada — stock y comisión actualizados");
+    if (lead) generarReciboLeadPDF(lead, codigoOverride || lead.codigo);
     const codigoVend = lead?.afiliado;
     await cargarDatos();
     if (codigoVend) renderLeadsModal(codigoVend);
+}
+
+// Recibo de venta para una venta confirmada de afiliado — mismo formato
+// térmico (62mm) que el de Venta Directa. El código del afiliado va en una
+// línea discreta del footer, en gris chico, para no protagonizar el recibo
+// que ve el cliente pero quede trazable de dónde vino la venta.
+function generarReciboLeadPDF(lead, codigoConfirmado){
+    if (!window.jspdf?.jsPDF) return;
+    const { jsPDF } = window.jspdf;
+
+    const c = lead.cliente || {};
+    const envio = lead.envioInfo || null;
+    const total = envio ? parseFloat(envio.total||0) : parseFloat(lead.precio||0);
+
+    const W  = 62, mX = 4, cX = W/2, lH = 4.5;
+    let y = 6;
+    const H = 78; // alto fijo, suficiente para 1 producto + footer
+    const doc = new jsPDF({ unit:'mm', format:[W, H], orientation:'portrait' });
+
+    doc.setFont("helvetica","bold"); doc.setFontSize(18); doc.setTextColor(0,0,0);
+    doc.text("VEREX", cX, y, { align:"center" }); y += 5.5;
+    doc.setFont("helvetica","normal"); doc.setFontSize(6.5); doc.setTextColor(80,80,80);
+    doc.text("S T O R E", cX, y, { align:"center" }); y += 4;
+
+    doc.setDrawColor(180,140,50); doc.setLineWidth(0.5);
+    doc.line(mX, y, W-mX, y); y += 4;
+
+    doc.setFont("helvetica","bold"); doc.setFontSize(7.5); doc.setTextColor(0,0,0);
+    doc.text("RECIBO DE VENTA", cX, y, { align:"center" }); y += 4.5;
+
+    const fecha = new Date().toLocaleDateString("es-SV", { day:"2-digit", month:"2-digit", year:"numeric" });
+    const hora  = new Date().toLocaleTimeString("es-SV", { hour:"2-digit", minute:"2-digit" });
+    doc.setFontSize(7); doc.setTextColor(40,40,40);
+    [
+        ["Fecha:",   fecha + "  " + hora],
+        ["Cliente:", c.nombre || "—"],
+        ["Tel:",     c.telefono || "—"],
+    ].forEach(([label, val]) => {
+        doc.setFont("helvetica","bold");   doc.text(label, mX, y);
+        doc.setFont("helvetica","normal"); doc.text(String(val), mX+14, y);
+        y += lH;
+    });
+    y += 2;
+
+    doc.setDrawColor(200,200,200); doc.setLineWidth(0.3);
+    doc.line(mX, y, W-mX, y); y += 3.5;
+
+    doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(20,20,20);
+    const nombreLines = doc.splitTextToSize(lead.nombre || codigoConfirmado || "—", W - mX*2 - 20);
+    nombreLines.forEach(l => { doc.text(l, mX, y); y += lH; });
+    y += 1;
+
+    doc.setDrawColor(200,200,200); doc.line(mX, y, W-mX, y); y += 3.5;
+
+    if (envio) {
+        doc.setFontSize(7);
+        doc.text("Subtotal:", mX, y); doc.text("$"+parseFloat(envio.subtotal||0).toFixed(2), W-mX, y, { align:"right" }); y += 4;
+        doc.text("Envío:", mX, y); doc.text(envio.envio===0?"GRATIS":"$"+parseFloat(envio.envio).toFixed(2), W-mX, y, { align:"right" }); y += 4.5;
+    }
+    doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.setTextColor(0,0,0);
+    doc.text("TOTAL:", mX, y); doc.text("$"+total.toFixed(2), W-mX, y, { align:"right" }); y += 5;
+    doc.setFont("helvetica","normal"); doc.setFontSize(6.5); doc.setTextColor(80,80,80);
+    doc.text("Contra entrega, en efectivo", cX, y, { align:"center" }); y += 5;
+
+    doc.setDrawColor(180,140,50); doc.setLineWidth(0.5);
+    doc.line(mX, y, W-mX, y); y += 5;
+
+    doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(40,40,40);
+    doc.text("WhatsApp: 7125-0725", cX, y, { align:"center" }); y += 4.5;
+    doc.setFont("helvetica","bold"); doc.setFontSize(7);
+    doc.text("Gracias por su preferencia  VEREX", cX, y, { align:"center" }); y += 5;
+
+    // Código del afiliado — discreto, chico y gris, no protagoniza el recibo
+    doc.setFont("helvetica","normal"); doc.setFontSize(5.5); doc.setTextColor(160,160,160);
+    doc.text("Ref. afiliado: " + (lead.afiliado || "—"), cX, y, { align:"center" });
+
+    doc.save("Recibo_" + (c.nombre||"cliente").replace(/ /g,"_") + ".pdf");
 }
 
 async function cancelarLeadUI(id) {
