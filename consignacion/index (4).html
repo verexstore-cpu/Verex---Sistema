@@ -1662,7 +1662,7 @@ function renderLeadsModal(codigo) {
         const accionable = l.estado === "interesado" || l.estado === "reportado";
         const c = l.cliente;
         const clienteHtml = c ? `<div style="margin-top:6px;padding:8px 10px;background:var(--negro);border:1px solid var(--borde);border-radius:8px;font-size:11px;line-height:1.7;">
-                <div style="color:#16a34a;font-weight:700;">✅ Pedido completado por el afiliado</div>
+                <div style="display:inline-block;background:#16a34a;color:#fff;font-weight:800;font-size:12px;padding:5px 12px;border-radius:20px;margin-bottom:6px;">✅ Pedido completado por el afiliado</div>
                 <div><b>${sanitizar(c.nombre)}</b> · ${sanitizar(c.telefono)}</div>
                 <div>${sanitizar(c.direccion)}, ${sanitizar(c.municipio)}, ${sanitizar(c.departamento)}</div>
                 <div>💵 Contra entrega en efectivo${l.envioInfo ? ` · Envío: ${l.envioInfo.envio===0?'GRATIS':'$'+l.envioInfo.envio.toFixed(2)} · Total: $${l.envioInfo.total.toFixed(2)}` : ''}</div>

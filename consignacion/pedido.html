@@ -6,32 +6,32 @@
 <title>Completar pedido — VEREX</title>
 <style>
     *{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:'Segoe UI',sans-serif;background:#f0f2f5;min-height:100vh;color:#1a1a1a;}
+    body{font-family:'Segoe UI',sans-serif;background:#fff;min-height:100vh;color:#1a1a1a;}
     header{background:#111;text-align:center;padding:18px 16px;}
     header .logo{color:#C9A84C;font-size:26px;font-weight:800;letter-spacing:2px;}
     header .sub{color:#888;font-size:12px;margin-top:2px;}
-    .wrap{max-width:520px;margin:0 auto;padding:16px;}
-    .card{background:#fff;border-radius:12px;padding:16px 18px;margin-bottom:14px;box-shadow:0 2px 10px rgba(0,0,0,.06);}
-    .card h2{font-size:15px;color:#C9A84C;margin-bottom:10px;}
-    label{display:block;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.3px;margin:10px 0 4px;}
+    .wrap{max-width:720px;margin:0 auto;padding:24px 20px;}
+    .card{background:#fff;border-radius:14px;padding:24px 26px;margin-bottom:18px;box-shadow:0 2px 14px rgba(0,0,0,.08);border:1px solid #eee;}
+    .card h2{font-size:18px;color:#C9A84C;margin-bottom:14px;}
+    label{display:block;font-size:12.5px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.3px;margin:14px 0 5px;}
     label:first-child{margin-top:0;}
     input[type=text],input[type=tel],select,textarea{
-        width:100%;padding:11px 12px;border:1.5px solid #e2e2e2;border-radius:8px;
-        font-size:14px;font-family:inherit;background:#f9f9f9;
+        width:100%;padding:14px 14px;border:1.5px solid #e2e2e2;border-radius:9px;
+        font-size:16px;font-family:inherit;background:#f9f9f9;
     }
     textarea{resize:vertical;}
-    .item{display:flex;align-items:center;gap:10px;padding:10px;background:#f7f7f7;border:1.5px solid #e2e2e2;border-radius:10px;margin-bottom:8px;cursor:pointer;}
+    .item{display:flex;align-items:center;gap:12px;padding:14px;background:#f7f7f7;border:1.5px solid #e2e2e2;border-radius:12px;margin-bottom:10px;cursor:pointer;}
     .item.checked{border-color:#C9A84C;background:#fffbf0;}
-    .item img{width:42px;height:42px;object-fit:cover;border-radius:6px;flex-shrink:0;}
-    .item .nom{font-size:13px;font-weight:700;}
-    .item .prc{font-size:12px;color:#666;}
-    .item input[type=checkbox]{width:18px;height:18px;accent-color:#C9A84C;flex-shrink:0;}
-    .badge-pago{background:#111;color:#C9A84C;font-size:12px;font-weight:700;text-align:center;padding:10px;border-radius:8px;margin-bottom:14px;}
-    .resumen{font-size:13px;line-height:1.9;border-top:1px solid #eee;margin-top:10px;padding-top:10px;}
+    .item img{width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0;}
+    .item .nom{font-size:15px;font-weight:700;}
+    .item .prc{font-size:13px;color:#666;}
+    .item input[type=checkbox]{width:20px;height:20px;accent-color:#C9A84C;flex-shrink:0;}
+    .badge-pago{background:#111;color:#C9A84C;font-size:13px;font-weight:700;text-align:center;padding:12px;border-radius:9px;margin-bottom:16px;}
+    .resumen{font-size:14px;line-height:2;border-top:1px solid #eee;margin-top:14px;padding-top:14px;}
     .resumen .fila{display:flex;justify-content:space-between;}
-    .resumen .total{font-weight:800;font-size:15px;color:#111;}
+    .resumen .total{font-weight:800;font-size:17px;color:#111;}
     .envio-gratis{color:#16a34a;font-weight:700;}
-    .btn{display:block;width:100%;text-align:center;padding:14px;border-radius:10px;font-size:14px;font-weight:700;border:none;cursor:pointer;margin-top:8px;}
+    .btn{display:block;width:100%;text-align:center;padding:16px;border-radius:11px;font-size:16px;font-weight:700;border:none;cursor:pointer;margin-top:10px;}
     .btn-dorado{background:linear-gradient(135deg,#7a5500,#C9A84C,#f0d060,#C9A84C,#7a5500);color:#1a0e00;}
     .btn-dorado:disabled{opacity:.5;cursor:not-allowed;}
     .estado{text-align:center;padding:60px 20px;}
