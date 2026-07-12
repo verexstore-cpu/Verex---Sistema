@@ -3456,11 +3456,26 @@ function agruparParaCatalogo(lista) {
 
         if (damas.length && cabs.length) {
             g._esPareja = true;
-            g._piezas = damas.length + cabs.length; // 2 = pareja, 3 = trío, etc.
-            const codigosUnicos = new Set([...damas, ...cabs].map(p => p.codigo));
+            // Varias filas pueden ser solo tallas distintas del MISMO anillo (mismo
+            // codigoBase) — eso sigue siendo 1 sola pieza, no una por talla. Solo un
+            // codigoBase distinto es una pieza físicamente diferente (ej. trío: anillo
+            // de compromiso + anillo de matrimonio para dama, cada uno con su propio
+            // codigoBase y sus propias tallas).
+            const porDiseno = filas => {
+                const map = new Map();
+                filas.forEach(p => {
+                    const key = p.codigoBase || p.codigo;
+                    if (!map.has(key)) map.set(key, p); // una fila representativa por diseño
+                });
+                return [...map.values()];
+            };
+            const damasUnicas = porDiseno(damas);
+            const cabsUnicos  = porDiseno(cabs);
+            g._piezas = damasUnicas.length + cabsUnicos.length; // 2 = pareja, 3 = trío, etc.
+            const codigosUnicos = new Set([...damasUnicas, ...cabsUnicos].map(p => p.codigoBase || p.codigo));
             if (codigosUnicos.size > 1) {
-                g._precioDama = damas.reduce((sum,d) => sum + parseFloat(d.precio||0), 0).toFixed(2);
-                g._precioCab  = cabs.reduce((sum,c) => sum + parseFloat(c.precio||0), 0).toFixed(2);
+                g._precioDama = damasUnicas.reduce((sum,d) => sum + parseFloat(d.precio||0), 0).toFixed(2);
+                g._precioCab  = cabsUnicos.reduce((sum,c) => sum + parseFloat(c.precio||0), 0).toFixed(2);
             }
         }
     });
