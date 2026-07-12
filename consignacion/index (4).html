@@ -1753,12 +1753,12 @@ async function confirmarDesdeResumenStock() {
 // Reimprime el recibo de un Lead que ya se confirmó como vendido antes de
 // que existiera esta función — los datos del cliente y el producto siguen
 // guardados en el Lead, así que se puede generar en cualquier momento.
-function reimprimirReciboLead(id) {
+async function reimprimirReciboLead(id) {
     const lead = leadsData.find(l => l.id === id);
     if (!lead) return toast("⚠️ Lead no encontrado");
     const historialVendido = (lead.historial || []).find(h => h.estado === "vendido");
     const codigoConfirmado = historialVendido?.codigoConfirmado || lead.codigo;
-    generarReciboLeadPDF(lead, codigoConfirmado);
+    await generarReciboLeadPDF(lead, codigoConfirmado);
 }
 
 async function confirmarLeadVenta(id) {
@@ -1780,7 +1780,7 @@ async function confirmarLeadVenta(id) {
     const res = await apiPost({ accion: "CONFIRMAR_LEAD_VENTA", id, codigoOverride });
     if (!res.ok) { toast("⚠️ " + (res.error || "No se pudo confirmar")); return; }
     toast("✅ Venta confirmada — stock y comisión actualizados");
-    if (lead) generarReciboLeadPDF(lead, codigoOverride || lead.codigo);
+    if (lead) await generarReciboLeadPDF(lead, codigoOverride || lead.codigo);
     const codigoVend = lead?.afiliado;
     await cargarDatos();
     if (codigoVend) renderLeadsModal(codigoVend);
@@ -1790,9 +1790,15 @@ async function confirmarLeadVenta(id) {
 // térmico (62mm) que el de Venta Directa. El código del afiliado va en una
 // línea discreta del footer, en gris chico, para no protagonizar el recibo
 // que ve el cliente pero quede trazable de dónde vino la venta.
-function generarReciboLeadPDF(lead, codigoConfirmado){
+async function generarReciboLeadPDF(lead, codigoConfirmado){
     if (!window.jspdf?.jsPDF) return;
     const { jsPDF } = window.jspdf;
+
+    // stockData solo se carga al abrir la pestaña Stock — si el admin no la ha
+    // abierto en esta sesión, viene vacía y el material/talla no aparecerían.
+    if (!stockData || !stockData.length) {
+        try { const res = await apiPost({ accion: "GET_STOCK" }); stockData = res.stock || []; } catch(_) {}
+    }
 
     const c = lead.cliente || {};
     const envio = lead.envioInfo || null;
@@ -1812,7 +1818,7 @@ function generarReciboLeadPDF(lead, codigoConfirmado){
         + (envio ? 8.5 : 0)                               // subtotal/envio
         + 5 + 5                                           // total + forma pago
         + 5 + (vend ? 4.5*2 : 4.5) + 5                     // footer contacto
-        + 8;                                              // ref afiliado + margen final
+        + 8 + 8;                                          // ref afiliado + frase icónica + margen final
     const H = Math.max(78, Math.ceil(alturaEstim));
     const doc = new jsPDF({ unit:'mm', format:[W, H], orientation:'portrait' });
     let y = 6;
@@ -1880,7 +1886,11 @@ function generarReciboLeadPDF(lead, codigoConfirmado){
 
     // Código del afiliado — discreto, chico y gris, no protagoniza el recibo
     doc.setFont("helvetica","normal"); doc.setFontSize(5.5); doc.setTextColor(160,160,160);
-    doc.text("Ref. afiliado: " + (lead.afiliado || "—"), cX, y, { align:"center" });
+    doc.text("Ref. afiliado: " + (lead.afiliado || "—"), cX, y, { align:"center" }); y += 5;
+
+    doc.setFont("helvetica","bolditalic"); doc.setFontSize(6.5); doc.setTextColor(160,110,30);
+    doc.text("El mundo es mas maravilloso", cX, y, { align:"center" }); y += 4;
+    doc.text("cuando brillas TU \u{1F49B}", cX, y, { align:"center" });
 
     doc.save("Recibo_" + (c.nombre||"cliente").replace(/ /g,"_") + ".pdf");
 }
