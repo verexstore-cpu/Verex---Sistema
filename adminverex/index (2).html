@@ -3546,7 +3546,12 @@ function agruparParaCatalogo(lista) {
             const damasUnicas = porDiseno(damas);
             const cabsUnicos  = porDiseno(cabs);
             g._piezas = damasUnicas.length + cabsUnicos.length; // 2 = pareja, 3 = trío, etc.
-            const codigosUnicos = new Set([...damasUnicas, ...cabsUnicos].map(p => p.codigoBase || p.codigo));
+            // OJO: en un par normal, dama y caballero SIEMPRE comparten el mismo
+            // codigoBase (solo la 2da pieza dama de un trío tiene uno distinto,
+            // con sufijo "B") — por eso aquí se compara por CÓDIGO exacto, no por
+            // codigoBase, para detectar el caso real a evitar: que una misma fila
+            // haya quedado clasificada a la vez como dama y como caballero.
+            const codigosUnicos = new Set([...damasUnicas, ...cabsUnicos].map(p => p.codigo));
             if (codigosUnicos.size > 1) {
                 g._precioDama = damasUnicas.reduce((sum,d) => sum + parseFloat(d.precio||0), 0).toFixed(2);
                 g._precioCab  = cabsUnicos.reduce((sum,c) => sum + parseFloat(c.precio||0), 0).toFixed(2);
