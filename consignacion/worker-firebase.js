@@ -1507,6 +1507,31 @@ async function enviar(){
           });
           const historial = [...(lead.historial || []), { estado: "vendido", fecha: new Date().toISOString(), codigoConfirmado: codigoReal }];
           await sb.update("leads", d.id, { estado: "vendido", historial, consignacionId: consId });
+
+          // Registrar/actualizar el cliente en el mismo directorio que usa ecommerce
+          // y venta directa (deduplicado por teléfono), para que aparezca en
+          // Clientes con su canal — en este caso "Afiliado".
+          if (lead.cliente?.telefono) {
+            const clientesAf = await sb.getAll("clientes");
+            const normTelAf = t => String(t || "").replace(/\D/g, "");
+            const cliExistAf = clientesAf.find(c => normTelAf(c.telefono) === normTelAf(lead.cliente.telefono));
+            if (cliExistAf) {
+              await sb.update("clientes", cliExistAf.codigo, {
+                totalPedidos: (parseInt(cliExistAf.totalPedidos)||0) + 1,
+                totalPedidosAfiliado: (parseInt(cliExistAf.totalPedidosAfiliado)||0) + 1,
+                ...(cliExistAf.municipio ? {} : { municipio: lead.cliente.municipio || "", departamento: lead.cliente.departamento || "", direccion: lead.cliente.direccion || "" })
+              });
+            } else {
+              const codigoClienteAf = `CVX-${String(clientesAf.length + 1).padStart(3, "0")}`;
+              await sb.set("clientes", codigoClienteAf, {
+                codigo: codigoClienteAf, nombre: lead.cliente.nombre || "", telefono: lead.cliente.telefono,
+                correo: "", municipio: lead.cliente.municipio || "", direccion: lead.cliente.direccion || "", departamento: lead.cliente.departamento || "",
+                totalPedidos: 1, totalPedidosEcommerce: 0, totalPedidosDirecta: 0, totalPedidosAfiliado: 1,
+                fechaRegistro: new Date().toISOString()
+              });
+            }
+          }
+
           result = { ok: true };
           break;
         }

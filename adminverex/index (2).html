@@ -419,6 +419,13 @@
             <div id="chart" style="display:flex;align-items:flex-end;gap:8px;height:130px;margin-top:14px;padding:0 4px;"></div>
         </div>
 
+        <!-- Pedidos de afiliados por confirmar — vista central, sin tener que
+             entrar afiliado por afiliado a revisar quién tiene algo pendiente. -->
+        <div class="card">
+            <h2>🎯 Pedidos de Afiliados por Confirmar</h2>
+            <div id="lista-pedidos-afiliados-pendientes" style="margin-top:8px;"></div>
+        </div>
+
         <!-- Alerta pedidos pendientes -->
         <div id="alerta-pendientes" style="display:none;background:rgba(231,76,60,0.15);border:1px solid #e74c3c;border-radius:12px;padding:14px 18px;margin-bottom:16px;display:none;">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
@@ -1314,6 +1321,59 @@ function renderAll(sil=false) {
     renderPedidos(); renderProductos(); renderCupones(); renderClientes(); actualizarBadgeCorreo();
     renderEnvio(); renderEstado(); actualizarNotif(sil); renderBannerAdmin(); renderCarruselAdmin();
     cargarEstadisticas();
+    cargarPedidosAfiliadosPendientes();
+}
+
+// Vista central: todos los Leads pendientes de confirmar de todos los
+// afiliados juntos, ordenados por fecha — evita tener que entrar
+// afiliado por afiliado a revisar quién tiene algo esperando.
+async function cargarPedidosAfiliadosPendientes() {
+    const cont = document.getElementById("lista-pedidos-afiliados-pendientes");
+    if (!cont) return;
+    try {
+        const [resLeads, resVend] = await Promise.all([
+            fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_LEADS_ADMIN", _pass: ADMIN_PASS }) }),
+            fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_VENDEDORES_AFILIADOS", _pass: ADMIN_PASS }) })
+        ]);
+        const dataLeads = await resLeads.json();
+        const dataVend  = await resVend.json();
+        const vendMap = new Map((dataVend.vendedores||[]).map(v => [v.codigo, v.nombre]));
+        const pendientes = (dataLeads.leads||[])
+            .filter(l => l.estado === "interesado" || l.estado === "reportado")
+            .sort((a,b) => new Date(b.fecha) - new Date(a.fecha));
+
+        if (!pendientes.length) {
+            cont.innerHTML = '<p style="color:#888;font-size:13px;text-align:center;padding:16px 0;">✅ No hay pedidos de afiliados pendientes de confirmar.</p>';
+            return;
+        }
+
+        cont.innerHTML = pendientes.map(l => {
+            const fecha = l.fecha ? new Date(l.fecha).toLocaleDateString("es-SV",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}) : "";
+            const nombreVend = vendMap.get(l.afiliado) || l.afiliado || "—";
+            const c = l.cliente;
+            const clienteHtml = c
+                ? `<div style="font-size:11px;color:#166534;margin-top:3px;">👤 ${esc(c.nombre||"—")} · ${esc(c.telefono||"—")} · ${esc(c.municipio||"")}${c.municipio?", ":""}${esc(c.departamento||"")}</div>`
+                : `<div style="font-size:11px;color:#f97316;margin-top:3px;">⏳ El afiliado todavía no completó los datos del cliente</div>`;
+            return `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--borde);">
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:12px;font-weight:700;">${esc(l.nombre||l.codigo||"—")}</div>
+                    <div style="font-size:11px;color:#888;">🎯 ${esc(nombreVend)} · $${parseFloat(l.precio||0).toFixed(2)} · ${fecha}</div>
+                    ${clienteHtml}
+                </div>
+                <button onclick="confirmarLeadDesdeAdmin('${l.id}')" style="flex-shrink:0;padding:6px 12px;font-size:11px;background:#27ae60;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;">✅ Confirmar</button>
+            </div>`;
+        }).join("");
+    } catch(e) {
+        cont.innerHTML = '<p style="color:#e74c3c;font-size:13px;text-align:center;padding:16px 0;">Error al cargar pedidos de afiliados.</p>';
+    }
+}
+
+async function confirmarLeadDesdeAdmin(id) {
+    if (!confirm("¿Confirmar esta venta? Se descontará el stock y se generará la comisión del afiliado.")) return;
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"CONFIRMAR_LEAD_VENTA", _pass: ADMIN_PASS, id }) }).then(r=>r.json());
+    if (!res.ok) { toast("⚠️ " + (res.error || "No se pudo confirmar"), "#ef4444"); return; }
+    toast("✅ Venta confirmada", "#22c55e");
+    cargarPedidosAfiliadosPendientes();
 }
 
 async function cargarEstadisticas() {
@@ -1691,9 +1751,11 @@ async function migrarClientesVentaDirecta(btn) {
 function badgeCanalCliente(c) {
     const eco = parseInt(c.totalPedidosEcommerce) || 0;
     const dir = parseInt(c.totalPedidosDirecta) || 0;
+    const afi = parseInt(c.totalPedidosAfiliado) || 0;
     const partes = [];
     if (eco > 0) partes.push(`<span style="display:inline-block;font-size:10px;font-weight:700;color:#0277bd;background:rgba(2,119,189,0.12);border:1px solid rgba(2,119,189,0.3);border-radius:5px;padding:1px 6px;margin:1px;">🛒 Ecommerce (${eco})</span>`);
     if (dir > 0) partes.push(`<span style="display:inline-block;font-size:10px;font-weight:700;color:#16a34a;background:rgba(22,163,74,0.12);border:1px solid rgba(22,163,74,0.3);border-radius:5px;padding:1px 6px;margin:1px;">🤝 Directa (${dir})</span>`);
+    if (afi > 0) partes.push(`<span style="display:inline-block;font-size:10px;font-weight:700;color:#7c3aed;background:rgba(124,58,237,0.12);border:1px solid rgba(124,58,237,0.3);border-radius:5px;padding:1px 6px;margin:1px;">🎯 Afiliado (${afi})</span>`);
     return partes.length ? partes.join(" ") : '<span style="font-size:11px;color:#aaa;">—</span>';
 }
 
@@ -1763,7 +1825,7 @@ function exportarClientesExcel() {
     if (!list.length) { toast("No hay clientes para exportar", "#ef4444"); return; }
 
     const filas = [
-        ["Código", "Nombre", "Teléfono", "Correo", "Municipio", "Departamento", "Total Pedidos", "Pedidos Ecommerce", "Pedidos Directa", "Fecha Registro"]
+        ["Código", "Nombre", "Teléfono", "Correo", "Municipio", "Departamento", "Total Pedidos", "Pedidos Ecommerce", "Pedidos Directa", "Pedidos Afiliado", "Fecha Registro"]
     ];
     list.forEach(c => {
         filas.push([
@@ -1776,6 +1838,7 @@ function exportarClientesExcel() {
             c.totalPedidos || 0,
             c.totalPedidosEcommerce || 0,
             c.totalPedidosDirecta || 0,
+            c.totalPedidosAfiliado || 0,
             c.fechaRegistro ? new Date(c.fechaRegistro).toLocaleDateString("es-SV") : ""
         ]);
     });
