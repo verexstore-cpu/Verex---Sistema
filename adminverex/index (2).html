@@ -3922,14 +3922,19 @@ function _stockTotalProd(p) {
 function autoSeleccionarVariado(evitarCodigos) {
     const evitar = evitarCodigos instanceof Set ? evitarCodigos : new Set(evitarCodigos || []);
     const TOTAL = parseInt(document.getElementById("cat-var-size")?.value) || 36;
-    // Proporción base (sobre 36) — se escala al tamaño elegido
-    const DIST_BASE = { AN: 15, AR: 9, CD: 5, PL: 5 };
+    // Proporción base (sobre 36) — se escala al tamaño elegido. Dentro de
+    // Anillos se separa "simples" de "alianzas/pares/tríos" con un tope fijo,
+    // porque un grupo de pareja suma el stock de varias filas (dama+caballero+
+    // tallas) y por pura cantidad de stock terminaba ganando casi todos los
+    // cupos de Anillos, dejando el catálogo dominado por alianzas.
+    const DIST_BASE = { AN_simple: 10, AN_pareja: 5, AR: 9, CD: 5, PL: 5 };
     const DIST = {};
     Object.entries(DIST_BASE).forEach(([cat, n]) => { DIST[cat] = Math.round(n * TOTAL / 36); });
 
     const porCat = {};
     _catFiltrada.forEach(p => {
-        const cat = p._catKey || getCatKey(p);
+        const catRaw = p._catKey || getCatKey(p);
+        const cat = catRaw === "AN" ? (p._esPareja ? "AN_pareja" : "AN_simple") : catRaw;
         if (!porCat[cat]) porCat[cat] = [];
         porCat[cat].push(p);
     });
