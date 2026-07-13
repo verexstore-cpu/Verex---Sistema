@@ -4299,6 +4299,9 @@ function abrirModalFotosCelular() {
     cargarFotosPendientes();
 }
 
+let _todasFotosPendientes = [];
+let _colaFotosStock = []; // fotos que faltan por usar en la cola de "Nuevo Producto" seguido
+
 async function cargarFotosPendientes() {
     const grid = document.getElementById("fotos-pendientes-grid");
     const msg  = document.getElementById("fotos-pendientes-msg");
@@ -4307,6 +4310,7 @@ async function cargarFotosPendientes() {
     try {
         const res  = await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "GET_FOTOS_PENDIENTES", _pass: _sessionPass }) });
         const data = await res.json();
+        _todasFotosPendientes = data.fotos || [];
         if (!data.ok || !data.fotos.length) {
             grid.innerHTML = "";
             msg.style.display = "block";
@@ -4345,9 +4349,27 @@ async function eliminarFotoPendiente(id, btn) {
 async function usarFotoCelular(id, url) {
     fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "MARCAR_FOTO_USADA", _pass: _sessionPass, id }) }).catch(()=>{});
     cerrarModal("modal-fotos-celular");
-    toast("⏳ Procesando foto...");
 
-    // Descargar como File y pasar por el mismo pipeline que Agregar y Lote
+    // Detectar qué sección está activa: Stock o Entrega
+    const secStock = document.getElementById("tab-content-stock");
+    const enStock  = secStock && secStock.style.display !== "none";
+
+    // En Stock: arma la cola con el resto de fotos pendientes, para poder
+    // seguir de una foto a la siguiente sin volver a abrir este modal cada vez.
+    if (enStock) {
+        _colaFotosStock = _todasFotosPendientes.filter(f => f.id !== id);
+    } else {
+        _colaFotosStock = [];
+    }
+
+    await cargarFotoEnFormularioStockOEntrega(url, enStock);
+}
+
+// Procesa una foto (descarga + recorte IA) y la carga en el formulario
+// correspondiente — usado tanto al elegir una foto de la galería como al
+// avanzar automáticamente a la siguiente de la cola tras guardar un producto.
+async function cargarFotoEnFormularioStockOEntrega(url, enStock) {
+    toast("⏳ Procesando foto...");
     let r = null;
     try {
         const resp = await fetch(url);
@@ -4358,10 +4380,6 @@ async function usarFotoCelular(id, url) {
     } catch(e) {
         toast("❌ Error al procesar foto"); return;
     }
-
-    // Detectar qué sección está activa: Stock o Entrega
-    const secStock = document.getElementById("tab-content-stock");
-    const enStock  = secStock && secStock.style.display !== "none";
 
     if (enStock) {
         abrirStockNuevoProd();
@@ -4391,7 +4409,20 @@ async function usarFotoCelular(id, url) {
         }
         abrirModalProductoNuevo();
     }
-    toast("✅ Foto lista");
+    toast(_colaFotosStock.length ? `✅ Foto lista — quedan ${_colaFotosStock.length} en la cola` : "✅ Foto lista");
+}
+
+// Se llama después de guardar un producto en Stock — si quedan fotos en la
+// cola, salta directo a la siguiente sin que el admin tenga que volver a
+// abrir "📱 Fotos" cada vez.
+async function guardarStockNuevoYAvanzarCola() {
+    await guardarStockNuevo();
+    const modalCerrado = !document.getElementById("modal-stock-nuevo")?.classList.contains("active");
+    if (modalCerrado && _colaFotosStock.length) {
+        const siguiente = _colaFotosStock.shift();
+        fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "MARCAR_FOTO_USADA", _pass: _sessionPass, id: siguiente.id }) }).catch(()=>{});
+        await cargarFotoEnFormularioStockOEntrega(siguiente.url, true);
+    }
 }
 
 function abrirQR() {
@@ -9470,7 +9501,7 @@ function enviarWAEstadoCuenta(ventaId) {
         <input type="text" id="sn-caract" placeholder="Características especiales (ej: hipoalergénico, ajustable…)" style="margin-top:8px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;">
             <button class="btn btn-gris" onclick="cerrarModal('modal-stock-nuevo')">Cancelar</button>
-            <button class="btn btn-dorado" onclick="guardarStockNuevo()">✅ Guardar en Stock</button>
+            <button class="btn btn-dorado" onclick="guardarStockNuevoYAvanzarCola()">✅ Guardar en Stock</button>
         </div>
     </div>
 </div>
