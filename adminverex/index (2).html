@@ -3517,12 +3517,16 @@ function onPillChange() {
 }
 
 function onToggleAfiliado(checked) {
-    const afFields = document.getElementById("cat-afiliado-fields");
-    if (afFields) afFields.style.display = checked ? "block" : "none";
+    // El tipo lo decide la pestaña (Catálogo Cliente / Catálogo Afiliado) — se
+    // muestra solo la sección de la ficha que corresponde a ese tipo.
+    const secAfiliado = document.getElementById("cat-sec-afiliado");
+    if (secAfiliado) secAfiliado.style.display = checked ? "block" : "none";
     // El banner de oferta / % descuento no aplica a catálogos de afiliado —
     // ellos ganan comisión por venta y un descuento no acordado les afecta esa comisión.
     const bannerWrap = document.getElementById("cat-banner-wrap");
     if (bannerWrap) bannerWrap.style.display = checked ? "none" : "block";
+    const nombreLabel = document.getElementById("cat-nombre-label");
+    if (nombreLabel) nombreLabel.textContent = checked ? "Nota interna (opcional)" : "Nombre del cliente (opcional)";
     if (checked) {
         const txtEl = document.getElementById("cat-banner-txt");
         const pctEl = document.getElementById("cat-banner-desc-pct");
@@ -4139,12 +4143,52 @@ async function generarPDFCatalogo() {
         </div>
 
         <div style="margin-bottom:12px;">
-            <label>Nombre del cliente (opcional)</label>
+            <label id="cat-nombre-label">Nombre del cliente (opcional)</label>
             <input type="text" id="cat-nombre" placeholder="Ej: María, Juan...">
         </div>
 
+        <!-- Checkbox oculto — el tipo ya lo decide la pestaña (Catálogo Cliente / Catálogo Afiliado) -->
+        <input type="checkbox" id="cat-es-afiliado" style="display:none;">
+
+        <!-- Solo Afiliado -->
+        <div id="cat-sec-afiliado" style="display:none;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:12px;margin-bottom:12px;">
+            <div style="font-weight:700;color:#166534;font-size:12px;text-transform:uppercase;margin-bottom:10px;">🤝 Datos del Afiliado</div>
+            <div id="cat-afiliado-fields">
+                <div style="margin-bottom:8px;">
+                    <label style="color:#166534;">Afiliado (registrado en Consignación → Vendedores)</label>
+                    <select id="cat-afiliado-select" style="margin-top:4px;" onchange="onSeleccionarAfiliado()">
+                        <option value="">— Selecciona un afiliado —</option>
+                    </select>
+                    <div style="font-size:10px;color:#166534;margin-top:3px;">
+                        Si no aparece, créalo primero en Consignación → Vendedores → tipo 🤝 Afiliado.
+                    </div>
+                    <button type="button" id="btn-refrescar-catalogo-afiliado" onclick="refrescarCatalogoAfiliado()"
+                        style="display:none;width:100%;margin-top:8px;padding:8px 0;border:1px solid #0ea5e9;border-radius:8px;background:#f0f9ff;color:#0369a1;font-size:12px;font-weight:700;cursor:pointer;">
+                        🔄 Refrescar catálogo con stock actual
+                    </button>
+                    <div id="txt-refrescar-nota" style="display:none;font-size:10px;color:#0369a1;margin-top:3px;">
+                        Repone lo agotado y prioriza productos que NO se mostraron la vez anterior (variedad mensual). Solo prellena la selección — falta darle "🔗 Link" para publicar.
+                    </div>
+                </div>
+                <input type="hidden" id="cat-afiliado-nombre">
+                <input type="hidden" id="cat-afiliado-codigo">
+                <div style="margin-bottom:8px;">
+                    <label style="color:#166534;">WhatsApp del afiliado</label>
+                    <input type="text" id="cat-wa" placeholder="Ej: 573001234567" inputmode="numeric" style="margin-top:4px;">
+                    <div style="font-size:10px;color:#166534;margin-top:3px;">Los botones "Quiero este" abrirán este número</div>
+                </div>
+                <div>
+                    <label style="color:#166534;">ID del afiliado (link fijo)</label>
+                    <input type="text" id="cat-afiliado-id" placeholder="Se llena automático al elegir el afiliado" style="margin-top:4px;"
+                        oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')">
+                    <div style="font-size:10px;color:#166534;margin-top:3px;">El link siempre será el mismo — actualizable sin cambiar URL</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Solo Cliente -->
         <div id="cat-banner-wrap" style="margin-bottom:12px;background:#fffef0;border:1px solid #fde68a;border-radius:8px;padding:10px;">
-            <label style="color:#92400e;font-weight:700;">🏷️ Banner de oferta (opcional — no disponible en catálogo de afiliado)</label>
+            <label style="color:#92400e;font-weight:700;">🏷️ Banner de oferta (opcional)</label>
             <input type="text" id="cat-banner-txt" placeholder="Ej: 2x1 en aretes este fin de semana 🎉" style="margin-top:6px;">
             <input type="text" id="cat-banner-sub" placeholder="Subtítulo (ej: Solo hasta el domingo)" style="margin-top:6px;">
             <div style="margin-top:8px;">
@@ -4194,46 +4238,6 @@ async function generarPDFCatalogo() {
                 <option value="15">15 días (cliente)</option>
                 <option value="30">30 días (afiliado)</option>
             </select>
-        </div>
-
-        <!-- Sección Afiliado -->
-        <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:12px;margin-bottom:12px;">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;color:#166534;font-size:12px;text-transform:uppercase;margin-bottom:0;">
-                <input type="checkbox" id="cat-es-afiliado" style="width:15px;height:15px;accent-color:#16a34a;"
-                    onchange="onToggleAfiliado(this.checked)">
-                🤝 Es catálogo de afiliado / distribuidor
-            </label>
-            <div id="cat-afiliado-fields" style="display:none;margin-top:10px;">
-                <div style="margin-bottom:8px;">
-                    <label style="color:#166534;">Afiliado (registrado en Consignación → Vendedores)</label>
-                    <select id="cat-afiliado-select" style="margin-top:4px;" onchange="onSeleccionarAfiliado()">
-                        <option value="">— Selecciona un afiliado —</option>
-                    </select>
-                    <div style="font-size:10px;color:#166534;margin-top:3px;">
-                        Si no aparece, créalo primero en Consignación → Vendedores → tipo 🤝 Afiliado.
-                    </div>
-                    <button type="button" id="btn-refrescar-catalogo-afiliado" onclick="refrescarCatalogoAfiliado()"
-                        style="display:none;width:100%;margin-top:8px;padding:8px 0;border:1px solid #0ea5e9;border-radius:8px;background:#f0f9ff;color:#0369a1;font-size:12px;font-weight:700;cursor:pointer;">
-                        🔄 Refrescar catálogo con stock actual
-                    </button>
-                    <div id="txt-refrescar-nota" style="display:none;font-size:10px;color:#0369a1;margin-top:3px;">
-                        Repone lo agotado y prioriza productos que NO se mostraron la vez anterior (variedad mensual). Solo prellena la selección — falta darle "🔗 Link" para publicar.
-                    </div>
-                </div>
-                <input type="hidden" id="cat-afiliado-nombre">
-                <input type="hidden" id="cat-afiliado-codigo">
-                <div style="margin-bottom:8px;">
-                    <label style="color:#166534;">WhatsApp del afiliado</label>
-                    <input type="text" id="cat-wa" placeholder="Ej: 573001234567" inputmode="numeric" style="margin-top:4px;">
-                    <div style="font-size:10px;color:#166534;margin-top:3px;">Los botones "Quiero este" abrirán este número</div>
-                </div>
-                <div>
-                    <label style="color:#166534;">ID del afiliado (link fijo)</label>
-                    <input type="text" id="cat-afiliado-id" placeholder="Se llena automático al elegir el afiliado" style="margin-top:4px;"
-                        oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')">
-                    <div style="font-size:10px;color:#166534;margin-top:3px;">El link siempre será el mismo — actualizable sin cambiar URL</div>
-                </div>
-            </div>
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:4px;">
