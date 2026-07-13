@@ -3218,7 +3218,12 @@ async function generarLinkCatalogo() {
                 sizes:  szExport.sizes,
                 sizesD: szExport.sizesD,
                 sizesH: szExport.sizesH,
-                par:    p._esPareja || /matrimonio|argolla|novios|pareja|alianza/i.test(p.nombre||"") || false,
+                // Antes caía al regex del nombre ("alianza"/"pareja"/etc.) aunque el
+                // producto fuera en realidad unisex de una sola pieza (sin dama/caballero
+                // detectados) — eso hacía aparecer la etiqueta "Precio por pieza" sin
+                // sentido, dando a entender que existía otra pieza que en realidad no hay.
+                // Ahora solo es par/trío si de verdad se detectaron piezas dama Y caballero.
+                par:    p._esPareja || false,
                 piezas: p._piezas || (p._esPareja ? 2 : null),
                 pD:    p._precioDama||null,
                 pH:    p._precioCab||null,
