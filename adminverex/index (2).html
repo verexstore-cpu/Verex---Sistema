@@ -3222,6 +3222,8 @@ async function generarLinkCatalogo() {
                 piezas: p._piezas || (p._esPareja ? 2 : null),
                 pD:    p._precioDama||null,
                 pH:    p._precioCab||null,
+                cD:    p._piezasCodigosDama||null,
+                cC:    p._piezasCodigosCab||null,
                 ne:    getNotaEspecial(p),
                 nota: (document.querySelector(`.cat-nota[data-cod="${p._codigos?.[0]||p.codigo}"]`)?.value||"").trim()
                 };
@@ -3548,6 +3550,11 @@ function agruparParaCatalogo(lista) {
             if (codigosUnicos.size > 1) {
                 g._precioDama = damasUnicas.reduce((sum,d) => sum + parseFloat(d.precio||0), 0).toFixed(2);
                 g._precioCab  = cabsUnicos.reduce((sum,c) => sum + parseFloat(c.precio||0), 0).toFixed(2);
+                // Un código representativo por cada pieza (dama y caballero) — el
+                // catálogo los guarda para poder revisar el precio ACTUAL de cada
+                // uno y recalcular el total en vivo, sin tener que regenerar el link.
+                g._piezasCodigosDama = damasUnicas.map(d => d.codigo);
+                g._piezasCodigosCab  = cabsUnicos.map(c => c.codigo);
             }
         }
     });

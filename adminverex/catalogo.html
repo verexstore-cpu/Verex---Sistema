@@ -374,11 +374,28 @@
                 }
 
                 // Refrescar el precio si cambió en Stock — así un ajuste de precio
-                // aplica solo, sin tener que regenerar el link. (Los pares/tríos no
-                // se recalculan aquí porque el catálogo solo guarda el código de una
-                // de las piezas del set — su precio sigue el que tenía al generarse.)
+                // aplica solo, sin tener que regenerar el link.
+                let precioCambio = false;
                 if(!p.par && s && s.precio != null && parseFloat(s.precio) !== parseFloat(p.p)){
                     p.p = parseFloat(s.precio).toFixed(2);
+                    precioCambio = true;
+                } else if(p.par && (p.cD?.length || p.cC?.length)){
+                    // Pares/tríos: el catálogo guarda el código de CADA pieza del set,
+                    // así que se suma el precio actual de cada una para recalcular el total.
+                    const sumar = codigos => (codigos||[]).reduce((sum, cod) => {
+                        const row = mapa.get(cod);
+                        return sum + (row ? parseFloat(row.precio || 0) : 0);
+                    }, 0);
+                    if(p.cD?.length){
+                        const nuevoD = sumar(p.cD).toFixed(2);
+                        if(nuevoD !== parseFloat(p.pD||0).toFixed(2)){ p.pD = nuevoD; precioCambio = true; }
+                    }
+                    if(p.cC?.length){
+                        const nuevoC = sumar(p.cC).toFixed(2);
+                        if(nuevoC !== parseFloat(p.pH||0).toFixed(2)){ p.pH = nuevoC; precioCambio = true; }
+                    }
+                }
+                if(precioCambio){
                     const priceEl = document.getElementById(`price-${i}`);
                     if(priceEl) priceEl.innerHTML = renderPrecioHtml(p);
                 }
