@@ -3218,17 +3218,19 @@ async function generarLinkCatalogo() {
                 sizes:  szExport.sizes,
                 sizesD: szExport.sizesD,
                 sizesH: szExport.sizesH,
-                // Antes caía al regex del nombre ("alianza"/"pareja"/etc.) aunque el
-                // producto fuera en realidad unisex de una sola pieza (sin dama/caballero
-                // detectados) — eso hacía aparecer la etiqueta "Precio por pieza" sin
-                // sentido, dando a entender que existía otra pieza que en realidad no hay.
-                // Ahora solo es par/trío si de verdad se detectaron piezas dama Y caballero.
+                // "par" solo es true si de verdad se detectaron piezas dama Y caballero
+                // con precio propio cada una — eso dispara el cálculo del precio total.
                 par:    p._esPareja || false,
                 piezas: p._piezas || (p._esPareja ? 2 : null),
                 pD:    p._precioDama||null,
                 pH:    p._precioCab||null,
                 cD:    p._piezasCodigosDama||null,
                 cC:    p._piezasCodigosCab||null,
+                // Aviso "Precio por pieza" — independiente de "par": las alianzas
+                // suelen fotografiarse en pareja aunque se vendan como una sola pieza
+                // a precio unisex, así que igual hay que aclarar que el precio es de
+                // una sola de las que se ven en la foto.
+                avisoPieza: /matrimonio|argolla|novios|pareja|alianza/i.test(p.nombre||""),
                 ne:    getNotaEspecial(p),
                 nota: (document.querySelector(`.cat-nota[data-cod="${p._codigos?.[0]||p.codigo}"]`)?.value||"").trim()
                 };

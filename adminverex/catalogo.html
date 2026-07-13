@@ -192,7 +192,10 @@
         const base = _descPct
             ? `<span class="card-price-orig">$${esc(p.p)}</span> <span class="card-price-final">$${precioFinal(p.p).toFixed(2)}</span>`
             : `$${esc(p.p)}`;
-        return `${base}${p.par?`<span style="display:block;font-size:10px;font-weight:500;color:#7c3aed;margin-top:2px;">Precio por pieza</span>`:""}`;
+        // Aunque no sea un "par" con precio total (pD/pH), muchas alianzas se
+        // fotografían mostrando las dos piezas aunque se vendan como una sola a
+        // precio unisex — se avisa igual para no confundir al cliente.
+        return `${base}${(p.par || p.avisoPieza)?`<span style="display:block;font-size:10px;font-weight:500;color:#7c3aed;margin-top:2px;">Precio por pieza</span>`:""}`;
     }
 
     function showExpired(nombre, wa){
