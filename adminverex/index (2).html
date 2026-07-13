@@ -3919,6 +3919,15 @@ function _stockTotalProd(p) {
 // evitarCodigos (opcional): códigos que se prefiere NO repetir (ej. lo que ya
 // se mostró el mes pasado a este afiliado) — se usan solo como preferencia,
 // si no hay suficiente variedad con stock se completa repitiéndolos igual.
+// Sube o baja de 10 en 10 el tamaño del catálogo variado — para mandar un
+// catálogo más grande basta con darle "+10" las veces que haga falta.
+function ajustarTamanoCatalogo(delta) {
+    const inp = document.getElementById("cat-var-size");
+    if (!inp) return;
+    const actual = parseInt(inp.value) || 36;
+    inp.value = Math.max(10, actual + delta);
+}
+
 function autoSeleccionarVariado(evitarCodigos) {
     const evitar = evitarCodigos instanceof Set ? evitarCodigos : new Set(evitarCodigos || []);
     const TOTAL = parseInt(document.getElementById("cat-var-size")?.value) || 36;
@@ -4307,10 +4316,11 @@ async function generarPDFCatalogo() {
         <div style="display:flex;gap:8px;margin-top:8px;margin-bottom:12px;flex-wrap:wrap;">
             <button class="btn bg" style="flex:1;font-size:12px;min-width:80px;" onclick="seleccionarTodosCatalogo(true)">✅ Todos</button>
             <button class="btn bg" style="flex:1;font-size:12px;min-width:80px;" onclick="seleccionarTodosCatalogo(false)">⬜ Ninguno</button>
-            <select id="cat-var-size" style="flex:0 0 auto;font-size:12px;padding:0 8px;border-radius:8px;border:1.5px solid var(--borde);background:var(--gris);color:inherit;font-weight:600;">
-                <option value="36">36 piezas</option>
-                <option value="50">50 piezas</option>
-            </select>
+            <button class="btn bg" title="Quitar 10 piezas al tamaño del catálogo" style="flex:0 0 auto;font-size:14px;padding:0 10px;font-weight:800;" onclick="ajustarTamanoCatalogo(-10)">−10</button>
+            <input type="number" id="cat-var-size" value="36" min="10" step="10"
+                title="Cantidad de piezas para 'Auto-seleccionar variado' — ajústalo con los botones -10/+10 si quieres mandar un catálogo más grande"
+                style="flex:0 0 70px;font-size:12px;padding:0 6px;border-radius:8px;border:1.5px solid var(--borde);background:var(--gris);color:inherit;font-weight:600;text-align:center;">
+            <button class="btn bg" title="Agregar 10 piezas al tamaño del catálogo" style="flex:0 0 auto;font-size:14px;padding:0 10px;font-weight:800;" onclick="ajustarTamanoCatalogo(10)">+10</button>
             <button class="btn ba" style="flex:2;font-size:12px;min-width:160px;" onclick="autoSeleccionarVariado()">🔀 Auto-seleccionar variado</button>
         </div>
 
