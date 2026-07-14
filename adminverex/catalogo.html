@@ -186,8 +186,10 @@
             const precioTxt = _descPct
                 ? `<span class="card-price-orig">$${totalSet.toFixed(2)}</span> <span class="card-price-final">$${precioFinal(totalSet).toFixed(2)}</span>`
                 : `$${totalSet.toFixed(2)}`;
-            return `${precioTxt}<span style="display:block;font-size:10px;font-weight:700;color:#7c3aed;margin-top:2px;">${label}</span>
-                <span style="display:block;font-size:10px;font-weight:500;color:#9ca3af;margin-top:1px;">Dama $${parseFloat(p.pD).toFixed(2)}${nDama>1?` (${nDama} piezas)`:""} · Caballero $${parseFloat(p.pH).toFixed(2)}</span>`;
+            // Sin desglose Dama/Caballero — estos sets solo se venden completos
+            // (nunca por pieza suelta), así que mostrar el reparto interno del
+            // precio no aporta nada y puede confundir al cliente.
+            return `${precioTxt}<span style="display:block;font-size:10px;font-weight:700;color:#7c3aed;margin-top:2px;">${label}</span>`;
         }
         const base = _descPct
             ? `<span class="card-price-orig">$${esc(p.p)}</span> <span class="card-price-final">$${precioFinal(p.p).toFixed(2)}</span>`
