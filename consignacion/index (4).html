@@ -4773,6 +4773,50 @@ function cancelarEdicionProducto() {
     productoEditando.nuevaFoto = null;
 }
 
+// Registra la 2da pieza de dama de un trío (ej. anillo de compromiso, aparte
+// del de matrimonio) sin tocar las filas que ya existen de dama/caballero.
+// Reusa nombre_base/categoria/material/foto del producto que está abierto,
+// y crea el código con el sufijo "B" que el catálogo ya sabe reconocer como
+// una pieza distinta.
+async function agregarSegundaPiezaDamaTrio() {
+    if (!productoEditando) return;
+    const p = productoEditando.p;
+    const codigoBase = p.codigoBase || getCodigoBase(p.codigo);
+    if (!codigoBase) { toast("⚠️ No se pudo determinar el código base de este producto"); return; }
+
+    const tallasRaw = prompt("Tallas de la 2da pieza de dama, separadas por coma (ej: 6,7,8):");
+    if (!tallasRaw) return;
+    const tallas = tallasRaw.split(",").map(t => t.trim()).filter(Boolean);
+    if (!tallas.length) return toast("⚠️ No ingresaste ninguna talla");
+
+    const precioRaw = prompt("Precio de esta 2da pieza de dama ($):");
+    if (!precioRaw) return;
+    const precio = parseFloat(precioRaw);
+    if (isNaN(precio) || precio <= 0) return toast("⚠️ Precio inválido");
+
+    const codigoBase2 = codigoBase + "B";
+    const nombreBase  = p.nombre_base || (p.nombre || "").replace(/\s+(Dama|Caballero)?\s*T?\d+(\.\d+)?$/i, "").trim();
+    let guardados = 0;
+    for (const talla of tallas) {
+        const codigo = codigoBase2 + "DT" + talla;
+        const res = await apiPost({
+            accion: "STOCK_REGISTRAR",
+            codigo, codigoBase: codigoBase2, talla,
+            nombre: `${nombreBase} Dama T${talla}`,
+            nombre_base: nombreBase,
+            categoria: p.categoria || "AN",
+            precio, foto: p.img || p.foto || "", cantidad: 1,
+            material: p.material || "",
+            descripcion: p.descripcion || "",
+            caracterEspecial: p.caracterEspecial || ""
+        });
+        if (res.ok) guardados++;
+    }
+    toast(`✅ ${guardados} talla${guardados > 1 ? "s" : ""} de la 2da pieza registrada${guardados > 1 ? "s" : ""} — ya forma un trío`);
+    cerrarModal("modal-ver-producto");
+    await cargarStock();
+}
+
 async function guardarEdicionProducto() {
     if (!productoEditando) return;
     const btn = document.querySelector("#modal-prod-edicion .btn-dorado");
@@ -9200,6 +9244,10 @@ function enviarWAEstadoCuenta(ventaId) {
                 <button type="button" class="ep-set-btn" data-set="1+1" onclick="selSetEP(this)" style="flex:1;padding:5px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:700;cursor:pointer;">Set Par 1+1</button>
                 <button type="button" class="ep-set-btn" data-set="2+1" onclick="selSetEP(this)" style="flex:1;padding:5px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:700;cursor:pointer;">Set Trío 2+1</button>
             </div>
+            <button type="button" onclick="agregarSegundaPiezaDamaTrio()"
+                style="width:100%;padding:9px 0;margin-bottom:10px;border:1px solid #16a34a;border-radius:8px;background:#0f1f14;color:#4ade80;font-size:12px;font-weight:700;cursor:pointer;">
+                ➕ Agregar 2da pieza de dama (convertir en trío)
+            </button>
             <label style="font-size:11px;color:var(--plateado);display:block;margin:8px 0 4px;font-weight:600;">📦 Agregar a Bodega</label>
             <div style="display:flex;gap:8px;margin-bottom:4px;">
                 <input type="number" id="ep-existencia" placeholder="Cantidad a sumar" min="0" value="0" style="flex:2;border-color:var(--dorado);">
