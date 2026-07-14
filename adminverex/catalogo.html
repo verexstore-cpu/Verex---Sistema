@@ -251,6 +251,7 @@
                 <div class="card-body">
                     <div class="card-name">${esc(p.n)}</div>
                     ${p.m?`<div class="card-material">${esc(p.m)}</div>`:''}
+                    ${p.c?`<div style="font-size:9px;color:#9ca3af;font-weight:600;margin-top:-3px;margin-bottom:4px;">Ref: ${esc(p.c)}</div>`:''}
                     ${sizesHtml}
                     ${p.ne?`<div class="card-ne">♦ ${esc(p.ne)}</div>`:''}
                     <div class="card-price" id="price-${i}">${renderPrecioHtml(p)}</div>
