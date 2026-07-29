@@ -10797,12 +10797,14 @@ async function generarPDFVentaDirecta58mm(venta, abonos) {
     const saldo  = Math.max(0, total - pagado);
     const costoEnvio = parseFloat(venta.costoEnvio || 0);
 
+    const descuento = parseFloat(venta.descuento || 0);
+
     // Estimar alto: header + cliente + 1 línea por item (+2 si tiene material/ref) + totales + footer
     const lineasItems = items.reduce((s,it) => s + 2 + (it.material?1:0) + ((it.codigo||it.ref)?1:0), 0);
     const alturaEstim = 26                                    // header
         + 10 + (venta.departamentoEnvio ? 4 : 0)               // cliente
         + 6 + lineasItems*4                                    // productos
-        + 6 + (costoEnvio>0?4:0) + 4 + (venta.tipo==='credito' ? 8+(abonos.length*4.5) : 0) // totales
+        + 6 + (descuento>0?8:0) + (costoEnvio>0?4:0) + 4 + (venta.tipo==='credito' ? 8+(abonos.length*4.5) : 0) // totales
         + 10 + 14;                                             // footer + margen
     const H = Math.max(70, Math.ceil(alturaEstim));
     const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'portrait' });
@@ -10846,6 +10848,16 @@ async function generarPDFVentaDirecta58mm(venta, abonos) {
     doc.setDrawColor(150,150,150); doc.line(pad, y, W-pad, y); y += 4.5;
 
     doc.setFont('courier','bold'); doc.setFontSize(7.5); doc.setTextColor(30,30,30);
+    if (descuento > 0) {
+        const subtotal = parseFloat(venta.subtotal || 0) || (total + descuento);
+        doc.text('Subtotal', pad, y); doc.text('$'+subtotal.toFixed(2), W-pad, y, {align:'right'}); y += 4;
+        const descLabel = venta.descuentoTipo === 'porcentaje'
+            ? `Descuento (${venta.descuentoValor||''}%):`
+            : 'Descuento:';
+        doc.setTextColor(180,60,60);
+        doc.text(descLabel, pad, y); doc.text('-$'+descuento.toFixed(2), W-pad, y, {align:'right'}); y += 4;
+        doc.setTextColor(30,30,30);
+    }
     if (costoEnvio > 0) { doc.text('Envio', pad, y); doc.text('$'+costoEnvio.toFixed(2), W-pad, y, {align:'right'}); y += 4; }
     doc.setFontSize(9);
     doc.text('TOTAL', pad, y); doc.text('$'+total.toFixed(2), W-pad, y, {align:'right'}); y += 5;
