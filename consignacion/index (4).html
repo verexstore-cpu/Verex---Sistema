@@ -9812,12 +9812,108 @@ function renderHistorialVD() {
                     <div style="font-size:11px;color:var(--plateado);">Pagado $${pagado.toFixed(2)} · Pendiente <strong style="color:#e85555;">$${saldo.toFixed(2)}</strong></div>
                     ${saldo > 0 ? `<button onclick="abrirModalAbono('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1);color:#e0f7ff;font-size:11px;font-weight:700;cursor:pointer;">💰 Abono</button>` : '<span style="font-size:11px;color:#52d68a;font-weight:700;">✅ Saldado</span>'}
                 </div>` : ""}
-                <div style="margin-top:8px;text-align:right;">
+                <div style="margin-top:8px;display:flex;justify-content:flex-end;gap:6px;">
+                    <button onclick="editarDescuentoVD('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #444;color:#888;font-size:11px;font-weight:700;cursor:pointer;">✏️ Descuento</button>
                     <button onclick="abrirModalImprimirRecibo58('${v.id}')" style="padding:5px 12px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #333;color:#C9A84C;font-size:11px;font-weight:700;cursor:pointer;">🧾 Recibo</button>
                 </div>
             </div>`;
         }).join("")}`;
 }
+
+function abrirModalEditDescuento(id) {
+    const v = _historialVD.find(x => x.id === id);
+    if (!v) return toast("⚠️ Venta no encontrada");
+    const total = parseFloat(v.total || 0);
+    const descActual = parseFloat(v.descuento || 0);
+    const tipoActual = v.descuentoTipo || "monto";
+    const valActual  = parseFloat(v.descuentoValor || 0) || (tipoActual === "monto" ? descActual : 0);
+
+    let m = document.getElementById("modal-edit-desc-vd");
+    if (!m) {
+        m = document.createElement("div");
+        m.id = "modal-edit-desc-vd";
+        m.style.cssText = "position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;";
+        document.body.appendChild(m);
+    }
+    m.innerHTML = `
+        <div style="background:#111;border:1px solid #C9A84C;border-radius:16px;padding:20px;width:320px;max-width:94vw;font-family:'DM Sans',sans-serif;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <span style="color:#C9A84C;font-size:15px;font-weight:700;">✏️ Editar descuento</span>
+                <button onclick="document.getElementById('modal-edit-desc-vd').style.display='none'" style="background:none;border:none;color:#666;font-size:20px;cursor:pointer;line-height:1;">×</button>
+            </div>
+            <div style="font-size:12px;color:#888;margin-bottom:14px;">${sanitizar(v.cliente)} · Total cobrado: <strong style="color:#52d68a;">$${total.toFixed(2)}</strong></div>
+
+            <div style="font-size:11px;color:#aaa;margin-bottom:6px;">Tipo de descuento</div>
+            <div style="display:flex;gap:6px;margin-bottom:12px;">
+                <button id="edbtn-monto" onclick="setTipoEditDesc('monto')"
+                    style="flex:1;padding:8px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;background:${tipoActual==='monto'?'var(--dorado)':'#2a2a2a'};color:${tipoActual==='monto'?'#000':'#888'};">$ Monto fijo</button>
+                <button id="edbtn-pct" onclick="setTipoEditDesc('porcentaje')"
+                    style="flex:1;padding:8px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;background:${tipoActual==='porcentaje'?'var(--dorado)':'#2a2a2a'};color:${tipoActual==='porcentaje'?'#000':'#888'};">% Porcentaje</button>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <span id="ed-simbolo" style="font-size:18px;font-weight:700;color:var(--dorado);width:16px;">${tipoActual==='monto'?'$':'%'}</span>
+                <input type="number" id="ed-desc-val" value="${valActual > 0 ? valActual : ''}" min="0" step="0.01"
+                    placeholder="${tipoActual==='monto'?'0.00':'0'}"
+                    oninput="calcularPreviaEditDesc(${total})"
+                    style="flex:1;padding:10px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:16px;font-weight:700;">
+            </div>
+            <div id="ed-previa" style="font-size:11px;color:#888;margin-bottom:14px;min-height:16px;"></div>
+
+            <button onclick="guardarEditDescVD('${id}', ${total})"
+                style="width:100%;padding:12px;border:none;border-radius:10px;background:linear-gradient(135deg,#C9A84C,#a87d20);color:#111;font-size:13px;font-weight:700;cursor:pointer;">
+                ✅ Guardar
+            </button>
+        </div>`;
+    m.style.display = "flex";
+    calcularPreviaEditDesc(total);
+}
+
+function setTipoEditDesc(tipo) {
+    document.getElementById("edbtn-monto").style.background = tipo==="monto" ? "var(--dorado)" : "#2a2a2a";
+    document.getElementById("edbtn-monto").style.color      = tipo==="monto" ? "#000" : "#888";
+    document.getElementById("edbtn-pct").style.background   = tipo==="porcentaje" ? "var(--dorado)" : "#2a2a2a";
+    document.getElementById("edbtn-pct").style.color        = tipo==="porcentaje" ? "#000" : "#888";
+    document.getElementById("ed-simbolo").textContent       = tipo==="monto" ? "$" : "%";
+    document.getElementById("ed-desc-val").placeholder      = tipo==="monto" ? "0.00" : "0";
+    document.getElementById("ed-desc-val").value = "";
+    document.getElementById("ed-previa").textContent = "";
+    document.getElementById("edbtn-monto")._tipo = tipo;
+}
+
+function calcularPreviaEditDesc(total) {
+    const tipo = document.getElementById("ed-simbolo").textContent === "%" ? "porcentaje" : "monto";
+    const val  = parseFloat(document.getElementById("ed-desc-val").value) || 0;
+    const prev = document.getElementById("ed-previa");
+    if (val <= 0) { prev.textContent = ""; return; }
+    const desc = tipo === "porcentaje" ? Math.min(total, total * val / 100) : Math.min(total, val);
+    const sub  = total + desc;
+    prev.innerHTML = `Subtotal: <strong>$${sub.toFixed(2)}</strong> · Descuento: <strong style="color:#e85555;">-$${desc.toFixed(2)}</strong> · Total: <strong style="color:#52d68a;">$${total.toFixed(2)}</strong>`;
+}
+
+async function guardarEditDescVD(id, total) {
+    const tipo = document.getElementById("ed-simbolo").textContent === "%" ? "porcentaje" : "monto";
+    const val  = parseFloat(document.getElementById("ed-desc-val").value) || 0;
+    if (val <= 0) return toast("⚠️ Ingresa un descuento mayor a $0");
+    const desc = tipo === "porcentaje" ? Math.min(total, total * val / 100) : Math.min(total, val);
+    if (desc >= total) return toast("⚠️ El descuento no puede ser igual o mayor al total");
+    const res = await apiPost({
+        accion: "ACTUALIZAR_DESCUENTO_VD",
+        id,
+        descuento: desc,
+        descuentoTipo: tipo,
+        descuentoValor: val
+    });
+    if (res.ok) {
+        document.getElementById("modal-edit-desc-vd").style.display = "none";
+        toast("✅ Descuento actualizado");
+        await cargarHistorialVD();
+    } else {
+        toast("⚠️ Error: " + (res.error || "no se pudo actualizar"));
+    }
+}
+
+function editarDescuentoVD(id) { abrirModalEditDescuento(id); }
 
 // Construye el PDF del recibo térmico (62mm) y devuelve el objeto jsPDF —
 // separado de descargarReciboVD() para poder reutilizarlo también en el
