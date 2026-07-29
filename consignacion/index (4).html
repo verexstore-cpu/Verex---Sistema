@@ -683,7 +683,16 @@
                     <div style="font-size:12px;color:var(--plateado);margin-bottom:8px;font-weight:600;">🚚 Costo de envío</div>
                     <input type="number" id="vd-envio-val" placeholder="0.00" min="0" step="0.01"
                         oninput="renderCarritoVD()"
-                        style="width:100%;padding:8px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:14px;box-sizing:border-box;">
+                        style="width:100%;padding:8px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:14px;box-sizing:border-box;margin-bottom:8px;">
+                    <div style="font-size:11px;color:#666;margin-bottom:6px;">Empresa de envío (opcional)</div>
+                    <div style="display:flex;gap:6px;">
+                        <button id="btn-empresa-c807" onclick="selEmpresaEnvio('C807 Xpress')"
+                            style="flex:1;padding:7px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;background:#2a2a2a;color:#888;">C807 Xpress</button>
+                        <button id="btn-empresa-trucker" onclick="selEmpresaEnvio('Trucker')"
+                            style="flex:1;padding:7px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;background:#2a2a2a;color:#888;">Trucker</button>
+                        <button id="btn-empresa-ninguna" onclick="selEmpresaEnvio('')"
+                            style="padding:7px 10px;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;background:#1a1a1a;color:#555;border:1px solid #333;">✕</button>
+                    </div>
                 </div>
 
                 <div style="margin-top:12px;padding-top:10px;border-top:1px solid #333;">
@@ -9527,7 +9536,20 @@ let _vdCarrito    = {};   // { codigo: { prod, qty } }
 let _vdTipo       = 'contado';
 let _vdMetodoPago = 'efectivo'; // 'efectivo' | 'tarjeta' | 'transferencia' — solo aplica a contado
 let _creditosVD   = [];
-let _vdModoDescuento = 'monto'; // 'monto' | 'porcentaje'
+let _vdModoDescuento  = 'monto'; // 'monto' | 'porcentaje'
+let _vdEmpresaEnvio   = '';
+
+function selEmpresaEnvio(empresa) {
+    _vdEmpresaEnvio = empresa;
+    const empresas = { 'C807 Xpress': 'btn-empresa-c807', 'Trucker': 'btn-empresa-trucker' };
+    Object.entries(empresas).forEach(([nombre, btnId]) => {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        const activo = nombre === empresa;
+        btn.style.background = activo ? 'var(--dorado)' : '#2a2a2a';
+        btn.style.color      = activo ? '#000' : '#888';
+    });
+}
 
 function setModoDescuento(modo) {
     _vdModoDescuento = modo;
@@ -9803,7 +9825,8 @@ function renderHistorialVD() {
                         </div>
                     </div>
                 </div>
-                ${itemsResumen ? `<div style="font-size:11px;color:#666;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${itemsResumen}</div>` : ""}
+                ${itemsResumen ? `<div style="font-size:11px;color:#666;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${itemsResumen}</div>` : ""}
+                ${v.empresaEnvio ? `<div style="font-size:11px;color:#0ea5e9;margin-bottom:4px;">🚚 ${sanitizar(v.empresaEnvio)}</div>` : ""}
                 ${esCredito ? `
                 <div style="background:#1a0a0a;border-radius:5px;height:5px;margin-bottom:6px;overflow:hidden;">
                     <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#27ae60,#52d68a);border-radius:5px;"></div>
@@ -10499,7 +10522,8 @@ async function confirmarVentaDirecta() {
         enganche,
         saldoPendiente: saldo,
         nota,
-        estado: saldo > 0 ? "credito" : "pagado"
+        estado: saldo > 0 ? "credito" : "pagado",
+        empresaEnvio: _vdEmpresaEnvio || ""
     };
 
     console.log("[VD] Payload enviado:", JSON.stringify(payload));
@@ -10529,6 +10553,7 @@ async function confirmarVentaDirecta() {
             if (elEng) elEng.value = "";
             if (elNot) elNot.value = "";
             if (elEnvio) elEnvio.value = "";
+            selEmpresaEnvio('');
             seleccionarTipoVD('contado');
             filtrarVD();
             renderCarritoVD();
