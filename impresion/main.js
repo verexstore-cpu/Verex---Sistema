@@ -29,6 +29,7 @@ function createTray() {
     { type: 'separator' },
     { label: '🖨️ Abrir ventana', click: () => { mainWindow.setSkipTaskbar(false); mainWindow.show(); mainWindow.focus() } },
     { type: 'separator' },
+    { label: '🔄 Reiniciar', click: () => { app.relaunch(); app.exit(0) } },
     { label: 'Salir', click: () => { tray.destroy(); app.quit() } },
   ])
   tray.setContextMenu(menu)
@@ -139,16 +140,75 @@ function startPrintServer() {
           if (req.url === '/print-guia')     canal = 'load-pdf-guia'
           if (req.url === '/print-etiqueta') canal = 'load-pdf-etiqueta'
           if (mainWindow) {
+            // Mostrar la ventana — el driver de la POS-58 necesita el
+            // diálogo de impresión visible para completar el trabajo, así
+            // que ya no tiene sentido mandarlo en segundo plano oculto.
+            mainWindow.setSkipTaskbar(false)
+            mainWindow.show()
+            mainWindow.focus()
             mainWindow.webContents.send(canal, {
               pdfBase64: body.pdfBase64,
               nombre: body.nombre || '',
             })
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ ok: true }))
+          } else {
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ ok: false, error: 'Ventana principal no disponible' }))
           }
-          res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ ok: true }))
         } catch (e) {
           res.writeHead(400, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify({ ok: false, error: e.message }))
+        }
+      })
+      return
+    }
+
+    // POST /imprimir-png — recibe { png_base64, formato, rollo } — PNG ya renderizado, sin PDF
+    if (req.method === 'POST' && req.url === '/imprimir-png') {
+      const chunks = []
+      req.on('data', c => chunks.push(c))
+      req.on('end', async () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString())
+          const { png_base64, formato, rollo } = body
+          if (!png_base64) { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'png_base64 vacío' })); return }
+
+          const cfg = loadConfig()
+          let printerIp = body.printerIp || cfg.printerIp
+          if (!printerIp) {
+            printerIp = await autoDiscoverPrinter()
+            if (printerIp) saveConfig({ printerIp })
+            else { res.writeHead(200); res.end(JSON.stringify({ ok: false, error: 'Impresora no encontrada' })); return }
+          }
+
+          const tmpPng = path.join(os.tmpdir(), `verex-png-${Date.now()}.png`)
+          fs.writeFileSync(tmpPng, Buffer.from(png_base64, 'base64'))
+          fs.writeFileSync(path.join(app.getPath('desktop'), 'verex-debug-label.png'), Buffer.from(png_base64, 'base64'))
+
+          const P = 696 / 62
+          const fmtMap = {
+            'guia':     { w: 696, h: 1063, rotate: 90,  label: '62red' },
+            'recibo':   { w: 696, h: 0,    rotate: 0,   label: '62red' },
+            'producto': { w: Math.round(54*P), h: 117, rotate: 0, label: '62red' },
+          }
+          const fm = fmtMap[formato] || fmtMap['guia']
+          const labelId = fm.label
+
+          const pyScript = path.join(__dirname, 'verex_print.py')
+          const cmd = `python "${pyScript}" --png "${tmpPng}" --ip "${printerIp}" --label "${labelId}" --target-w ${fm.w} --target-h ${fm.h} --rotate ${fm.rotate}`
+          const { exec: execCb } = require('child_process')
+          const r = await new Promise(resolve => {
+            execCb(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
+              if (err) resolve({ ok: false, error: stderr || err.message })
+              else     resolve({ ok: true, ip: printerIp })
+            })
+          })
+          fs.unlink(tmpPng, () => {})
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify(r))
+        } catch (e) {
+          res.writeHead(500); res.end(JSON.stringify({ ok: false, error: e.message }))
         }
       })
       return
@@ -221,8 +281,10 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
             const GW_CSS = Math.round(62 * 96 / 25.4), GSCALE = 3
             const DK14W  = Math.round(50 * 96 / 25.4) * 4  // 756px — DK-2214 50mm @96dpi×4
             const DK14H  = Math.round(12 * 96 / 25.4) * 4  // 182px — DK-2214 12mm @96dpi×4
-            const winW = isDK2214srv ? DK14W : (isLabel ? LW_CSS * LSCALE : Math.round(widthMm * 96 / 25.4) * GSCALE)
-            const winH = isDK2214srv ? DK14H * pages : (isLabel ? LH_CSS * LSCALE * pages : (heightMm > 0 ? Math.round(heightMm * 96 / 25.4) * GSCALE : 4500))
+            // Para guía: ventana grande para cubrir cualquier tamaño de PDF (c807 es 145×145mm)
+            const guiaMaxDim = 2000
+            const winW = isDK2214srv ? DK14W : (isLabel ? LW_CSS * LSCALE : (formato === 'guia' ? guiaMaxDim : Math.round(widthMm * 96 / 25.4) * GSCALE))
+            const winH = isDK2214srv ? DK14H * pages : (isLabel ? LH_CSS * LSCALE * pages : (formato === 'guia' ? guiaMaxDim : (heightMm > 0 ? Math.round(heightMm * 96 / 25.4) * GSCALE : 4500)))
 
             const win = new BrowserWindow({
               show: false, width: winW, height: winH,
@@ -239,7 +301,17 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
               await new Promise(r => setTimeout(r, 300))
 
               try {
-                const captureW = winW, captureH = isDK2214srv ? DK14H * pages : ((isLabel && !isMini) ? LH_CSS * LSCALE * pages : winH)
+                let captureW = winW, captureH = isDK2214srv ? DK14H * pages : ((isLabel && !isMini) ? LH_CSS * LSCALE * pages : winH)
+
+                // Para guía: leer las dimensiones reales del canvas pdfjs
+                // El PDF puede ser landscape (90×62mm) o portrait (62×90mm)
+                if (formato === 'guia') {
+                  const dims = await win.webContents.executeJavaScript(
+                    '(() => { const c = document.getElementById("c"); return c ? [c.width, c.height] : [0, 0]; })()'
+                  ).catch(() => [0, 0])
+                  if (dims[0] > 0 && dims[1] > 0) { captureW = dims[0]; captureH = dims[1] }
+                }
+
                 const img = await win.webContents.capturePage({ x: 0, y: 0, width: captureW, height: captureH })
                 win.close()
                 fs.unlink(tmpHtml, () => {}); fs.unlink(pdfPath, () => {})
@@ -283,16 +355,16 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
                   'dk2214':   { w: 106, h: 591 },  // 12mm tape: 106 dots imprimibles, 50mm=591 líneas
                 }
                 // Algunos formatos tienen rollo fijo independiente del selector
-                const formatLabelOverride = { 'mini': '29x90', 'dk2214': '12' }
+                const formatLabelOverride = { 'mini': '29x90', 'dk2214': '12', 'guia': '62red', 'recibo': '62red', 'producto': '62red' }
                 const labelId = formatLabelOverride[formato] || labelMap[rollo] || '62'
                 const px = formatPx[formato] || { w: 696, h: 117 }
-                const rotateDeg = formato === 'dk2214' ? 90 : 0
+                const rotateDeg = (formato === 'dk2214' || formato === 'guia') ? 90 : 0
                 const pyScript = path.join(__dirname, 'verex_print.py')
                 const r = await new Promise(resolve => {
                   const cmd = `python "${pyScript}" --png "${tmpPng}" --ip "${printerIp}" --label "${labelId}" --target-w ${px.w} --target-h ${px.h} --rotate ${rotateDeg}`
                   exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
                     if (err) resolve({ ok: false, error: stderr || err.message })
-                    else     resolve({ ok: true })
+                    else     resolve({ ok: true, ip: printerIp })
                   })
                 })
                 fs.unlink(tmpPng, () => {})
@@ -305,7 +377,7 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
           })
 
           res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ ok: result.success, etiquetas: pages, error: result.error || null }))
+          res.end(JSON.stringify({ ok: result.success, etiquetas: pages, ip: result.ip || null, error: result.error || null }))
         } catch (e) {
           res.writeHead(500, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify({ ok: false, error: e.message }))
@@ -1376,21 +1448,23 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
       }
 
       // ── Fallback webContents.print() para tamaños no estándar ────────────
+      // El driver de impresoras térmicas genéricas (ej. POS-58) no completa
+      // trabajos enviados en modo silent:true (segundo plano, sin diálogo)
+      // — confirmado revisando el Visor de eventos de Windows: esos jobs se
+      // quedan atascados en "En cola" y nunca pasan a "Enviado al
+      // procesador", pase lo que pase con el tamaño de página. En cambio,
+      // los trabajos que sí pasaron por un diálogo de impresión visible se
+      // imprimieron sin problema. Por eso aquí se muestra el diálogo nativo
+      // de Windows (silent:false) en vez de intentar imprimir en silencio
+      // — un clic extra del usuario, pero es lo que de verdad funciona con
+      // este driver.
       try {
         await new Promise(r => setTimeout(r, 500))
-        let finalHeightMm = heightMm
-        if (heightMm === 0) {
-          const px = await win.webContents.executeJavaScript('document.body.scrollHeight')
-          finalHeightMm = Math.ceil((px / 96) * 25.4) + 6
-        }
+        win.show()
         win.webContents.print({
-          silent: true,
+          silent: false,
           printBackground: true,
           deviceName: printerName || '',
-          pageSize: {
-            width: Math.round(widthMm * 1000),
-            height: Math.round(finalHeightMm * 1000),
-          },
           margins: { marginType: 'none' },
         }, (success, errorType) => {
           clearTimeout(guard)

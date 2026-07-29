@@ -17,6 +17,23 @@
             padding:10px 16px;text-align:center;font-size:13px;color:#555;
         }
         .info-bar strong{color:#111;}
+
+        /* Filtro de talla — solo aparece si el catálogo tiene anillos */
+        #filtro-talla-bar{
+            background:#fff;border-bottom:1px solid #e2e2e2;
+            padding:10px 16px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+        }
+        #filtro-talla-bar .flt-lbl{font-size:11px;font-weight:700;color:#555;margin-right:2px;}
+        .chip-talla{
+            padding:5px 11px;border-radius:20px;border:1.5px solid #ddd;background:#fff;
+            color:#111;font-size:11px;font-weight:700;cursor:pointer;
+        }
+        .chip-talla.activa{background:#0277bd;color:#fff;border-color:#0277bd;}
+        .chip-talla-limpiar{
+            padding:5px 11px;border-radius:20px;border:none;background:#f0f0f0;
+            color:#888;font-size:11px;font-weight:700;cursor:pointer;
+        }
+        .card.oculto-talla{display:none;}
         .validez{color:#f97316;font-weight:700;font-size:12px;margin-top:4px;}
 
         .grid{
@@ -24,7 +41,7 @@
             gap:12px;padding:16px;max-width:580px;margin:0 auto;
         }
 
-        .card{background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);display:flex;flex-direction:column;}
+        .card{background:#fff;border:1.5px solid #d9c184;border-radius:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);display:flex;flex-direction:column;}
         .card-img{width:100%;aspect-ratio:1/1;object-fit:contain;background:#f7f7f7;display:block;flex-shrink:0;}
         .card-img-ph{
             width:100%;aspect-ratio:1/1;background:#f0f0f0;
@@ -33,19 +50,72 @@
         }
         .card-body{padding:10px;text-align:center;flex:1;}
         .card-name{font-size:12px;font-weight:700;color:#1a1a1a;line-height:1.3;margin-bottom:3px;}
-        .card-material{font-size:11px;color:#6b7280;font-weight:600;margin-bottom:5px;}
+        .card-material{
+            display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.02em;
+            padding:2px 8px;border-radius:20px;margin-bottom:5px;
+        }
+        .card-material.mat-plata{background:#e5e7eb;color:#374151;border:1px solid #cbd5e1;}
+        .card-material.mat-acero{background:#dbeafe;color:#1e3a8a;border:1px solid #93c5fd;}
+        .card-material.mat-oro{background:#fef3c7;color:#92400e;border:1px solid #fcd34d;}
+        .card-material.mat-otro{background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;}
         .card-price{font-size:16px;font-weight:800;color:#111;margin-bottom:4px;}
         .card-price-orig{font-size:12px;font-weight:600;color:#9ca3af;text-decoration:line-through;}
         .card-price-final{font-size:17px;font-weight:800;color:#92400e;}
         .card-ne{display:inline-block;font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:5px;padding:2px 7px;margin-bottom:4px;line-height:1.5;}
         .card-nota{display:inline-block;font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:5px;padding:2px 7px;margin-top:5px;line-height:1.5;}
-        .card-footer{padding:0 10px 10px;}
+        .card-footer{padding:0 10px 10px;display:flex;gap:6px;}
         .wa-order{
-            display:block;width:100%;text-align:center;
-            background:#25D366;color:#fff;
+            display:flex;align-items:center;justify-content:center;
+            flex:1;text-align:center;position:relative;overflow:hidden;
+            background:linear-gradient(135deg,#4a3410,#C9A84C,#E8C87A,#C9A84C,#4a3410);
+            color:#1a1207;
             padding:9px 0;border-radius:8px;
             font-size:13px;font-weight:700;
-            border:none;cursor:pointer;
+            border:3px solid #9a9a9a;box-shadow:0 0 0 1px #666;
+            cursor:pointer;
+        }
+        .wa-shine{
+            position:absolute;top:0;left:-60%;width:40%;height:100%;
+            background:linear-gradient(120deg,transparent,rgba(255,255,255,.85),transparent);
+            transform:skewX(-20deg);pointer-events:none;
+        }
+        .wa-order.brillando .wa-shine{ animation:waShineSweep .6s ease; }
+        @keyframes waShineSweep{ from{left:-60%;} to{left:130%;} }
+        .cart-add{
+            flex-shrink:0;width:38px;
+            background:#fff;color:#111;border:1.5px solid #ddd;
+            border-radius:8px;font-size:16px;cursor:pointer;
+        }
+
+        /* Carrito flotante — discreto, no interrumpe el catálogo hasta que
+           se agrega el primer producto. */
+        #cart-fab{
+            display:none;position:fixed;bottom:20px;right:16px;z-index:900;
+            background:#111;color:#fff;border:none;border-radius:50px;
+            padding:12px 18px;font-size:14px;font-weight:700;cursor:pointer;
+            box-shadow:0 4px 15px rgba(0,0,0,.3);align-items:center;gap:8px;
+        }
+        #cart-fab.show{display:flex;}
+        #cart-fab-badge{
+            background:#25D366;color:#fff;border-radius:50%;
+            width:20px;height:20px;font-size:11px;font-weight:800;
+            display:flex;align-items:center;justify-content:center;
+        }
+        #cart-overlay{
+            display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+            z-index:999;align-items:flex-end;justify-content:center;
+        }
+        #cart-overlay.open{display:flex;}
+        #cart-box{
+            background:#fff;border-radius:16px 16px 0 0;
+            padding:20px 16px 24px;width:100%;max-width:480px;
+            max-height:80vh;overflow-y:auto;
+        }
+        .cart-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #eee;}
+        .cart-item-qtybtn{
+            width:26px;height:26px;border-radius:50%;border:1px solid #ddd;
+            background:#f7f7f7;font-size:14px;cursor:pointer;
+            display:flex;align-items:center;justify-content:center;
         }
 
         /* Agotado (verificado en tiempo real contra el stock actual) */
@@ -103,6 +173,51 @@
 <body>
 <div id="app"><div id="loading">Cargando catálogo…</div></div>
 
+<!-- Zoom de foto -->
+<div id="foto-zoom-overlay" onclick="cerrarFotoZoom()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:1200;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;">
+    <img id="foto-zoom-img" src="" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;">
+</div>
+
+<!-- Carrito flotante — discreto, aparece solo cuando hay algo agregado -->
+<button id="cart-fab" onclick="abrirCarrito()">
+    🛒 <span id="cart-fab-badge">0</span>
+</button>
+
+<div id="cart-overlay">
+    <div id="cart-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div style="font-weight:800;font-size:15px;color:#111;">🛒 Tu pedido</div>
+            <button onclick="cerrarCarrito()" style="background:none;border:none;font-size:20px;color:#999;cursor:pointer;">✕</button>
+        </div>
+        <div id="cart-list"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0;font-size:15px;font-weight:800;color:#111;">
+            <span>Total</span><span id="cart-total">$0.00</span>
+        </div>
+        <div id="cart-datos-wrap" style="margin-bottom:14px;">
+            <div style="font-size:12px;font-weight:700;color:#111;margin-bottom:6px;">Tu nombre</div>
+            <input type="text" id="cart-nombre" placeholder="Ej: María Pérez"
+                oninput="actualizarBotonCarrito()"
+                style="width:100%;padding:12px;border:2px solid #e2e2e2;border-radius:10px;font-size:15px;box-sizing:border-box;margin-bottom:10px;">
+            <div style="font-size:12px;font-weight:700;color:#111;margin-bottom:6px;">Tu número de WhatsApp</div>
+            <input type="tel" id="cart-tel" placeholder="Ej: 7000-0000" inputmode="numeric"
+                oninput="actualizarBotonCarrito()"
+                style="width:100%;padding:12px;border:2px solid #e2e2e2;border-radius:10px;font-size:15px;box-sizing:border-box;margin-bottom:10px;">
+            <div style="font-size:12px;font-weight:700;color:#111;margin-bottom:6px;">Dirección completa de envío <span style="color:#999;font-weight:500;">(departamento, municipio y dirección exacta)</span></div>
+            <textarea id="cart-direccion" placeholder="Ej: San Salvador, Mejicanos, Col. Las Flores, Calle Principal #12"
+                oninput="actualizarBotonCarrito()" rows="2"
+                style="width:100%;padding:12px;border:2px solid #e2e2e2;border-radius:10px;font-size:15px;box-sizing:border-box;resize:vertical;font-family:inherit;"></textarea>
+        </div>
+        <button id="cart-confirm" onclick="enviarCarritoWhatsApp()"
+            style="width:100%;background:#25D366;color:#fff;border:none;padding:13px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;">
+            📱 Enviar pedido por WhatsApp</button>
+        <button onclick="cerrarCarrito()"
+            style="width:100%;background:#f0f2f5;color:#555;border:none;padding:11px;border-radius:10px;font-size:14px;cursor:pointer;">
+            Seguir viendo el catálogo</button>
+    </div>
+</div>
+
+<div id="mini-toast" style="display:none;position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:10px 18px;border-radius:30px;font-size:13px;font-weight:700;z-index:1300;box-shadow:0 4px 15px rgba(0,0,0,.3);"></div>
+
 <!-- Selector de talla -->
 <div id="sz-overlay">
     <div id="sz-box">
@@ -119,6 +234,21 @@
             <div id="sz-grid-h" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;"></div>
         </div>
 
+        <div id="sz-tel-wrap" style="display:none;margin-bottom:18px;">
+            <div style="font-size:12px;font-weight:700;color:#111;margin-bottom:6px;">Tu nombre</div>
+            <input type="text" id="sz-nombre" placeholder="Ej: María Pérez"
+                oninput="actualizarBotonSz()"
+                style="width:100%;padding:12px;border:2px solid #e2e2e2;border-radius:10px;font-size:15px;box-sizing:border-box;margin-bottom:10px;">
+            <div style="font-size:12px;font-weight:700;color:#111;margin-bottom:6px;">Tu número de WhatsApp</div>
+            <input type="tel" id="sz-tel" placeholder="Ej: 7000-0000" inputmode="numeric"
+                oninput="actualizarBotonSz()"
+                style="width:100%;padding:12px;border:2px solid #e2e2e2;border-radius:10px;font-size:15px;box-sizing:border-box;margin-bottom:10px;">
+            <div style="font-size:12px;font-weight:700;color:#111;margin-bottom:6px;">Dirección completa de envío <span style="color:#999;font-weight:500;">(departamento, municipio y dirección exacta)</span></div>
+            <textarea id="sz-direccion" placeholder="Ej: San Salvador, Mejicanos, Col. Las Flores, Calle Principal #12"
+                oninput="actualizarBotonSz()" rows="2"
+                style="width:100%;padding:12px;border:2px solid #e2e2e2;border-radius:10px;font-size:15px;box-sizing:border-box;resize:vertical;font-family:inherit;"></textarea>
+        </div>
+
         <button id="sz-confirm" onclick="confirmarTalla()"
             style="width:100%;background:#25D366;color:#fff;border:none;padding:13px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;opacity:.5;"
             disabled>💬 Enviar por WhatsApp</button>
@@ -133,7 +263,9 @@
     const params = new URLSearchParams(location.search);
     const c = params.get("c");
 
-    let _prods = [], _waNum = "", _szIdx = -1, _szD = "", _szH = "", _descPct = 0, _afiliadoCodigo = "";
+    let _prods = [], _waNum = "", _szIdx = -1, _szD = "", _szH = "", _descPct = 0, _afiliadoCodigo = "", _szParMode = false, _szTel = "", _szNombreCliente = "", _szDireccion = "", _szNoTalla = false, _szModo = "wa";
+    let _carrito = [];
+    try { _carrito = JSON.parse(sessionStorage.getItem("verex-carrito") || "[]"); } catch(_) {}
 
     const SIZES   = ["5","5.5","6","6.5","7","7.5","8","8.5","9","9.5","10","10.5","11","12","13","14"];
     const ES_PAR  = /matrimonio|argolla|novios|pareja|alianza/i;
@@ -143,21 +275,41 @@
         const d=document.createElement("div"); d.textContent=String(s||""); return d.innerHTML;
     }
 
+    // Clase de color del badge de material — para que el cliente note de
+    // un vistazo si es plata, acero u oro laminado sin tener que leer el texto.
+    function claseMaterial(m){
+        const s = String(m||"").toLowerCase();
+        if(s.includes("acero"))                     return "mat-acero";
+        if(s.includes("oro"))                        return "mat-oro";
+        if(s.includes("plata"))                      return "mat-plata";
+        return "mat-otro";
+    }
+
     // Registro silencioso del interés del cliente ANTES de abrir WhatsApp — no bloquea
     // la apertura del chat aunque falle (la venta nunca debe depender de esto).
-    function registrarLead(p){
-        if (!_afiliadoCodigo || !p?.c) return;
+    function registrarLead(p, telefono, nombreCliente, direccionCliente){
+        if (!p?.c) return;
         try {
             fetch(API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     accion: "REGISTRAR_LEAD",
-                    afiliado: _afiliadoCodigo,
+                    afiliado: _afiliadoCodigo || "",
                     codigo: p.c,
                     nombre: p.n || "",
                     precio: precioFinal(p.p),
-                    foto: p.i || ""
+                    foto: p.i || "",
+                    // Teléfono y nombre capturados ANTES de abrir WhatsApp — si el
+                    // envío falla o el cliente no lo manda, ya queda un dato de
+                    // contacto guardado, en vez de un Lead sin nadie a quién
+                    // darle seguimiento. Antes solo se pedía en catálogo de
+                    // afiliado; ahora se pide siempre (también en cliente) porque
+                    // un mismo link se puede compartir a varios clientes distintos
+                    // por distintos canales, y sin nombre no se sabe quién pidió.
+                    telefonoCliente: telefono || "",
+                    nombreCliente: nombreCliente || "",
+                    direccionCliente: direccionCliente || ""
                 })
             }).catch(()=>{});
         } catch(_){}
@@ -208,14 +360,26 @@
                 <h2>Este catálogo ya venció</h2>
                 <p>Hola${nombre?' <strong>'+esc(nombre)+'</strong>':''}, este catálogo ya no está disponible.<br>
                 Contáctanos para ver el inventario actualizado.</p>
-                <a href="https://wa.me/${esc(wa||'')}" class="wa-btn">📱 Contactar por WhatsApp</a>
+                <a href="https://wa.me/${esc(normalizarWA(wa))}" class="wa-btn">📱 Contactar por WhatsApp</a>
             </div>
             <footer>VEREX · La expresión de tu mejor versión</footer>`;
     }
 
+    // Normaliza el teléfono a formato internacional que wa.me realmente
+    // reconoce — el número guardado a veces se guardó local (8 dígitos, sin
+    // "503"), lo que rompe el link silenciosamente: el cliente cree que
+    // envió el mensaje, pero nunca le llega nada al afiliado/VEREX.
+    function normalizarWA(numero){
+        const solo = String(numero||"").replace(/\D/g,"");
+        if (!solo) return "";
+        if (solo.length === 8) return "503" + solo;      // local SV sin código de país
+        if (solo.startsWith("503") && solo.length === 11) return solo;
+        return solo;
+    }
+
     function render(data){
         _prods = data.prods || [];
-        _waNum = data.wa    || "";
+        _waNum = normalizarWA(data.wa);
         _descPct = Math.min(90, Math.max(0, parseInt(data.descPct) || 0));
         _afiliadoCodigo = data.afiliadoCodigo || "";
 
@@ -247,12 +411,12 @@
                 <div class="card-img-wrap">
                     <span class="card-agotado-badge">AGOTADO</span>
                     ${p.i
-                        ?`<img class="card-img" src="${esc(p.i)}" alt="${esc(p.n)}" loading="lazy" onerror="this.outerHTML='<div class=\'card-img-ph\'>💍</div>'">`
+                        ?`<img class="card-img" src="${esc(p.i)}" alt="${esc(p.n)}" loading="lazy" style="cursor:zoom-in;" onclick="abrirFotoZoom('${esc(p.i)}')" onerror="this.outerHTML='<div class=\'card-img-ph\'>💍</div>'">`
                         :`<div class="card-img-ph">💍</div>`}
                 </div>
                 <div class="card-body">
                     <div class="card-name">${esc(p.n)}</div>
-                    ${p.m?`<div class="card-material">${esc(p.m)}</div>`:''}
+                    ${p.m?`<div class="card-material ${claseMaterial(p.m)}">${esc(p.m)}</div>`:''}
                     ${p.c?`<div style="font-size:9px;color:#9ca3af;font-weight:600;margin-top:-3px;margin-bottom:4px;">Ref: ${esc(p.c)}</div>`:''}
                     ${sizesHtml}
                     ${p.ne?`<div class="card-ne">♦ ${esc(p.ne)}</div>`:''}
@@ -260,7 +424,8 @@
                     ${p.nota?`<div class="card-nota">${esc(p.nota)}</div>`:''}
                 </div>
                 <div class="card-footer">
-                    <button class="wa-order" onclick="elegirTalla(${i})">💬 Quiero este</button>
+                    <button class="wa-order" onclick="elegirTalla(${i},'wa',this)"><span style="position:relative;z-index:2;">✦ ¡Hazlo tuyo!</span><span class="wa-shine"></span></button>
+                    <button class="cart-add" onclick="elegirTalla(${i},'carrito')" title="Agregar al carrito">🛒</button>
                 </div>
             </div>`;
         }).join("");
@@ -272,6 +437,24 @@
                 ${b.sub?`<div style="font-size:12px;font-weight:500;margin-top:4px;opacity:.9;">${esc(b.sub)}</div>`:''}
             </div>` : '';
 
+        // Filtro de talla — solo se arma si el catálogo tiene al menos un
+        // anillo con tallas registradas; junta las tallas de todos los
+        // anillos (sencillos y pares dama/caballero) sin repetir.
+        const tallasSet = new Set();
+        _prods.forEach(p => {
+            if (p.cat !== "AN") return;
+            (p.sizes||[]).forEach(s => tallasSet.add(s));
+            (p.sizesD||[]).forEach(s => tallasSet.add(s));
+            (p.sizesH||[]).forEach(s => tallasSet.add(s));
+        });
+        const tallasOrdenadas = [...tallasSet].sort((a,b) => parseFloat(a)-parseFloat(b));
+        const filtroTallaHTML = tallasOrdenadas.length ? `
+            <div id="filtro-talla-bar">
+                <span class="flt-lbl">💍 Talla de anillo:</span>
+                ${tallasOrdenadas.map(t => `<button class="chip-talla" data-talla="${esc(t)}" onclick="toggleFiltroTalla('${esc(t)}',this)">T${esc(t)}</button>`).join("")}
+                <button class="chip-talla-limpiar" onclick="limpiarFiltroTalla()">✕ Todas</button>
+            </div>` : '';
+
         document.getElementById("app").innerHTML=`
             <header><img class="logo" src="/images/logo.webp" alt="VEREX"></header>
             ${bannerHTML}
@@ -279,47 +462,151 @@
                 ${subHTML?`<div>${subHTML}</div>`:''}
                 <div class="validez">⏰ Válido hasta: ${expStr}</div>
             </div>
+            ${filtroTallaHTML}
             <div class="grid">${cards}</div>
             <footer>VEREX · La expresión de tu mejor versión</footer>`;
     }
 
+    /* ── Filtro de talla (anillos) ── */
+    let _filtroTallas = new Set();
+
+    function toggleFiltroTalla(talla, btn){
+        if(_filtroTallas.has(talla)){ _filtroTallas.delete(talla); btn.classList.remove("activa"); }
+        else { _filtroTallas.add(talla); btn.classList.add("activa"); }
+        aplicarFiltroTalla();
+    }
+
+    function limpiarFiltroTalla(){
+        _filtroTallas.clear();
+        document.querySelectorAll(".chip-talla").forEach(b => b.classList.remove("activa"));
+        aplicarFiltroTalla();
+    }
+
+    // Solo oculta/muestra anillos — el resto de categorías (aretes, pulseras,
+    // etc.) siempre se quedan visibles, el filtro de talla no les aplica.
+    // Usa una clase (no style.display directo) para no chocar con el
+    // display:none que ya pone actualizarDisponibilidad() en lo agotado.
+    function aplicarFiltroTalla(){
+        document.querySelectorAll(".card").forEach(card => {
+            const idx = parseInt(card.dataset.idx);
+            const p = _prods[idx];
+            if(!p || p.cat !== "AN" || _filtroTallas.size === 0){ card.classList.remove("oculto-talla"); return; }
+            const tallas = [...(p.sizes||[]), ...(p.sizesD||[]), ...(p.sizesH||[])];
+            const coincide = tallas.some(t => _filtroTallas.has(t));
+            card.classList.toggle("oculto-talla", !coincide);
+        });
+    }
+
     /* ── Selector de talla ── */
 
-    function elegirTalla(i){
+    function miniToast(msg){
+        const t = document.getElementById("mini-toast");
+        t.textContent = msg;
+        t.style.display = "block";
+        clearTimeout(window._miniToastTimer);
+        window._miniToastTimer = setTimeout(() => { t.style.display = "none"; }, 2200);
+    }
+
+    function elegirTalla(i, modo, btnEl){
+        _szModo = modo || "wa";
+        // Brillo plateado al tocar el botón dorado — se re-dispara quitando y
+        // volviendo a poner la clase (si no, el navegador no repite la misma
+        // animación en clics seguidos).
+        if(btnEl && btnEl.classList.contains("wa-order")){
+            btnEl.classList.remove("brillando");
+            void btnEl.offsetWidth;
+            btnEl.classList.add("brillando");
+        }
         const p = _prods[i];
         if(!p) return;
         if(p._agotado){ alert("Este producto ya no está disponible — el stock se agotó."); return; }
 
         const esPareja = ES_PAR.test(p.n) || p.par;
 
-        // Argollas de par y productos sin talla: ir directo a WhatsApp
+        // Nombre + teléfono obligatorios SIEMPRE (cliente y afiliado) cuando se
+        // manda directo por WhatsApp — un mismo link de catálogo se puede
+        // compartir por varios canales a varios clientes distintos, y sin estos
+        // datos no hay forma de saber quién pidió qué cuando llega el mensaje.
+        // En modo carrito se piden UNA vez al enviar todo el pedido junto (en
+        // el cajón del carrito), no por cada producto que se va agregando.
+        _szTel = ""; _szNombreCliente = ""; _szDireccion = "";
+        const telWrap = document.getElementById("sz-tel-wrap");
+        const telInput = document.getElementById("sz-tel");
+        const nombreInput = document.getElementById("sz-nombre");
+        const direccionInput = document.getElementById("sz-direccion");
+        if(telWrap){ telWrap.style.display = (_szModo === "wa") ? "block" : "none"; }
+        if(telInput){ telInput.value = ""; }
+        if(nombreInput){ nombreInput.value = ""; }
+        if(direccionInput){ direccionInput.value = ""; }
+
+        // Argollas/pares/tríos: si hay tallas registradas para dama y/o
+        // caballero, se eligen con botones igual que un anillo individual.
+        // Si no hay info de tallas, se pide el teléfono (si aplica) y se
+        // manda por WhatsApp con el mensaje de siempre.
         if(esPareja){
-            const sizesInfo = [
-                p.sizesD?.length ? `Dama: ${p.sizesD.map(s=>'T'+s).join(', ')}` : '',
-                p.sizesH?.length ? `Caballero: ${p.sizesH.map(s=>'T'+s).join(', ')}` : ''
-            ].filter(Boolean).join('\n');
-            const precioInfo = (p.pD && p.pH && p.pD !== p.pH)
-                ? `Precio dama: $${precioFinal(p.pD).toFixed(2)} por pieza\nPrecio caballero: $${precioFinal(p.pH).toFixed(2)} por pieza`
-                : `Precio individual: $${precioFinal(p.p).toFixed(2)} por pieza`;
-            const msg = `Hola, me interesan estas argollas del catálogo VEREX:\n\n${p.n}\n${precioInfo}${sizesInfo ? `\n\nTallas disponibles:\n${sizesInfo}` : ''}\n\n¿Qué tallas necesita para dama y caballero?`;
-            registrarLead(p);
-            window.open(`https://wa.me/${_waNum}?text=${encodeURIComponent(msg)}`,"_blank");
+            const availD = p.sizesD?.length ? p.sizesD : null;
+            const availH = p.sizesH?.length ? p.sizesH : null;
+
+            if(!availD && !availH){
+                _szIdx=i; _szD="N/A"; _szH="N/A"; _szParMode=true; _szNoTalla=true;
+                document.getElementById("sz-title").textContent = p.n;
+                document.getElementById("sz-sub").textContent   = "¿Qué tallas necesita para dama y caballero?";
+                document.getElementById("sz-sec-d").style.display = "none";
+                document.getElementById("sz-sec-h").style.display = "none";
+                actualizarBotonSz();
+                document.getElementById("sz-overlay").classList.add("open");
+                return;
+            }
+
+            _szIdx=i; _szD=""; _szH=""; _szParMode=true; _szNoTalla=false;
+
+            document.getElementById("sz-title").textContent = p.n;
+            document.getElementById("sz-sub").textContent   = "¿Qué tallas necesitas?";
+
+            if(availD){
+                document.getElementById("sz-sec-d").style.display = "";
+                document.getElementById("sz-lbl-d").textContent = "Talla dama";
+                document.getElementById("sz-grid-d").innerHTML = availD.map(sz=>
+                    `<button class="sz-btn" onclick="selSz('D','${sz}',this)">T${sz}</button>`
+                ).join("");
+            } else {
+                document.getElementById("sz-sec-d").style.display = "none";
+                _szD = "N/A";
+            }
+
+            if(availH){
+                document.getElementById("sz-sec-h").style.display = "";
+                document.getElementById("sz-grid-h").innerHTML = availH.map(sz=>
+                    `<button class="sz-btn" onclick="selSz('H','${sz}',this)">T${sz}</button>`
+                ).join("");
+            } else {
+                document.getElementById("sz-sec-h").style.display = "none";
+                _szH = "N/A";
+            }
+
+            actualizarBotonSz();
+            document.getElementById("sz-overlay").classList.add("open");
             return;
         }
 
         if(p.cat && p.cat !== "AN"){
-            const msg=`Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\nPrecio: $${precioFinal(p.p).toFixed(2)}`;
-            registrarLead(p);
-            window.open(`https://wa.me/${_waNum}?text=${encodeURIComponent(msg)}`,"_blank");
+            _szIdx=i; _szD="N/A"; _szH="N/A"; _szParMode=false; _szNoTalla=true;
+            document.getElementById("sz-title").textContent = p.n;
+            document.getElementById("sz-sub").textContent   = "Confirma tu pedido";
+            document.getElementById("sz-sec-d").style.display = "none";
+            document.getElementById("sz-sec-h").style.display = "none";
+            actualizarBotonSz();
+            document.getElementById("sz-overlay").classList.add("open");
             return;
         }
 
-        _szIdx=i; _szD=""; _szH="";
+        _szIdx=i; _szD=""; _szH=""; _szParMode=false; _szNoTalla=false;
 
         const availD = (p.sizes?.length ? p.sizes : SIZES);
 
         document.getElementById("sz-title").textContent = p.n;
         document.getElementById("sz-sub").textContent   = "¿Qué talla necesitas?";
+        document.getElementById("sz-sec-d").style.display = "";
         document.getElementById("sz-lbl-d").textContent = "Tu talla";
         document.getElementById("sz-sec-h").style.display = "none";
 
@@ -327,29 +614,230 @@
             `<button class="sz-btn" onclick="selSz('D','${sz}',this)">T${sz}</button>`
         ).join("");
 
-        const btn = document.getElementById("sz-confirm");
-        btn.disabled=true; btn.style.opacity=".5";
+        actualizarBotonSz();
         document.getElementById("sz-overlay").classList.add("open");
     }
 
     function selSz(gen, sz, el){
-        document.querySelectorAll("#sz-grid-d .sz-btn").forEach(b=>b.classList.remove("sel-d"));
-        el.classList.add("sel-d");
-        _szD = sz;
+        if(gen === "D"){
+            document.querySelectorAll("#sz-grid-d .sz-btn").forEach(b=>b.classList.remove("sel-d"));
+            el.classList.add("sel-d");
+            _szD = sz;
+        } else {
+            document.querySelectorAll("#sz-grid-h .sz-btn").forEach(b=>b.classList.remove("sel-h"));
+            el.classList.add("sel-h");
+            _szH = sz;
+        }
+        actualizarBotonSz();
+    }
+
+    // Habilita el botón de confirmar solo cuando ya hay talla(s) elegida(s)
+    // Y, si el catálogo es de afiliado Y se va a enviar YA por WhatsApp, el
+    // teléfono tiene algo escrito (en modo carrito el teléfono se pide luego,
+    // una sola vez, al enviar todo el pedido junto).
+    function actualizarBotonSz(){
+        const tallaLista = _szNoTalla ? true : (_szParMode ? (_szD && _szH) : !!_szD);
+        const telInput = document.getElementById("sz-tel");
+        const nombreInput = document.getElementById("sz-nombre");
+        const direccionInput = document.getElementById("sz-direccion");
+        // Nombre, teléfono y dirección se exigen siempre que se vaya a mandar
+        // YA por WhatsApp (cliente o afiliado) — en modo carrito no aplica
+        // aquí, se piden una sola vez al final en el cajón del carrito.
+        const requiereDatos = _szModo === "wa";
+        const telOk = requiereDatos ? !!(telInput && telInput.value.trim().length >= 4) : true;
+        const nombreOk = requiereDatos ? !!(nombreInput && nombreInput.value.trim().length >= 2) : true;
+        const direccionOk = requiereDatos ? !!(direccionInput && direccionInput.value.trim().length >= 8) : true;
+        _szTel = telInput ? telInput.value.trim() : "";
+        _szNombreCliente = nombreInput ? nombreInput.value.trim() : "";
+        _szDireccion = direccionInput ? direccionInput.value.trim() : "";
+        const listo = tallaLista && telOk && nombreOk && direccionOk;
         const btn = document.getElementById("sz-confirm");
-        btn.disabled=false; btn.style.opacity="1";
+        btn.disabled = !listo;
+        btn.style.opacity = listo ? "1" : ".5";
+        btn.textContent = _szModo === "carrito" ? "🛒 Agregar al carrito" : "💬 Enviar por WhatsApp";
+    }
+
+    // Arma un texto corto de talla y el precio unitario ya con descuento
+    // aplicado, reutilizando el mismo estado (p, _szD/_szH/_szParMode/
+    // _szNoTalla) que ya calcula confirmarTalla() para el mensaje directo.
+    function _labelYPrecioCarrito(p){
+        if(_szParMode && _szNoTalla){
+            const precio = (p.pD && p.pH) ? precioFinal(parseFloat(p.pD)) + precioFinal(parseFloat(p.pH)) : precioFinal(p.p);
+            return { label: "Tallas a confirmar (dama/caballero)", precio };
+        }
+        if(_szNoTalla){
+            return { label: "", precio: precioFinal(p.p) };
+        }
+        if(_szParMode){
+            const precio = (p.pD != null && p.pH != null) ? precioFinal(parseFloat(p.pD) + parseFloat(p.pH)) : precioFinal(p.p);
+            const partes = [
+                _szD && _szD !== "N/A" ? `Dama T${_szD}` : '',
+                _szH && _szH !== "N/A" ? `Caballero T${_szH}` : ''
+            ].filter(Boolean);
+            return { label: partes.join(" / "), precio };
+        }
+        return { label: `Talla T${_szD}`, precio: precioFinal(p.p) };
     }
 
     function confirmarTalla(){
         const p = _prods[_szIdx];
-        const msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\nPrecio: $${precioFinal(p.p).toFixed(2)}\nTalla: T${_szD}`;
-        registrarLead(p);
+
+        if(_szModo === "carrito"){
+            const { label, precio } = _labelYPrecioCarrito(p);
+            agregarACarrito(p, label, precio);
+            cerrarTallas();
+            miniToast("✅ Agregado al carrito");
+            return;
+        }
+
+        let msg;
+        const telLinea = (_szNombreCliente || _szTel || _szDireccion)
+            ? `\n\nMis datos:${_szNombreCliente?`\nNombre: ${_szNombreCliente}`:''}${_szTel?`\nWhatsApp: ${_szTel}`:''}${_szDireccion?`\nDirección de envío: ${_szDireccion}`:''}`
+            : '';
+
+        if(_szParMode && _szNoTalla){
+            const precioInfo = (p.pD && p.pH && p.pD !== p.pH)
+                ? `Precio dama: $${precioFinal(p.pD).toFixed(2)} por pieza\nPrecio caballero: $${precioFinal(p.pH).toFixed(2)} por pieza`
+                : `Precio individual: $${precioFinal(p.p).toFixed(2)} por pieza`;
+            const sizesInfo = [
+                p.sizesD?.length ? `Dama: ${p.sizesD.map(s=>'T'+s).join(', ')}` : '',
+                p.sizesH?.length ? `Caballero: ${p.sizesH.map(s=>'T'+s).join(', ')}` : ''
+            ].filter(Boolean).join('\n');
+            msg = `Hola, me interesan estas argollas del catálogo VEREX:\n\n${p.n}\n${precioInfo}${sizesInfo ? `\n\nTallas disponibles:\n${sizesInfo}` : ''}\n\n¿Qué tallas necesita para dama y caballero?${telLinea}`;
+        } else if(_szNoTalla){
+            msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\nPrecio: $${precioFinal(p.p).toFixed(2)}${telLinea}`;
+        } else if(_szParMode){
+            const precioInfo = (p.pD != null && p.pH != null)
+                ? `Precio total: $${precioFinal(parseFloat(p.pD)+parseFloat(p.pH)).toFixed(2)}`
+                : `Precio: $${precioFinal(p.p).toFixed(2)}`;
+            const tallasInfo = [
+                _szD && _szD !== "N/A" ? `Talla dama: T${_szD}` : '',
+                _szH && _szH !== "N/A" ? `Talla caballero: T${_szH}` : ''
+            ].filter(Boolean).join('\n');
+            msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\n${precioInfo}\n${tallasInfo}${telLinea}`;
+        } else {
+            msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\nPrecio: $${precioFinal(p.p).toFixed(2)}\nTalla: T${_szD}${telLinea}`;
+        }
+        registrarLead(p, _szTel, _szNombreCliente, _szDireccion);
         cerrarTallas();
         window.open(`https://wa.me/${_waNum}?text=${encodeURIComponent(msg)}`,"_blank");
     }
 
     function cerrarTallas(){
         document.getElementById("sz-overlay").classList.remove("open");
+    }
+
+    /* ── Carrito multi-producto ── */
+    // Discreto a propósito: no cambia el flujo de "¡Hazlo tuyo!" (que sigue
+    // mandando un WhatsApp inmediato), solo agrega una alternativa para
+    // juntar varios productos y mandarlos en un solo mensaje al final.
+
+    function guardarCarrito(){
+        try { sessionStorage.setItem("verex-carrito", JSON.stringify(_carrito)); } catch(_) {}
+    }
+
+    function renderCarritoFab(){
+        const total = _carrito.reduce((s, it) => s + it.qty, 0);
+        document.getElementById("cart-fab-badge").textContent = total;
+        document.getElementById("cart-fab").classList.toggle("show", total > 0);
+    }
+
+    function agregarACarrito(p, tallaLabel, precioUnit){
+        const key = (p.c || p.n) + "|" + tallaLabel;
+        const existente = _carrito.find(it => it.key === key);
+        if(existente) existente.qty++;
+        else _carrito.push({ key, codigo: p.c || "", nombre: p.n, tallaLabel, precioUnit, qty: 1 });
+        guardarCarrito();
+        renderCarritoFab();
+    }
+
+    function renderCarritoLista(){
+        const cont = document.getElementById("cart-list");
+        if(!_carrito.length){
+            cont.innerHTML = '<p style="text-align:center;color:#999;font-size:13px;padding:20px 0;">Tu carrito está vacío.</p>';
+        } else {
+            cont.innerHTML = _carrito.map(it => `
+                <div class="cart-item">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:13px;font-weight:700;color:#111;">${esc(it.nombre)}</div>
+                        ${it.tallaLabel ? `<div style="font-size:11px;color:#7c3aed;">${esc(it.tallaLabel)}</div>` : ''}
+                        <div style="font-size:12px;color:#666;">$${it.precioUnit.toFixed(2)} c/u</div>
+                    </div>
+                    <button class="cart-item-qtybtn" onclick="cambiarQtyCarrito('${esc(it.key)}',-1)">−</button>
+                    <span style="font-weight:700;min-width:16px;text-align:center;">${it.qty}</span>
+                    <button class="cart-item-qtybtn" onclick="cambiarQtyCarrito('${esc(it.key)}',1)">+</button>
+                    <div style="font-size:13px;font-weight:800;color:#111;min-width:55px;text-align:right;">$${(it.precioUnit*it.qty).toFixed(2)}</div>
+                </div>`).join("");
+        }
+        const total = _carrito.reduce((s, it) => s + it.precioUnit * it.qty, 0);
+        document.getElementById("cart-total").textContent = "$" + total.toFixed(2);
+    }
+
+    function cambiarQtyCarrito(key, delta){
+        const it = _carrito.find(x => x.key === key);
+        if(!it) return;
+        it.qty += delta;
+        if(it.qty <= 0) _carrito = _carrito.filter(x => x.key !== key);
+        guardarCarrito();
+        renderCarritoFab();
+        renderCarritoLista();
+        actualizarBotonCarrito();
+    }
+
+    // Nombre y teléfono se piden SIEMPRE al enviar el carrito (cliente o
+    // afiliado) — un mismo link se puede compartir por varios canales a
+    // varios clientes distintos, y sin estos datos no se sabe quién pidió.
+    function actualizarBotonCarrito(){
+        const telInput = document.getElementById("cart-tel");
+        const nombreInput = document.getElementById("cart-nombre");
+        const direccionInput = document.getElementById("cart-direccion");
+        const telOk = !!(telInput && telInput.value.trim().length >= 4);
+        const nombreOk = !!(nombreInput && nombreInput.value.trim().length >= 2);
+        const direccionOk = !!(direccionInput && direccionInput.value.trim().length >= 8);
+        const btn = document.getElementById("cart-confirm");
+        const listo = _carrito.length > 0 && telOk && nombreOk && direccionOk;
+        btn.disabled = !listo;
+        btn.style.opacity = listo ? "1" : ".5";
+    }
+
+    function abrirCarrito(){
+        renderCarritoLista();
+        actualizarBotonCarrito();
+        document.getElementById("cart-overlay").classList.add("open");
+    }
+
+    function cerrarCarrito(){
+        document.getElementById("cart-overlay").classList.remove("open");
+    }
+
+    function enviarCarritoWhatsApp(){
+        if(!_carrito.length) return;
+        const telInput = document.getElementById("cart-tel");
+        const nombreInput = document.getElementById("cart-nombre");
+        const direccionInput = document.getElementById("cart-direccion");
+        const tel = telInput ? telInput.value.trim() : "";
+        const nombreCliente = nombreInput ? nombreInput.value.trim() : "";
+        const direccionCliente = direccionInput ? direccionInput.value.trim() : "";
+        if(tel.length < 4 || nombreCliente.length < 2 || direccionCliente.length < 8) return;
+
+        const lineas = _carrito.map((it, idx) =>
+            `${idx+1}. ${it.nombre}${it.tallaLabel ? ` (${it.tallaLabel})` : ''}${it.qty > 1 ? ` x${it.qty}` : ''} — $${(it.precioUnit*it.qty).toFixed(2)}`
+        );
+        const total = _carrito.reduce((s, it) => s + it.precioUnit * it.qty, 0);
+        const msg = `Hola, soy ${nombreCliente}. Quiero pedir estos productos del catálogo VEREX:\n\n${lineas.join("\n")}\n\nTotal: $${total.toFixed(2)}\n\nMi WhatsApp: ${tel}\nDirección de envío: ${direccionCliente}`;
+
+        // Registro de lead best-effort por cada producto del carrito — igual
+        // que el flujo directo, no debe bloquear el envío si falla.
+        _carrito.forEach(it => {
+            const prod = _prods.find(p => p.c === it.codigo);
+            if(prod) registrarLead(prod, tel, nombreCliente, direccionCliente);
+        });
+
+        _carrito = [];
+        guardarCarrito();
+        renderCarritoFab();
+        cerrarCarrito();
+        window.open(`https://wa.me/${_waNum}?text=${encodeURIComponent(msg)}`,"_blank");
     }
 
     // Verifica el stock real contra el catálogo (que es una foto fija tomada al
@@ -418,10 +906,28 @@
         } catch(_){ /* si falla la verificación, se deja el catálogo como estaba */ }
     }
 
-    window.elegirTalla    = elegirTalla;
-    window.selSz          = selSz;
-    window.confirmarTalla = confirmarTalla;
-    window.cerrarTallas   = cerrarTallas;
+    function abrirFotoZoom(url){
+        document.getElementById("foto-zoom-img").src = url;
+        document.getElementById("foto-zoom-overlay").style.display = "flex";
+    }
+    function cerrarFotoZoom(){
+        document.getElementById("foto-zoom-overlay").style.display = "none";
+    }
+
+    window.elegirTalla     = elegirTalla;
+    window.selSz           = selSz;
+    window.confirmarTalla  = confirmarTalla;
+    window.cerrarTallas    = cerrarTallas;
+    window.actualizarBotonSz = actualizarBotonSz;
+    window.abrirFotoZoom  = abrirFotoZoom;
+    window.cerrarFotoZoom = cerrarFotoZoom;
+    window.abrirCarrito   = abrirCarrito;
+    window.cerrarCarrito  = cerrarCarrito;
+    window.cambiarQtyCarrito     = cambiarQtyCarrito;
+    window.actualizarBotonCarrito = actualizarBotonCarrito;
+    window.enviarCarritoWhatsApp  = enviarCarritoWhatsApp;
+    window.toggleFiltroTalla = toggleFiltroTalla;
+    window.limpiarFiltroTalla = limpiarFiltroTalla;
 
     /* ── Arranque ── */
 
@@ -449,7 +955,7 @@
         }
     }
     if(data.expiry && Date.now()>data.expiry) showExpired(data.nombre, data.wa);
-    else { render(data); actualizarDisponibilidad(); }
+    else { render(data); actualizarDisponibilidad(); renderCarritoFab(); }
 })();
 </script>
 </body>

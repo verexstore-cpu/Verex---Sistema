@@ -43,6 +43,41 @@ export default {
     if (apikey) {
       await fetch(`https://api.callmebot.com/whatsapp.php?phone=${ADMIN_WA}&text=${msg}&apikey=${apikey}`).catch(()=>{});
     }
+
+    // ── RESPALDO SEMANAL: solo los lunes, adjunta un JSON con todas las
+    // tablas al correo de VEREX — la única forma de recuperar algo si se
+    // borra por error, ya que hoy no hay ningún respaldo automático. ──
+    if (new Date().getUTCDay() === 1) {
+      try {
+        const RESEND_KEY = env.RESEND_KEY;
+        if (RESEND_KEY) {
+          const tablasBk = ["stock","vendedores","consignacion","abonos","entregas","cortes","pedidos","clientes","cupones","leads","ventas_directas"];
+          const backupData = {};
+          for (const t of tablasBk) {
+            try { backupData[t] = await sb.getAll(t); } catch(_) { backupData[t] = []; }
+          }
+          const fechaBk = new Date().toISOString().slice(0, 10);
+          backupData._fecha = new Date().toISOString();
+          const json = JSON.stringify(backupData);
+          const contentB64 = btoa(unescape(encodeURIComponent(json)));
+          await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
+            body: JSON.stringify({
+              from: "VEREX Store <hola@verexstore.com>",
+              to:   ["hola@verexstore.com"],
+              subject: `💾 Respaldo semanal VEREX — ${fechaBk}`,
+              html: `<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#fff;border:2px solid #C9A84C;border-radius:12px;padding:24px;">
+                <h2 style="color:#C9A84C;margin:0 0 12px;">💾 Respaldo semanal</h2>
+                <p style="font-size:14px;color:#333;">Adjunto va el respaldo completo de la base de datos (${fechaBk}): stock, vendedores, consignación, pedidos, clientes, leads, ventas directas y más.</p>
+                <p style="font-size:12px;color:#999;margin-top:16px;">Guarda este archivo en un lugar seguro — si algún dato se borra por error, este es el respaldo al que se puede volver.</p>
+              </div>`,
+              attachments: [{ filename: `verex-backup-${fechaBk}.json`, content: contentB64 }]
+            })
+          }).catch(()=>{});
+        }
+      } catch(backupErr) { console.error("Backup semanal error:", backupErr); }
+    }
   },
 
   async fetch(request, env) {
@@ -243,9 +278,19 @@ async function enviar(){
           // Cargar stock UNA sola vez fuera del loop (evita race condition y N queries)
           const allStockCache = await sb.getAll("stock");
           const codigosUsados = new Set(allStockCache.map(s => s.codigo));
+          let conflictoCodigo = null;
           for (const item of items) {
             // Auto-generar código si no viene o se pide
             let codigo = item.codigo;
+            if (codigo && !item.autoGenerarCodigo) {
+              // Código ya calculado del lado del cliente (Hub → "+Agregar" /
+              // "Nueva Entrega") — sin esta verificación, si el stock local del
+              // cliente estaba desactualizado o dos personas agregaron casi al
+              // mismo tiempo, sb.set() de más abajo lo hubiera sobrescrito en
+              // silencio (mismo código = mismo registro).
+              if (codigosUsados.has(codigo)) { conflictoCodigo = codigo; break; }
+              codigosUsados.add(codigo);
+            }
             if (!codigo || item.autoGenerarCodigo) {
               // Prefijo de material
               const mat = String(item.material || "").toLowerCase();
@@ -293,6 +338,10 @@ async function enviar(){
             };
             await sb.set("stock", codigo, doc);
             codigos.push(codigo);
+          }
+          if (conflictoCodigo) {
+            result = { ok: false, error: `El código ${conflictoCodigo} ya existe — alguien más lo generó justo antes. Vuelve a abrir el formulario para que se recalcule.` };
+            break;
           }
           result = { ok: true, codigos };
           break;
@@ -380,6 +429,29 @@ async function enviar(){
 
         case "ELIMINAR_VENDEDOR": {
           if (!esAdmin) return forbidden();
+          // Cancelar los Leads pendientes de este vendedor/afiliado antes de
+          // borrarlo — si no, quedan huérfanos apuntando a un código que ya
+          // no existe (aparecen en las alertas sin nombre, solo el código).
+          const leadsVend = await sb.getAll("leads");
+          for (const l of leadsVend) {
+            if (l.afiliado === d.codigo && (l.estado === "interesado" || l.estado === "reportado" || l.estado === "en_camino")) {
+              // Si estaba "en camino" el stock quedó reservado (apartado del
+              // inventario disponible) — hay que devolverlo a bodega, si no
+              // queda atrapado en el balde de reservado para siempre.
+              if (l.estado === "en_camino") {
+                const codigoRes = l.codigoConfirmado || l.codigo;
+                const sRes = await sb.get("stock", codigoRes);
+                if (sRes) {
+                  await sb.update("stock", codigoRes, {
+                    stock_reservado: Math.max(0, (parseInt(sRes.stock_reservado)||0) - 1),
+                    stock_bodega: (parseInt(sRes.stock_bodega)||0) + 1
+                  });
+                }
+              }
+              const historial = [...(l.historial || []), { estado: "cancelado", fecha: new Date().toISOString(), motivo: "Vendedor eliminado" }];
+              await sb.update("leads", l.id, { estado: "cancelado", historial });
+            }
+          }
           await sb.delete("vendedores", d.codigo);
           result = { ok: true };
           break;
@@ -677,8 +749,11 @@ async function enviar(){
             subtotal: d.subtotal || d.total || 0,
             descuento: d.descuento || 0,
             costoEnvio: d.costoEnvio || 0,
+            direccionEnvio: d.direccionEnvio || "",
+            departamentoEnvio: d.departamentoEnvio || "",
             total: d.total || 0,
             tipo: d.tipo || "contado",
+            metodoPago: d.metodoPago || "efectivo",
             enganche: d.enganche || 0,
             saldoPendiente: d.saldoPendiente || 0,
             nota: d.nota || "",
@@ -693,13 +768,17 @@ async function enviar(){
             if (cliExistVD) {
               await sb.update("clientes", cliExistVD.codigo, {
                 totalPedidos: (parseInt(cliExistVD.totalPedidos)||0) + 1,
-                totalPedidosDirecta: (parseInt(cliExistVD.totalPedidosDirecta)||0) + 1
+                totalPedidosDirecta: (parseInt(cliExistVD.totalPedidosDirecta)||0) + 1,
+                // Solo guarda la dirección/departamento si el cliente aún no
+                // tenía uno — no pisa datos ya conocidos con un envío distinto.
+                ...(!cliExistVD.direccion && d.direccionEnvio ? { direccion: d.direccionEnvio } : {}),
+                ...(!cliExistVD.departamento && d.departamentoEnvio ? { departamento: d.departamentoEnvio } : {})
               });
             } else {
               const codigoClienteVD = `CVX-${String(clientesVD.length + 1).padStart(3, "0")}`;
               await sb.set("clientes", codigoClienteVD, {
                 codigo: codigoClienteVD, nombre: d.cliente || "", telefono: d.telefono,
-                correo: "", municipio: "", direccion: "", departamento: "",
+                correo: "", municipio: "", direccion: d.direccionEnvio || "", departamento: d.departamentoEnvio || "",
                 totalPedidos: 1, totalPedidosEcommerce: 0, totalPedidosDirecta: 1,
                 fechaRegistro: new Date().toISOString()
               });
@@ -796,7 +875,18 @@ async function enviar(){
               estado: v.estado || "pagado",
               saldoPendiente: parseFloat(v.saldoPendiente || 0),
               items: v.items || "[]",
-              nota: v.nota || ""
+              nota: v.nota || "",
+              metodoPago: v.metodoPago || "",
+              // Faltaban estos — sin ellos, el recibo generado DESDE el
+              // Historial (no el que sale justo al confirmar la venta) no
+              // podía mostrar el desglose de descuento ni "Envío: GRATIS".
+              subtotal: v.subtotal != null ? parseFloat(v.subtotal) : undefined,
+              descuento: parseFloat(v.descuento || 0),
+              costoEnvio: parseFloat(v.costoEnvio || 0),
+              departamentoEnvio: v.departamentoEnvio || "",
+              direccionEnvio: v.direccionEnvio || "",
+              tipo_venta: v.tipo || "contado",
+              enganche: parseFloat(v.enganche || 0)
             })),
             ...peds.map(p => ({
               id: p.numeroPedido || p.id, fecha: p.fecha, tipo: "catalogo",
@@ -827,7 +917,7 @@ async function enviar(){
                 estado: "pagado",
                 saldoPendiente: 0,
                 items: JSON.stringify([{ nombre: c.nombre || c.codigo, cantidad: c.vendido, precio: c.precio }]),
-                nota: ""
+                nota: c.notaCambio || ""
               };
             })
           ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
@@ -1429,20 +1519,79 @@ async function enviar(){
         // Público — se llama desde el catálogo temporal cuando el cliente
         // presiona "Quiero este", antes de abrir WhatsApp. Registro silencioso,
         // no requiere sesión de admin ni token del afiliado.
+        // Se registra tanto desde catálogos de afiliado (d.afiliado presente)
+        // como desde el catálogo público de clientes (d.afiliado vacío) — en
+        // ese segundo caso el cliente escribe directo a VEREX por WhatsApp, así
+        // que el Lead solo sirve para no perder de vista el interés si la
+        // conversación no llega a cerrarse como venta.
         case "REGISTRAR_LEAD": {
-          if (!d.afiliado || !d.codigo) { result = { ok: false, error: "Datos incompletos" }; break; }
+          if (!d.codigo) { result = { ok: false, error: "Datos incompletos" }; break; }
           const leadId = "LEAD_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
           await sb.set("leads", leadId, {
             id: leadId,
-            afiliado: d.afiliado,
+            afiliado: d.afiliado || "",
             codigo: d.codigo,
             nombre: d.nombre || "",
             precio: parseFloat(d.precio) || 0,
             foto: d.foto || "",
             fecha: new Date().toISOString(),
             estado: "interesado",
+            // Capturados ANTES de que el cliente abra WhatsApp — si el envío
+            // falla o nunca lo manda, estos datos son lo único que queda
+            // para poder contactarlo. No se guardan en "cliente" (eso sigue
+            // reservado para cuando el afiliado completa el pedido de verdad).
+            telefonoCliente: d.telefonoCliente || "",
+            nombreCliente: d.nombreCliente || "",
+            direccionCliente: d.direccionCliente || "",
             historial: [{ estado: "interesado", fecha: new Date().toISOString() }]
           });
+
+          // ── Notificación por email a VEREX ──────────────────────────
+          // Para que un pedido de catálogo no dependa de que alguien esté
+          // viendo el badge de Vendedores — llega al correo apenas el
+          // cliente toca "¡Hazlo tuyo!" o manda el carrito, indicando
+          // siempre si es un cliente directo o de un afiliado (y de cuál).
+          try {
+            const RESEND_KEY = env.RESEND_KEY;
+            if (RESEND_KEY) {
+              let origenTxt = "👤 Cliente directo (catálogo VEREX)";
+              if (d.afiliado) {
+                const vend = await sb.get("vendedores", d.afiliado);
+                origenTxt = `🎯 Afiliado: ${vend?.nombre || d.afiliado}`;
+              }
+              await fetch("https://api.resend.com/emails", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
+                body: JSON.stringify({
+                  from: "VEREX Store <hola@verexstore.com>",
+                  to:   ["hola@verexstore.com"],
+                  subject: `💛 Nuevo interés — ${d.nombre || d.codigo} — $${(parseFloat(d.precio)||0).toFixed(2)}`,
+                  html: `
+                    <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#fff;border:2px solid #C9A84C;border-radius:12px;overflow:hidden;">
+                      <div style="background:linear-gradient(135deg,#aaa,#d0d0d0);padding:24px;text-align:center;">
+                        <h1 style="margin:0;font-size:22px;letter-spacing:3px;color:#111;">VEREX STORE</h1>
+                        <p style="margin:6px 0 0;font-size:13px;color:#444;">Nuevo interés desde el catálogo</p>
+                      </div>
+                      <div style="padding:24px;">
+                        <p style="margin:0 0 16px;font-size:14px;font-weight:700;color:#7a5500;">${origenTxt}</p>
+                        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+                          <tr><td style="padding:6px 0;color:#888;">Producto</td><td style="font-weight:700;color:#111;">${d.nombre || d.codigo}</td></tr>
+                          <tr><td style="padding:6px 0;color:#888;">Precio</td><td style="color:#111;">$${(parseFloat(d.precio)||0).toFixed(2)}</td></tr>
+                          <tr><td style="padding:6px 0;color:#888;">Cliente</td><td style="color:#111;">${d.nombreCliente || "—"}</td></tr>
+                          <tr><td style="padding:6px 0;color:#888;">WhatsApp</td><td style="color:#111;">${d.telefonoCliente || "—"}</td></tr>
+                          <tr><td style="padding:6px 0;color:#888;">Dirección</td><td style="color:#111;">${d.direccionCliente || "—"}</td></tr>
+                        </table>
+                        <p style="margin:16px 0 0;font-size:12px;color:#999;">Este es un registro de interés capturado antes de que el cliente mande el WhatsApp — revisa la pestaña Vendedores en el Hub para confirmar la venta.</p>
+                      </div>
+                      <div style="padding:16px 24px;background:#f5f5f5;border-top:2px solid #C9A84C;text-align:center;font-size:12px;color:#888;">
+                        El mundo es mejor cuando brillas tú ✨
+                      </div>
+                    </div>`
+                })
+              });
+            }
+          } catch(leadEmailErr) { console.error("Lead email error:", leadEmailErr); }
+
           result = { ok: true, leadId };
           break;
         }
@@ -1476,42 +1625,83 @@ async function enviar(){
 
         // El admin confirma un lead reportado — esto SÍ mueve stock y genera
         // la venta real (mismo efecto que REGISTRAR_ENTREGA + REGISTRAR_VENTA).
-        case "CONFIRMAR_LEAD_VENTA": {
+        // Paso 1 de 2: el admin empaca y entrega el pedido al transportista.
+        // La venta NO se cierra todavía — solo se reserva el stock (igual que un
+        // pedido de ecommerce) para que no se pueda vender dos veces, mientras el
+        // pedido está en camino. La comisión y el conteo de venta final se generan
+        // hasta que se confirma la entrega real (ver CONFIRMAR_LEAD_ENTREGA), porque
+        // con pago contra entrega el cliente puede rechazar el pedido en la puerta.
+        case "CONFIRMAR_LEAD_ENVIO": {
           if (!esAdmin) return forbidden();
           const lead = await sb.get("leads", d.id);
           if (!lead) { result = { ok: false, error: "Lead no encontrado" }; break; }
-          if (lead.estado === "vendido") { result = { ok: false, error: "Este lead ya fue confirmado" }; break; }
-          // Para diseños de pareja el código guardado en el Lead puede ser ambiguo
-          // (se eligió arbitrariamente al agrupar el catálogo) — el admin puede
-          // corregirlo antes de confirmar, verificando cuál pieza se vendió realmente.
+          if (lead.estado !== "interesado" && lead.estado !== "reportado") {
+            result = { ok: false, error: "Este lead no está pendiente de envío" }; break;
+          }
           const codigoReal = (d.codigoOverride && String(d.codigoOverride).trim()) || lead.codigo;
           const s = await sb.get("stock", codigoReal);
           if (!s) { result = { ok: false, error: "El producto (" + codigoReal + ") ya no existe en stock" }; break; }
           const disponible = (parseInt(s.stock_bodega)||0) + (parseInt(s.stock_tienda)||0);
           if (disponible < 1) { result = { ok: false, error: "Sin stock disponible para confirmar esta venta" }; break; }
-          const consId = "CONS_" + Date.now() + "_" + codigoReal;
-          await sb.set("consignacion", consId, {
-            id: consId, vendedor: lead.afiliado, codigo: codigoReal,
-            nombre: lead.nombre, codigoBase: s.codigoBase || codigoReal,
-            talla: s.talla || "", nombre_base: s.nombre_base || lead.nombre,
-            categoria: s.categoria || "", precio: lead.precio || s.precio || 0,
-            cantidad: 1, vendido: 1,
-            foto: lead.foto || s.foto || "", fecha: new Date().toISOString(), estado: "activo"
-          });
           const restaDeBodega = Math.min(1, parseInt(s.stock_bodega)||0);
           await sb.update("stock", codigoReal, {
-            stock_bodega:       Math.max(0, (parseInt(s.stock_bodega)||0) - restaDeBodega),
-            stock_tienda:       Math.max(0, (parseInt(s.stock_tienda)||0) - (1 - restaDeBodega)),
-            stock_consignacion: (parseInt(s.stock_consignacion)||0) + 1,
+            stock_bodega:    Math.max(0, (parseInt(s.stock_bodega)||0) - restaDeBodega),
+            stock_tienda:    Math.max(0, (parseInt(s.stock_tienda)||0) - (1 - restaDeBodega)),
+            stock_reservado: (parseInt(s.stock_reservado)||0) + 1
+          });
+          const historial = [...(lead.historial || []), { estado: "en_camino", fecha: new Date().toISOString(), codigoConfirmado: codigoReal }];
+          await sb.update("leads", d.id, { estado: "en_camino", historial, codigoConfirmado: codigoReal });
+          result = { ok: true };
+          break;
+        }
+
+        // Paso 2 de 2 (caso A): el transportista SÍ entregó y cobró — recién aquí
+        // se cierra la venta de verdad: se libera la reserva hacia vendido, se crea
+        // el registro de venta (para comisión e Historial) y se registra el cliente.
+        // EXCEPCIÓN: si esCambio=true, este envío es el reemplazo de un cambio de
+        // producto ya registrado en OTRO Lead (venta original, ya cobrada) — solo
+        // se mueve el stock (la pieza sí salió físicamente), pero NO se crea venta
+        // ni comisión nueva, porque el cliente ya pagó una sola vez por esto.
+        case "CONFIRMAR_LEAD_ENTREGA": {
+          if (!esAdmin) return forbidden();
+          const lead = await sb.get("leads", d.id);
+          if (!lead) { result = { ok: false, error: "Lead no encontrado" }; break; }
+          if (lead.estado !== "en_camino") { result = { ok: false, error: "Este lead no está en camino" }; break; }
+          const codigoReal = lead.codigoConfirmado || lead.codigo;
+          const s = await sb.get("stock", codigoReal);
+          if (!s) { result = { ok: false, error: "El producto (" + codigoReal + ") ya no existe en stock" }; break; }
+          const esCambio = Boolean(d.esCambio);
+          let consId = null;
+          if (!esCambio) {
+            consId = "CONS_" + Date.now() + "_" + codigoReal;
+            await sb.set("consignacion", consId, {
+              id: consId, vendedor: lead.afiliado, codigo: codigoReal,
+              nombre: lead.nombre, codigoBase: s.codigoBase || codigoReal,
+              talla: s.talla || "", nombre_base: s.nombre_base || lead.nombre,
+              categoria: s.categoria || "", precio: lead.precio || s.precio || 0,
+              cantidad: 1, vendido: 1,
+              foto: lead.foto || s.foto || "", fecha: new Date().toISOString(), estado: "activo"
+            });
+          }
+          // Un afiliado SIN piezas físicas nunca tuvo la pieza en sus manos — VEREX
+          // la entrega y cobra directo, así que la pieza sale de una vez de reservado
+          // hacia vendida, SIN pasar por el balde de "Consignación" (que es para
+          // piezas físicamente asignadas a un vendedor).
+          const vendAf = await sb.get("vendedores", lead.afiliado);
+          const esAfiliadoSinStockAf = vendAf?.tipo === "afiliado" && !vendAf?.recibeFisico;
+          await sb.update("stock", codigoReal, {
+            stock_reservado:    Math.max(0, (parseInt(s.stock_reservado)||0) - 1),
+            stock_consignacion: esAfiliadoSinStockAf ? (parseInt(s.stock_consignacion)||0) : (parseInt(s.stock_consignacion)||0) + 1,
             stock_vendido:      (parseInt(s.stock_vendido)||0) + 1
           });
-          const historial = [...(lead.historial || []), { estado: "vendido", fecha: new Date().toISOString(), codigoConfirmado: codigoReal }];
-          await sb.update("leads", d.id, { estado: "vendido", historial, consignacionId: consId });
+          const historial = [...(lead.historial || []), { estado: "vendido", fecha: new Date().toISOString(), codigoConfirmado: codigoReal, esCambio }];
+          await sb.update("leads", d.id, { estado: "vendido", historial, consignacionId: consId, esCambio });
 
           // Registrar/actualizar el cliente en el mismo directorio que usa ecommerce
           // y venta directa (deduplicado por teléfono), para que aparezca en
-          // Clientes con su canal — en este caso "Afiliado".
-          if (lead.cliente?.telefono) {
+          // Clientes con su canal — en este caso "Afiliado". No aplica si es cambio
+          // (el cliente ya estaba registrado por la venta original).
+          if (!esCambio && lead.cliente?.telefono) {
             const clientesAf = await sb.getAll("clientes");
             const normTelAf = t => String(t || "").replace(/\D/g, "");
             const cliExistAf = clientesAf.find(c => normTelAf(c.telefono) === normTelAf(lead.cliente.telefono));
@@ -1532,6 +1722,82 @@ async function enviar(){
             }
           }
 
+          result = { ok: true };
+          break;
+        }
+
+        // Paso 2 de 2 (caso B): el cliente rechazó el pedido en la puerta — la
+        // pieza regresa a bodega tal cual, sin generar venta ni comisión.
+        case "RECHAZAR_LEAD_ENTREGA": {
+          if (!esAdmin) return forbidden();
+          const lead = await sb.get("leads", d.id);
+          if (!lead) { result = { ok: false, error: "Lead no encontrado" }; break; }
+          if (lead.estado !== "en_camino") { result = { ok: false, error: "Este lead no está en camino" }; break; }
+          const codigoReal = lead.codigoConfirmado || lead.codigo;
+          const s = await sb.get("stock", codigoReal);
+          if (s) {
+            await sb.update("stock", codigoReal, {
+              stock_reservado: Math.max(0, (parseInt(s.stock_reservado)||0) - 1),
+              stock_bodega:    (parseInt(s.stock_bodega)||0) + 1
+            });
+          }
+          const historial = [...(lead.historial || []), { estado: "rechazado", fecha: new Date().toISOString() }];
+          await sb.update("leads", d.id, { estado: "rechazado", historial });
+          result = { ok: true };
+          break;
+        }
+
+        // Cambio de producto DESPUÉS de entregado (talla que no quedó, pieza
+        // con defecto, o el motivo que sea) — la venta y la comisión ya
+        // quedaron cerradas al confirmar la entrega, así que esto NO las
+        // toca: solo ajusta el inventario físico (regresa la pieza vieja a
+        // bodega, descuenta la nueva) y deja constancia del cambio.
+        case "CAMBIAR_PRODUCTO_LEAD": {
+          if (!esAdmin) return forbidden();
+          const lead = await sb.get("leads", d.id);
+          if (!lead) { result = { ok: false, error: "Lead no encontrado" }; break; }
+          if (lead.estado !== "vendido") { result = { ok: false, error: "Solo se puede cambiar un pedido ya entregado" }; break; }
+          const codigoNuevo = String(d.codigoNuevo || "").trim();
+          if (!codigoNuevo) { result = { ok: false, error: "Falta el código del producto nuevo" }; break; }
+          const codigoViejo = lead.codigoConfirmado || lead.codigo;
+          const sNuevo = await sb.get("stock", codigoNuevo);
+          if (!sNuevo) { result = { ok: false, error: "El producto nuevo (" + codigoNuevo + ") no existe en stock" }; break; }
+          const disponibleNuevo = (parseInt(sNuevo.stock_bodega)||0) + (parseInt(sNuevo.stock_tienda)||0);
+          if (disponibleNuevo < 1) { result = { ok: false, error: "Sin stock disponible del producto nuevo" }; break; }
+
+          const sViejo = await sb.get("stock", codigoViejo);
+          if (sViejo) {
+            await sb.update("stock", codigoViejo, { stock_bodega: (parseInt(sViejo.stock_bodega)||0) + 1 });
+          }
+          const restaBodega = Math.min(1, parseInt(sNuevo.stock_bodega)||0);
+          await sb.update("stock", codigoNuevo, {
+            stock_bodega: Math.max(0, (parseInt(sNuevo.stock_bodega)||0) - restaBodega),
+            stock_tienda: Math.max(0, (parseInt(sNuevo.stock_tienda)||0) - (1 - restaBodega))
+          });
+
+          if (lead.consignacionId) {
+            const nombreViejo = lead.nombre || codigoViejo;
+            const fechaCambio = new Date().toLocaleDateString("es-SV", { day: "numeric", month: "short", year: "numeric" });
+            const notaCambio = `🔄 Cambio de producto el ${fechaCambio}: "${nombreViejo}" (${codigoViejo}) → "${sNuevo.nombre_base || sNuevo.nombre || codigoNuevo}" (${codigoNuevo})${d.motivo ? " — Motivo: " + d.motivo : ""}`;
+            await sb.update("consignacion", lead.consignacionId, {
+              codigo: codigoNuevo, codigoBase: sNuevo.codigoBase || codigoNuevo,
+              talla: sNuevo.talla || "", nombre: sNuevo.nombre_base || sNuevo.nombre || lead.nombre,
+              nombre_base: sNuevo.nombre_base || sNuevo.nombre || lead.nombre,
+              foto: sNuevo.foto || lead.foto || "",
+              notaCambio
+            });
+          }
+
+          const historialCambio = [...(lead.historial || []), {
+            estado: "cambio", fecha: new Date().toISOString(),
+            codigoAnterior: codigoViejo, codigoNuevo, motivo: d.motivo || ""
+          }];
+          await sb.update("leads", d.id, {
+            codigo: codigoNuevo, codigoConfirmado: codigoNuevo,
+            nombre: sNuevo.nombre_base || sNuevo.nombre || lead.nombre,
+            foto: sNuevo.foto || lead.foto || "",
+            historial: historialCambio
+          });
           result = { ok: true };
           break;
         }
@@ -1587,6 +1853,16 @@ async function enviar(){
         case "CREAR_PRODUCTO": {
           if (!esAdmin) return forbidden();
           const prodId = d.codigo || `PROD_${Date.now()}`;
+          // El código se calcula en el navegador mirando el stock que tiene
+          // cargado localmente — si dos personas agregan casi al mismo tiempo
+          // o el stock local quedó desactualizado, podrían calcular el mismo
+          // código sin saberlo. Sin esta verificación, sb.set() lo hubiera
+          // sobrescrito en silencio (mismo id = mismo registro).
+          const existente = await sb.get("stock", prodId);
+          if (existente) {
+            result = { ok: false, error: `El código ${prodId} ya existe (${existente.nombre || "otro producto"}) — alguien más lo generó justo antes. Vuelve a intentar para que se recalcule.` };
+            break;
+          }
           await sb.set("stock", prodId, {
             codigo:             prodId,
             codigoBase:         prodId,
@@ -1612,6 +1888,17 @@ async function enviar(){
         case "ELIMINAR_PEDIDO": {
           if (!esAdmin) return forbidden();
           await sb.delete("pedidos", d.numeroPedido);
+          result = { ok: true };
+          break;
+        }
+
+        // Solo para corregir una venta duplicada por doble clic (ver guard
+        // _vdEnviando en el frontend) — no toca stock porque
+        // REGISTRAR_VENTA_DIRECTA tampoco lo descuenta server-side.
+        case "ELIMINAR_VENTA_DIRECTA": {
+          if (!esAdmin) return forbidden();
+          if (!d.id) { result = { ok: false, error: "Falta el id" }; break; }
+          await sb.delete("ventas_directas", d.id);
           result = { ok: true };
           break;
         }
@@ -1719,6 +2006,10 @@ async function enviar(){
           if (!esAdmin) return forbidden();
           const upd = {};
           if (d.nombre          !== undefined) upd.nombre            = d.nombre;
+          // OJO: Stock (y el catálogo) muestran nombre_base primero, no
+          // nombre — si solo se actualiza nombre, el cambio queda invisible
+          // en todas partes aunque sí se haya guardado en la base de datos.
+          if (d.nombre_base     !== undefined) upd.nombre_base       = d.nombre_base;
           if (d.precio          !== undefined) upd.precio            = Math.round((parseFloat(d.precio) || 0) * 100) / 100;
           if (d.img             !== undefined) upd.foto              = d.img;
           if (d.descripcion     !== undefined) upd.descripcionTienda = d.descripcion;
@@ -1731,6 +2022,7 @@ async function enviar(){
           if (d.set_config      !== undefined) upd.set_config        = d.set_config || null;
           if (d.precio_caballero !== undefined) upd.precio_caballero = d.precio_caballero || null;
           if (d.reservado       !== undefined) upd.reservado         = Boolean(d.reservado);
+          if (d.codigoBase      !== undefined) upd.codigoBase        = d.codigoBase;
           // Cambio de código: copiar fila con nuevo código y marcar vieja inactiva
           if (d.nuevo_codigo && d.nuevo_codigo !== d.codigo) {
             const viejo = await sb.get("stock", d.codigo);
@@ -1978,6 +2270,36 @@ async function enviar(){
           break;
         }
 
+        // ── Imágenes informativas (guías de talla, cuidados, promociones) —
+        // separadas del inventario, solo para compartir el link con clientes.
+        case "GUARDAR_IMAGEN_INFO": {
+          if (!esAdmin) return forbidden();
+          if (!d.url) { result = { ok: false, error: "Falta la URL de la imagen" }; break; }
+          const imgId = "IMGINFO_" + Date.now();
+          await sb.set("imagenes_info", imgId, {
+            id: imgId,
+            etiqueta: d.etiqueta || "",
+            url: d.url,
+            fecha: new Date().toISOString()
+          });
+          result = { ok: true, id: imgId };
+          break;
+        }
+
+        case "GET_IMAGENES_INFO": {
+          if (!esAdmin) return forbidden();
+          const imagenes = await sb.getAll("imagenes_info");
+          result = { ok: true, imagenes };
+          break;
+        }
+
+        case "ELIMINAR_IMAGEN_INFO": {
+          if (!esAdmin) return forbidden();
+          await sb.delete("imagenes_info", d.id);
+          result = { ok: true };
+          break;
+        }
+
         case "ELIMINAR_FONDO": {
           if (!esAdmin) return forbidden();
           const hfKey = env.HF_TOKEN;
@@ -2054,25 +2376,27 @@ async function enviar(){
               `AN=anillo PU=pulsera CO=collar CD=collar con dije AR=aretes DJ=dije CJ=conjunto TB=tobillera RS=rosario CA=cadena\n\n` +
               `IDENTIFICA CON PRECISIÓN:\n` +
               `• Tipo de pieza: anillo, aretes, collar, pulsera, etc.\n` +
-              `• Motivo principal: corazón, mariposa, luna creciente, sol, estrella, serpiente, infinito, flor, rosa, cruz, ángel, corona, llave, gota, espiral, lazo, hoja, concha, delfín, abeja, libélula, pluma, arco iris, nudo, banda lisa, solitario, trébol, ola\n` +
-              `• Piedras: zirconia blanca/champagne/negra/azul/roja/verde/morada/rosa, ópalo, perla, cristal, sin piedra\n` +
-              `• Técnica: pavé, calado, filigrana, martillado, esmaltado, bicolor, halo, trenzado, entrelazado\n\n` +
+              `• Motivo principal — elige el que de verdad ves, pero ten en mente este banco amplio de opciones para no caer siempre en los mismos 3-4: corazón, mariposa, luna creciente, luna llena, sol, estrella, serpiente, infinito, flor, rosa, margarita, girasol, cruz, ángel, corona, llave, gota, espiral, lazo, moño, hoja, concha, caracola, delfín, abeja, libélula, pluma, arco iris, nudo, nudo marinero, banda lisa, solitario, trébol, ola, cascada, racimo, links, eslabones, cadena forzada, cadena veneciana, panal, rombo, cuadro, triángulo, ojo, media luna, sirena, estrella de mar, orquídea, hoja de olivo, rayo, cometa, cristal facetado, barroco, orgánico, ondas, espigas\n` +
+              `• Piedras: zirconia blanca/champagne/negra/azul/roja/verde/morada/rosa/amarilla, ópalo, perla, cristal, turquesa, ónix, amatista, sin piedra\n` +
+              `• Técnica: pavé, calado, filigrana, martillado, esmaltado, bicolor, halo, trenzado, entrelazado, texturizado, mate, pulido espejo\n\n` +
               `NOMBRE — sigue estas reglas ESTRICTAMENTE:\n` +
-              `• Debe ser ESPECÍFICO al motivo real que ves en la foto\n` +
-              `• Formato: [Tipo de joya] [motivo/técnica] [piedra si aplica]\n` +
+              `• Debe ser ESPECÍFICO al motivo real que ves en la foto — nunca inventes un motivo que no esté en la imagen\n` +
+              `• Formato: [Tipo de joya] [motivo/técnica] [piedra o estilo si aplica]\n` +
+              `• VARIEDAD OBLIGATORIA: este mismo prompt se usa cientos de veces seguidas para catalogar todo el inventario, así que NUNCA repitas la misma combinación de palabras que usarías para otra pieza parecida — cambia el orden, usa sinónimos, agrega un descriptor de estilo distinto cada vez (chic, boho, vintage, retro, art decó, minimalista, oversize — evita los adjetivos de la lista prohibida de abajo). Elige directamente el nombre menos genérico — NO escribas tu razonamiento ni nombres descartados, solo el JSON final.\n` +
               `• EJEMPLOS CORRECTOS:\n` +
-              `  "Anillo corazón pavé zirconia"\n` +
-              `  "Aretes luna creciente calada"\n` +
-              `  "Collar mariposa ópalo"\n` +
-              `  "Pulsera infinito zirconia blanca"\n` +
-              `  "Anillo solitario zirconia oval"\n` +
-              `  "Aretes gota zirconia champagne"\n` +
-              `  "Collar estrella halo zirconia"\n` +
-              `  "Anillo serpiente entrelazada"\n` +
-              `  "Conjunto corazón bicolor"\n` +
-              `  "Pulsera trenzada perla cultivada"\n` +
+              `  "Anillo Corazón Pavé Zirconia"\n` +
+              `  "Aretes Luna Creciente Calada"\n` +
+              `  "Collar Mariposa Ópalo"\n` +
+              `  "Pulsera Infinito Zirconia Blanca"\n` +
+              `  "Anillo Solitario Zirconia Oval"\n` +
+              `  "Aretes Gota Zirconia Champagne"\n` +
+              `  "Collar Estrella Halo Zirconia"\n` +
+              `  "Anillo Serpiente Entrelazada"\n` +
+              `  "Conjunto Corazón Bicolor"\n` +
+              `  "Pulsera Trenzada Perla Cultivada"\n` +
+              `  "Anillo Turquesa Chic"\n` +
               `• PROHIBIDO — NUNCA uses estas palabras: geométrico, decorativo, abstracto, elegante, moderno, bonito, clásico, simple, diseño, estilizado, sofisticado, fino, delicado, exclusivo, único, especial, precioso\n` +
-              `• Primera letra mayúscula, resto minúsculas. Sin mencionar el material. Máximo 5 palabras.\n\n` +
+              `• CADA PALABRA con su primera letra en mayúscula (Title Case), el resto de cada palabra en minúscula. Sin mencionar el material. Máximo 5 palabras.\n\n` +
               `DESCRIPCION — máximo 12 palabras:\n` +
               `• Describe exactamente lo que ves: motivo, piedra, técnica, forma. Sin mencionar ${material}.\n` +
               `• Ejemplo: "Corazón calado con pavé de zirconia blanca en todo el contorno"\n\n` +
@@ -2082,29 +2406,48 @@ async function enviar(){
               `Responde SOLO con este JSON (sin markdown, sin texto extra):\n` +
               `{"categoria":"XX","nombre":"nombre específico","descripcion":"descripción exacta","descripcion_tienda":"frase de marketing"}`;
 
-            // ── Usar Groq (gratis, llama-3.2-11b-vision) ─────────────────
+            // ── Usar Groq (gratis) — llama-4-scout Y llama-4-maverick fueron
+            // descontinuados por Groq (scout el 17-jun-2026, maverick antes),
+            // por eso el análisis se quedaba colgado sin terminar. El modelo
+            // de visión vigente en Groq es qwen3.6-27b.
             const groqKey = env.GROQ_KEY;
             if (!groqKey) { result = { ok: false, error: "GROQ_KEY no configurada en Cloudflare" }; break; }
 
-            const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${groqKey}`,
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify({
-                model: "meta-llama/llama-4-scout-17b-16e-instruct",
-                messages: [{
-                  role: "user",
-                  content: [
-                    { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } },
-                    { type: "text", text: promptGemini }
-                  ]
-                }],
-                max_tokens: 400,
-                temperature: 0.6
-              })
-            });
+            // Límite de 30s — sin esto, si Groq tarda mucho en responder (ej.
+            // un modelo descontinuado que igual acepta la petición pero nunca
+            // contesta bien), el análisis se queda "pegado" para siempre sin
+            // mostrar ningún error en la pantalla.
+            let groqRes;
+            try {
+              groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${groqKey}`,
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                  model: "qwen/qwen3.6-27b",
+                  messages: [{
+                    role: "user",
+                    content: [
+                      { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } },
+                      { type: "text", text: promptGemini }
+                    ]
+                  }],
+                  // qwen3.6-27b es un modelo de razonamiento — sin esto, gasta
+                  // los tokens "pensando" en voz alta (bloque <think>...</think>)
+                  // y nunca llega a escribir el JSON final. reasoning_effort:none
+                  // lo pone en modo directo, sin ese paso.
+                  reasoning_effort: "none",
+                  max_tokens: 700,
+                  temperature: 0.95
+                }),
+                signal: AbortSignal.timeout(30000)
+              });
+            } catch (e) {
+              result = { ok: false, error: e.name === "TimeoutError" ? "Groq no respondió a tiempo (30s) — intenta de nuevo" : "Error de red hacia Groq: " + e.message };
+              break;
+            }
 
             if (!groqRes.ok) {
               const errTxt = await groqRes.text();
@@ -2113,7 +2456,10 @@ async function enviar(){
             }
 
             const groqData = await groqRes.json();
-            const texto = (groqData.choices?.[0]?.message?.content || "").trim();
+            // Por si el modelo igual manda un bloque <think> pese al
+            // reasoning_effort:none, se descarta antes de buscar el JSON.
+            let texto = (groqData.choices?.[0]?.message?.content || "").trim();
+            texto = texto.replace(/<think>[\s\S]*?<\/think>/i, "").trim();
             const match = texto.match(/\{[\s\S]*?\}/);
             if (!match) { result = { ok: false, error: "Gemini no devolvió JSON: " + texto.slice(0, 150) }; break; }
             let parsed;
@@ -2178,6 +2524,32 @@ async function enviar(){
           break;
         }
 
+        // Historial global de variedad: registra cuándo se le mostró por última
+        // vez cada código a CUALQUIER afiliado, para repartir la variedad del
+        // inventario entre todos en vez de que cada afiliado solo evite repetirse
+        // a sí mismo (con varios afiliados compartiendo el mismo stock, eso
+        // agotaba la variedad rápido — cada uno terminaba con el mismo catálogo).
+        case "GET_VARIEDAD_CATALOGO_GLOBAL": {
+          if (!esAdmin) return forbidden();
+          const reg = await sb.get("config", "variedad_catalogo_global") || { codigos: {} };
+          result = { ok: true, codigos: reg.codigos || {} };
+          break;
+        }
+
+        case "REGISTRAR_VARIEDAD_CATALOGO_GLOBAL": {
+          if (!esAdmin) return forbidden();
+          const reg = await sb.get("config", "variedad_catalogo_global") || { codigos: {} };
+          reg.codigos = reg.codigos || {};
+          const ts = Date.now();
+          (Array.isArray(d.codigos) ? d.codigos : []).forEach(c => { reg.codigos[c] = ts; });
+          // Limitar el registro a 2000 códigos más recientes para no inflarlo indefinidamente
+          const entradas = Object.entries(reg.codigos).sort((a, b) => b[1] - a[1]);
+          if (entradas.length > 2000) reg.codigos = Object.fromEntries(entradas.slice(0, 2000));
+          await sb.set("config", "variedad_catalogo_global", reg);
+          result = { ok: true };
+          break;
+        }
+
         case "GET_VISITAS": {
           if (!esAdmin) return forbidden();
           const vis = await sb.get("config", "visitas_catalogo") || { total: 0, porDia: {} };
@@ -2232,7 +2604,7 @@ class Supabase {
   async get(table, id) {
     const res  = await fetch(
       `${this.url}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}&select=id,data&limit=1`,
-      { headers: this._headers() }
+      { headers: this._headers(), cf: { cacheTtl: 0, cacheEverything: false } }
     );
     if (!res.ok) {
       const txt = await res.text();
@@ -2243,19 +2615,31 @@ class Supabase {
     return { id: rows[0].id, ...rows[0].data };
   }
 
-  // Obtener todos los documentos de una tabla
+  // Obtener todos los documentos de una tabla.
+  // Pagina en bloques de 1000 (en vez de pedir limit=10000 de una vez) y
+  // desactiva el cache de borde de Cloudflare en cada subrequest — sin esto,
+  // filas recién insertadas podían no aparecer en lecturas subsecuentes
+  // (Cloudflare cacheaba la respuesta GET del REST de Supabase).
   async getAll(table) {
-    const res  = await fetch(
-      `${this.url}/rest/v1/${table}?select=id,data&limit=10000`,
-      { headers: this._headers() }
-    );
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(`SB getAll ${table}: ${res.status} ${txt}`);
+    const pageSize = 1000;
+    let allRows = [];
+    let offset = 0;
+    while (true) {
+      const res = await fetch(
+        `${this.url}/rest/v1/${table}?select=id,data&order=id&limit=${pageSize}&offset=${offset}`,
+        { headers: this._headers(), cf: { cacheTtl: 0, cacheEverything: false } }
+      );
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`SB getAll ${table}: ${res.status} ${txt}`);
+      }
+      const rows = await res.json();
+      if (!Array.isArray(rows) || rows.length === 0) break;
+      allRows = allRows.concat(rows);
+      if (rows.length < pageSize) break;
+      offset += pageSize;
     }
-    const rows = await res.json();
-    if (!Array.isArray(rows)) return [];
-    return rows.map(r => ({ id: r.id, ...r.data }));
+    return allRows.map(r => ({ id: r.id, ...r.data }));
   }
 
   // Crear/sobreescribir documento (upsert completo)
@@ -2264,7 +2648,8 @@ class Supabase {
     const res = await fetch(`${this.url}/rest/v1/${table}`, {
       method:  "POST",
       headers: this._headers("resolution=merge-duplicates"),
-      body:    JSON.stringify({ id, data })
+      body:    JSON.stringify({ id, data }),
+      cf: { cacheTtl: 0, cacheEverything: false }
     });
     if (!res.ok) {
       const txt = await res.text();
@@ -2301,7 +2686,7 @@ class Supabase {
   async query(table, campo, _op, valor) {
     const res = await fetch(
       `${this.url}/rest/v1/${table}?select=id,data&data->>${encodeURIComponent(campo)}=eq.${encodeURIComponent(valor)}`,
-      { headers: this._headers() }
+      { headers: this._headers(), cf: { cacheTtl: 0, cacheEverything: false } }
     );
     if (!res.ok) {
       console.error(`[Supabase.query] Error ${res.status} en tabla ${table}`);

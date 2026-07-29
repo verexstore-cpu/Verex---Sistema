@@ -640,6 +640,12 @@
     <div class="card">
       <h2>Recibo Térmico</h2>
 
+      <label style="margin-top:0">Rollo / impresora</label>
+      <div class="subtabs" id="recibo-formato-tabs">
+        <div class="subtab" id="recibo-fmt-62" onclick="setReciboWidth(62)">🖨️ 62mm (Brother QL)</div>
+        <div class="subtab" id="recibo-fmt-58" onclick="setReciboWidth(58)">🖨️ 58mm (HOP-H58)</div>
+      </div>
+
       <div class="subtabs">
         <div class="subtab active" onclick="setSubtabR(0)">✏️ Manual</div>
         <div class="subtab" onclick="setSubtabR(1)">📄 Subir PDF</div>
@@ -791,6 +797,24 @@ function cropAtLastGap(canvas, minGapPx = 40) {
 
 // ─── IMPRESORA ───
 let printerName = localStorage.getItem('verex-printer') || '';
+
+// ─── ANCHO DE ROLLO DEL RECIBO TÉRMICO ───
+// 62mm → Brother QL, va por RAW TCP (protocolo propio, bypasa el driver).
+// 58mm → impresoras genéricas USB (ej. Hoin HOP-H58), van por el driver
+// normal de Windows (impresión silenciosa a la impresora seleccionada
+// arriba en "Impresora"), porque no hablan el protocolo Brother.
+let reciboWidthMm = parseInt(localStorage.getItem('verex-recibo-ancho')) || 62;
+function setReciboWidth(mm) {
+  reciboWidthMm = mm;
+  localStorage.setItem('verex-recibo-ancho', mm);
+  document.getElementById('recibo-fmt-62').classList.toggle('active', mm === 62);
+  document.getElementById('recibo-fmt-58').classList.toggle('active', mm === 58);
+  const label = mm + 'mm';
+  const btnManual = document.querySelector('#panel-2 .btn-print[onclick="imprimirRecibo()"]');
+  if (btnManual) btnManual.textContent = `🖨️ Imprimir Recibo (${label})`;
+  const btnPdf = document.getElementById('btn-print-pdf-r');
+  if (btnPdf) btnPdf.textContent = `🖨️ Imprimir Recibo PDF (${label})`;
+}
 
 async function loadPrinters() {
   const btn = document.getElementById('btn-reload');
@@ -986,25 +1010,22 @@ function renderPdfPreview() {
 
 async function imprimirPdf() {
   if (!pdfPages.length) return;
-  const ANCHO = 62, LARGO = 90; // rollo 62mm, corte 90mm
-  // rotDataUrl: imagen ya girada 90° → se imprime horizontal en la etiqueta
-  const src = pdfPages[selectedPage].rotDataUrl;
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<style>
-@page { size: ${ANCHO}mm ${LARGO}mm portrait; margin: 0; }
-* { margin: 0; padding: 0; }
-body { width: ${ANCHO}mm; height: ${LARGO}mm; background: white; overflow: hidden; }
-img {
-  display: block;
-  width: ${ANCHO}mm;
-  height: ${LARGO}mm;
-  object-fit: fill;
-  background: white;
-}
-</style></head><body>
-<img src="${src}">
-</body></html>`;
-  await imprimir(html, ANCHO, LARGO);
+  toast('Enviando a impresora...');
+  try {
+    // Usar el PNG original (sin rotar en JS) y dejar que verex_print.py rote 90°
+    const png_base64 = pdfPages[selectedPage].dataUrl.split(',')[1];
+    const rollo = document.querySelector('.roll-btn.active')?.dataset?.rollo || 'mono';
+    const res = await fetch('http://127.0.0.1:7891/imprimir-png', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ png_base64, formato: 'guia', rollo })
+    });
+    const d = await res.json();
+    if (d.ok) toast('✅ Guía enviada · IP ' + (d.ip || '?'));
+    else toast('❌ ' + (d.error || 'Error'), true);
+  } catch(e) {
+    toast('❌ ' + e.message, true);
+  }
 }
 
 // ─── SUBTABS RECIBO ───
@@ -1110,9 +1131,9 @@ async function imprimirPdfRecibo() {
   const src = reciboPages[reciboSelectedPage].dataUrl; // recortado — sin espacio en blanco
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
-@page { size: 62mm auto portrait; margin: 0; }
+@page { size: ${reciboWidthMm}mm auto portrait; margin: 0; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { width: 62mm; background: white; padding: 3mm 1.5mm 4mm; font-family: 'Courier New', monospace; }
+body { width: ${reciboWidthMm}mm; background: white; padding: 3mm 1.5mm 4mm; font-family: 'Courier New', monospace; }
 img { display: block; width: 100%; height: auto; }
 hr { border: none; border-top: 1px dashed #aaa; margin: 4mm 0; }
 .gr { font-size: 11pt; font-weight: 900; text-align: center; line-height: 1.4; letter-spacing: 0.5pt; }
@@ -1123,7 +1144,7 @@ hr { border: none; border-top: 1px dashed #aaa; margin: 4mm 0; }
 <div class="gr">¡GRACIAS POR<br>TU COMPRA!</div>
 <div class="tagline">El mundo es mejor<br>cuando brillas TU ✨</div>
 </body></html>`;
-  await imprimir(html, 62, 0);
+  await imprimir(html, reciboWidthMm, 0);
 }
 
 // ─── GUÍA MANUAL ───
@@ -1261,9 +1282,9 @@ async function imprimirRecibo() {
   }).join('');
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
-@page{size:62mm auto portrait;margin:0;}
+@page{size:${reciboWidthMm}mm auto portrait;margin:0;}
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Courier New',monospace;font-size:9pt;}
-body{width:62mm;padding:7mm 3mm 4mm;}
+body{width:${reciboWidthMm}mm;padding:7mm 3mm 4mm;}
 .c{text-align:center;margin-bottom:3mm;}
 .t{font-size:14pt;font-weight:900;letter-spacing:2pt;}
 .s{font-size:8.5pt;color:#555;}
@@ -1290,7 +1311,7 @@ td:nth-child(2){text-align:center;color:#555;}
 <hr><div class="gr">¡GRACIAS POR<br>TU COMPRA!</div>
 <div style="font-size:8pt;text-align:center;margin-top:4mm;font-style:italic;color:#555;line-height:1.5;">El mundo es mejor<br>cuando brillas TU ✨</div>
 </body></html>`;
-  await imprimir(html, 62, 0); // 0 = altura automática
+  await imprimir(html, reciboWidthMm, 0); // 0 = altura automática
 }
 
 // ─── DK-2214 — CINTA 12mm — 50×12mm ───
@@ -1387,7 +1408,7 @@ async function imprimirDK2214() {
 .logo-name{font-family:'Cormorant Garamond',Georgia,serif;font-size:9.5pt;font-weight:600;letter-spacing:2.5pt;color:#111;}
 .logo-star{font-size:4pt;color:#888;}
 </style></head><body>${etiquetas}</body></html>`;
-  await imprimir(html, 0, 0, cant);
+  await imprimir(html, -12, 0, cant);
 }
 
 // ─── PDF ETIQUETAS DK-1204 ───
@@ -1488,10 +1509,18 @@ function base64ToFile(b64, nombre, tipo = 'application/pdf') {
 }
 
 window.electronAPI.onLoadPdfRecibo(async ({ pdfBase64, nombre }) => {
-  setTab(2)          // pestaña Recibo Térmico
-  setSubtabR(1)      // sub-pestaña PDF
-  await loadPdfRecibo(base64ToFile(pdfBase64, nombre || 'recibo.pdf'))
-  toast('🖨️ Recibo cargado desde el admin — listo para imprimir')
+  try {
+    setTab(2)          // pestaña Recibo Térmico
+    setSubtabR(1)      // sub-pestaña PDF
+    await loadPdfRecibo(base64ToFile(pdfBase64, nombre || 'recibo.pdf'))
+    toast('🖨️ Recibo recibido — imprimiendo...')
+    // Imprime de una vez, sin esperar clic manual — el Hub ya mostró su
+    // propio modal de confirmación antes de mandar el recibo hasta acá.
+    await imprimirPdfRecibo()
+  } catch (e) {
+    toast('❌ Error al recibir/imprimir: ' + e.message, true)
+    console.error('onLoadPdfRecibo error:', e)
+  }
 })
 
 window.electronAPI.onLoadPdfGuia(async ({ pdfBase64, nombre }) => {
@@ -1706,6 +1735,7 @@ async function wifiClear() {
 // ─── INIT ───
 loadPrinters();
 initRollSelector();
+setReciboWidth(reciboWidthMm);
 renderJoya();
 renderItemsForm();
 renderRecibo();
