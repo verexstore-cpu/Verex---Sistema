@@ -250,6 +250,39 @@ async function enviar(){
         return json({ ok: true });
       }
 
+      // ── SSO: el Hub ya autenticado genera un token corto de un solo uso
+      // para saltar directo a Admin sin volver a pedir contraseña ni
+      // Telegram — el login normal de Admin (password + OTP) sigue intacto
+      // si se entra directo a su URL sin pasar por el Hub. ──
+      if (d.accion === "SSO_CREAR_TOKEN") {
+        const ok = await verificarPassword(d._pass, env, sb);
+        if (!ok) return json({ ok: false, error: "No autorizado" }, 403);
+        const token = crypto.randomUUID();
+        const cfgSso = (await sb.get("config", "settings")) || {};
+        cfgSso.ssoTokens = cfgSso.ssoTokens || {};
+        const ahoraSso = Date.now();
+        // Limpia tokens viejos para que el documento no crezca sin control
+        for (const t of Object.keys(cfgSso.ssoTokens)) {
+          if (ahoraSso - cfgSso.ssoTokens[t].creado > 5 * 60 * 1000) delete cfgSso.ssoTokens[t];
+        }
+        cfgSso.ssoTokens[token] = { creado: ahoraSso };
+        await sb.set("config", "settings", cfgSso);
+        return json({ ok: true, token });
+      }
+
+      // ── SSO: Admin canjea el token — un solo uso, expira a los 90s ──
+      if (d.accion === "SSO_CANJEAR_TOKEN") {
+        const cfgSso = await sb.get("config", "settings");
+        const entry = cfgSso?.ssoTokens?.[d.token];
+        if (!entry || (Date.now() - entry.creado) > 90 * 1000) {
+          return json({ ok: false, error: "Token inválido o expirado" });
+        }
+        delete cfgSso.ssoTokens[d.token];
+        await sb.set("config", "settings", cfgSso);
+        const hash = cfgSso.passHash || await hashStr(env.SECRET_PASS || "");
+        return json({ ok: true, hash });
+      }
+
       // esAdmin: acepta SECRET_PASS (env var) O el hash guardado en Supabase
       const esAdmin = (await verificarPassword(d._pass, env, sb)) ||
                       (d.key && d.key === env.SECRET_KEY);
@@ -478,17 +511,56 @@ async function enviar(){
           break;
         }
 
-        // Público — portal del afiliado para completar pedidos (protegido por token)
+        // Público — portal del afiliado para completar pedidos (protegido por token + PIN)
         case "GET_LEADS_PORTAL_AFILIADO": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
           if (!vend.tokenPedidos || String(vend.tokenPedidos) !== String(d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
           }
+          // Si el afiliado tiene PIN configurado, validarlo
+          if (vend.pin && String(vend.pin) !== String(d.pin || "")) {
+            result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
+          }
           const todos = await sb.getAll("leads");
-          // Solo leads propios, activos y que todavía no tienen datos de cliente completados
           const pendientes = todos.filter(l => l.afiliado === d.vendedor && l.estado === "interesado" && !l.cliente);
-          result = { ok: true, leads: pendientes, vendedorNombre: vend.nombre };
+          result = { ok: true, leads: pendientes, vendedorNombre: vend.nombre, tienePin: !!vend.pin };
+          break;
+        }
+
+        // Público — historial completo del afiliado (protegido por token + PIN)
+        case "GET_HISTORIAL_AFILIADO": {
+          const vend = await sb.get("vendedores", d.vendedor);
+          if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
+          if (!vend.tokenPedidos || String(vend.tokenPedidos) !== String(d.token)) {
+            result = { ok: false, error: "Link inválido" }; break;
+          }
+          if (vend.pin && String(vend.pin) !== String(d.pin || "")) {
+            result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
+          }
+          const todosH = await sb.getAll("leads");
+          const mios = todosH.filter(l => l.afiliado === d.vendedor);
+          const enCamino  = mios.filter(l => l.estado === "en_camino");
+          const vendidos  = mios.filter(l => l.estado === "vendido" && !l.esCambio);
+          // Tabla por tramos igual que el panel de consignación (RANGOS_COMISION_AFILIADO)
+          const RANGOS_AFILIADO = [
+            { min: 0,   pct: 20 },
+            { min: 200, pct: 25 },
+            { min: 400, pct: 30 },
+          ];
+          const totalVendido = vendidos.reduce((s, l) => s + (parseFloat(l.precio) || 0), 0);
+          let pct;
+          if (vend.comisionFija != null && vend.comisionFija !== "") {
+            pct = parseFloat(vend.comisionFija);
+          } else {
+            const rango = RANGOS_AFILIADO.slice().reverse().find(r => totalVendido >= r.min);
+            pct = rango ? rango.pct : RANGOS_AFILIADO[0].pct;
+          }
+          const vendidosConComision = vendidos.map(l => ({
+            ...l,
+            comision: Math.round((parseFloat(l.precio) || 0) * pct / 100 * 100) / 100
+          }));
+          result = { ok: true, enCamino, vendidos: vendidosConComision, comisionPct: pct, vendedorNombre: vend.nombre };
           break;
         }
 
@@ -501,6 +573,9 @@ async function enviar(){
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
           if (!vend.tokenPedidos || String(vend.tokenPedidos) !== String(d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
+          }
+          if (vend.pin && String(vend.pin) !== String(d.pin || "")) {
+            result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
           }
           const cliente = d.cliente || {};
           if (!cliente.nombre || !cliente.telefono || !cliente.departamento || !cliente.municipio || !cliente.direccion) {
@@ -814,6 +889,28 @@ async function enviar(){
           if (d.estado) ventas = ventas.filter(v => v.estado === d.estado);
           ventas.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
           result = { ok: true, ventas };
+          break;
+        }
+
+        case "ACTUALIZAR_DESCUENTO_VD": {
+          if (!esAdmin) return forbidden();
+          const vd = await sb.get("ventas_directas", d.id);
+          if (!vd) { result = { ok: false, error: "Venta no encontrada" }; break; }
+          // Si viene totalReal, el total registrado estaba mal y hay que corregirlo.
+          // subtotal = precio sin descuento (lo que estaba registrado antes),
+          // total    = precio real cobrado al cliente.
+          const subtotalNuevo = parseFloat(d.subtotal) || parseFloat(vd.total || 0);
+          const totalNuevo    = (d.totalReal != null) ? parseFloat(d.totalReal) : parseFloat(vd.total || 0);
+          const descNuevo     = Math.max(0, subtotalNuevo - totalNuevo);
+          await sb.update("ventas_directas", d.id, {
+            subtotal:       subtotalNuevo,
+            total:          totalNuevo,
+            descuento:      descNuevo,
+            descuentoTipo:  d.descuentoTipo  || "monto",
+            descuentoValor: d.descuentoValor || descNuevo,
+            saldoPendiente: Math.max(0, totalNuevo - (parseFloat(vd.enganche) || totalNuevo)),
+          });
+          result = { ok: true };
           break;
         }
 

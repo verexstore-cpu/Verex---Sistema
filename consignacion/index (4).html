@@ -9823,10 +9823,7 @@ function renderHistorialVD() {
 function abrirModalEditDescuento(id) {
     const v = _historialVD.find(x => x.id === id);
     if (!v) return toast("⚠️ Venta no encontrada");
-    const total = parseFloat(v.total || 0);
-    const descActual = parseFloat(v.descuento || 0);
-    const tipoActual = v.descuentoTipo || "monto";
-    const valActual  = parseFloat(v.descuentoValor || 0) || (tipoActual === "monto" ? descActual : 0);
+    const totalRegistrado = parseFloat(v.total || 0);
 
     let m = document.getElementById("modal-edit-desc-vd");
     if (!m) {
@@ -9838,35 +9835,35 @@ function abrirModalEditDescuento(id) {
     m.innerHTML = `
         <div style="background:#111;border:1px solid #C9A84C;border-radius:16px;padding:20px;width:320px;max-width:94vw;font-family:'DM Sans',sans-serif;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                <span style="color:#C9A84C;font-size:15px;font-weight:700;">✏️ Editar descuento</span>
+                <span style="color:#C9A84C;font-size:15px;font-weight:700;">✏️ Corregir descuento</span>
                 <button onclick="document.getElementById('modal-edit-desc-vd').style.display='none'" style="background:none;border:none;color:#666;font-size:20px;cursor:pointer;line-height:1;">×</button>
             </div>
-            <div style="font-size:12px;color:#888;margin-bottom:14px;">${sanitizar(v.cliente)} · Total cobrado: <strong style="color:#52d68a;">$${total.toFixed(2)}</strong></div>
+            <div style="font-size:12px;color:#888;margin-bottom:16px;">${sanitizar(v.cliente)} · Registrado en: <strong style="color:#e85555;">$${totalRegistrado.toFixed(2)}</strong></div>
 
-            <div style="font-size:11px;color:#aaa;margin-bottom:6px;">Tipo de descuento</div>
-            <div style="display:flex;gap:6px;margin-bottom:12px;">
-                <button id="edbtn-monto" onclick="setTipoEditDesc('monto')"
-                    style="flex:1;padding:8px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;background:${tipoActual==='monto'?'var(--dorado)':'#2a2a2a'};color:${tipoActual==='monto'?'#000':'#888'};">$ Monto fijo</button>
-                <button id="edbtn-pct" onclick="setTipoEditDesc('porcentaje')"
-                    style="flex:1;padding:8px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;background:${tipoActual==='porcentaje'?'var(--dorado)':'#2a2a2a'};color:${tipoActual==='porcentaje'?'#000':'#888'};">% Porcentaje</button>
-            </div>
-
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                <span id="ed-simbolo" style="font-size:18px;font-weight:700;color:var(--dorado);width:16px;">${tipoActual==='monto'?'$':'%'}</span>
-                <input type="number" id="ed-desc-val" value="${valActual > 0 ? valActual : ''}" min="0" step="0.01"
-                    placeholder="${tipoActual==='monto'?'0.00':'0'}"
-                    oninput="calcularPreviaEditDesc(${total})"
+            <div style="font-size:11px;color:#aaa;margin-bottom:6px;">Precio real cobrado al cliente</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                <span style="font-size:16px;font-weight:700;color:var(--dorado);">$</span>
+                <input type="number" id="ed-precio-real" min="0" step="0.01" placeholder="0.00"
+                    oninput="calcularPreviaEditDesc(${totalRegistrado})"
                     style="flex:1;padding:10px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:16px;font-weight:700;">
             </div>
-            <div id="ed-previa" style="font-size:11px;color:#888;margin-bottom:14px;min-height:16px;"></div>
 
-            <button onclick="guardarEditDescVD('${id}', ${total})"
+            <div style="font-size:11px;color:#aaa;margin-bottom:6px;">Tipo de descuento (para el recibo)</div>
+            <div style="display:flex;gap:6px;margin-bottom:10px;">
+                <button id="edbtn-monto" onclick="setTipoEditDesc('monto')"
+                    style="flex:1;padding:8px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;background:var(--dorado);color:#000;">$ Monto fijo</button>
+                <button id="edbtn-pct" onclick="setTipoEditDesc('porcentaje')"
+                    style="flex:1;padding:8px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;background:#2a2a2a;color:#888;">% Porcentaje</button>
+            </div>
+
+            <div id="ed-previa" style="font-size:12px;color:#888;background:#1a1a1a;border-radius:8px;padding:10px;margin-bottom:14px;min-height:40px;line-height:1.8;"></div>
+
+            <button onclick="guardarEditDescVD('${id}', ${totalRegistrado})"
                 style="width:100%;padding:12px;border:none;border-radius:10px;background:linear-gradient(135deg,#C9A84C,#a87d20);color:#111;font-size:13px;font-weight:700;cursor:pointer;">
-                ✅ Guardar
+                ✅ Guardar corrección
             </button>
         </div>`;
     m.style.display = "flex";
-    calcularPreviaEditDesc(total);
 }
 
 function setTipoEditDesc(tipo) {
@@ -9874,39 +9871,47 @@ function setTipoEditDesc(tipo) {
     document.getElementById("edbtn-monto").style.color      = tipo==="monto" ? "#000" : "#888";
     document.getElementById("edbtn-pct").style.background   = tipo==="porcentaje" ? "var(--dorado)" : "#2a2a2a";
     document.getElementById("edbtn-pct").style.color        = tipo==="porcentaje" ? "#000" : "#888";
-    document.getElementById("ed-simbolo").textContent       = tipo==="monto" ? "$" : "%";
-    document.getElementById("ed-desc-val").placeholder      = tipo==="monto" ? "0.00" : "0";
-    document.getElementById("ed-desc-val").value = "";
-    document.getElementById("ed-previa").textContent = "";
-    document.getElementById("edbtn-monto")._tipo = tipo;
+    const inp = document.getElementById("ed-precio-real");
+    if (inp) { const tr = parseFloat(inp.closest("[id='modal-edit-desc-vd']")?.dataset?.tr || 0); calcularPreviaEditDesc(tr || 0); }
 }
 
-function calcularPreviaEditDesc(total) {
-    const tipo = document.getElementById("ed-simbolo").textContent === "%" ? "porcentaje" : "monto";
-    const val  = parseFloat(document.getElementById("ed-desc-val").value) || 0;
+function calcularPreviaEditDesc(totalRegistrado) {
+    const precioReal = parseFloat(document.getElementById("ed-precio-real")?.value) || 0;
     const prev = document.getElementById("ed-previa");
-    if (val <= 0) { prev.textContent = ""; return; }
-    const desc = tipo === "porcentaje" ? Math.min(total, total * val / 100) : Math.min(total, val);
-    const sub  = total + desc;
-    prev.innerHTML = `Subtotal: <strong>$${sub.toFixed(2)}</strong> · Descuento: <strong style="color:#e85555;">-$${desc.toFixed(2)}</strong> · Total: <strong style="color:#52d68a;">$${total.toFixed(2)}</strong>`;
+    if (!prev) return;
+    if (precioReal <= 0) { prev.innerHTML = '<span style="color:#555;">Ingresa el precio real cobrado</span>'; return; }
+    if (precioReal > totalRegistrado) {
+        prev.innerHTML = '<span style="color:#e85555;">⚠️ El precio real no puede ser mayor al registrado</span>'; return;
+    }
+    const tipo = document.getElementById("edbtn-pct")?.style.background.includes("dorado") || document.getElementById("edbtn-pct")?.style.background === "var(--dorado)" ? "porcentaje" : "monto";
+    const desc = totalRegistrado - precioReal;
+    const pct  = totalRegistrado > 0 ? (desc / totalRegistrado * 100).toFixed(1) : 0;
+    prev.innerHTML = `
+        Precio sin descuento: <strong>$${totalRegistrado.toFixed(2)}</strong><br>
+        Descuento: <strong style="color:#e85555;">-$${desc.toFixed(2)} (${pct}%)</strong><br>
+        Total correcto: <strong style="color:#52d68a;">$${precioReal.toFixed(2)}</strong>`;
 }
 
-async function guardarEditDescVD(id, total) {
-    const tipo = document.getElementById("ed-simbolo").textContent === "%" ? "porcentaje" : "monto";
-    const val  = parseFloat(document.getElementById("ed-desc-val").value) || 0;
-    if (val <= 0) return toast("⚠️ Ingresa un descuento mayor a $0");
-    const desc = tipo === "porcentaje" ? Math.min(total, total * val / 100) : Math.min(total, val);
-    if (desc >= total) return toast("⚠️ El descuento no puede ser igual o mayor al total");
+async function guardarEditDescVD(id, totalRegistrado) {
+    const precioReal = parseFloat(document.getElementById("ed-precio-real")?.value) || 0;
+    if (precioReal <= 0) return toast("⚠️ Ingresa el precio real cobrado");
+    if (precioReal > totalRegistrado) return toast("⚠️ El precio real no puede superar el total registrado");
+    if (precioReal === totalRegistrado) return toast("⚠️ El precio es igual al registrado — no hay descuento que corregir");
+    const tipoBtnPct = document.getElementById("edbtn-pct");
+    const tipo = (tipoBtnPct?.style.background === "var(--dorado)" || tipoBtnPct?.style.background?.includes?.("dorado")) ? "porcentaje" : "monto";
+    const desc = totalRegistrado - precioReal;
+    const val  = tipo === "porcentaje" ? parseFloat((desc / totalRegistrado * 100).toFixed(2)) : desc;
     const res = await apiPost({
         accion: "ACTUALIZAR_DESCUENTO_VD",
         id,
-        descuento: desc,
-        descuentoTipo: tipo,
+        subtotal:       totalRegistrado,
+        totalReal:      precioReal,
+        descuentoTipo:  tipo,
         descuentoValor: val
     });
     if (res.ok) {
         document.getElementById("modal-edit-desc-vd").style.display = "none";
-        toast("✅ Descuento actualizado");
+        toast("✅ Venta corregida a $" + precioReal.toFixed(2));
         await cargarHistorialVD();
     } else {
         toast("⚠️ Error: " + (res.error || "no se pudo actualizar"));
