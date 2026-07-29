@@ -2287,6 +2287,20 @@ async function registrarVentaDesdeLead(id) {
     const prod = stockData.find(s => s.codigo === lead.codigo);
     if (prod && parseInt(prod.stock_bodega||0) > 0) {
         agregarAlVD(prod.codigo);
+        // Si el catálogo tenía descuento, el lead guarda el precio ya rebajado.
+        // Pre-llenar el campo de descuento para que la venta refleje el mismo
+        // precio que el cliente vio en el catálogo.
+        const precioStock = parseFloat(prod.precio || 0);
+        const precioLead  = parseFloat(lead.precio  || 0);
+        const diffDesc    = precioStock - precioLead;
+        if (diffDesc > 0.005) {
+            setModoDescuento('monto');
+            const inputDesc = document.getElementById("vd-descuento-val");
+            if (inputDesc) {
+                inputDesc.value = diffDesc.toFixed(2);
+                renderCarritoVD();
+            }
+        }
         toast(`🛍️ "${prod.nombre}" agregado — revisa los datos del cliente`);
     } else {
         toast(`⚠️ "${lead.nombre||lead.codigo}" ya no está disponible en bodega — agrégalo manualmente si aplica`, "#f97316");
