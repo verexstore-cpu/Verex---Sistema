@@ -195,6 +195,24 @@
   }
   .hint { font-size: 11px; color: var(--text-dim); margin-top: 7px; font-style: italic; }
 
+  /* ─── Pestaña "Cualquier PDF" ─── */
+  .pdfany-fmt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .pdfany-fmt-btn {
+    background: var(--input-bg); border: 1px solid var(--input-bd); border-radius: 9px;
+    padding: 12px 8px; text-align: center; cursor: pointer;
+    color: var(--text-dim); font-size: 12px; font-weight: 700; line-height: 1.4; transition: all .15s;
+  }
+  .pdfany-fmt-btn span { display: block; font-size: 10px; font-weight: 400; opacity: .7; margin-top: 2px; }
+  .pdfany-fmt-btn.active { background: var(--gold); border-color: var(--gold); color: #111; }
+  .pdfany-card-58 { border-color: #6a4ad4; margin-top: 14px; }
+  .pdfany-btn-58 {
+    width: 100%; background: linear-gradient(135deg, #7a4ad4, #4a2a8c);
+    color: #ede0ff; border: none; border-radius: 10px;
+    padding: 13px; font-size: 14px; font-weight: 800;
+    cursor: pointer; margin-top: 10px;
+  }
+  .pdfany-btn-58:disabled { opacity: .3; cursor: not-allowed; }
+
   /* ─── DROP ZONE ─── */
   .drop-zone {
     border: 1.5px dashed var(--input-bd); border-radius: 12px;
@@ -399,6 +417,12 @@
     background: var(--btn-dark); border: 1px solid rgba(201,168,64,.45); color: var(--gold);
   }
   .wifi-btn.primary:hover { border-color: var(--gold); box-shadow: 0 0 10px rgba(201,168,64,.2); }
+  .wifi-btn.repair {
+    background: linear-gradient(180deg,#1d1d2e,#161622);
+    border: 1px solid rgba(76,175,80,.45); color: #7ed184;
+  }
+  .wifi-btn.repair:hover { border-color:#4caf50; box-shadow:0 0 10px rgba(76,175,80,.2); }
+  .wifi-btn.repair:disabled { opacity:.6; cursor:default; box-shadow:none; }
   .wifi-btn.close-btn {
     flex: 0; background: #161622; border: 1px solid #2a2a3a;
     color: var(--silver-dim); padding: 10px 14px;
@@ -486,6 +510,14 @@
     <div class="wifi-candidates" id="wifi-candidates"></div>
     <div class="wifi-status" id="wifi-status"></div>
 
+    <div class="wifi-btn-row" style="margin-bottom:8px;">
+      <button class="wifi-btn repair" id="btn-wifi-repair" onclick="repararImpresora()">🔧 Reparar conexión</button>
+    </div>
+    <div style="font-size:11px;color:#555;line-height:1.4;margin-bottom:14px;padding:0 2px;">
+      Usá esto cuando la impresora no sea reconocida. Busca la Brother en la red
+      y corrige la IP del driver de Windows (se rompe cuando el router le asigna otra).
+    </div>
+
     <div class="wifi-btn-row">
       <button class="wifi-btn secondary" onclick="wifiTest()">🔌 Probar conexión</button>
       <button class="wifi-btn primary" onclick="wifiSave()">💾 Guardar IP</button>
@@ -503,6 +535,7 @@
   <div class="tab active" onclick="setTab(0)">📦 Guía de Envío</div>
   <div class="tab" onclick="setTab(1)">💎 Etiqueta Joyería</div>
   <div class="tab" onclick="setTab(2)">🧾 Recibo Térmico</div>
+  <div class="tab" onclick="setTab(3)">📄 Cualquier PDF</div>
 </div>
 
 <div class="container">
@@ -645,6 +678,10 @@
         <div class="subtab" id="recibo-fmt-62" onclick="setReciboWidth(62)">🖨️ 62mm (Brother QL)</div>
         <div class="subtab" id="recibo-fmt-58" onclick="setReciboWidth(58)">🖨️ 58mm (HOP-H58)</div>
       </div>
+      <div id="printer-58-wrap" style="margin:8px 0 4px;">
+        <label style="font-size:11px;color:#8a8a9a;">Impresora para el recibo 58mm</label>
+        <select id="printer-58-select" onchange="savePrinter58()" style="width:100%;margin-top:4px;"></select>
+      </div>
 
       <div class="subtabs">
         <div class="subtab active" onclick="setSubtabR(0)">✏️ Manual</div>
@@ -702,6 +739,50 @@
         <span style="color:#5a6270;font-size:13px">Vista previa aquí</span>
       </div>
       <p class="hint" id="recibo-hint">* 62mm × automático · Vertical · Monocromo</p>
+    </div>
+  </div>
+
+  <!-- PANEL 4: CUALQUIER PDF -->
+  <div class="panel" id="panel-3">
+    <div class="card">
+      <h2>Cualquier PDF</h2>
+      <p style="font-size:12px;color:var(--text-dim);margin:-6px 0 12px;">Sube cualquier PDF y elige a cuál impresora mandarlo — no depende de las otras pestañas.</p>
+
+      <div class="drop-zone" id="pdfany-drop-zone">
+        <input type="file" accept=".pdf,application/pdf" id="pdfany-file-input"
+          onchange="onFileSelectedAny(event)" style="display:none">
+        <span class="icon">📂</span>
+        <div class="lbl">Arrastra el PDF aquí</div>
+        <div class="sub2" style="cursor:pointer;text-decoration:underline;color:var(--accent)"
+          onclick="document.getElementById('pdfany-file-input').click()">o haz clic para seleccionar</div>
+      </div>
+
+      <label style="margin-top:14px">Formato (Brother QL)</label>
+      <div class="pdfany-fmt-grid" id="pdfany-fmt-grid">
+        <div class="pdfany-fmt-btn active" data-fmt="guia" onclick="selPdfAnyFmt('guia',this)">📦 Guía<span>62mm × 9cm</span></div>
+        <div class="pdfany-fmt-btn" data-fmt="recibo" onclick="selPdfAnyFmt('recibo',this)">🧾 Recibo<span>62mm dinámico</span></div>
+        <div class="pdfany-fmt-btn" data-fmt="producto" onclick="selPdfAnyFmt('producto',this)">🏷️ Producto<span>5cm × 1.5cm</span></div>
+        <div class="pdfany-fmt-btn" data-fmt="mini" onclick="selPdfAnyFmt('mini',this)">📎 Mini<span>29mm × 90mm</span></div>
+      </div>
+      <label style="margin-top:12px">Tipo de rollo instalado</label>
+      <div class="pdfany-fmt-grid" id="pdfany-rollo-grid">
+        <div class="pdfany-fmt-btn" data-rollo="mono" onclick="selPdfAnyRollo('mono',this)">⬜ Monocromo</div>
+        <div class="pdfany-fmt-btn active" data-rollo="rojo" onclick="selPdfAnyRollo('rojo',this)">🔴 Negro/Rojo</div>
+      </div>
+
+      <div id="pdfany-server-status" style="font-size:11px;color:var(--text-dim);text-align:center;margin:12px 0 4px;">⏳ Verificando servidor...</div>
+      <button class="btn-print" id="pdfany-btn-imprimir" disabled onclick="imprimirPdfAny()">🖨️ Imprimir (Brother QL)</button>
+
+      <div class="card pdfany-card-58">
+        <h2 style="font-size:14px;">🧾 Recibo térmico 58mm — impresora aparte (POS-58)</h2>
+        <p style="font-size:11px;color:var(--text-dim);margin:4px 0 0;">Usa el mismo PDF de arriba, pero lo manda directo a la impresora de 58mm — no requiere formato ni rollo.</p>
+        <button class="pdfany-btn-58" id="pdfany-btn-58" disabled onclick="imprimirPdfAny58()">🖨️ Imprimir en POS-58 (58mm)</button>
+      </div>
+    </div>
+    <div class="card preview-card">
+      <h2>Vista previa</h2>
+      <embed id="pdfany-preview" type="application/pdf" style="width:100%;height:460px;border-radius:8px;background:#fff;display:none;">
+      <span id="pdfany-preview-empty" style="color:#5a6270;font-size:13px">Sube un PDF para previsualizar</span>
     </div>
   </div>
 
@@ -804,6 +885,10 @@ let printerName = localStorage.getItem('verex-printer') || '';
 // normal de Windows (impresión silenciosa a la impresora seleccionada
 // arriba en "Impresora"), porque no hablan el protocolo Brother.
 let reciboWidthMm = parseInt(localStorage.getItem('verex-recibo-ancho')) || 62;
+// Impresora específica para el recibo 58mm — separada del selector de
+// arriba (que es el que usan las etiquetas Brother QL) para que imprimir
+// un recibo no dependa de tener seleccionada la Brother por accidente.
+let printerName58 = localStorage.getItem('verex-printer-58mm') || '';
 function setReciboWidth(mm) {
   reciboWidthMm = mm;
   localStorage.setItem('verex-recibo-ancho', mm);
@@ -851,6 +936,24 @@ async function loadPrinters() {
       localStorage.setItem('verex-printer', printerName);
     }
 
+    // Auto-detectar la impresora del recibo 58mm por separado — busca por
+    // nombre (POS-58, POS58, Hoin, H58) para no depender de que el admin
+    // la seleccione a mano cada vez.
+    if (!printerName58 || !list.find(p => p.name === printerName58)) {
+      const pos58 = list.find(p => /pos-?58|hoin|h58/i.test(p.name));
+      if (pos58) {
+        printerName58 = pos58.name;
+        localStorage.setItem('verex-printer-58mm', printerName58);
+      }
+    }
+    const sel58 = document.getElementById('printer-58-select');
+    if (sel58) {
+      sel58.innerHTML = list.map(p => {
+        const label = `${p.name}${p.status === 'Offline' ? ' (Offline)' : ''}`;
+        return `<option value="${p.name}" ${p.name === printerName58 ? 'selected' : ''}>${label}</option>`;
+      }).join('');
+    }
+
     const selected = list.find(p => p.name === printerName);
     const isOffline = selected?.status === 'Offline';
     dot.className = 'printer-dot ' + (isOffline ? 'warn' : 'ok');
@@ -870,6 +973,11 @@ function savePrinter() {
   localStorage.setItem('verex-printer', printerName);
 }
 
+function savePrinter58() {
+  printerName58 = document.getElementById('printer-58-select').value;
+  localStorage.setItem('verex-printer-58mm', printerName58);
+}
+
 // ─── TOAST ───
 function toast(msg, isError = false) {
   const t = document.getElementById('toast');
@@ -882,7 +990,12 @@ function toast(msg, isError = false) {
 // ─── IMPRIMIR VIA ELECTRON ───
 async function imprimir(html, widthMm, heightMm, pageCount = 1) {
   toast('Enviando a impresora...');
-  const result = await window.electronAPI.imprimir(html, widthMm, heightMm, printerName, pageCount);
+  // El recibo 58mm usa su propia impresora guardada (POS-58), no la que
+  // esté seleccionada arriba para las etiquetas Brother QL.
+  const printerParaEsteTrabajo = (widthMm === 58 && printerName58) ? printerName58 : printerName;
+  window.electronAPI.logDebug(`imprimir() llamado — widthMm=${widthMm}, heightMm=${heightMm}, printerName="${printerParaEsteTrabajo}", htmlLen=${html.length}`);
+  const result = await window.electronAPI.imprimir(html, widthMm, heightMm, printerParaEsteTrabajo, pageCount);
+  window.electronAPI.logDebug(`imprimir() resultado — success=${result.success}, error=${result.error}`);
   if (result.success) toast('✅ Impreso · ' + (result.debug || 'OK'));
   else toast('❌ Error: ' + (result.error || 'desconocido'), true);
 }
@@ -1087,7 +1200,7 @@ async function loadPdfRecibo(file) {
     // Recortar bordes blancos + eliminar pie de página del PDF
     const { canvas: croppedCanvas } = autoCrop(pCanvas);
     const noFooterCanvas = cropAtLastGap(croppedCanvas || pCanvas);
-    const dataUrl = noFooterCanvas.toDataURL('image/jpeg', 0.95);
+    const dataUrl = noFooterCanvas.toDataURL('image/png');
     reciboPages.push({ dataUrl });
 
     const thumb = document.createElement('div');
@@ -1131,13 +1244,13 @@ async function imprimirPdfRecibo() {
   const src = reciboPages[reciboSelectedPage].dataUrl; // recortado — sin espacio en blanco
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
-@page { size: ${reciboWidthMm}mm auto portrait; margin: 0; }
+@page { margin: 0; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { width: ${reciboWidthMm}mm; background: white; padding: 3mm 1.5mm 4mm; font-family: 'Courier New', monospace; }
+body { width: ${reciboWidthMm}mm; background: white; padding: 3mm 1.5mm 4mm; font-family: 'Courier New', monospace; color: #000; }
 img { display: block; width: 100%; height: auto; }
-hr { border: none; border-top: 1px dashed #aaa; margin: 4mm 0; }
-.gr { font-size: 11pt; font-weight: 900; text-align: center; line-height: 1.4; letter-spacing: 0.5pt; }
-.tagline { font-size: 8.5pt; font-weight: 700; text-align: center; margin-top: 2mm; line-height: 1.4; font-style: italic; }
+hr { border: none; border-top: 1px dashed #000; margin: 4mm 0; }
+.gr { font-size: 11pt; font-weight: 900; text-align: center; line-height: 1.4; letter-spacing: 0.5pt; color: #000; }
+.tagline { font-size: 8.5pt; font-weight: 700; text-align: center; margin-top: 2mm; line-height: 1.4; font-style: italic; color: #000; }
 </style></head><body>
 <img src="${src}">
 <hr>
@@ -1509,15 +1622,21 @@ function base64ToFile(b64, nombre, tipo = 'application/pdf') {
 }
 
 window.electronAPI.onLoadPdfRecibo(async ({ pdfBase64, nombre }) => {
+  window.electronAPI.logDebug(`onLoadPdfRecibo disparado — pdfBase64 len=${(pdfBase64||'').length}, nombre=${nombre}`)
   try {
     setTab(2)          // pestaña Recibo Térmico
     setSubtabR(1)      // sub-pestaña PDF
+    window.electronAPI.logDebug('Llamando loadPdfRecibo...')
     await loadPdfRecibo(base64ToFile(pdfBase64, nombre || 'recibo.pdf'))
+    window.electronAPI.logDebug(`loadPdfRecibo terminó — reciboPages.length=${reciboPages.length}`)
     toast('🖨️ Recibo recibido — imprimiendo...')
     // Imprime de una vez, sin esperar clic manual — el Hub ya mostró su
     // propio modal de confirmación antes de mandar el recibo hasta acá.
+    window.electronAPI.logDebug('Llamando imprimirPdfRecibo...')
     await imprimirPdfRecibo()
+    window.electronAPI.logDebug('imprimirPdfRecibo terminó sin excepción')
   } catch (e) {
+    window.electronAPI.logDebug('EXCEPCION en onLoadPdfRecibo: ' + e.message + ' | stack: ' + (e.stack||'').slice(0,300))
     toast('❌ Error al recibir/imprimir: ' + e.message, true)
     console.error('onLoadPdfRecibo error:', e)
   }
@@ -1655,6 +1774,38 @@ function refreshWifiSavedBar() {
   }
 }
 
+// Busca la Brother en la red y corrige TANTO la IP de impresión TCP como el
+// puerto del driver de Windows — este último es el que deja de reconocerla
+// cuando el router le asigna otra IP por DHCP.
+async function repararImpresora() {
+  const btn = document.getElementById('btn-wifi-repair')
+  btn.disabled = true
+  btn.textContent = '⏳ Buscando impresora...'
+  wifiSetStatus('Escaneando la red y revisando el driver...', '')
+  try {
+    const r = await window.electronAPI.repairPrinter()
+    if (r.ok) {
+      wifiSavedIp = r.ip
+      document.getElementById('wifi-ip-input').value = r.ip
+      refreshWifiSavedBar()
+      const driverMsg = {
+        'OK':         'driver de Windows corregido',
+        'YA_OK':      'driver ya estaba correcto',
+        'FALLO':      'no se pudo corregir el driver — abrí el Hub como administrador',
+        'SIN_DRIVER': 'no hay driver Brother instalado en Windows',
+      }[r.driver] || r.driver
+      wifiSetStatus('✅ Brother encontrada en ' + r.ip + ' — ' + driverMsg, 'ok')
+      loadPrinters()   // refrescar el indicador del header
+    } else {
+      wifiSetStatus('❌ ' + r.error, 'err')
+    }
+  } catch (e) {
+    wifiSetStatus('❌ Error: ' + e.message, 'err')
+  }
+  btn.disabled = false
+  btn.textContent = '🔧 Reparar conexión'
+}
+
 function wifiStatusClear() {
   document.getElementById('wifi-status').textContent = ''
   document.getElementById('wifi-status').className = 'wifi-status'
@@ -1731,6 +1882,139 @@ async function wifiClear() {
   document.getElementById('wifi-ip-input').value = ''
   wifiSetStatus('IP borrada. Se usará detección automática por USB.', '')
 }
+
+// ─── PESTAÑA "CUALQUIER PDF" ───
+// Migrado desde imprimir.html (VEREX - Accesos Directos) para no depender
+// de una página aparte en el navegador — todo el flujo de imprimir un PDF
+// cualquiera vive ahora dentro de esta misma app.
+let pdfAnyDataURI = null;
+let pdfAnyFormato = 'guia';
+let pdfAnyRollo   = 'rojo';
+
+function onDragOverAny(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; document.getElementById('pdfany-drop-zone').classList.add('drag-over'); }
+function onDragLeaveAny(e) { document.getElementById('pdfany-drop-zone').classList.remove('drag-over'); }
+function onDropAny(e) {
+  e.preventDefault();
+  document.getElementById('pdfany-drop-zone').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'))) cargarPdfAny(f);
+  else toast('Solo se aceptan archivos PDF', true);
+}
+function onFileSelectedAny(e) { if (e.target.files[0]) cargarPdfAny(e.target.files[0]); }
+
+function cargarPdfAny(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    pdfAnyDataURI = e.target.result;
+    const prev = document.getElementById('pdfany-preview');
+    prev.src = pdfAnyDataURI;
+    prev.style.display = 'block';
+    document.getElementById('pdfany-preview-empty').style.display = 'none';
+    document.getElementById('pdfany-drop-zone').classList.add('loaded');
+    document.getElementById('pdfany-btn-imprimir').disabled = false;
+    document.getElementById('pdfany-btn-58').disabled = false;
+  };
+  reader.readAsDataURL(file);
+}
+
+function selPdfAnyFmt(fmt, btn) {
+  pdfAnyFormato = fmt;
+  document.querySelectorAll('#pdfany-fmt-grid .pdfany-fmt-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+function selPdfAnyRollo(rollo, btn) {
+  pdfAnyRollo = rollo;
+  document.querySelectorAll('#pdfany-rollo-grid .pdfany-fmt-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+async function checkServerAny() {
+  const statusEl = document.getElementById('pdfany-server-status');
+  try {
+    const r = await Promise.race([
+      fetch('http://127.0.0.1:7891/ping'),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 1500))
+    ]);
+    if (r.ok) { statusEl.textContent = '🟢 Servidor activo'; statusEl.style.color = '#22c55e'; }
+    else throw new Error();
+  } catch {
+    statusEl.textContent = '🔴 Servidor no responde';
+    statusEl.style.color = '#ef4444';
+  }
+}
+checkServerAny();
+setInterval(checkServerAny, 8000);
+
+async function imprimirPdfAny() {
+  if (!pdfAnyDataURI) return;
+  const btn = document.getElementById('pdfany-btn-imprimir');
+  btn.disabled = true;
+  btn.textContent = '⏳ Enviando a impresora...';
+  try {
+    const pdf_base64 = pdfAnyDataURI.split(',')[1];
+    const res = await fetch('http://127.0.0.1:7891/imprimir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ formato: pdfAnyFormato, rollo: pdfAnyRollo, pdf_base64, rotar: false })
+    });
+    const json = await res.json();
+    if (json.ok) {
+      toast('✅ Enviado a impresora' + (json.ip ? ' · IP ' + json.ip : ''));
+    } else {
+      throw new Error(json.error || 'Error desconocido');
+    }
+  } catch (e) {
+    toast('❌ ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🖨️ Imprimir (Brother QL)';
+  }
+}
+
+async function imprimirPdfAny58() {
+  if (!pdfAnyDataURI) return;
+  const btn = document.getElementById('pdfany-btn-58');
+  btn.disabled = true;
+  btn.textContent = '⏳ Enviando a POS-58...';
+  try {
+    const pdf_base64 = pdfAnyDataURI.split(',')[1];
+    // Ruta directa: el PDF se carga en el visor nativo de Chromium (sin
+    // convertir a imagen) y se manda al driver de la POS-58 con pageSize 58mm.
+    // Produce mucha mejor calidad que la ruta PDF→canvas→PNG→HTML.
+    const res = await fetch('http://127.0.0.1:7891/print-pdf-58', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pdfBase64: pdf_base64, printerName: printerName58 || '' })
+    });
+    const json = await res.json();
+    if (json.ok) toast('✅ Enviado — acepta el diálogo de impresión');
+    else throw new Error(json.error || 'Error desconocido');
+  } catch (e) {
+    toast('❌ ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🖨️ Imprimir en POS-58 (58mm)';
+  }
+}
+
+// ─── DROP ZONE "CUALQUIER PDF" — listeners via JS para control total ───
+;(function() {
+  const zone = document.getElementById('pdfany-drop-zone');
+  if (!zone) return;
+  zone.addEventListener('dragenter', e => { e.preventDefault(); e.stopPropagation(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragover',  e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', e => { e.stopPropagation(); zone.classList.remove('drag-over'); });
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation();
+    zone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f && (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'))) cargarPdfAny(f);
+    else toast('Solo se aceptan archivos PDF', true);
+  });
+  zone.addEventListener('click', e => {
+    if (e.target.tagName !== 'INPUT') document.getElementById('pdfany-file-input').click();
+  });
+})();
 
 // ─── INIT ───
 loadPrinters();

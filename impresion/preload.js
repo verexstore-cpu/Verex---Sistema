@@ -18,4 +18,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveWifiConfig:    (ip)     => ipcRenderer.invoke('save-wifi-config', { ip }),
   testWifiConfig:    (ip)     => ipcRenderer.invoke('test-wifi-config', { ip }),
   scanWifiPrinters:  ()       => ipcRenderer.invoke('scan-wifi-printers'),
+  repairPrinter:     ()       => ipcRenderer.invoke('repair-printer'),
+  logDebug:          (msg)    => ipcRenderer.send('log-debug', msg),
 })

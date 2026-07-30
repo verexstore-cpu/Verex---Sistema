@@ -952,6 +952,122 @@ if ($found.Count -gt 0) { $found -join ',' } else { Write-Output "" }
   return { ok: r.ok, ips, error: r.error }
 })
 
+// ── Reparar conexión de la impresora ────────────────────────────────────────
+// Cuando el router le da otra IP por DHCP se rompen DOS cosas:
+//   1. La IP guardada para impresión TCP directa (verex_print.py)
+//   2. El puerto del driver de Windows → queda en la IP vieja y Windows
+//      marca la impresora como "Error" (el Hub la muestra como no reconocida)
+// Este handler arregla las dos. Identifica la Brother por DNS reverso: las
+// Brother WiFi responden BRW + su MAC (ej. BRWBCF4D498693F), que es la única
+// señal que no se confunde con otra impresora de red que tenga el 9100 abierto.
+ipcMain.handle('repair-printer', async () => {
+  const script = `
+Add-Type -TypeDefinition @"
+using System;
+using System.Net.Sockets;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+public class NetScanRep {
+    public static List<string> Scan(string[] ips, int port, int ms) {
+        var found = new List<string>();
+        var tasks = new List<Task<string>>();
+        foreach (var ip in ips) {
+            var ipCopy = ip;
+            tasks.Add(Task.Run(() => {
+                try {
+                    using (var c = new TcpClient()) {
+                        if (c.ConnectAsync(ipCopy, port).Wait(ms)) return ipCopy;
+                    }
+                } catch {}
+                return null;
+            }));
+        }
+        Task.WaitAll(tasks.ToArray());
+        foreach (var t in tasks) { if (t.Result != null) found.Add(t.Result); }
+        return found;
+    }
+}
+"@ -Language CSharp
+
+$candidates = [System.Collections.Generic.HashSet[string]]::new()
+foreach ($line in (arp -a)) {
+    if ($line -match '\\s+(\\d+\\.\\d+\\.\\d+\\.\\d+)\\s+') {
+        $ip = $matches[1]
+        if (-not ($ip -like '224.*' -or $ip -like '239.*' -or $ip -like '169.254.*' -or $ip -eq '255.255.255.255')) {
+            [void]$candidates.Add($ip)
+        }
+    }
+}
+$localIps = [System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) |
+    Where-Object { $_.AddressFamily -eq 'InterNetwork' }
+foreach ($localIp in $localIps) {
+    $parts = $localIp.ToString().Split('.')
+    if ($parts.Length -eq 4) {
+        $base = "$($parts[0]).$($parts[1]).$($parts[2])."
+        1..254 | ForEach-Object { [void]$candidates.Add($base + $_) }
+    }
+}
+
+$ips = @($candidates)
+if ($ips.Count -eq 0) { Write-Output 'NO_HOST'; exit 0 }
+$found = [NetScanRep]::Scan($ips, 9100, 500)
+if ($found.Count -eq 0) { Write-Output 'NO_HOST'; exit 0 }
+
+# 1. Identificar por DNS reverso (BRW + MAC) — señal definitiva
+$brotherIp = $null
+foreach ($ip in $found) {
+    try {
+        $h = [System.Net.Dns]::GetHostEntry($ip).HostName
+        if ($h.ToUpper().StartsWith('BRW')) { $brotherIp = $ip; break }
+    } catch {}
+}
+# 2. Fallback: web admin de la impresora con "brother" en el body
+if (-not $brotherIp) {
+    foreach ($ip in $found) {
+        try {
+            $resp = Invoke-WebRequest -Uri ('http://' + $ip + '/') -TimeoutSec 3 -UseBasicParsing
+            if ($resp.Content -match '(?i)brother') { $brotherIp = $ip; break }
+        } catch {}
+    }
+}
+if (-not $brotherIp) { Write-Output 'NO_BROTHER'; exit 0 }
+
+# 3. Repuntar el driver de Windows a la IP encontrada
+$prn = Get-Printer | Where-Object { $_.Name -like '*QL-810*' -or $_.DriverName -like '*QL-810*' } |
+    Select-Object -First 1
+$driver = 'SIN_DRIVER'
+$prnName = ''
+if ($prn) {
+    $prnName = $prn.Name
+    $port = 'IP_' + $brotherIp + '_BR'
+    if (-not (Get-PrinterPort -Name $port -ErrorAction SilentlyContinue)) {
+        Add-PrinterPort -Name $port -PrinterHostAddress $brotherIp -PortNumber 9100 -ErrorAction SilentlyContinue
+    }
+    if ($prn.PortName -eq $port) { $driver = 'YA_OK' }
+    else {
+        try { Set-Printer -Name $prnName -PortName $port -ErrorAction Stop; $driver = 'OK' }
+        catch { $driver = 'FALLO' }
+    }
+}
+Write-Output ($brotherIp + '|' + $driver + '|' + $prnName)
+`
+  const r = await runPs1(script, 60000)
+  if (!r.ok) return { ok: false, error: r.error || 'Falló el escaneo de red' }
+
+  const out = (r.out || '').split('\n').map(s => s.trim()).filter(Boolean).pop() || ''
+  if (out === 'NO_HOST')
+    return { ok: false, error: 'Ningún dispositivo respondió en la red. Verificá que la impresora esté encendida y con el LED WiFi fijo en azul.' }
+  if (out === 'NO_BROTHER')
+    return { ok: false, error: 'Hay dispositivos en la red pero ninguno es una Brother. Reconectá la impresora al WiFi con el botón WPS.' }
+
+  const [ip, driver, prnName] = out.split('|')
+  if (!ip || !/^\d+\.\d+\.\d+\.\d+$/.test(ip))
+    return { ok: false, error: 'Respuesta inesperada del escaneo: ' + out }
+
+  saveConfig({ printerIp: ip })
+  return { ok: true, ip, driver, printer: prnName || null }
+})
+
 // Ejecuta un script PowerShell en archivo temporal y devuelve { ok, error }
 function runPs1(script, timeout = 15000) {
   const ps1 = path.join(os.tmpdir(), `verex-ps-${Date.now()}.ps1`)
