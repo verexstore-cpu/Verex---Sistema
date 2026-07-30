@@ -63,16 +63,25 @@
         .card-price-final{font-size:17px;font-weight:800;color:#92400e;}
         .card-ne{display:inline-block;font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:5px;padding:2px 7px;margin-bottom:4px;line-height:1.5;}
         .card-nota{display:inline-block;font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:5px;padding:2px 7px;margin-top:5px;line-height:1.5;}
-        .card-footer{padding:0 10px 10px;display:flex;gap:6px;}
+        .card-footer{padding:0 10px 10px;display:flex;flex-direction:column;gap:5px;}
         .wa-order{
-            display:flex;align-items:center;justify-content:center;
-            flex:1;text-align:center;position:relative;overflow:hidden;
-            background:linear-gradient(135deg,#4a3410,#C9A84C,#E8C87A,#C9A84C,#4a3410);
-            color:#1a1207;
-            padding:9px 0;border-radius:8px;
-            font-size:13px;font-weight:700;
-            border:3px solid #9a9a9a;box-shadow:0 0 0 1px #666;
+            width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+            gap:2px;text-align:center;position:relative;overflow:hidden;
+            background:linear-gradient(135deg,#B8933E,#D4AF5E);
+            color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.25);
+            padding:10px 8px 9px;border-radius:12px;
+            border:none;
+            box-shadow:0 0 0 0 rgba(184,147,62,.5);
             cursor:pointer;
+            animation:waPulse 2.4s ease-out infinite;
+        }
+        .wa-order:active{ filter:brightness(.9);transform:scale(.97); }
+        .wa-order .wa-main{ font-size:13px;font-weight:800;position:relative;z-index:2; }
+        .wa-order .wa-sub{ font-size:10px;font-weight:500;opacity:.88;position:relative;z-index:2; }
+        @keyframes waPulse{
+            0%  {box-shadow:0 0 0 0 rgba(184,147,62,.55);}
+            65% {box-shadow:0 0 0 8px rgba(184,147,62,.0);}
+            100%{box-shadow:0 0 0 0 rgba(184,147,62,.0);}
         }
         .wa-shine{
             position:absolute;top:0;left:-60%;width:40%;height:100%;
@@ -82,9 +91,14 @@
         .wa-order.brillando .wa-shine{ animation:waShineSweep .6s ease; }
         @keyframes waShineSweep{ from{left:-60%;} to{left:130%;} }
         .cart-add{
-            flex-shrink:0;width:38px;
+            align-self:flex-end;width:44px;
             background:#fff;color:#111;border:1.5px solid #ddd;
-            border-radius:8px;font-size:16px;cursor:pointer;
+            border-radius:8px;font-size:13px;cursor:pointer;
+            display:flex;flex-direction:column;align-items:center;justify-content:center;
+            padding:5px 4px 4px;gap:1px;line-height:1;
+        }
+        .cart-add .cart-label{
+            font-size:7.5px;font-weight:600;color:#888;text-align:center;line-height:1.2;
         }
 
         /* Carrito flotante — discreto, no interrumpe el catálogo hasta que
@@ -268,7 +282,7 @@
     try { _carrito = JSON.parse(sessionStorage.getItem("verex-carrito") || "[]"); } catch(_) {}
 
     const SIZES   = ["5","5.5","6","6.5","7","7.5","8","8.5","9","9.5","10","10.5","11","12","13","14"];
-    const ES_PAR  = /matrimonio|argolla|novios|pareja|alianza/i;
+    const ES_PAR  = /matrimonio|novios|pareja|alianza/i;
     const API_URL = "https://verex-api.verexstore.workers.dev/";
 
     function esc(s){
@@ -349,7 +363,7 @@
         // Aunque no sea un "par" con precio total (pD/pH), muchas alianzas se
         // fotografían mostrando las dos piezas aunque se vendan como una sola a
         // precio unisex — se avisa igual para no confundir al cliente.
-        return `${base}${(p.par || p.avisoPieza)?`<span style="display:block;font-size:10px;font-weight:500;color:#7c3aed;margin-top:2px;">Precio por pieza</span>`:""}`;
+        return `${base}${(p.par || (p.avisoPieza && ES_PAR.test(p.n)))?`<span style="display:block;font-size:10px;font-weight:500;color:#7c3aed;margin-top:2px;">Precio por pieza</span>`:""}`;
     }
 
     function showExpired(nombre, wa){
@@ -378,7 +392,15 @@
     }
 
     function render(data){
-        _prods = data.prods || [];
+        // Acero 316L es la línea secundaria/económica: se manda al final para que
+        // la plata (línea principal) sea lo primero que ve el cliente. El sort de
+        // JS es estable, así que dentro de cada grupo se respeta el orden con el
+        // que se armó el catálogo. Se ordena una copia para no alterar el payload
+        // original, y acá — en el render — para que aplique también a los links
+        // que ya se compartieron, no solo a los catálogos nuevos.
+        const esAceroProd = p => /acero/i.test(p.m || "") || /acero/i.test(p.n || "");
+        _prods = [...(data.prods || [])]
+            .sort((a, b) => (esAceroProd(a) ? 1 : 0) - (esAceroProd(b) ? 1 : 0));
         _waNum = normalizarWA(data.wa);
         _descPct = Math.min(90, Math.max(0, parseInt(data.descPct) || 0));
         _afiliadoCodigo = data.afiliadoCodigo || "";
@@ -424,8 +446,8 @@
                     ${p.nota?`<div class="card-nota">${esc(p.nota)}</div>`:''}
                 </div>
                 <div class="card-footer">
-                    <button class="wa-order" onclick="elegirTalla(${i},'wa',this)"><span style="position:relative;z-index:2;">✦ ¡Hazlo tuyo!</span><span class="wa-shine"></span></button>
-                    <button class="cart-add" onclick="elegirTalla(${i},'carrito')" title="Agregar al carrito">🛒</button>
+                    <button class="wa-order" onclick="elegirTalla(${i},'wa',this)"><span class="wa-main">✦ ¡Hazlo tuyo!</span><span class="wa-sub">Presiona aquí para ordenar</span><span class="wa-shine"></span></button>
+                    <button class="cart-add" onclick="elegirTalla(${i},'carrito')" title="Agregar al carrito">🛒<span class="cart-label">2+ piezas</span></button>
                 </div>
             </div>`;
         }).join("");
@@ -461,6 +483,10 @@
             <div class="info-bar">
                 ${subHTML?`<div>${subHTML}</div>`:''}
                 <div class="validez">⏰ Válido hasta: ${expStr}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;margin:10px 12px 2px;padding:9px 12px;font-size:11.5px;color:#78350f;line-height:1.4;">
+                <span style="font-size:18px;flex-shrink:0;">🛒</span>
+                <span>¿Quieres pedir <strong>2 o más piezas?</strong> Usa el carrito para juntarlas y hacer un solo pedido al final.</span>
             </div>
             ${filtroTallaHTML}
             <div class="grid">${cards}</div>
