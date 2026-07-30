@@ -219,7 +219,11 @@ FORMAT_CFG = {
     'mini':       {'label': '12',    'w': 106, 'h': 190,  'rotate': 90},  # ~20mm ajustado
     'dk2214':     {'label': '12',    'w': 106, 'h': 591,  'rotate': 90},  # 50mm @ 300dpi = 591 dots
     'producto':   {'label': '62',    'w': 606, 'h': 117,  'rotate': 0},
-    'dk1204':     {'label': '62',    'w': 606, 'h': 191,  'rotate': 0},
+    # DK-1204 es papel TROQUELADO 17×54mm: hay que mandarle el label troquelado
+    # '17x54' con su tamaño imprimible exacto (165×566 dots) y rotado 90°, porque
+    # el PDF viene apaisado. Con '62' (rollo continuo) la QL-810W lo toma como
+    # desajuste de medio y aborta el trabajo con luz roja.
+    'dk1204':     {'label': '17x54', 'w': 165, 'h': 566,  'rotate': 90},
     'producto-v': {'label': '62',    'w': 191, 'h': 606,  'rotate': 0},
     'tarjeta25':  {'label': '62',    'w': 281, 'h': 168,  'rotate': 0},
     'guia':       {'label': '62',    'w': 696, 'h': 1063, 'rotate': 90},

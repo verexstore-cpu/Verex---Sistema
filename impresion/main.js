@@ -509,7 +509,12 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
                 const formatPx = {
                   'producto': { w: Math.round(54 * P), h: 117  },  // original: 606×117
                   'mini':     { w: 306, h: 991 },  // DK-11201 29×90mm: dots_printable exactos
-                  'dk1204':   { w: Math.round(54 * P), h: Math.round(17 * P) }, // 606×191
+                  // DK-1204 es TROQUELADA 17×54mm, no rollo continuo: brother_ql
+                  // exige la imagen del tamaño imprimible exacto del troquel
+                  // (165×566 dots de 201×636 totales — la QL no imprime ~1.5mm
+                  // de cada lado ni ~3mm de cada extremo). Va en vertical, por
+                  // eso se rota 90° más abajo.
+                  'dk1204':   { w: 165, h: 566 },
                   'vertical': { w: Math.round(17 * P), h: Math.round(54 * P) }, // 191×606
                   'tarjeta':  { w: Math.round(25 * P), h: Math.round(15 * P) }, // 281×168
                   'guia':     { w: 696, h: 1063 },
@@ -521,10 +526,16 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
                 // otro color. Los formatos de 62mm respetan el selector de rollo —
                 // mandar '62red' con un rollo monocromo cargado (o al revés) hace que
                 // la QL-810W corte el trabajo y quede con la luz roja de error.
-                const formatLabelOverride = { 'mini': '29x90', 'dk2214': '12' }
+                // 'dk1204' también va acá: es papel TROQUELADO 17×54mm. Mandarlo
+                // como '62' (rollo continuo) es un desajuste de medio y la
+                // QL-810W aborta el trabajo con luz roja — la impresora reporta
+                // el papel como "17mm x 54mm" y espera el label troquelado.
+                const formatLabelOverride = { 'mini': '29x90', 'dk2214': '12', 'dk1204': '17x54' }
                 const labelId = formatLabelOverride[formato] || labelMap[rollo] || '62'
                 const px = formatPx[formato] || { w: 696, h: 117 }
-                const rotateDeg = (formato === 'dk2214' || formato === 'guia') ? 90 : 0
+                // dk1204 se rota porque el PDF viene apaisado (54×17mm) y el
+                // troquel se alimenta en vertical (165 ancho × 566 alto)
+                const rotateDeg = (formato === 'dk2214' || formato === 'guia' || formato === 'dk1204') ? 90 : 0
                 const pyScript = path.join(__dirname, 'verex_print.py')
                 const r = await new Promise(resolve => {
                   const cmd = `python "${pyScript}" --png "${tmpPng}" --ip "${printerIp}" --label "${labelId}" --target-w ${px.w} --target-h ${px.h} --rotate ${rotateDeg}`
