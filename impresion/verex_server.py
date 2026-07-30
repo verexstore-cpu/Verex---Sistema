@@ -33,25 +33,20 @@ _printer_ip_lock  = threading.Lock()
 
 def _is_brother(ip, timeout=1.5):
     """Verifica que el dispositivo en ip:9100 sea realmente una Brother QL.
-    La respuesta real al status request (ESC i S) es exactamente 32 bytes:
-    byte[0]=0x80 (cabecera), byte[1]=0x20 (reservado), byte[2]=0x42 ('B' Brother)."""
-    try:
-        s = socket.create_connection((ip, 9100), timeout=timeout)
-        s.settimeout(timeout)
-        s.sendall(bytes([0x1B, 0x69, 0x53]))   # ESC i S = status request
-        data = b''
-        deadline = __import__('time').time() + timeout
-        while len(data) < 32 and __import__('time').time() < deadline:
-            chunk = s.recv(32 - len(data))
-            if not chunk:
-                break
-            data += chunk
-        s.close()
-        # Brother QL: exactamente 32 bytes, byte[0]=0x80, byte[1]=0x20, byte[2]=0x42
-        return (len(data) == 32 and data[0] == 0x80
-                and data[1] == 0x20 and data[2] == 0x42)
-    except:
+    El QL-810W no responde al comando ESC i S por TCP/IP (solo por USB).
+    Verificamos: puerto 9100 acepte conexión + hostname DNS empiece con 'BRW'."""
+    if not _tcp_reachable(ip, 9100, timeout):
         return False
+    try:
+        hostname = socket.gethostbyaddr(ip)[0].upper()
+        return hostname.startswith('BRW')
+    except:
+        # Sin DNS reverse: confiar en el puerto solamente
+        return True
+
+def _is_brother_quick(ip, timeout=1.5):
+    """Check rápido: solo puerto 9100 abierto. Para IPs ya verificadas."""
+    return _tcp_reachable(ip, 9100, timeout)
 
 def _tcp_reachable(ip, port, timeout=0.7):
     try:
@@ -135,14 +130,15 @@ def get_printer_ip():
     """Devuelve la IP del caché si sigue viva, sino descubre y actualiza."""
     global _printer_ip_cache
     with _printer_ip_lock:
-        if _printer_ip_cache and _is_brother(_printer_ip_cache, timeout=1.0):
+        # Check rápido del caché (solo TCP, sin DNS)
+        if _printer_ip_cache and _is_brother_quick(_printer_ip_cache, timeout=1.0):
             return _printer_ip_cache
-        # Caché inválida — intentar IP guardada en disco primero
+        # Caché inválida — intentar IP guardada en disco primero (check rápido)
         saved = load_cfg().get('printerIp')
-        if saved and _is_brother(saved, timeout=1.5):
+        if saved and _is_brother_quick(saved, timeout=1.5):
             _printer_ip_cache = saved
             return saved
-        # Autodescubrimiento completo
+        # Autodescubrimiento completo (con verificación hostname BRW)
         ip = auto_discover_printer()
         if ip:
             _printer_ip_cache = ip
@@ -294,7 +290,7 @@ class Handler(BaseHTTPRequestHandler):
 
             # Siempre verificar que sea realmente la Brother antes de imprimir
             # (evita mandar datos a otro dispositivo con puerto 9100 abierto)
-            if not printer_ip or not _is_brother(printer_ip, timeout=1.5):
+            if not printer_ip or not _is_brother_quick(printer_ip, timeout=1.5):
                 printer_ip = get_printer_ip()
             if not printer_ip:
                 self._json(200, {'ok': False, 'error': 'Impresora Brother no encontrada — verificá que esté encendida y en el WiFi'}); return
