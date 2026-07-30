@@ -744,6 +744,20 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
       return
     }
 
+    // GET /repair-printer — busca la Brother y corrige TANTO la IP de impresión
+    // como el puerto del driver de Windows. Lo usa el botón "Reparar conexión"
+    // tanto del Hub como de imprimir.html.
+    if (req.method === 'GET' && req.url === '/repair-printer') {
+      repairPrinterFlow().then(r => {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(r))
+      }).catch(e => {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ ok: false, error: e.message }))
+      })
+      return
+    }
+
     // GET /wifi-autoconnect — descubre y guarda IP automáticamente (UDP + TCP)
     if (req.method === 'GET' && req.url === '/wifi-autoconnect') {
       autoDiscoverPrinter().then(ip => {
@@ -960,7 +974,9 @@ if ($found.Count -gt 0) { $found -join ',' } else { Write-Output "" }
 // Este handler arregla las dos. Identifica la Brother por DNS reverso: las
 // Brother WiFi responden BRW + su MAC (ej. BRWBCF4D498693F), que es la única
 // señal que no se confunde con otra impresora de red que tenga el 9100 abierto.
-ipcMain.handle('repair-printer', async () => {
+// Expuesta por IPC (ventana del Hub) y por HTTP GET /repair-printer, para que
+// también la pueda usar imprimir.html, que corre en el navegador y no tiene IPC.
+async function repairPrinterFlow() {
   const script = `
 Add-Type -TypeDefinition @"
 using System;
@@ -1066,7 +1082,9 @@ Write-Output ($brotherIp + '|' + $driver + '|' + $prnName)
 
   saveConfig({ printerIp: ip })
   return { ok: true, ip, driver, printer: prnName || null }
-})
+}
+
+ipcMain.handle('repair-printer', () => repairPrinterFlow())
 
 // Ejecuta un script PowerShell en archivo temporal y devuelve { ok, error }
 function runPs1(script, timeout = 15000) {
