@@ -122,8 +122,23 @@ if (process.defaultApp) {
   app.setAsDefaultProtocolClient('verex')
 }
 
-// Activar auto-inicio con Windows
-app.setLoginItemSettings({ openAtLogin: true, openAsHidden: false })
+// Activar auto-inicio con Windows.
+// OJO con los `args`: sin ellos Electron registra en el arranque solo la ruta
+// de electron.exe, sin decirle QUÉ app abrir. Arranca, no levanta nada, y el
+// servidor del puerto 7891 queda muerto tras cada reinicio de Windows — con lo
+// cual las páginas de impresión caen al diálogo de Windows en vez de imprimir
+// directo. Hay que pasarle la carpeta de la app como argumento, que es lo mismo
+// que hace iniciar.vbs con `electron.exe .`.
+app.setLoginItemSettings({
+  openAtLogin: true,
+  openAsHidden: false,
+  path: process.execPath,
+  // Las comillas son obligatorias: la ruta del proyecto tiene espacios
+  // ("SISTEMA VEREX OFICIAL MAY2026") y Electron escribe los args tal cual en
+  // el registro. Sin comillas, Windows parte el argumento en pedazos y la app
+  // nunca levanta.
+  args: [`"${app.getAppPath()}"`]
+})
 
 app.whenReady().then(() => {
   createWindow()
