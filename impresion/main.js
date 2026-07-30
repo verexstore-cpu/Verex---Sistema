@@ -346,10 +346,14 @@ function startPrintServer() {
           fs.writeFileSync(path.join(app.getPath('desktop'), 'verex-debug-label.png'), Buffer.from(png_base64, 'base64'))
 
           const P = 696 / 62
+          // El label debe coincidir con el rollo FÍSICO cargado: '62red' es para
+          // DK-2251 (negro/rojo) y '62' para el monocromo continuo. Si no coincide,
+          // la QL-810W aborta el trabajo y queda con la luz roja de error.
+          const labelRollo = (rollo === 'mono') ? '62' : '62red'
           const fmtMap = {
-            'guia':     { w: 696, h: 1063, rotate: 90,  label: '62red' },
-            'recibo':   { w: 696, h: 0,    rotate: 0,   label: '62red' },
-            'producto': { w: Math.round(54*P), h: 117, rotate: 0, label: '62red' },
+            'guia':     { w: 696, h: 1063, rotate: 90,  label: labelRollo },
+            'recibo':   { w: 696, h: 0,    rotate: 0,   label: labelRollo },
+            'producto': { w: Math.round(54*P), h: 117, rotate: 0, label: labelRollo },
           }
           const fm = fmtMap[formato] || fmtMap['guia']
           const labelId = fm.label
@@ -513,8 +517,11 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
                   'etiqueta': { w: Math.round(54 * P), h: 117  },
                   'dk2214':   { w: 106, h: 591 },  // 12mm tape: 106 dots imprimibles, 50mm=591 líneas
                 }
-                // Algunos formatos tienen rollo fijo independiente del selector
-                const formatLabelOverride = { 'mini': '29x90', 'dk2214': '12', 'guia': '62red', 'recibo': '62red', 'producto': '62red' }
+                // Solo estos dos tienen rollo fijo: son de otro ancho físico, no de
+                // otro color. Los formatos de 62mm respetan el selector de rollo —
+                // mandar '62red' con un rollo monocromo cargado (o al revés) hace que
+                // la QL-810W corte el trabajo y quede con la luz roja de error.
+                const formatLabelOverride = { 'mini': '29x90', 'dk2214': '12' }
                 const labelId = formatLabelOverride[formato] || labelMap[rollo] || '62'
                 const px = formatPx[formato] || { w: 696, h: 117 }
                 const rotateDeg = (formato === 'dk2214' || formato === 'guia') ? 90 : 0
