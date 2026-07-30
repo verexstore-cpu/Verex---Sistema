@@ -1,0 +1,16 @@
+# Logs — pueden contener datos de impresión de clientes
+*.log
+
+# Cache de Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Temporales
+*.tmp
+*.bak
+~$*
+
+# hub_web/ es su propio repo git, con remoto github.com/verexstore-cpu/verex-hub
+# Se versiona y respalda por su cuenta — no lo duplicamos acá.
+hub_web/

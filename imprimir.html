@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VEREX — Imprimir PDF</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0a0a0a; color: #e0e0e0;
+    font-family: 'Segoe UI', sans-serif;
+    min-height: 100vh; display: flex;
+    flex-direction: column; align-items: center;
+    padding: 28px 16px 40px;
+  }
+  .logo { color: #C9A84C; font-size: 20px; font-weight: 800; letter-spacing: 3px; margin-bottom: 3px; }
+  .sub  { color: #444; font-size: 11px; margin-bottom: 24px; }
+
+  .card {
+    background: #111; border: 1px solid #1e1e1e;
+    border-radius: 14px; padding: 20px;
+    width: 100%; max-width: 600px; margin-bottom: 12px;
+  }
+  .card-title { font-size: 11px; font-weight: 700; color: #C9A84C; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+
+  /* Drop zone */
+  #drop-zone {
+    border: 2px dashed #2a2a2a; border-radius: 10px;
+    padding: 32px 20px; text-align: center; cursor: pointer;
+    transition: all .2s; position: relative;
+  }
+  #drop-zone:hover, #drop-zone.drag-over { border-color: #C9A84C; background: rgba(201,168,76,.05); }
+  #drop-zone.loaded { border-color: #22c55e; background: rgba(34,197,94,.04); }
+  #drop-zone input[type=file] { position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%; }
+  .dz-icon { font-size: 30px; margin-bottom: 8px; }
+  .dz-hint { color: #555; font-size: 12px; }
+  .dz-name { color: #22c55e; font-size: 13px; font-weight: 700; margin-top: 6px; display:none; }
+
+  /* Formato */
+  .fmt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .fmt-btn {
+    background: #161616; border: 1px solid #222; border-radius: 9px;
+    padding: 13px 8px; text-align: center; cursor: pointer;
+    color: #666; font-size: 12px; font-weight: 700; line-height: 1.4; transition: all .15s;
+  }
+  .fmt-btn span { display:block; font-size:10px; font-weight:400; color:#444; margin-top:2px; }
+  .fmt-btn.active { background:#C9A84C; border-color:#C9A84C; color:#111; }
+  .fmt-btn.active span { color:#7a5500; }
+
+  /* Preview */
+  #card-preview { display:none; }
+  #pdf-preview {
+    width: 100%; height: 460px; border-radius: 8px;
+    background: #fff; display: block;
+  }
+
+  /* Botón */
+  #btn-imprimir {
+    width: 100%; max-width: 600px;
+    background: linear-gradient(135deg, #C9A84C, #a87d20);
+    color: #111; border: none; border-radius: 10px;
+    padding: 14px; font-size: 14px; font-weight: 800;
+    cursor: pointer; transition: opacity .2s;
+  }
+  #btn-imprimir:disabled { opacity: .3; cursor: not-allowed; }
+  .prev-info { font-size: 10px; color: #444; margin-top: 6px; }
+
+  /* Recibo 58mm — impresora POS-58, aparte del flujo Brother QL de arriba */
+  .card-58 { border-color: #4a2a8c; background: linear-gradient(180deg,#161129,#111); }
+  .card-58 .card-title { color: #a78bfa; }
+  .card-58 .dz-hint2 { color: #7a7a8a; font-size: 11px; margin-top: 8px; line-height: 1.5; }
+  #btn-imprimir-58 {
+    width: 100%; max-width: 600px;
+    background: linear-gradient(135deg, #7a4ad4, #4a2a8c);
+    color: #ede0ff; border: none; border-radius: 10px;
+    padding: 14px; font-size: 14px; font-weight: 800;
+    cursor: pointer; transition: opacity .2s; margin-top: 10px;
+  }
+  #btn-imprimir-58:disabled { opacity: .3; cursor: not-allowed; }
+
+  /* Reparar conexión — se usa cuando la impresora no es reconocida */
+  #btn-reparar {
+    width: 100%; max-width: 600px; margin-top: 10px;
+    background: #131313; border: 1px solid rgba(34,197,94,.35);
+    color: #7ed184; border-radius: 10px;
+    padding: 11px; font-size: 12px; font-weight: 700;
+    font-family: inherit; cursor: pointer; transition: all .2s;
+  }
+  #btn-reparar:hover:not(:disabled) { border-color: #22c55e; background: rgba(34,197,94,.06); }
+  #btn-reparar:disabled { opacity: .5; cursor: default; }
+  #reparar-status {
+    max-width: 600px; width: 100%; margin-top: 8px;
+    font-size: 11px; line-height: 1.5; text-align: center;
+    color: #555; min-height: 16px;
+  }
+  #reparar-status.ok  { color: #22c55e; }
+  #reparar-status.err { color: #ef4444; }
+</style>
+</head>
+<body>
+
+<div class="logo">VEREX</div>
+<div class="sub">Centro de Impresión</div>
+
+<div class="card">
+  <div class="card-title">📄 Seleccionar PDF</div>
+  <div id="drop-zone">
+    <input type="file" accept=".pdf" id="file-input">
+    <div class="dz-icon">📂</div>
+    <div class="dz-hint">Arrastra el PDF aquí o haz click para seleccionar</div>
+    <div class="dz-name" id="dz-name"></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">🖨️ Formato de etiqueta</div>
+  <div class="fmt-grid">
+    <div class="fmt-btn active" data-fmt="guia">📦 Guía<span>62mm × 9cm</span></div>
+    <div class="fmt-btn" data-fmt="recibo">🧾 Recibo<span>62mm dinámico</span></div>
+    <div class="fmt-btn" data-fmt="producto">🏷️ Producto<span>5cm × 1.5cm</span></div>
+    <div class="fmt-btn" data-fmt="mini">📎 Mini<span>29mm × 90mm</span></div>
+  </div>
+  <div style="margin-top:12px;">
+    <div style="font-size:10px;color:#555;margin-bottom:6px;">🎞️ Tipo de rollo instalado:</div>
+    <div style="display:flex;gap:8px;">
+      <div class="rollo-btn" data-rollo="mono" style="flex:1;background:#161616;border:1px solid #333;border-radius:8px;padding:9px;text-align:center;cursor:pointer;font-size:12px;font-weight:700;color:#666;">⬜ Monocromo</div>
+      <div class="rollo-btn active" data-rollo="rojo" style="flex:1;background:rgba(239,68,68,.1);border:1px solid #ef4444;border-radius:8px;padding:9px;text-align:center;cursor:pointer;font-size:12px;font-weight:700;color:#ef4444;">🔴 Negro/Rojo</div>
+    </div>
+  </div>
+</div>
+
+<div class="card card-58">
+  <div class="card-title">🧾 Recibo térmico 58mm — impresora aparte (POS-58)</div>
+  <div class="dz-hint2">Usa el mismo PDF que arriba, pero lo manda directo a la impresora térmica de 58mm en vez de la Brother QL — no requiere elegir formato ni rollo.</div>
+  <button id="btn-imprimir-58" disabled onclick="imprimirRecibo58()">🖨️ Imprimir en POS-58 (58mm)</button>
+</div>
+
+<div class="card" id="card-preview">
+  <div class="card-title">👁️ Vista previa</div>
+  <embed id="pdf-preview" type="application/pdf">
+  <div class="prev-info" id="prev-info"></div>
+</div>
+
+<div id="server-status" style="font-size:11px;color:#555;text-align:center;margin-bottom:8px;max-width:600px;width:100%;">⏳ Verificando servidor...</div>
+<button id="btn-imprimir" disabled onclick="imprimir()">🖨️ Imprimir</button>
+
+<button id="btn-reparar" onclick="repararImpresora()">🔧 Reparar conexión de la impresora</button>
+<div id="reparar-status"></div>
+
+<script>
+  const FORMATOS = {
+    guia:     { w: '62mm', h: 'auto',  label: 'Guía 62mm'     },
+    recibo:   { w: '62mm', h: 'auto',  label: 'Recibo 62mm'   },
+    producto: { w: '62mm', h: '50mm',  label: 'Producto 62mm' },
+    mini:     { w: '29mm', h: '90mm',  label: 'Mini 29×90mm'  },
+  };
+
+  let formato  = 'guia';
+  let rollo    = 'rojo';
+  let dataURI  = null;
+
+  // ── Bloquear navegación si el usuario arrastra fuera de la zona ───
+  document.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+  document.addEventListener('drop',     e => { e.preventDefault(); });
+
+  // ── Drag & drop en la zona específica ─────────────────────────────
+  const dz = document.getElementById('drop-zone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f && (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'))) cargarPDF(f);
+    else alert('Solo se aceptan archivos PDF');
+  });
+  document.getElementById('file-input').addEventListener('change', e => {
+    if (e.target.files[0]) cargarPDF(e.target.files[0]);
+  });
+
+  function cargarPDF(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      dataURI = e.target.result; // data:application/pdf;base64,...
+
+      document.getElementById('pdf-preview').src = dataURI;
+      document.getElementById('card-preview').style.display = 'block';
+
+      const nameEl = document.getElementById('dz-name');
+      nameEl.textContent = '✅ ' + file.name;
+      nameEl.style.display = 'block';
+      document.querySelector('.dz-hint').style.display = 'none';
+      document.querySelector('.dz-icon').style.display = 'none';
+      dz.classList.add('loaded');
+
+      document.getElementById('prev-info').textContent = (file.size / 1024).toFixed(0) + ' KB · ' + file.name;
+      document.getElementById('btn-imprimir').disabled = false;
+      document.getElementById('btn-imprimir-58').disabled = false;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ── Formato ───────────────────────────────────────────────────────
+  document.querySelectorAll('.fmt-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.fmt-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      formato = btn.dataset.fmt;
+    });
+  });
+
+  // ── Tipo de rollo ─────────────────────────────────────────────────
+  document.querySelectorAll('.rollo-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      rollo = btn.dataset.rollo;
+      document.querySelectorAll('.rollo-btn').forEach(b => {
+        const esRojo = b.dataset.rollo === 'rojo';
+        b.style.borderColor = (b === btn) ? (esRojo ? '#ef4444' : '#C9A84C') : '#333';
+        b.style.color       = (b === btn) ? (esRojo ? '#ef4444' : '#C9A84C') : '#666';
+        b.style.background  = (b === btn) ? (esRojo ? 'rgba(239,68,68,.1)' : 'rgba(201,168,76,.1)') : '#161616';
+      });
+    });
+  });
+
+  // ── Status del servidor ───────────────────────────────────────────
+  const statusEl = document.getElementById('server-status');
+  async function checkServer() {
+    try {
+      const r = await Promise.race([
+        fetch('http://127.0.0.1:7891/ping'),
+        new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), 1500))
+      ]);
+      if (r.ok) {
+        const d = await r.json();
+        statusEl.textContent = '🟢 VEREX Hub activo' + (d.app ? ' · ' + d.app : '');
+        statusEl.style.color = '#22c55e';
+      } else { throw new Error(); }
+    } catch {
+      statusEl.textContent = '🔴 Servidor offline — abre el VEREX Hub primero';
+      statusEl.style.color = '#ef4444';
+    }
+  }
+  checkServer();
+  setInterval(checkServer, 8000);
+
+  // ── Imprimir — envía PDF al servidor local Flask (puerto 5000) → Brother QL
+  async function imprimir() {
+    if (!dataURI) return;
+    const btn = document.getElementById('btn-imprimir');
+    btn.disabled = true;
+    btn.textContent = '⏳ Enviando a impresora...';
+
+    try {
+      const pdf_base64 = dataURI.split(',')[1];
+      const res = await fetch('http://127.0.0.1:7891/imprimir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formato, rollo, pdf_base64, rotar: false })
+      });
+      if (!res.ok) {
+        let txt = '';
+        try { const j = await res.json(); txt = j.error || ''; } catch { txt = await res.text().catch(() => ''); }
+        // Limpiar unicode escape y truncar
+        txt = txt.replace(/\\u[0-9a-fA-F]{4}/g, c => String.fromCharCode(parseInt(c.slice(2), 16))).slice(0, 80);
+        throw new Error(txt || 'Error ' + res.status);
+      }
+      const json = await res.json();
+      if (json.ok) {
+        btn.style.background = 'linear-gradient(135deg,#22c55e,#15803d)';
+        const ipInfo = json.ip ? ` · IP ${json.ip}` : '';
+        btn.textContent = `✅ Enviado a impresora${ipInfo}`;
+        setTimeout(() => {
+          btn.style.background = '';
+          btn.textContent = '🖨️ Imprimir';
+          btn.disabled = false;
+        }, 3000);
+      } else {
+        throw new Error(json.error || 'Error desconocido en el servidor');
+      }
+    } catch(e) {
+      btn.style.background = 'linear-gradient(135deg,#ef4444,#b91c1c)';
+      btn.textContent = '❌ ' + e.message;
+      setTimeout(() => {
+        btn.style.background = '';
+        btn.textContent = '🖨️ Imprimir';
+        btn.disabled = false;
+      }, 5000);
+    }
+  }
+
+  // ── Reparar conexión de la impresora ──────────────────────────────
+  // El router le cambia la IP a la Brother por DHCP y se rompen dos cosas:
+  // la IP para imprimir por TCP y el puerto del driver de Windows (esto
+  // último es lo que hace que Windows la marque como no reconocida).
+  async function repararImpresora() {
+    const btn = document.getElementById('btn-reparar');
+    const st  = document.getElementById('reparar-status');
+    btn.disabled = true;
+    btn.textContent = '⏳ Buscando la impresora en la red...';
+    st.className = '';
+    st.textContent = 'Puede tardar hasta un minuto.';
+
+    try {
+      const res  = await fetch('http://127.0.0.1:7891/repair-printer');
+      const json = await res.json();
+      if (json.ok) {
+        const msgs = {
+          'OK':         'driver de Windows corregido',
+          'YA_OK':      'driver ya estaba correcto',
+          'FALLO':      'no se pudo corregir el driver — abre el Hub como administrador',
+          'SIN_DRIVER': 'no hay driver Brother instalado en Windows',
+        };
+        st.className = 'ok';
+        st.textContent = '✅ Brother encontrada en ' + json.ip + ' — ' + (msgs[json.driver] || json.driver);
+        checkServer();
+      } else {
+        st.className = 'err';
+        st.textContent = '❌ ' + (json.error || 'No se pudo reparar');
+      }
+    } catch(e) {
+      st.className = 'err';
+      st.textContent = '❌ ' + e.message + ' — ¿está abierto el VEREX Hub?';
+    }
+
+    btn.disabled = false;
+    btn.textContent = '🔧 Reparar conexión de la impresora';
+  }
+
+  // ── Imprimir en la térmica 58mm (POS-58) — ruta aparte, no pasa por el
+  // flujo de formato/rollo de la Brother QL. Usa /print-recibo, la misma
+  // que ya manda el recibo de Venta Directa desde el Hub.
+  async function imprimirRecibo58() {
+    if (!dataURI) return;
+    const btn = document.getElementById('btn-imprimir-58');
+    btn.disabled = true;
+    btn.textContent = '⏳ Enviando a POS-58...';
+
+    try {
+      const pdf_base64 = dataURI.split(',')[1];
+      const res = await fetch('http://127.0.0.1:7891/print-recibo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pdfBase64: pdf_base64, nombre: 'recibo-58.pdf' })
+      });
+      const json = await res.json();
+      if (json.ok) {
+        btn.style.background = 'linear-gradient(135deg,#22c55e,#15803d)';
+        btn.textContent = '✅ Enviado — revisa el diálogo de impresión';
+        setTimeout(() => {
+          btn.style.background = '';
+          btn.textContent = '🖨️ Imprimir en POS-58 (58mm)';
+          btn.disabled = false;
+        }, 3000);
+      } else {
+        throw new Error(json.error || 'Error desconocido en el servidor');
+      }
+    } catch(e) {
+      btn.style.background = 'linear-gradient(135deg,#ef4444,#b91c1c)';
+      btn.textContent = '❌ ' + e.message;
+      setTimeout(() => {
+        btn.style.background = '';
+        btn.textContent = '🖨️ Imprimir en POS-58 (58mm)';
+        btn.disabled = false;
+      }, 5000);
+    }
+  }
+</script>
+</body>
+</html>
