@@ -8,6 +8,32 @@ const { exec } = require('child_process')
 
 let mainWindow
 let tray = null
+let isQuitting = false
+
+// ── Log de depuración a archivo — para diagnosticar sin necesitar mostrar
+// ninguna ventana (la app corre oculta la mayor parte del tiempo). ──
+const LOG_FILE = path.join(app.getPath('desktop'), 'verex-print-debug.log')
+function logDebug(msg) {
+  try { fs.appendFileSync(LOG_FILE, `[${new Date().toLocaleTimeString('es-SV')}] ${msg}\n`) } catch (_) {}
+}
+
+function parsePrintError(stderr, errMsg) {
+  const raw = (stderr || errMsg || '').toString()
+  const lines = raw.split('\n').filter(l =>
+    !l.toLowerCase().includes('deprecat') &&
+    !l.toLowerCase().includes('future release') &&
+    !l.toLowerCase().includes('warnings.warn') &&
+    l.trim()
+  )
+  const clean = lines.join('\n').trim() || raw.trim()
+  if (/WinError 10061|ConnectionRefusedError|Connection refused/i.test(clean))
+    return 'Impresora no disponible — verificá que esté encendida y conectada al WiFi'
+  if (/WinError 10060|timed out/i.test(clean))
+    return 'Impresora no responde — verificá que esté encendida y en la red'
+  if (/WinError 10065|unreachable/i.test(clean))
+    return 'Impresora fuera de la red — verificá la conexión WiFi de la impresora'
+  return clean || 'Error desconocido al imprimir'
+}
 
 function createTrayIcon() {
   const size = 32
@@ -29,8 +55,8 @@ function createTray() {
     { type: 'separator' },
     { label: '🖨️ Abrir ventana', click: () => { mainWindow.setSkipTaskbar(false); mainWindow.show(); mainWindow.focus() } },
     { type: 'separator' },
-    { label: '🔄 Reiniciar', click: () => { app.relaunch(); app.exit(0) } },
-    { label: 'Salir', click: () => { tray.destroy(); app.quit() } },
+    { label: '🔄 Reiniciar', click: () => { isQuitting = true; app.relaunch(); app.exit(0) } },
+    { label: 'Salir', click: () => { isQuitting = true; tray.destroy(); app.quit() } },
   ])
   tray.setContextMenu(menu)
   tray.on('double-click', () => { mainWindow.setSkipTaskbar(false); mainWindow.show(); mainWindow.focus() })
@@ -45,18 +71,39 @@ function createWindow() {
     title: 'VEREX – Impresión',
     backgroundColor: '#0e0e18',
     show: false,
-    skipTaskbar: true,
+    skipTaskbar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Sin esto, Chromium le baja prioridad al JS de esta ventana en
+      // cuanto queda oculta (para ahorrar batería) — y como la ventana
+      // principal ya no se muestra al recibir un recibo, eso dejaba
+      // colgado para siempre el procesamiento del PDF (pdf.js nunca
+      // terminaba de cargar el documento).
+      backgroundThrottling: false,
     },
   })
   mainWindow.loadFile('index.html')
   mainWindow.setMenuBarVisibility(false)
 
-  // Al cerrar la ventana → ocultar a bandeja en lugar de cerrar
+  // Mostrar recién cuando el contenido ya está listo para pintar — patrón
+  // recomendado por Electron, evita ventanas en blanco o que no terminan
+  // de aparecer. Se fuerza también centrar/enfocar/traer al frente por si
+  // Windows la deja fuera de pantalla o detrás de otras ventanas.
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.center()
+    mainWindow.show()
+    mainWindow.focus()
+    mainWindow.moveTop()
+  })
+
+  // Al cerrar la ventana → ocultar a bandeja en lugar de cerrar, EXCEPTO
+  // cuando el cierre viene de "Salir"/"Reiniciar" en la bandeja (isQuitting) —
+  // antes esto bloqueaba también esas opciones, dejando la app viva para
+  // siempre sin ninguna forma real de cerrarla desde la interfaz.
   mainWindow.on('close', (e) => {
+    if (isQuitting) return
     e.preventDefault()
     mainWindow.hide()
     mainWindow.setSkipTaskbar(true)
@@ -127,6 +174,119 @@ function startPrintServer() {
       return
     }
 
+    // POST /print-pdf-58 — imprime PDF directamente en la POS-58 sin convertir a imagen
+    // El PDF se carga en el lector nativo de Chromium (máxima calidad) y se manda
+    // al driver de Windows con pageSize 58mm × 300mm.
+    if (req.method === 'POST' && req.url === '/print-pdf-58') {
+      const chunks = []
+      req.on('data', c => chunks.push(c))
+      req.on('end', async () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString())
+          const pdfBase64 = body.pdfBase64 || ''
+          const printerName = body.printerName || ''
+          logDebug(`/print-pdf-58 recibido — pdfBase64 len=${pdfBase64.length}, printer="${printerName}"`)
+
+          if (!pdfBase64) {
+            res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'pdfBase64 vacío' })); return
+          }
+
+          const tmpPdf = path.join(os.tmpdir(), `verex-58-${Date.now()}.pdf`)
+          fs.writeFileSync(tmpPdf, Buffer.from(pdfBase64, 'base64'))
+
+          const win = new BrowserWindow({
+            show: false, width: 800, height: 1000,
+            webPreferences: { nodeIntegration: false, contextIsolation: true }
+          })
+          win.loadFile(tmpPdf)
+
+          win.webContents.once('did-finish-load', async () => {
+            logDebug('/print-pdf-58 did-finish-load — esperando 1500ms')
+            await new Promise(r => setTimeout(r, 1500))
+            win.show()
+            win.setAlwaysOnTop(true, 'screen-saver')
+            win.center(); win.focus(); win.moveTop()
+            app.focus({ steal: true })
+            setTimeout(() => { try { win.setAlwaysOnTop(false) } catch(_) {} }, 1500)
+            logDebug(`/print-pdf-58 llamando print() — printer="${printerName}"`)
+            win.webContents.print({
+              silent: false,
+              printBackground: true,
+              deviceName: printerName,
+              margins: { marginType: 'none' },
+              pageSize: { width: 48000, height: 300000 },
+            }, (success, errorType) => {
+              logDebug(`/print-pdf-58 callback — success=${success}, errorType=${errorType}`)
+              try { win.close() } catch(_) {}
+              fs.unlink(tmpPdf, () => {})
+            })
+          })
+
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: true }))
+        } catch (e) {
+          res.writeHead(400); res.end(JSON.stringify({ ok: false, error: e.message }))
+        }
+      })
+      return
+    }
+
+    // POST /print-html-58 — imprime recibo como HTML puro (texto nítido en POS-58)
+    // El HTML lleva @page { size: 48mm auto } y Chromium lo renderiza a la DPI
+    // real de la impresora sin pasar por rasterización de PDF.
+    if (req.method === 'POST' && req.url === '/print-html-58') {
+      const chunks = []
+      req.on('data', c => chunks.push(c))
+      req.on('end', async () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString())
+          const html = body.html || ''
+          const printerName = body.printerName || ''
+          logDebug(`/print-html-58 recibido — html len=${html.length}, printer="${printerName}"`)
+
+          if (!html) {
+            res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'html vacío' })); return
+          }
+
+          const tmpHtml = path.join(os.tmpdir(), `verex-recibo-${Date.now()}.html`)
+          fs.writeFileSync(tmpHtml, html, 'utf8')
+
+          const win = new BrowserWindow({
+            show: false, width: 600, height: 900,
+            webPreferences: { nodeIntegration: false, contextIsolation: true }
+          })
+          win.loadFile(tmpHtml)
+
+          win.webContents.once('did-finish-load', async () => {
+            logDebug('/print-html-58 did-finish-load — esperando 800ms')
+            await new Promise(r => setTimeout(r, 800))
+            win.show()
+            win.setAlwaysOnTop(true, 'screen-saver')
+            win.center(); win.focus(); win.moveTop()
+            app.focus({ steal: true })
+            setTimeout(() => { try { win.setAlwaysOnTop(false) } catch(_) {} }, 1500)
+            logDebug(`/print-html-58 llamando print() — printer="${printerName}"`)
+            win.webContents.print({
+              silent: false,
+              printBackground: true,
+              deviceName: printerName,
+              margins: { marginType: 'none' },
+            }, (success, errorType) => {
+              logDebug(`/print-html-58 callback — success=${success}, errorType=${errorType}`)
+              try { win.close() } catch(_) {}
+              fs.unlink(tmpHtml, () => {})
+            })
+          })
+
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: true }))
+        } catch (e) {
+          res.writeHead(400); res.end(JSON.stringify({ ok: false, error: e.message }))
+        }
+      })
+      return
+    }
+
     // POST /print-recibo   — recibe PDF térmico 62mm desde el admin
     // POST /print-guia     — recibe Nota de Pedido desde el admin
     // POST /print-etiqueta — recibe PDF de etiquetas DK-1204 desde consignación
@@ -139,13 +299,12 @@ function startPrintServer() {
           let canal = 'load-pdf-recibo'
           if (req.url === '/print-guia')     canal = 'load-pdf-guia'
           if (req.url === '/print-etiqueta') canal = 'load-pdf-etiqueta'
+          logDebug(`HTTP ${req.url} recibido — pdfBase64 len=${(body.pdfBase64||'').length}, mainWindow=${!!mainWindow}`)
           if (mainWindow) {
-            // Mostrar la ventana — el driver de la POS-58 necesita el
-            // diálogo de impresión visible para completar el trabajo, así
-            // que ya no tiene sentido mandarlo en segundo plano oculto.
-            mainWindow.setSkipTaskbar(false)
-            mainWindow.show()
-            mainWindow.focus()
+            // No se muestra la ventana principal — no hace falta para
+            // imprimir (el diálogo de Windows que sí se necesita lo abre
+            // la ventana interna de impresión, no esta). Mostrarla solo
+            // agregaba una ventana extra sin ningún propósito.
             mainWindow.webContents.send(canal, {
               pdfBase64: body.pdfBase64,
               nombre: body.nombre || '',
@@ -200,7 +359,7 @@ function startPrintServer() {
           const { exec: execCb } = require('child_process')
           const r = await new Promise(resolve => {
             execCb(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
-              if (err) resolve({ ok: false, error: stderr || err.message })
+              if (err) resolve({ ok: false, error: parsePrintError(stderr, err.message) })
               else     resolve({ ok: true, ip: printerIp })
             })
           })
@@ -363,7 +522,7 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
                 const r = await new Promise(resolve => {
                   const cmd = `python "${pyScript}" --png "${tmpPng}" --ip "${printerIp}" --label "${labelId}" --target-w ${px.w} --target-h ${px.h} --rotate ${rotateDeg}`
                   exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
-                    if (err) resolve({ ok: false, error: stderr || err.message })
+                    if (err) resolve({ ok: false, error: parsePrintError(stderr, err.message) })
                     else     resolve({ ok: true, ip: printerIp })
                   })
                 })
@@ -1269,10 +1428,14 @@ Write-Output "GDI-PRINT OK"
 `
 }
 
+
 // ── Imprimir sin diálogo ──
 //   widthMm=0   → Etiquetas 54mm×17mm  → RAW TCP directo (bypasa driver), printW=638, printH=201
 //   widthMm=62  → Guía/Recibo 62mm     → RAW TCP directo (bypasa GDI/spooler), printW=720, printH=dinámico
+ipcMain.on('log-debug', (e, msg) => logDebug('[renderer] ' + msg))
+
 ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printerName, pageCount }) => {
+  logDebug(`print-content invocado — widthMm=${widthMm}, heightMm=${heightMm}, printerName="${printerName}", pageCount=${pageCount}`)
   const PC = Math.max(1, parseInt(pageCount) || 1)
 
   // ── Constantes de renderizado ──────────────────────────────────────────────
@@ -1291,6 +1454,14 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
   const isDK2214 = widthMm === -12
   const isLabel  = widthMm === 0
   const is62mm   = widthMm === 62
+  // NOTA: se intentó bypasear el driver de Windows para el recibo 58mm con
+  // ESC/POS crudo por USB (igual que la Brother QL) — no funciona con esta
+  // impresora: "USB004" es solo un puerto virtual del spooler, no un
+  // dispositivo real abierto por CreateFile (el driver POS-58-Series no
+  // expone ese acceso de bajo nivel como sí hace el driver de Brother).
+  // Confirmado con Win32 error 2 (archivo no encontrado) en pruebas. El
+  // recibo 58mm sigue usando el diálogo de impresión de Windows más abajo
+  // (fallback webContents.print), que sí funciona.
 
   // DK-2214: 50mm × 12mm cinta
   const DKW_CSS  = Math.round(50 * 96 / 25.4)  // 189px virtual
@@ -1322,6 +1493,10 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
 
     const tmpFile = path.join(os.tmpdir(), `verex-${Date.now()}.html`)
     fs.writeFileSync(tmpFile, html, 'utf8')
+    // Copia de diagnóstico en el escritorio — para verificar que el HTML tiene contenido
+    if (widthMm === 58) {
+      try { fs.writeFileSync(path.join(app.getPath('desktop'), 'verex-debug-recibo58.html'), html, 'utf8') } catch(_) {}
+    }
 
     const offscreen = isLabel || is62mm
     const win = new BrowserWindow({
@@ -1337,8 +1512,10 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
     })
 
     win.loadFile(tmpFile)
+    logDebug(`Ventana de impresion creada, cargando ${tmpFile} — isDK2214=${isDK2214}, isLabel=${isLabel}, is62mm=${is62mm}`)
 
     win.webContents.once('did-finish-load', async () => {
+      logDebug('did-finish-load disparado')
 
       // ── Impresión: etiquetas (RAW TCP) + guías/recibos (GDI driver) ─────────
       if (isDK2214 || isLabel || is62mm) {
@@ -1459,19 +1636,40 @@ ipcMain.handle('print-content', async (event, { html, widthMm, heightMm, printer
       // — un clic extra del usuario, pero es lo que de verdad funciona con
       // este driver.
       try {
-        await new Promise(r => setTimeout(r, 500))
+        logDebug('Fallback: esperando 2000ms antes de mostrar ventana e imprimir')
+        await new Promise(r => setTimeout(r, 2000))
         win.show()
-        win.webContents.print({
+        win.setAlwaysOnTop(true, 'screen-saver')
+        win.center()
+        win.focus()
+        win.moveTop()
+        app.focus({ steal: true })
+        // Apagar el "siempre encima" un momento después de tomar el foco —
+        // dejarlo prendido para siempre estorbaría sobre el diálogo nativo
+        // de impresión que se abre encima de esta ventana.
+        setTimeout(() => { try { win.setAlwaysOnTop(false) } catch(_) {} }, 1500)
+        logDebug(`Fallback: win.show()+focus()+alwaysOnTop llamado, deviceName="${printerName || ''}" — llamando print()`)
+        // pageSize en micrómetros: para 58mm × 300mm continuo (impresora térmica POS-58)
+        // Se pasa directamente a las opciones de print() en vez de depender solo
+        // del @page CSS, porque el driver GDI de la POS-58 no siempre respeta el @page.
+        const printOpts = {
           silent: false,
           printBackground: true,
           deviceName: printerName || '',
           margins: { marginType: 'none' },
-        }, (success, errorType) => {
+        }
+        if (widthMm === 58) {
+          printOpts.pageSize = { width: 48000, height: 300000 }
+        }
+        logDebug(`Fallback: printOpts=${JSON.stringify(printOpts)}`)
+        win.webContents.print(printOpts, (success, errorType) => {
+          logDebug(`Fallback: callback de print() — success=${success}, errorType=${errorType}`)
           clearTimeout(guard)
           win.close(); fs.unlink(tmpFile, () => {})
           done({ success, error: errorType || null })
         })
       } catch (e) {
+        logDebug('Fallback: EXCEPCION — ' + e.message)
         clearTimeout(guard)
         try { win.close() } catch (_) {}
         fs.unlink(tmpFile, () => {})
