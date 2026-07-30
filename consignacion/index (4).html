@@ -7764,6 +7764,11 @@ function abrirModalImpresion() {
                                        padding:9px 4px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3;">
                                 📎 Mini<br><span style="font-size:9px;font-weight:400;">2×1.2cm · cinta</span>
                             </button>
+                            <button onclick="selFormatoImpresion('mini2',this)" title="Misma mini de 2×1.2cm pero dos por etiqueta DK-1204 — se recortan por las guías punteadas. Para cuando no hay cinta DK-2214."
+                                style="background:#222;color:#aaa;border:1px solid #333;border-radius:8px;
+                                       padding:9px 4px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3;">
+                                ✂️ Mini ×2<br><span style="font-size:9px;font-weight:400;">2×1.2cm en DK-1204</span>
+                            </button>
                             <button onclick="selFormatoImpresion('producto',this)"
                                 style="background:#222;color:#aaa;border:1px solid #333;border-radius:8px;
                                        padding:9px 4px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3;">
@@ -8168,7 +8173,16 @@ async function enviarImpresionServidor() {
     status.textContent = '⏳ Generando PDF…';
 
     const codigos = _expandirCola();
-    const pageCount = codigos.length;
+
+    // 'mini2' arma un PDF de 54×17mm con DOS mini por página, así que:
+    //  · a la impresora se le manda 'dk1204', que es el tamaño real del papel
+    //    (el servidor no conoce 'mini2' y caería en un formato por defecto)
+    //  · pageCount es la mitad — el Hub lo usa para calcular la altura de
+    //    captura del PDF, y con el número equivocado sale cortado.
+    const esMini2 = _formatoImpresion === 'mini2';
+    const formatoImpresora = esMini2 ? 'dk1204' : _formatoImpresion;
+    const pageCount = esMini2 ? Math.ceil(codigos.length / 2) : codigos.length;
+
     let pdfBase64 = null;
     try {
         pdfBase64 = await generarPDFParaServidor(codigos, _formatoImpresion);
@@ -8192,7 +8206,7 @@ async function enviarImpresionServidor() {
             const res = await fetch(PRINT_SERVER + '/imprimir', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ formato: _formatoImpresion, rollo: _rolloImpresion, pdf_base64: pdfBase64, pageCount, printerIp: localStorage.getItem('verex_wifi_ip') || undefined })
+                body: JSON.stringify({ formato: formatoImpresora, rollo: _rolloImpresion, pdf_base64: pdfBase64, pageCount, printerIp: localStorage.getItem('verex_wifi_ip') || undefined })
             });
             const json = await res.json();
             if (json.ok) {
@@ -8200,8 +8214,17 @@ async function enviarImpresionServidor() {
                 status.textContent = `✅ ${json.etiquetas} etiqueta(s) enviadas a Brother QL`;
                 setTimeout(() => { cerrarModalImpresion(); limpiarCola(); }, 1800);
             } else {
+                const errMsg = (json.error || 'Error en impresora');
+                // Traducir errores técnicos que el Hub no filtró
+                const errLimpio = /WinError 10061|ConnectionRefused/i.test(errMsg)
+                    ? 'Impresora apagada o fuera del WiFi — enciéndela e intentá de nuevo'
+                    : /WinError 10060|timed out/i.test(errMsg)
+                    ? 'Impresora no responde — verificá que esté encendida'
+                    : /deprecat/i.test(errMsg)
+                    ? errMsg.replace(/deprecation warning[^\n]*\n?/gi, '').trim() || 'Error en impresora'
+                    : errMsg;
                 status.style.color = '#ef4444';
-                status.textContent = '⚠️ ' + (json.error || 'Error en impresora');
+                status.textContent = '⚠️ ' + errLimpio;
             }
         } catch(e) {
             status.style.color = '#ef4444';
@@ -8220,6 +8243,7 @@ function imprimirPDFNavegador(pdfBase64, pageCount) {
     // Dimensiones según formato (en mm)
     const dims = {
         mini:        { w: 20,   h: 12  },
+        mini2:       { w: 54,   h: 17  },  // dos mini por troquelada DK-1204
         dk2214:      { w: 50,   h: 12  },
         producto:    { w: 54,   h: 15  },
         'dk1204':    { w: 54,   h: 17  },
@@ -8604,6 +8628,12 @@ async function generarPDFParaServidor(codigos, formato, notaTexto) {
         return b64;
     }
 
+    // ── FORMATO MINI ×2 sobre DK-1204 — misma mini, dos por troquelada ──────
+    if (formato === 'mini2') {
+        const b64 = await _generarPDFMini2enDK1204(prods, qrImages);
+        return b64;
+    }
+
     // ── FORMATO TARJETA 25×15mm ───────────────────────────────────────────────
     if (formato === 'tarjeta25') {
         const doc = await _generarPDFTarjeta25(prods, qrImages);
@@ -8836,14 +8866,49 @@ async function generarPDFParaServidor(codigos, formato, notaTexto) {
     return raw.split(',')[1];
 }
 
+// ── Dibujo de UNA mini 20×12mm con origen en (ox, oy) ───────────────────────
+// Extraído de _generarPDFMini para poder reusarlo tal cual en la variante que
+// mete dos mini por etiqueta DK-1204. Así ambas salen visualmente idénticas:
+// si se ajusta el diseño acá, cambia en los dos formatos a la vez.
+function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma) {
+    const B = [0, 0, 0];
+    const QS = 8.5;
+    const dataX = 0.2, dataW = 11.1;
+    const W = 20;
+
+    // QR 8×8mm — columna derecha
+    if (qrImg) {
+        try { doc.addImage(qrImg, 'PNG', ox + 11.5, oy + 0.2, QS, QS); } catch(e) {}
+    }
+
+    // Precio — 8.5pt helvetica bold (igual que DK-2214)
+    const precio = '$ ' + parseFloat(p.precio || 0).toFixed(2);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...B);
+    doc.text(precio, ox + dataX, oy + 3.5);
+
+    // Código — 5pt Tahoma Bold (igual que DK-2214), hasta 2 líneas
+    const cod = p.codigo || '';
+    if (cod) {
+        if (hasTahoma) doc.setFont('TahomaBold', 'normal');
+        else doc.setFont('helvetica', 'bold');
+        doc.setFontSize(5); doc.setTextColor(...B);
+        const codLines = doc.splitTextToSize(cod, dataW).slice(0, 2);
+        codLines.forEach((l, j) => doc.text(l, ox + dataX, oy + 6.5 + j * 1.6));
+    }
+
+    // Material — helvetica bold, ancho completo inferior
+    const mat = abreviarMaterial(p.material || extraerMaterial(p.nombre || '', p.descripcion || ''));
+    if (mat) {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(5.5); doc.setTextColor(...B);
+        doc.text(doc.splitTextToSize(mat, W - 1)[0], ox + 0.5, oy + 10.7);
+    }
+}
+
 // ── FORMATO MINI 1.2×2cm — DK-2214 cinta 12mm — una etiqueta por página ──────
 // PDF multi-página: cada página 20×12mm landscape (ancho cinta 12mm)
 async function _generarPDFMini(prods, qrImages) {
     const { jsPDF } = window.jspdf;
     const W = 20, H = 12;
-    const B = [0, 0, 0];
-    const QS = 8.5;
-    const dataX = 0.2, dataW = 11.1;
 
     // Tahoma Bold igual que DK-2214
     const hasTahoma = !!window.TAHOMA_BOLD_B64;
@@ -8866,32 +8931,59 @@ async function _generarPDFMini(prods, qrImages) {
             doc.addPage([W, H], 'landscape');
         }
 
-        // QR 8×8mm — columna derecha
-        if (qrImages[p.codigo]) {
-            try { doc.addImage(qrImages[p.codigo], 'PNG', 11.5, 0.2, QS, QS); } catch(e) {}
+        _dibujarMiniEn(doc, p, qrImages[p.codigo], 0, 0, hasTahoma);
+    }
+
+    if (!doc) {
+        doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'landscape' });
+    }
+    return doc.output('datauristring').split(',')[1];
+}
+
+// ── FORMATO MINI ×2 EN DK-1204 — dos mini 20×12mm por etiqueta 54×17mm ──────
+// Alternativa para cuando se acaba la cinta DK-2214: la mini queda del MISMO
+// tamaño exacto (20×12mm), solo que se imprimen de a dos sobre una troquelada
+// y se recortan por las guías punteadas.
+//   54mm de ancho = 5 margen + 20 mini + 4 separación + 20 mini + 5 margen
+//   17mm de alto  = 2.5 margen + 12 mini + 2.5 margen
+async function _generarPDFMini2enDK1204(prods, qrImages) {
+    const { jsPDF } = window.jspdf;
+    const W = 54, H = 17;            // etiqueta troquelada DK-1204
+    const LW = 20, LH = 12;          // mini, mismo tamaño que en la cinta
+    const OY = (H - LH) / 2;         // 2.5mm arriba y abajo
+    const OXS = [5, 29];             // origen X de cada mini
+
+    const hasTahoma = !!window.TAHOMA_BOLD_B64;
+    let doc = null;
+
+    for (let i = 0; i < prods.length; i += 2) {
+        if (!doc) {
+            doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'landscape' });
+            if (hasTahoma) {
+                try {
+                    doc.addFileToVFS('TahomaBold.ttf', window.TAHOMA_BOLD_B64);
+                    doc.addFont('TahomaBold.ttf', 'TahomaBold', 'normal');
+                } catch(e) {}
+            }
+        } else {
+            doc.addPage([W, H], 'landscape');
         }
 
-        // Precio — 8.5pt helvetica bold (igual que DK-2214)
-        const precio = '$ ' + parseFloat(p.precio || 0).toFixed(2);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...B);
-        doc.text(precio, dataX, 3.5);
+        const par = [prods[i], prods[i + 1] || null];
 
-        // Código — 5pt Tahoma Bold (igual que DK-2214), hasta 2 líneas
-        const cod = p.codigo || '';
-        if (cod) {
-            if (hasTahoma) doc.setFont('TahomaBold', 'normal');
-            else doc.setFont('helvetica', 'bold');
-            doc.setFontSize(5); doc.setTextColor(...B);
-            const codLines = doc.splitTextToSize(cod, dataW).slice(0, 2);
-            codLines.forEach((l, j) => doc.text(l, dataX, 6.5 + j * 1.6));
-        }
+        par.forEach((p, k) => {
+            if (!p) return;
+            _dibujarMiniEn(doc, p, qrImages[p.codigo], OXS[k], OY, hasTahoma);
+        });
 
-        // Material — 6pt helvetica bold (igual que DK-2214), ancho completo inferior
-        const mat = abreviarMaterial(p.material || extraerMaterial(p.nombre || '', p.descripcion || ''));
-        if (mat) {
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(5.5); doc.setTextColor(...B);
-            doc.text(doc.splitTextToSize(mat, W - 1)[0], 0.5, 10.7);
-        }
+        // Guías de corte: rectángulo punteado gris alrededor de cada mini, para
+        // recortar exactamente a 20×12mm. Se dibujan al final para que queden
+        // por encima y no las tape el QR.
+        doc.setDrawColor(150, 150, 150);
+        doc.setLineWidth(0.1);
+        if (doc.setLineDashPattern) doc.setLineDashPattern([0.5, 0.5], 0);
+        par.forEach((p, k) => { if (p) doc.rect(OXS[k], OY, LW, LH); });
+        if (doc.setLineDashPattern) doc.setLineDashPattern([], 0);
     }
 
     if (!doc) {
@@ -10535,6 +10627,11 @@ async function confirmarVentaDirecta() {
         console.log("[VD] Respuesta recibida:", JSON.stringify(resp));
         if (resp.ok) {
             toast("✅ Venta registrada" + (saldo > 0 ? " — crédito $" + saldo.toFixed(2) : ""));
+            if (resp.itemsSinStock && resp.itemsSinStock.length > 0) {
+                setTimeout(() => {
+                    alert("⚠️ AVISO — Stock NO descontado\n\nLos siguientes productos no se encontraron en la tabla de stock y su inventario NO fue actualizado:\n\n" + resp.itemsSinStock.join(", ") + "\n\nCorrige el stock manualmente desde el panel de administración.");
+                }, 500);
+            }
             generarPDFVentaDirecta(payload, []);
             items.forEach(({ prod, qty }) => {
                 const s = stockData.find(s => s.codigo === prod.codigo);
@@ -11482,12 +11579,15 @@ function enviarWAEstadoCuenta(ventaId) {
             <button class="btn btn-gris btn-full" style="margin-top:6px;font-size:12px;" onclick="cerrarQRManual()">Cancelar QR</button>
         </div>
         <!-- Campos -->
-        <div style="display:flex;gap:8px;margin-bottom:8px;">
-            <input type="text" id="vdm-codigo" placeholder="Código (opcional)" style="flex:1;margin:0;">
-            <button onclick="abrirQRManual()" style="padding:8px 12px;background:#4a6fa5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:18px;" title="Escanear QR">&#x1F4F7;</button>
+        <div style="position:relative;margin-bottom:8px;">
+            <div style="display:flex;gap:8px;">
+                <input type="text" id="vdm-nombre" placeholder="🔍 Buscar producto por nombre o código *" style="flex:1;margin:0;" oninput="buscarVDManual(this.value)" autocomplete="off">
+                <button onclick="abrirQRManual()" style="padding:8px 12px;background:#4a6fa5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:18px;flex-shrink:0;" title="Escanear QR">&#x1F4F7;</button>
+            </div>
+            <div id="vdm-sugerencias" style="display:none;position:absolute;top:100%;left:0;right:0;background:#1e1e1e;border:1px solid #444;border-radius:0 0 10px 10px;z-index:999;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.5);"></div>
         </div>
-        <input type="text"   id="vdm-nombre"   placeholder="Nombre del producto *" style="margin-bottom:8px;">
-        <input type="number" id="vdm-precio"   placeholder="Precio $ *" step="0.01" min="0" style="margin-bottom:8px;">
+        <input type="text"   id="vdm-codigo"  placeholder="Código del producto (auto-llena al seleccionar)" style="margin-bottom:8px;background:#111;color:#aaa;font-size:12px;" readonly>
+        <input type="number" id="vdm-precio"  placeholder="Precio $ *" step="0.01" min="0" style="margin-bottom:8px;">
         <input type="number" id="vdm-cantidad" placeholder="Cantidad" value="1" min="1" style="margin-bottom:14px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
             <button class="btn btn-gris" onclick="cerrarQRManual();cerrarModal('modal-vd-manual')">Cancelar</button>
@@ -11839,6 +11939,7 @@ function abrirVDManual() {
     document.getElementById("vdm-precio").value   = "";
     document.getElementById("vdm-cantidad").value = "1";
     document.getElementById("vdm-codigo").value   = "";
+    document.getElementById("vdm-sugerencias").style.display = "none";
     document.getElementById("vdm-foto-preview").innerHTML = "📷";
     document.getElementById("vdm-foto-preview").style.fontSize = "36px";
     document.getElementById("vdm-qr-area").style.display = "none";
@@ -11870,16 +11971,12 @@ async function abrirQRManual() {
                     if (codes.length) {
                         cerrarQRManual();
                         const raw = codes[0].rawValue.trim().toUpperCase();
-                        document.getElementById("vdm-codigo").value = raw;
-                        // Si existe en stock, pre-llenar nombre y precio
-                        const prod = stockData.find(s => s.codigo.toUpperCase() === raw);
+                        const prod = (stockData || []).find(s => (s.codigo || "").toUpperCase() === raw);
                         if (prod) {
-                            document.getElementById("vdm-nombre").value = prod.nombre || "";
-                            document.getElementById("vdm-precio").value = prod.precio || "";
-                            toast("✅ Producto encontrado: " + prod.nombre);
+                            seleccionarProdVDManual(prod.codigo);
+                            toast("✅ " + prod.nombre + " encontrado");
                         } else {
-                            toast("📷 Código escaneado: " + raw);
-                            document.getElementById("vdm-nombre").focus();
+                            toast("⚠️ Código " + raw + " no está en el inventario", "#f97316");
                         }
                     }
                 } catch(_) {}
@@ -11900,29 +11997,85 @@ function cerrarQRManual() {
     document.getElementById("vdm-qr-area").style.display = "none";
 }
 
+function buscarVDManual(q) {
+    const box = document.getElementById("vdm-sugerencias");
+    const term = (q || "").trim().toUpperCase();
+    if (term.length < 2) { box.style.display = "none"; return; }
+    const matches = (stockData || []).filter(p =>
+        p.estado !== "inactivo" &&
+        ((p.codigo || "").toUpperCase().includes(term) ||
+         (p.nombre || "").toUpperCase().includes(term))
+    ).slice(0, 8);
+    if (matches.length === 0) { box.style.display = "none"; return; }
+    box.innerHTML = matches.map(p => {
+        const stock = parseInt(p.stock_bodega || 0) + parseInt(p.stock_tienda || 0);
+        const stockColor = stock > 0 ? "#4ade80" : "#f87171";
+        const stockTxt  = stock > 0 ? `${stock} disponible${stock>1?"s":""}` : "Sin stock";
+        return `<div onclick="seleccionarProdVDManual('${sanitizar(p.codigo)}')"
+            style="display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;border-bottom:1px solid #2a2a2a;"
+            onmouseover="this.style.background='#2a2a2a'" onmouseout="this.style.background='transparent'">
+            ${p.foto ? `<img src="${sanitizar(p.foto)}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0;">` : `<div style="width:36px;height:36px;border-radius:6px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-size:16px;">💍</div>`}
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:12px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sanitizar(p.nombre)}</div>
+                <div style="font-size:11px;color:#888;">${sanitizar(p.codigo)} · $${parseFloat(p.precio||0).toFixed(2)}</div>
+            </div>
+            <div style="font-size:10px;font-weight:700;color:${stockColor};white-space:nowrap;">${stockTxt}</div>
+        </div>`;
+    }).join("");
+    box.style.display = "block";
+}
+
+function seleccionarProdVDManual(codigo) {
+    const p = (stockData || []).find(s => s.codigo === codigo);
+    if (!p) return;
+    document.getElementById("vdm-nombre").value  = p.nombre || "";
+    document.getElementById("vdm-codigo").value  = p.codigo;
+    document.getElementById("vdm-precio").value  = parseFloat(p.precio || 0).toFixed(2);
+    document.getElementById("vdm-sugerencias").style.display = "none";
+    // guardar foto del stock
+    document.getElementById("vdm-codigo").dataset.foto = p.foto || "";
+    document.getElementById("vdm-cantidad").focus();
+}
+
 async function confirmarVDManual() {
     const nombre   = document.getElementById("vdm-nombre").value.trim();
     const precio   = parseFloat(document.getElementById("vdm-precio").value) || 0;
     const cantidad = parseInt(document.getElementById("vdm-cantidad").value) || 1;
     const codigoInput = document.getElementById("vdm-codigo").value.trim().toUpperCase();
-    if (!nombre) { toast("⚠️ Ingresa el nombre del producto"); return; }
-    if (!precio) { toast("⚠️ Ingresa el precio"); return; }
 
-    // Subir foto si hay
-    let fotoUrl = "";
+    if (!nombre)  { toast("⚠️ Seleccioná un producto de la lista"); return; }
+    if (!precio)  { toast("⚠️ Ingresa el precio"); return; }
+    if (!codigoInput) {
+        toast("⚠️ Debes seleccionar un producto del catálogo — el código es obligatorio para descontar stock", "#f97316");
+        return;
+    }
+
+    // Verificar que el código existe en stock
+    const prodStock = (stockData || []).find(s => s.codigo === codigoInput);
+    if (!prodStock) {
+        toast("⚠️ Código no encontrado en el inventario. Buscá el producto por nombre.", "#f97316");
+        return;
+    }
+    const disponible = parseInt(prodStock.stock_bodega || 0) + parseInt(prodStock.stock_tienda || 0);
+    const enCarrito  = (_vdCarrito[codigoInput]?.qty || 0);
+    if (disponible - enCarrito < cantidad) {
+        toast(`⚠️ Stock insuficiente: ${disponible} disponible${disponible===1?"":"s"}, ya tenés ${enCarrito} en el carrito`, "#f97316");
+        return;
+    }
+
+    // Subir foto si hay — si no, usar la foto del stock
+    let fotoUrl = prodStock.foto || "";
     if (_vdmFotoBase64) {
-        const codigo = codigoInput || ("MANUAL_" + Date.now());
-        const url = await subirFotoImageKit(_vdmFotoBase64, codigo);
+        const url = await subirFotoImageKit(_vdmFotoBase64, codigoInput);
         fotoUrl = url || _vdmFotoBase64;
     }
 
-    const codigo = codigoInput || ("MANUAL_" + Date.now());
-    const prod = { codigo, nombre, precio, foto: fotoUrl, stock_bodega: 999, esManual: true };
+    const prod = { ...prodStock, precio, foto: fotoUrl };
 
-    if (_vdCarrito[codigo]) {
-        _vdCarrito[codigo].qty += cantidad;
+    if (_vdCarrito[codigoInput]) {
+        _vdCarrito[codigoInput].qty += cantidad;
     } else {
-        _vdCarrito[codigo] = { prod, qty: cantidad };
+        _vdCarrito[codigoInput] = { prod, qty: cantidad };
     }
     cerrarQRManual();
     cerrarModal("modal-vd-manual");
