@@ -31,21 +31,24 @@ def save_cfg(data):
 _printer_ip_cache = None
 _printer_ip_lock  = threading.Lock()
 
-def _is_brother(ip, timeout=1.5):
-    """Verifica que el dispositivo en ip:9100 sea realmente una Brother QL.
-    El QL-810W no responde al comando ESC i S por TCP/IP (solo por USB).
-    Verificamos: puerto 9100 acepte conexión + hostname DNS empiece con 'BRW'."""
-    if not _tcp_reachable(ip, 9100, timeout):
-        return False
+def _is_brother(ip, timeout=2.0):
+    """Verifica que el dispositivo sea realmente una Brother QL.
+    Idéntico al check de main.js: HTTP puerto 80 debe contener 'brother' en el body.
+    Las Brother siempre tienen web admin en puerto 80; otros dispositivos con 9100 no."""
+    import urllib.request, urllib.error
     try:
-        hostname = socket.gethostbyaddr(ip)[0].upper()
-        return hostname.startswith('BRW')
+        req = urllib.request.urlopen(
+            f'http://{ip}/', timeout=timeout)
+        body = req.read(4096).decode('utf-8', errors='ignore').lower()
+        return 'brother' in body
+    except urllib.error.HTTPError as e:
+        # Redirige (301/302) → casi seguro es una Brother
+        return e.code in (301, 302)
     except:
-        # Sin DNS reverse: confiar en el puerto solamente
-        return True
+        return False
 
 def _is_brother_quick(ip, timeout=1.5):
-    """Check rápido: solo puerto 9100 abierto. Para IPs ya verificadas."""
+    """Check rápido: solo TCP puerto 9100. Para IPs ya verificadas en caché."""
     return _tcp_reachable(ip, 9100, timeout)
 
 def _tcp_reachable(ip, port, timeout=0.7):
@@ -67,10 +70,8 @@ def auto_discover_printer():
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.settimeout(3)
-        # Packet de descubrimiento Brother (DCP/MFC/QL)
-        probe = bytes([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+        # Packet de descubrimiento Brother QL/P-touch (igual que main.js)
+        probe = bytes([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01])
         sock.sendto(probe, ('255.255.255.255', 54925))
         try:
             data, addr = sock.recvfrom(1024)
@@ -107,19 +108,19 @@ def auto_discover_printer():
     except:
         pass
 
-    # Paso 1: detectar qué IPs tienen el puerto 9100 abierto (rápido, sin verificar)
-    open9100 = []
+    # Paso 1: detectar IPs con puerto 9100 O puerto 80 abiertos (paralelo, rápido)
+    candidates_ok = []
     lock = threading.Lock()
-    def check_port(ip):
-        if _tcp_reachable(ip, 9100, 0.4):
-            with lock: open9100.append(ip)
-    threads = [threading.Thread(target=check_port, args=(ip,), daemon=True)
+    def check_ports(ip):
+        if _tcp_reachable(ip, 9100, 0.4) or _tcp_reachable(ip, 80, 0.4):
+            with lock: candidates_ok.append(ip)
+    threads = [threading.Thread(target=check_ports, args=(ip,), daemon=True)
                for ip in candidates]
     for t in threads: t.start()
     for t in threads: t.join(timeout=0.6)
 
-    # Paso 2: de las que tienen 9100 abierto, verificar cuál es Brother de verdad
-    for ip in open9100:
+    # Paso 2: de las candidatas, verificar cuál tiene web Brother (HTTP puerto 80)
+    for ip in candidates_ok:
         if _is_brother(ip):
             print(f'[Brother] Encontrada via scan: {ip}')
             return ip
