@@ -6,9 +6,14 @@
 <title>VEREX Nexus</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- jsPDF y qrcodejs se sirven desde este mismo dominio, no desde un CDN: son
+     el camino critico para imprimir etiquetas, y si el CDN falla o lo bloquea
+     una extension del navegador no se puede imprimir. Ademas quedan fijas en
+     git, sin depender de que cdnjs siga publicando esa version para siempre.
+     Verificadas identicas al CDN (sha256) al momento de bajarlas. -->
+<script src="lib/jspdf.umd.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="lib/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script src="tahomabd.js"></script>
 <style>
