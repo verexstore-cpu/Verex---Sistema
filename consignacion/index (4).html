@@ -8870,11 +8870,23 @@ async function generarPDFParaServidor(codigos, formato, notaTexto) {
 // Extraído de _generarPDFMini para poder reusarlo tal cual en la variante que
 // mete dos mini por etiqueta DK-1204. Así ambas salen visualmente idénticas:
 // si se ajusta el diseño acá, cambia en los dos formatos a la vez.
-function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma) {
+function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma, engrosar) {
     const B = [0, 0, 0];
     const QS = 8.5;
     const dataX = 0.2, dataW = 11.1;
     const W = 20;
+
+    // "Negrita extra": se dibuja el contorno de cada letra además del relleno,
+    // lo que engrosa el trazo en el PDF mismo. A 20×12mm las letras quedan de
+    // 1-2 puntos de ancho y el cabezal térmico las marca flojas; engrosarlas
+    // acá funciona mejor que tocar la conversión a blanco y negro, que ya se
+    // probó (con umbral en vez de dithering salía más pálido todavía).
+    // El trazo se mantiene fino en los textos chicos para no cerrar los huecos
+    // de letras como la "a" o la "e".
+    const trazoGrande  = engrosar ? 0.10 : 0;   // precio, 8.5pt
+    const trazoChico   = engrosar ? 0.05 : 0;   // código y material, 5-5.5pt
+    const modo = engrosar ? { renderingMode: 'fillThenStroke' } : undefined;
+    if (engrosar) doc.setDrawColor(...B);
 
     // QR 8×8mm — columna derecha
     if (qrImg) {
@@ -8884,7 +8896,8 @@ function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma) {
     // Precio — 8.5pt helvetica bold (igual que DK-2214)
     const precio = '$ ' + parseFloat(p.precio || 0).toFixed(2);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...B);
-    doc.text(precio, ox + dataX, oy + 3.5);
+    if (engrosar) doc.setLineWidth(trazoGrande);
+    doc.text(precio, ox + dataX, oy + 3.5, modo);
 
     // Código — 5pt Tahoma Bold (igual que DK-2214), hasta 2 líneas
     const cod = p.codigo || '';
@@ -8892,15 +8905,17 @@ function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma) {
         if (hasTahoma) doc.setFont('TahomaBold', 'normal');
         else doc.setFont('helvetica', 'bold');
         doc.setFontSize(5); doc.setTextColor(...B);
+        if (engrosar) doc.setLineWidth(trazoChico);
         const codLines = doc.splitTextToSize(cod, dataW).slice(0, 2);
-        codLines.forEach((l, j) => doc.text(l, ox + dataX, oy + 6.5 + j * 1.6));
+        codLines.forEach((l, j) => doc.text(l, ox + dataX, oy + 6.5 + j * 1.6, modo));
     }
 
     // Material — helvetica bold, ancho completo inferior
     const mat = abreviarMaterial(p.material || extraerMaterial(p.nombre || '', p.descripcion || ''));
     if (mat) {
         doc.setFont('helvetica', 'bold'); doc.setFontSize(5.5); doc.setTextColor(...B);
-        doc.text(doc.splitTextToSize(mat, W - 1)[0], ox + 0.5, oy + 10.7);
+        if (engrosar) doc.setLineWidth(trazoChico);
+        doc.text(doc.splitTextToSize(mat, W - 1)[0], ox + 0.5, oy + 10.7, modo);
     }
 }
 
@@ -8980,7 +8995,9 @@ async function _generarPDFMini2enDK1204(prods, qrImages) {
 
         par.forEach((p, k) => {
             if (!p) return;
-            _dibujarMiniEn(doc, p, qrImages[p.codigo], OXS[k], OY, hasTahoma);
+            // último parámetro: engrosar el texto. Solo acá — la mini de cinta
+            // DK-2214 se deja como está, que sale bien.
+            _dibujarMiniEn(doc, p, qrImages[p.codigo], OXS[k], OY, hasTahoma, true);
         });
 
         // Guías de corte: rectángulo punteado alrededor de cada mini, para
