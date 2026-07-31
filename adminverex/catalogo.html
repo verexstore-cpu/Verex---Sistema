@@ -929,12 +929,23 @@
                 // mientras 13 estaban realmente sin unidades). Se usa la misma
                 // fórmula que el admin en _stockTotalProd(): las unidades reales
                 // repartidas entre bodega, tienda y consignación.
-                const disponible = s
-                    ? (parseInt(s.stock_bodega)||0)
-                    + (parseInt(s.stock_tienda)||0)
-                    + (parseInt(s.stock_consignacion)||0)
-                    : 0;
-                const agotado = !s || s.reservado || disponible <= 0;
+                const sinUnidades = row => !row || row.reservado ||
+                    ((parseInt(row.stock_bodega)||0)
+                   + (parseInt(row.stock_tienda)||0)
+                   + (parseInt(row.stock_consignacion)||0)) <= 0;
+
+                // Pares y tríos: el set solo se puede armar si TODAS sus piezas
+                // tienen unidades. Antes se miraba solo el código principal, así
+                // que el par seguía ofreciéndose aunque la otra pieza ya se
+                // hubiera vendido por consignación, otro afiliado o la tienda —
+                // y el cliente terminaba pidiendo algo imposible de completar.
+                // Los códigos de cada pieza ya vienen en el catálogo (cD/cC), que
+                // es lo mismo que se usa arriba para recalcular el precio del set.
+                const piezas = (p.par ? [...(p.cD||[]), ...(p.cC||[])] : []).filter(Boolean);
+
+                const agotado = piezas.length
+                    ? piezas.some(cod => sinUnidades(mapa.get(cod)))
+                    : sinUnidades(s);
                 if(!agotado) return;
                 p._agotado = true;
                 // Ocultar en vez de tachar — más limpio para el cliente, y evita
