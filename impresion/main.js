@@ -562,7 +562,10 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
                   // dk1204 lleva DOS mini maquetadas en posiciones fijas dentro de
                   // la página: sin --no-crop, verex_print.py recorta los márgenes
                   // y estira una sola etiqueta hasta llenar todo el troquel.
-                  const noCrop = (formato === 'dk1204') ? ' --no-crop' : ''
+                  // Además de --no-crop: umbral en vez de dithering, para que el
+                  // texto y el QR salgan sólidos y bien marcados. El dithering
+                  // los deja grises y punteados, y ensucia los módulos del QR.
+                  const noCrop = (formato === 'dk1204') ? ' --no-crop --no-dither --threshold 40' : ''
                   const cmd = `python "${pyScript}" --png "${tmpPng}" --ip "${printerIp}" --label "${labelId}" --target-w ${px.w} --target-h ${px.h} --rotate ${rotateDeg}${noCrop}`
                   exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
                     if (err) resolve({ ok: false, error: parsePrintError(stderr, err.message) })

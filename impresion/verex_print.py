@@ -27,7 +27,8 @@ def crop_to_content(img):
         img = img.crop((x0, y0, x1, y1))
     return img
 
-def print_label(png_path, ip, label_id, target_w, target_h, rotate=0, crop=True):
+def print_label(png_path, ip, label_id, target_w, target_h, rotate=0, crop=True,
+                dither=True, threshold=70):
     roll_w = LABEL_WIDTH_DOTS.get(label_id, 696)
 
     img = Image.open(png_path).convert('RGB')
@@ -60,14 +61,19 @@ def print_label(png_path, ip, label_id, target_w, target_h, rotate=0, crop=True)
         canvas.paste(img, (x_off, 0))
         img = canvas
 
+    # dither=True (Floyd-Steinberg) esta pensado para FOTOS. Con texto y codigos
+    # QR convierte los bordes suavizados en puntos salteados: el texto sale gris
+    # y deshilachado, y los modulos del QR quedan sucios (peor lectura). Para
+    # etiquetas conviene umbral: --no-dither con --threshold mas bajo, que en
+    # brother_ql significa corte mas alto = mas pixeles en negro = mas marcado.
     qlr = BrotherQLRaster('QL-810W')
     convert(
         qlr=qlr,
         images=[img],
         label=label_id,
         rotate='0',
-        threshold=70,
-        dither=True,
+        threshold=threshold,
+        dither=dither,
         compress=False,
         red=('red' in label_id),
         hq=True,
@@ -101,10 +107,17 @@ if __name__ == '__main__':
                    help='No recortar el espacio en blanco: conserva las posiciones '
                         'del PDF tal cual (necesario cuando la pagina lleva varias '
                         'etiquetas maquetadas en sitios fijos)')
+    p.add_argument('--no-dither', action='store_true',
+                   help='Usar umbral en vez de Floyd-Steinberg: texto y QR salen '
+                        'solidos en vez de punteados')
+    p.add_argument('--threshold', type=int, default=70,
+                   help='Umbral de brother_ql (0-100). MAS BAJO = MAS NEGRO. '
+                        'Solo aplica con --no-dither')
     args = p.parse_args()
     try:
         print_label(args.png, args.ip, args.label, args.target_w, args.target_h,
-                    args.rotate, crop=not args.no_crop)
+                    args.rotate, crop=not args.no_crop,
+                    dither=not args.no_dither, threshold=args.threshold)
     except Exception as e:
         print(f'ERROR: {e}', file=sys.stderr)
         sys.exit(1)
