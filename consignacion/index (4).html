@@ -7726,11 +7726,22 @@ async function imprimirCola() {
 
     if (serverVivo) {
         abrirModalImpresion();
-    } else {
-        // Fallback: descargar PDF como antes
-        await generarEtiquetaRapida(_expandirCola());
-        limpiarCola();
+        return;
     }
+
+    // Sin servidor de impresión no se puede mandar directo a la Brother. Antes
+    // se descargaba el PDF en silencio y encima se limpiaba la cola: el usuario
+    // apretaba "imprimir", le aparecía una descarga sin explicación y perdía lo
+    // que había cargado. Ahora se avisa qué pasó y se decide.
+    const seguir = confirm(
+        "No se puede imprimir directo: la app VEREX Impresión no está abierta.\n\n" +
+        "Ábrela desde el Hub y volvé a intentar.\n\n" +
+        "¿Preferís descargar el PDF de las etiquetas para imprimirlo a mano?"
+    );
+    if (!seguir) return;   // se conserva la cola para reintentar con el Hub abierto
+
+    await generarEtiquetaRapida(_expandirCola());
+    limpiarCola();
 }
 
 // ── MODAL DE IMPRESIÓN DIRECTA ────────────────────────────────────────────
