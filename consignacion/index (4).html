@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>VEREX — Hub</title>
+<title>VEREX Nexus</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -443,7 +443,7 @@
 <div id="pantalla-login">
     <div class="login-card">
         <h1>VEREX</h1>
-        <p>VEREX Hub</p>
+        <p>VEREX Nexus</p>
         <input type="password" id="inp-pass" placeholder="Contraseña" onkeydown="if(event.key==='Enter')login()">
         <button class="btn btn-dorado btn-full" onclick="login()">Ingresar</button>
     </div>
@@ -2675,7 +2675,7 @@ function generarContratoConsignacionPDF(vendedor) {
     // Footer
     doc.setFontSize(8);
     doc.setTextColor(180, 180, 180);
-    doc.text("VEREX Hub • " + fecha, pageW / 2, Math.min(y + 12, 290), { align: "center" });
+    doc.text("VEREX Nexus • " + fecha, pageW / 2, Math.min(y + 12, 290), { align: "center" });
 
     doc.save("Contrato_" + vendedor.nombre.replace(/ /g, "_") + ".pdf");
     toast("📄 Contrato generado");
@@ -4211,7 +4211,7 @@ function generarReciboPDF(vendedor, items, firmaImg, codigoFirma, esMensajeria) 
     // Footer
     doc.setFontSize(8);
     doc.setTextColor(180, 180, 180);
-    doc.text("VEREX Hub • " + fecha, pageW / 2, 285, { align: "center" });
+    doc.text("VEREX Nexus • " + fecha, pageW / 2, 285, { align: "center" });
 
     doc.save("Recibo_Entrega_" + vendedor.nombre.replace(/ /g, "_") + "_" + new Date().toLocaleDateString("es-SV").replace(/\//g, "-") + ".pdf");
     toast("📄 Recibo generado");
