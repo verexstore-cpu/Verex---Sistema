@@ -553,7 +553,11 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
                 const rotateDeg = (formato === 'dk2214' || formato === 'guia' || formato === 'dk1204') ? 90 : 0
                 const pyScript = path.join(__dirname, 'verex_print.py')
                 const r = await new Promise(resolve => {
-                  const cmd = `python "${pyScript}" --png "${tmpPng}" --ip "${printerIp}" --label "${labelId}" --target-w ${px.w} --target-h ${px.h} --rotate ${rotateDeg}`
+                  // dk1204 lleva DOS mini maquetadas en posiciones fijas dentro de
+                  // la página: sin --no-crop, verex_print.py recorta los márgenes
+                  // y estira una sola etiqueta hasta llenar todo el troquel.
+                  const noCrop = (formato === 'dk1204') ? ' --no-crop' : ''
+                  const cmd = `python "${pyScript}" --png "${tmpPng}" --ip "${printerIp}" --label "${labelId}" --target-w ${px.w} --target-h ${px.h} --rotate ${rotateDeg}${noCrop}`
                   exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
                     if (err) resolve({ ok: false, error: parsePrintError(stderr, err.message) })
                     else     resolve({ ok: true, ip: printerIp })

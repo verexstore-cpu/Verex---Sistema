@@ -8243,7 +8243,7 @@ function imprimirPDFNavegador(pdfBase64, pageCount) {
     // Dimensiones según formato (en mm)
     const dims = {
         mini:        { w: 20,   h: 12  },
-        mini2:       { w: 54,   h: 17  },  // dos mini por troquelada DK-1204
+        mini2:       { w: 47.92, h: 13.97 },  // area imprimible del troquel DK-1204
         dk2214:      { w: 50,   h: 12  },
         producto:    { w: 54,   h: 15  },
         'dk1204':    { w: 54,   h: 17  },
@@ -8948,10 +8948,17 @@ async function _generarPDFMini(prods, qrImages) {
 //   17mm de alto  = 2.5 margen + 12 mini + 2.5 margen
 async function _generarPDFMini2enDK1204(prods, qrImages) {
     const { jsPDF } = window.jspdf;
-    const W = 54, H = 17;            // etiqueta troquelada DK-1204
+    // La página NO mide la etiqueta completa (54×17mm) sino el área IMPRIMIBLE
+    // del troquel: 566×165 dots a 300dpi = 47.92×13.97mm. La QL no imprime
+    // ~3mm de cada extremo ni ~1.5mm de cada lado, y manda a la impresora
+    // justamente esa área. Usando el tamaño imprimible, el mapeo mm→dots queda
+    // 1:1 y las dos mini salen a su tamaño real, sin deformarse.
+    const W = 47.92, H = 13.97;
     const LW = 20, LH = 12;          // mini, mismo tamaño que en la cinta
-    const OY = (H - LH) / 2;         // 2.5mm arriba y abajo
-    const OXS = [5, 29];             // origen X de cada mini
+    const G  = 4;                    // separación entre las dos
+    const M  = (W - 2 * LW - G) / 2; // margen lateral que sobra: 1.96mm
+    const OY = (H - LH) / 2;         // 0.985mm arriba y abajo
+    const OXS = [M, M + LW + G];     // origen X de cada mini
 
     const hasTahoma = !!window.TAHOMA_BOLD_B64;
     let doc = null;

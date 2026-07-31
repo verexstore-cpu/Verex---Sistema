@@ -27,7 +27,7 @@ def crop_to_content(img):
         img = img.crop((x0, y0, x1, y1))
     return img
 
-def print_label(png_path, ip, label_id, target_w, target_h, rotate=0):
+def print_label(png_path, ip, label_id, target_w, target_h, rotate=0, crop=True):
     roll_w = LABEL_WIDTH_DOTS.get(label_id, 696)
 
     img = Image.open(png_path).convert('RGB')
@@ -35,8 +35,14 @@ def print_label(png_path, ip, label_id, target_w, target_h, rotate=0):
     if rotate:
         img = img.rotate(-rotate, expand=True)  # negativo = sentido horario
 
-    # Recortar espacio blanco antes de redimensionar
-    img = crop_to_content(img)
+    # Recortar espacio blanco antes de redimensionar.
+    # OJO: esto DESTRUYE cualquier maquetación con posiciones intencionales —
+    # recorta los márgenes y después el resize estira lo que quede hasta llenar
+    # la etiqueta. Sirve para formatos de una sola etiqueta por página, pero
+    # arruina los que colocan varias etiquetas en posiciones fijas (ver
+    # --no-crop, que usa el formato de 2 mini por troquelada DK-1204).
+    if crop:
+        img = crop_to_content(img)
 
     if target_h > 0:
         # Formato fijo: redimensionar al tamaño exacto
@@ -91,9 +97,14 @@ if __name__ == '__main__':
     p.add_argument('--target-w', type=int, required=True)
     p.add_argument('--target-h', type=int, required=True)
     p.add_argument('--rotate',   type=int, default=0)
+    p.add_argument('--no-crop',  action='store_true',
+                   help='No recortar el espacio en blanco: conserva las posiciones '
+                        'del PDF tal cual (necesario cuando la pagina lleva varias '
+                        'etiquetas maquetadas en sitios fijos)')
     args = p.parse_args()
     try:
-        print_label(args.png, args.ip, args.label, args.target_w, args.target_h, args.rotate)
+        print_label(args.png, args.ip, args.label, args.target_w, args.target_h,
+                    args.rotate, crop=not args.no_crop)
     except Exception as e:
         print(f'ERROR: {e}', file=sys.stderr)
         sys.exit(1)
