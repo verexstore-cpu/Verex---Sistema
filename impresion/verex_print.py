@@ -27,12 +27,8 @@ def crop_to_content(img):
         img = img.crop((x0, y0, x1, y1))
     return img
 
-def print_label(png_path, ip, label_id, target_w, target_h, rotate=0, crop=True,
-                dither=True, threshold=70):
-    roll_w = LABEL_WIDTH_DOTS.get(label_id, 696)
-
-    img = Image.open(png_path).convert('RGB')
-
+def _preparar(img, roll_w, target_w, target_h, rotate, crop):
+    """Rota, recorta y redimensiona UNA pagina al tamano de la etiqueta."""
     if rotate:
         img = img.rotate(-rotate, expand=True)  # negativo = sentido horario
 
@@ -61,6 +57,31 @@ def print_label(png_path, ip, label_id, target_w, target_h, rotate=0, crop=True,
         canvas.paste(img, (x_off, 0))
         img = canvas
 
+    return img
+
+
+def print_label(png_path, ip, label_id, target_w, target_h, rotate=0, crop=True,
+                dither=True, threshold=70, pages=1):
+    roll_w = LABEL_WIDTH_DOTS.get(label_id, 696)
+
+    original = Image.open(png_path).convert('RGB')
+
+    # El PNG que manda main.js trae TODAS las paginas apiladas una debajo de
+    # otra (asi las dibuja pdfjs en un solo canvas). Para rollo continuo eso
+    # esta bien: sale una tira larga. Pero en papel TROQUELADO cada pagina es
+    # una etiqueta fisica distinta, y mandarlas juntas las aplastaba a todas
+    # dentro de una sola. Por eso se parte la imagen en 'pages' bandas y se le
+    # pasan como lista a convert(), que arma un trabajo de varias etiquetas.
+    if pages > 1:
+        alto = original.height // pages
+        paginas = [original.crop((0, i * alto, original.width,
+                                  (i + 1) * alto if i < pages - 1 else original.height))
+                   for i in range(pages)]
+    else:
+        paginas = [original]
+
+    imgs = [_preparar(p, roll_w, target_w, target_h, rotate, crop) for p in paginas]
+
     # dither=True (Floyd-Steinberg) esta pensado para FOTOS. Con texto y codigos
     # QR convierte los bordes suavizados en puntos salteados: el texto sale gris
     # y deshilachado, y los modulos del QR quedan sucios (peor lectura). Para
@@ -69,7 +90,7 @@ def print_label(png_path, ip, label_id, target_w, target_h, rotate=0, crop=True,
     qlr = BrotherQLRaster('QL-810W')
     convert(
         qlr=qlr,
-        images=[img],
+        images=imgs,
         label=label_id,
         rotate='0',
         threshold=threshold,
@@ -87,7 +108,7 @@ def print_label(png_path, ip, label_id, target_w, target_h, rotate=0, crop=True,
             sock.connect((ip, 9100))
             sock.sendall(qlr.data)
             sock.close()
-            print(f'OK bytes={len(qlr.data)}')
+            print(f'OK bytes={len(qlr.data)} etiquetas={len(imgs)}')
             return
         except OSError as e:
             if intento == 0:
@@ -113,11 +134,16 @@ if __name__ == '__main__':
     p.add_argument('--threshold', type=int, default=70,
                    help='Umbral de brother_ql (0-100). MAS BAJO = MAS NEGRO. '
                         'Solo aplica con --no-dither')
+    p.add_argument('--pages', type=int, default=1,
+                   help='Cuantas paginas vienen apiladas en el PNG. Necesario en '
+                        'papel TROQUELADO: se parte la imagen y se manda una '
+                        'etiqueta por pagina, en vez de aplastarlas en una sola')
     args = p.parse_args()
     try:
         print_label(args.png, args.ip, args.label, args.target_w, args.target_h,
                     args.rotate, crop=not args.no_crop,
-                    dither=not args.no_dither, threshold=args.threshold)
+                    dither=not args.no_dither, threshold=args.threshold,
+                    pages=max(1, args.pages))
     except Exception as e:
         print(f'ERROR: {e}', file=sys.stderr)
         sys.exit(1)

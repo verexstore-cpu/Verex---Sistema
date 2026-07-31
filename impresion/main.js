@@ -598,7 +598,16 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
                   // se consigue engrosando el texto en el propio PDF (ver
                   // _dibujarMiniEn), que es más efectivo que tocar la conversión.
                   const noCrop = (formato === 'dk1204') ? ' --no-crop' : ''
-                  const cmd = `python "${pyScript}" --png "${tmpPng}" --ip "${printerIp}" --label "${labelId}" --target-w ${px.w} --target-h ${px.h} --rotate ${rotateDeg}${noCrop}`
+
+                  // En papel TROQUELADO cada página del PDF es una etiqueta física
+                  // distinta. El PNG las trae apiladas (pdfjs las dibuja en un solo
+                  // canvas), así que hay que decirle a verex_print.py cuántas son
+                  // para que las separe. Sin esto, imprimir 3 etiquetas metía las
+                  // 2 páginas aplastadas dentro de una sola.
+                  // En rollo continuo NO aplica: ahí la tira larga es lo correcto.
+                  const esTroquelado = ['29x90', '17x54'].includes(labelId)
+                  const argPages = (esTroquelado && pages > 1) ? ` --pages ${pages}` : ''
+                  const cmd = `python "${pyScript}" --png "${tmpPng}" --ip "${printerIp}" --label "${labelId}" --target-w ${px.w} --target-h ${px.h} --rotate ${rotateDeg}${noCrop}${argPages}`
                   exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
                     if (err) resolve({ ok: false, error: parsePrintError(stderr, err.message) })
                     else     resolve({ ok: true, ip: printerIp })
