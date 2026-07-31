@@ -10,6 +10,12 @@ let mainWindow
 let tray = null
 let isQuitting = false
 
+// Arranque silencioso: cuando Windows lanza la app al iniciar sesión le pasa
+// --hidden (ver setLoginItemSettings), y entonces no se abre ninguna ventana:
+// queda solo el ícono en la bandeja y el servidor del 7891 escuchando. Si la
+// abrís vos desde el acceso directo o el Hub, el flag no está y se ve normal.
+const ARRANQUE_OCULTO = process.argv.includes('--hidden')
+
 // ── Log de depuración a archivo — para diagnosticar sin necesitar mostrar
 // ninguna ventana (la app corre oculta la mayor parte del tiempo). ──
 const LOG_FILE = path.join(app.getPath('desktop'), 'verex-print-debug.log')
@@ -91,12 +97,21 @@ function createWindow() {
   // recomendado por Electron, evita ventanas en blanco o que no terminan
   // de aparecer. Se fuerza también centrar/enfocar/traer al frente por si
   // Windows la deja fuera de pantalla o detrás de otras ventanas.
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.center()
-    mainWindow.show()
-    mainWindow.focus()
-    mainWindow.moveTop()
-  })
+  //
+  // EXCEPTO cuando arranca con Windows: ahí se queda solo en la bandeja, sin
+  // ventana ni robar el foco. Lo único que importa al iniciar sesión es que
+  // el servidor del 7891 quede escuchando; la ventana se abre a demanda desde
+  // el ícono de la bandeja. El flag lo pone setLoginItemSettings más abajo.
+  if (ARRANQUE_OCULTO) {
+    mainWindow.setSkipTaskbar(true)
+  } else {
+    mainWindow.once('ready-to-show', () => {
+      mainWindow.center()
+      mainWindow.show()
+      mainWindow.focus()
+      mainWindow.moveTop()
+    })
+  }
 
   // Al cerrar la ventana → ocultar a bandeja en lugar de cerrar, EXCEPTO
   // cuando el cierre viene de "Salir"/"Reiniciar" en la bandeja (isQuitting) —
@@ -137,7 +152,10 @@ app.setLoginItemSettings({
   // ("SISTEMA VEREX OFICIAL MAY2026") y Electron escribe los args tal cual en
   // el registro. Sin comillas, Windows parte el argumento en pedazos y la app
   // nunca levanta.
-  args: [`"${app.getAppPath()}"`]
+  //
+  // --hidden hace que al iniciar sesión NO se abra la ventana: arranca directo
+  // a la bandeja, sin interrumpir ni robar el foco. Lo lee ARRANQUE_OCULTO.
+  args: [`"${app.getAppPath()}"`, '--hidden']
 })
 
 app.whenReady().then(() => {
