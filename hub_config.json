@@ -9,7 +9,7 @@
         { "emoji": "🛡️",  "texto": "Admin VEREX",        "archivo": "Admin VEREX",        "url": "https://admin-tienda.pages.dev" },
         { "emoji": "📦",  "texto": "Catálogo VEREX",      "archivo": "Catalogo VEREX",      "url": "https://verexstore.com" },
         { "emoji": "👻",  "texto": "Catálogo Público",    "archivo": "Catalogo Publico",    "url": "https://verex-catalogo.pages.dev/publico" },
-        { "emoji": "🤝",  "texto": "Nexus VEREX",         "archivo": "Consignacion VEREX",  "url": "https://verex-consignacion.pages.dev" },
+        { "emoji": "🤝",  "texto": "Nexus VEREX",         "archivo": "Consignacion VEREX",  "url": "https://verex-nexus.pages.dev" },
         { "emoji": "📊",  "texto": "Inventario VEREX",    "archivo": "Inventario VEREX",    "url": "https://inventario-sellers.pages.dev" },
         { "emoji": "🧑‍💼", "texto": "Módulo del Vendedor", "archivo": "Vendedor VEREX",      "url": "" }
       ]
