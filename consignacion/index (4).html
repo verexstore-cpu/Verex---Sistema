@@ -8872,7 +8872,8 @@ async function generarPDFParaServidor(codigos, formato, notaTexto) {
 // si se ajusta el diseño acá, cambia en los dos formatos a la vez.
 function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma, engrosar) {
     const B = [0, 0, 0];
-    const QS = 8.5;
+    const QS = 7.5;                 // QR: bajado de 8.5mm
+    const QX = 20 - QS - 0.0;       // pegado al borde derecho de la mini (12.5)
     const dataX = 0.2, dataW = 11.1;
     const W = 20;
 
@@ -8890,12 +8891,12 @@ function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma, engrosar) {
 
     // QR 8×8mm — columna derecha
     if (qrImg) {
-        try { doc.addImage(qrImg, 'PNG', ox + 11.5, oy + 0.2, QS, QS); } catch(e) {}
+        try { doc.addImage(qrImg, 'PNG', ox + QX, oy + 0.2, QS, QS); } catch(e) {}
     }
 
     // Precio — 8.5pt helvetica bold (igual que DK-2214)
     const precio = '$ ' + parseFloat(p.precio || 0).toFixed(2);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...B);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...B);
     if (engrosar) doc.setLineWidth(trazoGrande);
     doc.text(precio, ox + dataX, oy + 3.5, modo);
 

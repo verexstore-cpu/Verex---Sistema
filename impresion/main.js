@@ -557,6 +557,19 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
                 // dk1204 se rota porque el PDF viene apaisado (54×17mm) y el
                 // troquel se alimenta en vertical (165 ancho × 566 alto)
                 const rotateDeg = (formato === 'dk2214' || formato === 'guia' || formato === 'dk1204') ? 90 : 0
+                // Antes de mandar nada: ¿el papel cargado es el que espera este
+                // formato? Si no, se avisa en vez de dejar la impresora en rojo.
+                const mediaCargada = await leerMediaImpresora(printerIp)
+                const chkMedia = mediaCompatible(labelId, mediaCargada)
+                if (!chkMedia.ok) {
+                  fs.unlink(tmpPng, () => {})
+                  done({
+                    success: false,
+                    error: `Rollo equivocado: la impresora tiene cargado "${chkMedia.encontrado}" y el formato "${formato}" necesita otro papel. Cambiá el rollo o elegí el formato que corresponda — imprimir así deja la impresora en error.`
+                  })
+                  return
+                }
+
                 const pyScript = path.join(__dirname, 'verex_print.py')
                 const r = await new Promise(resolve => {
                   // dk1204 lleva DOS mini maquetadas en posiciones fijas dentro de
@@ -1012,6 +1025,52 @@ if ($found.Count -gt 0) { $found -join ',' } else { Write-Output "" }
   const ips = (r.ok && r.out) ? r.out.split(',').map(s => s.trim()).filter(Boolean) : []
   return { ok: r.ok, ips, error: r.error }
 })
+
+// ── Verificación del rollo cargado ──────────────────────────────────────────
+// La QL aborta el trabajo y enciende la luz roja cuando el papel cargado no
+// coincide con el que se le declara. Su web admin informa qué tiene puesto,
+// así que se le pregunta ANTES de imprimir y se avisa en vez de dejarla en
+// error. Si no se puede leer, no se bloquea la impresión.
+//
+// LÍMITE: la web NO distingue DK-2205 (monocromo) de DK-2251 (negro/rojo);
+// ambos se reportan como "62mm". Ese caso sigue dependiendo del selector de
+// rollo. Lo que sí detecta es el desajuste grave de ANCHO: mandar una guía de
+// 62mm con el troquel de 17×54mm puesto, o al revés.
+function leerMediaImpresora(ip, timeout = 4000) {
+  return new Promise(resolve => {
+    let listo = false
+    const fin = v => { if (!listo) { listo = true; resolve(v) } }
+    setTimeout(() => fin(null), timeout + 800)
+    const req = http.get({ hostname: ip, port: 80, path: '/', timeout }, res => {
+      let body = ''
+      res.setEncoding('utf8')
+      res.on('data', c => { body += c; if (body.length > 30000) res.destroy() })
+      res.on('end', () => {
+        const txt = body.replace(/<[^>]+>/g, ' ').replace(/&#32;/g, ' ').replace(/\s+/g, ' ')
+        const m = txt.match(/Media Type\s+(.+?)\s+Web/i)
+        fin(m ? m[1].trim() : null)
+      })
+      res.on('close', () => fin(null))
+    })
+    req.on('error', () => fin(null))
+    req.on('timeout', () => { req.destroy(); fin(null) })
+  })
+}
+
+// Compara el papel que reporta la impresora contra el que espera el label.
+function mediaCompatible(labelId, media) {
+  if (!media) return { ok: true }   // no se pudo leer → no bloquear
+  const esperado = {
+    '62':    '62mm',
+    '62red': '62mm',
+    '17x54': '17mmx54mm',
+    '29x90': '29mmx90mm',
+    '12':    '12mm',
+  }[labelId]
+  if (!esperado) return { ok: true }
+  const norm = media.toLowerCase().replace(/\s+/g, '')
+  return { ok: norm.includes(esperado), encontrado: media, esperado }
+}
 
 // ── Reparar conexión de la impresora ────────────────────────────────────────
 // Cuando el router le da otra IP por DHCP se rompen DOS cosas:
