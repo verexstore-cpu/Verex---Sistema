@@ -481,9 +481,15 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
               try {
                 let captureW = winW, captureH = isDK2214srv ? DK14H * pages : ((isLabel && !isMini) ? LH_CSS * LSCALE * pages : winH)
 
-                // Para guía: leer las dimensiones reales del canvas pdfjs
-                // El PDF puede ser landscape (90×62mm) o portrait (62×90mm)
-                if (formato === 'guia') {
+                // Leer las dimensiones REALES del canvas de pdfjs en vez de usar
+                // el tamaño de la ventana.
+                //   · guía  → el PDF puede venir landscape (90×62mm) o portrait
+                //   · dk1204 → la página mide el área imprimible (47.92×13.97mm),
+                //     más chica que la ventana (dimensionada para 54×17mm). Sin
+                //     esto se captura el blanco sobrante y, como este formato va
+                //     con --no-crop, ese blanco se comprime dentro de la etiqueta
+                //     y las mini salen a ~2/3 de su tamaño.
+                if (formato === 'guia' || formato === 'dk1204') {
                   const dims = await win.webContents.executeJavaScript(
                     '(() => { const c = document.getElementById("c"); return c ? [c.width, c.height] : [0, 0]; })()'
                   ).catch(() => [0, 0])
