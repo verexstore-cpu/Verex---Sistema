@@ -8884,8 +8884,12 @@ function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma, engrosar) {
     // probó (con umbral en vez de dithering salía más pálido todavía).
     // El trazo se mantiene fino en los textos chicos para no cerrar los huecos
     // de letras como la "a" o la "e".
-    const trazoGrande  = engrosar ? 0.045 : 0;  // precio, 8.5pt
-    const trazoChico   = engrosar ? 0.022 : 0;  // código y material, 5-5.5pt
+    const trazoGrande  = engrosar ? 0.045 : 0;  // precio, 7.5pt
+    const trazoChico   = engrosar ? 0.022 : 0;  // código, 5pt
+    // El material lleva MÁS trazo que el código aunque sea de tamaño parecido:
+    // el código va en Tahoma Bold y el material en Helvetica Bold, que es una
+    // tipografía más liviana, así que con el mismo grosor se veía más pálido.
+    const trazoMaterial = engrosar ? 0.038 : 0; // material, 5.5pt
     const modo = engrosar ? { renderingMode: 'fillThenStroke' } : undefined;
     if (engrosar) doc.setDrawColor(...B);
 
@@ -8915,7 +8919,7 @@ function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma, engrosar) {
     const mat = abreviarMaterial(p.material || extraerMaterial(p.nombre || '', p.descripcion || ''));
     if (mat) {
         doc.setFont('helvetica', 'bold'); doc.setFontSize(5.5); doc.setTextColor(...B);
-        if (engrosar) doc.setLineWidth(trazoChico);
+        if (engrosar) doc.setLineWidth(trazoMaterial);
         doc.text(doc.splitTextToSize(mat, W - 1)[0], ox + 0.5, oy + 10.7, modo);
     }
 }
