@@ -823,9 +823,12 @@ async function enviar(){
             items: JSON.stringify(d.items || []),
             subtotal: d.subtotal || d.total || 0,
             descuento: d.descuento || 0,
+            descuentoTipo:  d.descuentoTipo  || "monto",
+            descuentoValor: d.descuentoValor || 0,
             costoEnvio: d.costoEnvio || 0,
             direccionEnvio: d.direccionEnvio || "",
             departamentoEnvio: d.departamentoEnvio || "",
+            empresaEnvio: d.empresaEnvio || "",
             total: d.total || 0,
             tipo: d.tipo || "contado",
             metodoPago: d.metodoPago || "efectivo",
@@ -859,12 +862,15 @@ async function enviar(){
               });
             }
           }
+          const itemsSinStock = [];
           for (const item of (d.items || [])) {
+            if (!item.codigo) { itemsSinStock.push("SIN_CODIGO"); continue; }
             const s = await sb.get("stock", item.codigo);
             if (s) {
-              const cant = parseInt(item.cantidad) || 1;
-              const bodega  = parseInt(s.stock_bodega)  || 0;
-              const tienda  = parseInt(s.stock_tienda)  || 0;
+              const cant     = parseInt(item.cantidad) || 1;
+              const bodega   = parseInt(s.stock_bodega)   || 0;
+              const tienda   = parseInt(s.stock_tienda)   || 0;
+              const vendido  = parseInt(s.stock_vendido)  || 0;
               // Descontar primero de tienda si hay, luego de bodega
               let descBodega = 0, descTienda = 0;
               if (tienda >= cant) {
@@ -874,12 +880,30 @@ async function enviar(){
                 descBodega = cant - tienda;
               }
               await sb.update("stock", item.codigo, {
-                stock_tienda: Math.max(0, tienda - descTienda),
-                stock_bodega: Math.max(0, bodega - descBodega)
+                stock_tienda:  Math.max(0, tienda  - descTienda),
+                stock_bodega:  Math.max(0, bodega  - descBodega),
+                stock_vendido: vendido + cant
               });
+            } else {
+              itemsSinStock.push(item.codigo);
             }
           }
-          result = { ok: true };
+          result = { ok: true, itemsSinStock };
+          break;
+        }
+
+        case "AJUSTAR_STOCK_MANUAL": {
+          if (!esAdmin) return forbidden();
+          const { codigo: codAj, campo: campoAj, delta: deltaAj } = d;
+          if (!codAj || !campoAj || deltaAj == null) { result = { ok: false, error: "Faltan parámetros: codigo, campo, delta" }; break; }
+          const camposPermitidos = ["stock_bodega","stock_tienda","stock_reservado","stock_consignacion","stock_vendido"];
+          if (!camposPermitidos.includes(campoAj)) { result = { ok: false, error: "Campo no permitido" }; break; }
+          const sAj = await sb.get("stock", codAj);
+          if (!sAj) { result = { ok: false, error: "Producto no encontrado en stock" }; break; }
+          const valorActual = parseInt(sAj[campoAj]) || 0;
+          const valorNuevo  = Math.max(0, valorActual + parseInt(deltaAj));
+          await sb.update("stock", codAj, { [campoAj]: valorNuevo });
+          result = { ok: true, anterior: valorActual, nuevo: valorNuevo };
           break;
         }
 
@@ -2754,8 +2778,38 @@ class Supabase {
     }
   }
 
+  // stock_total es un DERIVADO de las unidades reales: bodega + tienda +
+  // consignación (misma fórmula que _stockTotalProd() en el admin).
+  //
+  // Se recalcula acá, en el único punto por donde pasan TODAS las escrituras,
+  // porque hay más de 20 lugares en el worker que mueven stock y cualquiera se
+  // podía olvidar de mantenerlo. De hecho eso pasaba: stock_total solo se
+  // escribía al crear el producto y nunca se decrementaba al vender, así que
+  // quedaba inflado para siempre y los catálogos nunca ocultaban lo agotado.
+  static COMPONENTES_STOCK = ["stock_bodega", "stock_tienda", "stock_consignacion"];
+
+  async _conStockTotal(id, fields) {
+    const comp = Supabase.COMPONENTES_STOCK;
+    // Si el patch no toca las unidades, no hay nada que recalcular.
+    if (!comp.some(c => fields[c] !== undefined)) return fields;
+
+    const vals = { ...fields };
+    // Si el patch trae solo algunos componentes, se leen los actuales para
+    // completar los que faltan — sin eso el total saldría mal.
+    if (!comp.every(c => vals[c] !== undefined)) {
+      let actual = null;
+      try { actual = await this.get("stock", id); } catch (_) { actual = null; }
+      if (!actual) return fields;   // no se pudo leer: mejor no tocar el total
+      for (const c of comp) if (vals[c] === undefined) vals[c] = actual[c];
+    }
+
+    const total = comp.reduce((a, c) => a + (parseInt(vals[c]) || 0), 0);
+    return { ...fields, stock_total: total };
+  }
+
   // Actualizar campos específicos (merge parcial vía RPC)
   async update(table, id, fields) {
+    if (table === "stock") fields = await this._conStockTotal(id, fields);
     const res = await fetch(`${this.url}/rest/v1/rpc/update_doc`, {
       method:  "POST",
       headers: this._headers(),
