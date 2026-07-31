@@ -8883,8 +8883,8 @@ function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma, engrosar) {
     // probó (con umbral en vez de dithering salía más pálido todavía).
     // El trazo se mantiene fino en los textos chicos para no cerrar los huecos
     // de letras como la "a" o la "e".
-    const trazoGrande  = engrosar ? 0.06 : 0;   // precio, 8.5pt
-    const trazoChico   = engrosar ? 0.03 : 0;   // código y material, 5-5.5pt
+    const trazoGrande  = engrosar ? 0.045 : 0;  // precio, 8.5pt
+    const trazoChico   = engrosar ? 0.022 : 0;  // código y material, 5-5.5pt
     const modo = engrosar ? { renderingMode: 'fillThenStroke' } : undefined;
     if (engrosar) doc.setDrawColor(...B);
 
