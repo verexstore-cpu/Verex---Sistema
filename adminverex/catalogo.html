@@ -922,7 +922,19 @@
 
                 // Si el código ya no existe en stock (eliminado) o quedó sin
                 // unidades disponibles o fue reservado, se marca agotado.
-                const agotado = !s || s.reservado || (parseInt(s.stock_total)||0) <= 0;
+                //
+                // NO usar stock_total: ese campo NO se mantiene — no se decrementa
+                // al vender, así que la condición <= 0 no se cumplía nunca y no se
+                // ocultaba nada (al revisar, 0 de 991 productos lo tenían en 0,
+                // mientras 13 estaban realmente sin unidades). Se usa la misma
+                // fórmula que el admin en _stockTotalProd(): las unidades reales
+                // repartidas entre bodega, tienda y consignación.
+                const disponible = s
+                    ? (parseInt(s.stock_bodega)||0)
+                    + (parseInt(s.stock_tienda)||0)
+                    + (parseInt(s.stock_consignacion)||0)
+                    : 0;
+                const agotado = !s || s.reservado || disponible <= 0;
                 if(!agotado) return;
                 p._agotado = true;
                 // Ocultar en vez de tachar — más limpio para el cliente, y evita
