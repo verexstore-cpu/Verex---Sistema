@@ -324,7 +324,7 @@
                 <span id="correo-badge" style="display:none;position:absolute;top:-7px;right:-7px;background:#ef4444;color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;font-weight:700;align-items:center;justify-content:center;"></span>
             </a>
             <a href="https://verexstore.com" target="_blank" class="btn-header" title="Abre la tienda pública en una pestaña nueva">👁️ Ver Tienda</a>
-            <a href="https://verex-consignacion.pages.dev" target="_blank" class="btn-header" title="Abre el panel de Consignación (vendedores, afiliados, stock físico)">📦 Consignación</a>
+            <a href="https://verex-nexus.pages.dev" target="_blank" class="btn-header" title="Abre VEREX Nexus (vendedores, afiliados, stock físico, venta directa)">📦 Nexus</a>
             <button class="btn-header" onclick="abrirModalGarantia()" style="border-color:#0ea5e9;color:#0ea5e9;" title="Ver/copiar el link o QR de la página pública de Garantía Limitada, y editar su contenido">🛡️ Link/QR Garantía</button>
             <button class="btn-header" onclick="abrirCambiarClave()" style="border-color:#f59e0b;color:#f59e0b;" title="Cambiar la contraseña de acceso a este Admin">🔑 Cambiar Clave</button>
             <button class="btn-header btn-logout" onclick="logout()" title="Cerrar sesión de este Admin en este dispositivo">Salir</button>
@@ -419,6 +419,23 @@
             <div id="chart" style="display:flex;align-items:flex-end;gap:8px;height:130px;margin-top:14px;padding:0 4px;"></div>
         </div>
 
+        <!-- Pedidos de afiliados EN CAMINO sin confirmar entrega — se muestra
+             primero y en rojo/naranja porque es fácil que se pase por alto: el
+             pedido ya se empacó y salió, pero la venta/comisión no se cierran
+             hasta confirmar que el transportista realmente entregó. -->
+        <div class="card" id="card-afiliados-en-camino" style="display:none;border-color:#f97316;">
+            <h2 style="color:#f97316;">🚚 Pedidos en Camino — Confirmar Entrega</h2>
+            <div id="lista-afiliados-en-camino" style="margin-top:8px;"></div>
+        </div>
+
+        <!-- Leads "Interesado" viejos SIN datos de cliente — el afiliado nunca
+             completó el pedido (nombre/teléfono/dirección). Sin esta alerta
+             quedan silenciosos y la venta se puede perder por puro olvido. -->
+        <div class="card" id="card-leads-sin-completar" style="display:none;border-color:#eab308;">
+            <h2 style="color:#eab308;">🕐 Leads sin Completar (afiliado no llenó datos)</h2>
+            <div id="lista-leads-sin-completar" style="margin-top:8px;"></div>
+        </div>
+
         <!-- Pedidos de afiliados por confirmar — vista central, sin tener que
              entrar afiliado por afiliado a revisar quién tiene algo pendiente. -->
         <div class="card">
@@ -472,6 +489,24 @@
         <div class="card">
             <h2>💳 Métodos de Pago</h2>
             <div id="stats-pagos" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;"></div>
+        </div>
+
+        <!-- Historial de Links de Catálogo -->
+        <div class="card" id="card-hist-links">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                <h2 style="margin:0;">🔗 Historial de Links</h2>
+                <button onclick="cargarHistorialLinks()" style="background:none;border:1px solid #444;color:#aaa;border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;">↻ Actualizar</button>
+            </div>
+            <!-- Filtros -->
+            <div style="display:flex;gap:8px;margin:14px 0 10px;flex-wrap:wrap;">
+                <button class="hist-filter active" data-f="todos"     onclick="filtrarHistLinks(this)" style="padding:5px 14px;border-radius:20px;border:1px solid #C9A84C;background:rgba(201,168,76,0.15);color:#C9A84C;font-size:12px;cursor:pointer;">Todos</button>
+                <button class="hist-filter"        data-f="cliente"   onclick="filtrarHistLinks(this)" style="padding:5px 14px;border-radius:20px;border:1px solid #444;background:none;color:#aaa;font-size:12px;cursor:pointer;">📋 Clientes</button>
+                <button class="hist-filter"        data-f="afiliado"  onclick="filtrarHistLinks(this)" style="padding:5px 14px;border-radius:20px;border:1px solid #444;background:none;color:#aaa;font-size:12px;cursor:pointer;">🤝 Afiliados</button>
+                <button class="hist-filter"        data-f="vencido"   onclick="filtrarHistLinks(this)" style="padding:5px 14px;border-radius:20px;border:1px solid #444;background:none;color:#aaa;font-size:12px;cursor:pointer;">🔴 Vencidos</button>
+            </div>
+            <div id="hist-links-list" style="display:flex;flex-direction:column;gap:8px;min-height:50px;">
+                <p style="color:#666;font-size:13px;">Cargando…</p>
+            </div>
         </div>
     </div>
 
@@ -892,12 +927,12 @@
 <div class="tab-content" id="tab-6">
     <div class="card" style="text-align:center;padding:40px 20px;">
         <div style="font-size:52px;margin-bottom:16px;">🤝</div>
-        <h2 style="margin-bottom:8px;">Consignación VEREX</h2>
+        <h2 style="margin-bottom:8px;">VEREX Nexus</h2>
         <p style="color:#888;font-size:14px;margin-bottom:28px;">Gestiona vendedores, entregas, cortes e inventario desde el módulo completo.</p>
-        <a href="https://verex-consignacion.pages.dev" target="_blank"
+        <a href="https://verex-nexus.pages.dev" target="_blank"
             class="btn ba bfull"
             style="display:inline-block;max-width:320px;padding:14px 28px;font-size:15px;text-decoration:none;border-radius:10px;">
-            🚀 Abrir Consignación VEREX
+            🚀 Abrir VEREX Nexus
         </a>
     </div>
 </div>
@@ -1078,6 +1113,10 @@ function esc(str) {
 //  CONFIG
 // ═════════════════════════════════════════════
 const API_URL    = "https://verex-api.verexstore.workers.dev/";
+// Número oficial de WhatsApp de VEREX (mismo que aparece en los recibos:
+// 7125-0725) — el catálogo de Cliente SIEMPRE debe usar este, nunca el
+// número de un afiliado guardado de una sesión anterior.
+const VEREX_WA_OFICIAL = "71250725";
 const SECRET_KEY = "";
 let   ADMIN_PASS = ""; // Hash SHA-256 de la contraseña, nunca el texto plano
 
@@ -1164,8 +1203,35 @@ function logout() {
     location.reload();
 }
 
-// Auto-login si la sesión del día sigue válida
-(function() {
+// SSO desde el Hub: si viene un token en la URL (?sso=...), lo canjea con
+// el worker y entra directo, sin pedir contraseña ni código de Telegram —
+// el Hub ya se autenticó para generarlo. Token de un solo uso, expira a
+// los 90s, así que no sirve de nada si alguien lo copia después.
+async function intentarSSO() {
+    const params = new URLSearchParams(location.search);
+    const token = params.get("sso");
+    if (!token) return false;
+    // Limpiar el token de la URL de inmediato para que no quede en el
+    // historial del navegador ni se pueda reusar recargando la página.
+    history.replaceState({}, "", location.pathname);
+    try {
+        const res = await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ accion: "SSO_CANJEAR_TOKEN", token })
+        });
+        const data = await res.json();
+        if (data.ok && data.hash) {
+            localStorage.setItem("vx_sesion_dia", JSON.stringify({ fecha: new Date().toDateString(), hash: data.hash }));
+            entrarConSesion(data.hash);
+            return true;
+        }
+    } catch(e) {}
+    return false;
+}
+
+// Auto-login si la sesión del día sigue válida (o si viene un token SSO del Hub)
+(async function() {
+    if (await intentarSSO()) return;
     const sesion = JSON.parse(localStorage.getItem("vx_sesion_dia") || "{}");
     const hoy    = new Date().toDateString();
     if (sesion.fecha === hoy && sesion.hash) {
@@ -1294,6 +1360,7 @@ async function init() {
     renderEstado(); renderEnvio(); actualizarNombre();
     await cargarDatos();
     setInterval(()=>cargarDatos(true), 45000);
+    cargarHistorialLinks();
 }
 
 async function cargarDatos(silencioso=false) {
@@ -1316,12 +1383,169 @@ async function cargarDatos(silencioso=false) {
     }
 }
 
+// Badge combinado en el título de la pestaña — suma pedidos en camino sin
+// confirmar entrega + leads viejos sin completar, así se nota con un solo
+// vistazo aunque la pestaña esté de fondo.
+let _badgeEnCamino = 0, _badgeLeadsSinCompletar = 0;
+function actualizarTituloAlertas() {
+    const total = _badgeEnCamino + _badgeLeadsSinCompletar;
+    document.title = document.title.replace(/^🔔\(\d+\)\s*/, "");
+    if (total > 0) document.title = `🔔(${total}) ` + document.title;
+}
+
 function renderAll(sil=false) {
     renderStats(); renderChart(); renderTop();
     renderPedidos(); renderProductos(); renderCupones(); renderClientes(); actualizarBadgeCorreo();
     renderEnvio(); renderEstado(); actualizarNotif(sil); renderBannerAdmin(); renderCarruselAdmin();
     cargarEstadisticas();
     cargarPedidosAfiliadosPendientes();
+    cargarAfiliadosEnCamino();
+    cargarLeadsSinCompletar();
+}
+
+// Leads "Interesado" de varios días SIN datos de cliente — el afiliado nunca
+// llenó el pedido (nombre/teléfono/dirección) desde su link de "Completar
+// Pedidos". Sin este aviso quedan silenciosos indefinidamente y la venta se
+// puede perder por puro olvido del afiliado.
+const LEADS_SIN_COMPLETAR_DIAS = 2;
+async function cargarLeadsSinCompletar() {
+    const card = document.getElementById("card-leads-sin-completar");
+    const cont = document.getElementById("lista-leads-sin-completar");
+    if (!card || !cont) return;
+    try {
+        const [resLeads, resVend] = await Promise.all([
+            fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_LEADS_ADMIN", _pass: ADMIN_PASS }) }),
+            fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_VENDEDORES_AFILIADOS", _pass: ADMIN_PASS }) })
+        ]);
+        const dataLeads = await resLeads.json();
+        const dataVend  = await resVend.json();
+        const vendMap = new Map((dataVend.vendedores||[]).map(v => [v.codigo, v]));
+        const ahora = Date.now();
+        const sinCompletar = (dataLeads.leads||[])
+            .filter(l => l.estado === "interesado" && !l.cliente)
+            .map(l => ({ ...l, dias: Math.floor((ahora - new Date(l.fecha||ahora).getTime()) / 86400000) }))
+            .filter(l => l.dias >= LEADS_SIN_COMPLETAR_DIAS)
+            .sort((a,b) => b.dias - a.dias); // más viejo primero — el más urgente
+
+        _badgeLeadsSinCompletar = sinCompletar.length;
+        actualizarTituloAlertas();
+
+        if (!sinCompletar.length) { card.style.display = "none"; return; }
+        card.style.display = "block";
+
+        cont.innerHTML = sinCompletar.map(l => {
+            const vend = vendMap.get(l.afiliado);
+            const nombreVend = vend?.nombre || l.afiliado || "—";
+            const tel = String(vend?.telefono || "").replace(/\D/g, "");
+            const msg = `Hola ${nombreVend}! Vi que tienes un cliente interesado en "${l.nombre||l.codigo}" desde hace ${l.dias} días y todavía falta completar sus datos en tu link de pedidos. ¿Puedes completarlo o me cuentas si ya no sigue interesado?`;
+            return `<div style="background:rgba(234,179,8,0.1);border:1px solid #eab308;border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:700;font-size:13px;">${esc(l.nombre||l.codigo)}</div>
+                        <div style="font-size:11px;color:#888;">🎯 ${esc(nombreVend)} · $${parseFloat(l.precio||0).toFixed(2)}</div>
+                        <div style="font-size:11px;font-weight:700;color:#eab308;margin-top:3px;">⚠️ ${l.dias} días sin que el afiliado complete los datos del cliente</div>
+                    </div>
+                    ${tel ? `<a href="https://wa.me/${tel}?text=${encodeURIComponent(msg)}" target="_blank" style="flex-shrink:0;padding:5px 10px;font-size:11px;background:#25D366;color:#fff;border-radius:6px;text-decoration:none;font-weight:700;">💬 Recordar</a>` : ''}
+                </div>
+            </div>`;
+        }).join("");
+    } catch(e) {
+        cont.innerHTML = '<p style="color:#e74c3c;font-size:13px;text-align:center;padding:16px 0;">Error al cargar leads sin completar.</p>';
+    }
+}
+
+// Pedidos de afiliados que ya se empacaron/enviaron pero cuya entrega real
+// todavía no se confirmó — quedan "en el limbo" entre envío y cierre de venta,
+// así que se muestran aparte y en rojo si llevan más de 1 día sin resolver,
+// para que no se pase por alto confirmar la entrega (o el rechazo en puerta).
+async function cargarAfiliadosEnCamino() {
+    const card = document.getElementById("card-afiliados-en-camino");
+    const cont = document.getElementById("lista-afiliados-en-camino");
+    if (!card || !cont) return;
+    try {
+        const [resLeads, resVend] = await Promise.all([
+            fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_LEADS_ADMIN", _pass: ADMIN_PASS }) }),
+            fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_VENDEDORES_AFILIADOS", _pass: ADMIN_PASS }) })
+        ]);
+        const dataLeads = await resLeads.json();
+        const dataVend  = await resVend.json();
+        const vendMap = new Map((dataVend.vendedores||[]).map(v => [v.codigo, v.nombre]));
+        const enCamino = (dataLeads.leads||[])
+            .filter(l => l.estado === "en_camino")
+            .sort((a,b) => new Date(a.fecha) - new Date(b.fecha)); // más antiguo primero — el más urgente
+
+        _badgeEnCamino = enCamino.length;
+        actualizarTituloAlertas();
+
+        if (!enCamino.length) { card.style.display = "none"; return; }
+        card.style.display = "block";
+
+        const ahora = Date.now();
+        cont.innerHTML = enCamino.map(l => {
+            const fechaMs = l.fecha ? new Date(l.fecha).getTime() : ahora;
+            const dias = Math.floor((ahora - fechaMs) / 86400000);
+            const urgente = dias >= 1;
+            const fecha = l.fecha ? new Date(l.fecha).toLocaleDateString("es-SV",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}) : "";
+            const nombreVend = vendMap.get(l.afiliado) || l.afiliado || "—";
+            const c = l.cliente;
+            return `<div style="background:${urgente?'rgba(249,115,22,0.12)':'#1a1a1a'};border:1px solid ${urgente?'#f97316':'#333'};border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:700;font-size:13px;">${esc(l.nombre||l.codigo)}</div>
+                        <div style="font-size:11px;color:#888;">🎯 ${esc(nombreVend)} · $${parseFloat(l.precio||0).toFixed(2)} · ${fecha}</div>
+                        ${c ? `<div style="font-size:11px;color:#aaa;margin-top:2px;">👤 ${esc(c.nombre||"—")} · ${esc(c.telefono||"—")}</div>` : ""}
+                        <div style="font-size:11px;font-weight:700;color:${urgente?'#f97316':'#888'};margin-top:3px;">${urgente ? `⚠️ ${dias} día${dias>1?'s':''} sin confirmar entrega` : "En camino"}</div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;position:relative;">
+                        <div style="display:flex;gap:2px;">
+                            <button onclick="confirmarEntregaDesdeAdmin('${l.id}',false)" style="flex:1;padding:5px 8px;font-size:11px;background:#27ae60;color:#fff;border:none;border-radius:6px 0 0 6px;cursor:pointer;font-weight:700;">✅ Entregado</button>
+                            <button onclick="event.stopPropagation();toggleMenuCambioAdmin('${l.id}',this)" title="Otras opciones" style="padding:5px 6px;font-size:11px;background:#1e6b3e;color:#fff;border:none;border-radius:0 6px 6px 0;cursor:pointer;font-weight:700;border-left:1px solid rgba(255,255,255,.25);">▾</button>
+                        </div>
+                        <div id="menu-cambio-admin-${l.id}" style="display:none;position:absolute;top:32px;right:0;background:#111;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:190px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+                            <button onclick="event.stopPropagation();confirmarEntregaDesdeAdmin('${l.id}',true);document.getElementById('menu-cambio-admin-${l.id}').style.display='none';" style="display:block;width:100%;padding:9px 12px;font-size:11px;background:none;color:#a78bfa;border:none;cursor:pointer;text-align:left;font-weight:600;">🔄 Es un cambio (sin comisión)</button>
+                        </div>
+                        <button onclick="rechazarEntregaDesdeAdmin('${l.id}')" style="padding:5px 10px;font-size:11px;background:#e74c3c;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;">❌ Rechazado</button>
+                    </div>
+                </div>
+            </div>`;
+        }).join("");
+    } catch(e) {
+        cont.innerHTML = '<p style="color:#e74c3c;font-size:13px;text-align:center;padding:16px 0;">Error al cargar pedidos en camino.</p>';
+    }
+}
+
+// Botón "Entregado" = venta normal, un clic. El "▾" abre un menú chiquito
+// para marcarlo como cambio (excepción, no interrumpe el caso de siempre).
+function toggleMenuCambioAdmin(id, btn) {
+    document.querySelectorAll('[id^="menu-cambio-admin-"]').forEach(m => {
+        if (m.id !== `menu-cambio-admin-${id}`) m.style.display = "none";
+    });
+    const menu = document.getElementById(`menu-cambio-admin-${id}`);
+    if (!menu) return;
+    menu.style.display = menu.style.display === "none" ? "block" : "none";
+    if (menu.style.display === "block") {
+        setTimeout(() => {
+            document.addEventListener("click", function cerrar() {
+                menu.style.display = "none";
+                document.removeEventListener("click", cerrar);
+            }, { once: true });
+        }, 10);
+    }
+}
+
+async function confirmarEntregaDesdeAdmin(id, esCambio) {
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"CONFIRMAR_LEAD_ENTREGA", _pass: ADMIN_PASS, id, esCambio: !!esCambio }) }).then(r=>r.json());
+    if (!res.ok) { toast("⚠️ " + (res.error || "No se pudo confirmar"), "#ef4444"); return; }
+    toast(esCambio ? "✅ Cambio entregado — sin venta ni comisión nueva" : "✅ Entrega confirmada — venta y comisión cerradas", "#22c55e");
+    cargarAfiliadosEnCamino();
+}
+
+async function rechazarEntregaDesdeAdmin(id) {
+    if (!confirm("¿El cliente rechazó este pedido en la puerta? La pieza regresará a bodega, sin venta ni comisión.")) return;
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"RECHAZAR_LEAD_ENTREGA", _pass: ADMIN_PASS, id }) }).then(r=>r.json());
+    if (!res.ok) { toast("⚠️ " + (res.error || "No se pudo registrar el rechazo"), "#ef4444"); return; }
+    toast("↩️ Pedido rechazado — pieza devuelta a bodega", "#22c55e");
+    cargarAfiliadosEnCamino();
 }
 
 // Vista central: todos los Leads pendientes de confirmar de todos los
@@ -1353,14 +1577,16 @@ async function cargarPedidosAfiliadosPendientes() {
             const c = l.cliente;
             const clienteHtml = c
                 ? `<div style="font-size:11px;color:#166534;margin-top:3px;">👤 ${esc(c.nombre||"—")} · ${esc(c.telefono||"—")} · ${esc(c.municipio||"")}${c.municipio?", ":""}${esc(c.departamento||"")}</div>`
-                : `<div style="font-size:11px;color:#f97316;margin-top:3px;">⏳ El afiliado todavía no completó los datos del cliente</div>`;
+                : (l.nombreCliente || l.telefonoCliente)
+                    ? `<div style="font-size:11px;color:#166534;margin-top:3px;">👤 ${esc(l.nombreCliente||"—")} · ${esc(l.telefonoCliente||"—")}${l.direccionCliente ? ` · ${esc(l.direccionCliente)}` : ""}</div>`
+                    : `<div style="font-size:11px;color:#f97316;margin-top:3px;">⏳ El afiliado todavía no completó los datos del cliente</div>`;
             return `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--borde);">
                 <div style="flex:1;min-width:0;">
                     <div style="font-size:12px;font-weight:700;">${esc(l.nombre||l.codigo||"—")}</div>
                     <div style="font-size:11px;color:#888;">🎯 ${esc(nombreVend)} · $${parseFloat(l.precio||0).toFixed(2)} · ${fecha}</div>
                     ${clienteHtml}
                 </div>
-                <button onclick="confirmarLeadDesdeAdmin('${l.id}')" style="flex-shrink:0;padding:6px 12px;font-size:11px;background:#27ae60;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;">✅ Confirmar</button>
+                <button onclick="confirmarLeadDesdeAdmin('${l.id}')" style="flex-shrink:0;padding:6px 12px;font-size:11px;background:#f97316;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;">📦 Empacar y Enviar</button>
             </div>`;
         }).join("");
     } catch(e) {
@@ -1368,11 +1594,14 @@ async function cargarPedidosAfiliadosPendientes() {
     }
 }
 
+// Solo reserva el stock (paso 1 de 2) — la venta y la comisión del afiliado
+// se cierran hasta confirmar la entrega real desde el Hub (Leads del
+// afiliado), porque con pago contra entrega el cliente puede rechazarlo.
 async function confirmarLeadDesdeAdmin(id) {
-    if (!confirm("¿Confirmar esta venta? Se descontará el stock y se generará la comisión del afiliado.")) return;
-    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"CONFIRMAR_LEAD_VENTA", _pass: ADMIN_PASS, id }) }).then(r=>r.json());
+    if (!confirm("¿Marcar como empacado y enviado? Se reserva el stock — la venta y la comisión se cerrarán hasta confirmar la entrega real desde el Hub.")) return;
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"CONFIRMAR_LEAD_ENVIO", _pass: ADMIN_PASS, id }) }).then(r=>r.json());
     if (!res.ok) { toast("⚠️ " + (res.error || "No se pudo confirmar"), "#ef4444"); return; }
-    toast("✅ Venta confirmada", "#22c55e");
+    toast("📦 Pedido en camino — confirma la entrega en el Hub cuando el transportista la realice", "#22c55e");
     cargarPedidosAfiliadosPendientes();
 }
 
@@ -2968,7 +3197,7 @@ async function generarImagenCatalogo() {
         ctx.fillStyle="#fff"; ctx.fillRect(0,HDR,CW,SUB);
         ctx.fillStyle="#555"; ctx.font="italic 13px 'Segoe UI',Arial";
         let sub=nombre?`Catálogo para: ${nombre}`:"Catálogo de productos";
-        if(talla) sub+=`  ·  Talla ${talla}`;
+        if(talla) sub+=`  ·  Talla ${_tallasDisplay(talla)}`;
         ctx.fillText(sub,CW/2,HDR+15);
         ctx.fillStyle="#f97316"; ctx.font="bold 12px 'Segoe UI',Arial";
         const expStr=new Date(Date.now()+dias*864e5).toLocaleDateString("es-CO");
@@ -3063,9 +3292,11 @@ function aplicarPromptIA() {
     else if (/\bcaballero\b|\bhombre\b/.test(prompt)) pfx = "C";
     else if (/\bunico\b|\bún[io]co\b/.test(prompt))   pfx = "U";
 
-    let tipoAN = "";
+    // Si no se pide explícitamente una alianza/argolla/pareja, se asume que el
+    // pedido es de anillos normales — así "anillos talla 8 de mujer" no mezcla
+    // alianzas, que solo deben aparecer cuando el prompt las pide a propósito.
+    let tipoAN = "sencillo";
     if (/argolla|matrimonio|pareja|novios|alianza/.test(prompt)) tipoAN = "pareja";
-    else if (/sencillo|solitario/.test(prompt))                  tipoAN = "sencillo";
 
     const mNom = prompt.match(/para\s+([a-záéíóúüñ]+)/i);
     const clienteNom = mNom ? mNom[1].charAt(0).toUpperCase()+mNom[1].slice(1) : "";
@@ -3080,6 +3311,7 @@ function aplicarPromptIA() {
     const hasAN = catsDetect.length === 0 || catsDetect.includes("AN");
     document.getElementById("cat-sec-talla").style.display = hasAN ? "block" : "none";
     document.getElementById("cat-talla").value   = talla;
+    sincronizarChipsCatTalla();
     document.getElementById("cat-tipo-an").value = tipoAN;
     document.getElementById("cat-genero").value  = "";
     const pfEl = document.getElementById("cat-prefijo-txt");
@@ -3094,6 +3326,18 @@ function aplicarPromptIA() {
         const prod = _catFiltrada.find(p => (p._codigos?.[0]||p.codigo) === cod);
         if (prod && !tieneStock(prod, talla)) { chk.checked = false; sinStock++; }
     });
+
+    // Respetar el campo de cantidad de piezas (el mismo que usa "Auto-seleccionar
+    // variado") — antes marcaba TODO lo que coincidiera con el prompt sin importar
+    // ese número. Si hay más coincidencias que el límite, se recorta priorizando
+    // mayor stock, dejando el resto sin marcar.
+    const limite = parseInt(document.getElementById("cat-var-size")?.value) || 0;
+    if (limite > 0) {
+        const marcados = [...document.querySelectorAll(".cat-chk:checked")]
+            .map(chk => ({ chk, prod: _catFiltrada.find(p => (p._codigos?.[0]||p.codigo) === chk.dataset.cod) }))
+            .sort((a,b) => _stockTotalProd(b.prod) - _stockTotalProd(a.prod));
+        marcados.slice(limite).forEach(({chk}) => { chk.checked = false; });
+    }
 
     const total   = document.querySelectorAll(".cat-chk").length;
     const activos = document.querySelectorAll(".cat-chk:checked").length;
@@ -3125,6 +3369,220 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 
+// ── HISTORIAL DE LINKS ──────────────────────────────────────────────────────
+let _histLinks = [];
+
+async function cargarHistorialLinks() {
+    const cont = document.getElementById("hist-links-list");
+    cont.innerHTML = '<p style="color:#666;font-size:13px;">Cargando…</p>';
+    try {
+        const res = await fetch("/list-catalogs");
+        const json = await res.json();
+        _histLinks = json.links || [];
+        _renderHistLinks("todos");
+    } catch(e) {
+        cont.innerHTML = '<p style="color:#e74c3c;font-size:13px;">Error al cargar historial.</p>';
+    }
+}
+
+function filtrarHistLinks(btn) {
+    document.querySelectorAll(".hist-filter").forEach(b => {
+        b.style.background = "none"; b.style.color = "#aaa"; b.style.borderColor = "#444";
+    });
+    btn.style.background = "rgba(201,168,76,0.15)"; btn.style.color = "#C9A84C"; btn.style.borderColor = "#C9A84C";
+    _renderHistLinks(btn.dataset.f);
+}
+
+function _renderHistLinks(filtro) {
+    const cont = document.getElementById("hist-links-list");
+    let lista = _histLinks;
+    if (filtro === "cliente")  lista = lista.filter(l => l.tipo === "cliente");
+    if (filtro === "afiliado") lista = lista.filter(l => l.tipo === "afiliado");
+    if (filtro === "vencido")  lista = lista.filter(l => !l.activo);
+    if (!lista.length) {
+        cont.innerHTML = '<p style="color:#666;font-size:13px;text-align:center;padding:16px 0;">Sin registros.</p>';
+        return;
+    }
+    cont.innerHTML = lista.map(l => {
+        const esAfil  = l.tipo === "afiliado";
+        const badge   = esAfil
+            ? `<span style="background:rgba(168,125,32,0.2);color:#C9A84C;border:1px solid #C9A84C;border-radius:12px;padding:2px 9px;font-size:11px;white-space:nowrap;">🤝 Afiliado</span>`
+            : `<span style="background:rgba(14,165,233,0.15);color:#38bdf8;border:1px solid #38bdf8;border-radius:12px;padding:2px 9px;font-size:11px;white-space:nowrap;">📋 Cliente</span>`;
+        const estado  = l.activo
+            ? `<span style="color:#22c55e;font-size:12px;white-space:nowrap;">🟢 Activo</span>`
+            : `<span style="color:#ef4444;font-size:12px;white-space:nowrap;">🔴 Vencido</span>`;
+        const fCreado  = new Date(l.createdAt).toLocaleDateString("es-SV",{day:"2-digit",month:"2-digit",year:"2-digit"});
+        const fExpira  = new Date(l.expiresAt).toLocaleDateString("es-SV",{day:"2-digit",month:"2-digit",year:"2-digit"});
+        const url      = `https://admin-tienda.pages.dev/c/${l.id}`;
+        const nProd    = l.data?.prods?.length || 0;
+        return `
+        <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:12px 14px;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px;">
+                        ${badge} ${estado}
+                    </div>
+                    <div style="font-size:14px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                        ${l.nombre || "(Sin nombre)"}${l.afiliadoCodigo ? ` <span style="color:#888;font-size:12px;">(${l.afiliadoCodigo})</span>` : ""}
+                    </div>
+                    <div style="font-size:11px;color:#666;margin-top:3px;">
+                        ${nProd} producto${nProd!==1?"s":""} · Creado: ${fCreado} · Vence: ${fExpira}
+                    </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0;">
+                    <button onclick="navigator.clipboard.writeText('${url}');toast('✅ Link copiado','#22c55e')"
+                        style="background:none;border:1px solid #444;color:#aaa;border-radius:7px;padding:4px 10px;font-size:11px;cursor:pointer;">
+                        📋 Copiar link
+                    </button>
+                    ${!l.activo ? `
+                    <div style="display:flex;gap:5px;align-items:center;">
+                        <select id="dias-react-${l.id}" style="background:#111;border:1px solid #444;color:#fff;border-radius:7px;padding:4px 6px;font-size:11px;">
+                            <option value="1">1 día</option>
+                            <option value="7">7 días</option>
+                            <option value="15" selected>15 días</option>
+                            <option value="30">30 días</option>
+                        </select>
+                        <button onclick="reactivarLink('${l.id}')"
+                            style="background:rgba(201,168,76,0.15);border:1px solid #C9A84C;color:#C9A84C;border-radius:7px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">
+                            ↺ Reactivar
+                        </button>
+                    </div>` : `
+                    <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+                        ${esAfil ? `<button onclick="abrirAgregarProductos('${l.id}','${(l.nombre||'').replace(/'/g,'\\\'')}')"
+                            style="background:rgba(34,197,94,0.1);border:1px solid #22c55e;color:#22c55e;border-radius:7px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">
+                            ✚ Agregar productos
+                        </button>` : ''}
+                        <button onclick="eliminarLink('${l.id}')"
+                            style="background:rgba(239,68,68,0.1);border:1px solid #ef4444;color:#ef4444;border-radius:7px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">
+                            🗑 Eliminar
+                        </button>
+                    </div>`}
+                </div>
+            </div>
+        </div>`;
+    }).join("");
+}
+
+let _editandoLinkId = null;  // cuando está en modo "agregar a link existente"
+
+function abrirAgregarProductos(id, nombre) {
+    _editandoLinkId = id;
+    // Abrir el modal de catálogo afiliado con la UI normal de selección de productos
+    abrirModalCatalogo("afiliado");
+    // Marcar visualmente que estamos en modo edición
+    const titulo = document.getElementById("modal-catalogo-titulo");
+    if (titulo) titulo.innerHTML = `✚ Agregar productos a <span style="color:#C9A84C;">${nombre || id}</span>`;
+    // Cambiar el botón de generar para que haga "Agregar" en vez de crear link nuevo
+    const btn = document.getElementById("btn-gen-link");
+    if (btn) {
+        btn.textContent = "✚ Agregar al link";
+        btn.onclick = agregarProductosAlLink;
+    }
+}
+
+function _resetModalCatalogo() {
+    if (!_editandoLinkId) return;
+    _editandoLinkId = null;
+    const btn = document.getElementById("btn-gen-link");
+    if (btn) { btn.textContent = "🔗 Link"; btn.onclick = generarLinkCatalogo; }
+}
+
+async function agregarProductosAlLink() {
+    const codsSel = [...document.querySelectorAll(".cat-chk:checked")].map(c => c.dataset.cod);
+    if (!codsSel.length) return toast("⚠️ Selecciona al menos un producto", "#f97316");
+
+    const talla  = document.getElementById("cat-talla").value;
+    const genero = document.getElementById("cat-genero")?.value || "";
+    const lista  = _catFiltrada.filter(p => codsSel.includes(p._codigos?.[0] || p.codigo));
+
+    const nuevosProductos = lista.map(p => {
+        const szExport = _sizesParaExport(p, talla, genero);
+        return {
+            n: p.nombre || "—",
+            p: parseFloat(p.precio || 0).toFixed(2),
+            i: p.foto || p.img || "",
+            m: p.material || detectarMaterial(p.nombre) || "",
+            cat: p._catKey || getCatKey(p),
+            c: p._codigos?.[0] || p.codigo || "",
+            sizes:  szExport.sizes,
+            sizesD: szExport.sizesD,
+            sizesH: szExport.sizesH,
+            par:    p._esPareja || false,
+            piezas: p._piezas || (p._esPareja ? 2 : null),
+            pD: p._precioDama || null,
+            pH: p._precioCab  || null,
+            cD: p._piezasCodigosDama || null,
+            cC: p._piezasCodigosCab  || null,
+            avisoPieza: /matrimonio|argolla|novios|pareja|alianza/i.test(p.nombre || ""),
+            ne:   getNotaEspecial(p),
+            nota: (document.querySelector(`.cat-nota[data-cod="${p._codigos?.[0] || p.codigo}"]`)?.value || "").trim()
+        };
+    });
+
+    const btn = document.getElementById("btn-gen-link");
+    btn.disabled = true; btn.textContent = "⏳ Agregando...";
+
+    try {
+        const res = await fetch("/edit-catalog-products", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: _editandoLinkId, nuevosProductos })
+        });
+        const json = await res.json();
+        if (json.ok) {
+            toast(`✅ ${codsSel.length} producto${codsSel.length !== 1 ? "s" : ""} agregado${codsSel.length !== 1 ? "s" : ""} — total en link: ${json.totalProductos}`, "#22c55e");
+            cerrarModalCatalogo();
+            _resetModalCatalogo();
+            cargarHistorialLinks();
+        } else {
+            toast("❌ " + (json.error || "Error al agregar"), "#ef4444");
+        }
+    } catch(e) {
+        toast("❌ " + e.message, "#ef4444");
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "✚ Agregar al link";
+    }
+}
+
+async function eliminarLink(id) {
+    if (!confirm("¿Eliminar este link del historial? Esta acción no se puede deshacer.")) return;
+    try {
+        const res  = await fetch("/deactivate-catalog", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, eliminarHistorial: true })
+        });
+        const json = await res.json();
+        if (json.ok) {
+            toast("🗑 Link eliminado", "#22c55e");
+            cargarHistorialLinks();
+        } else {
+            toast("❌ " + (json.error || "Error"), "#ef4444");
+        }
+    } catch(e) {
+        toast("❌ " + e.message, "#ef4444");
+    }
+}
+
+async function reactivarLink(id) {
+    const dias = parseInt(document.getElementById("dias-react-" + id)?.value || 15);
+    try {
+        const res  = await fetch("/reactivate-catalog", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, dias })
+        });
+        const json = await res.json();
+        if (json.ok) {
+            toast("✅ Link reactivado por " + dias + " días", "#22c55e");
+            cargarHistorialLinks();
+        } else {
+            toast("❌ " + (json.error || "Error al reactivar"), "#ef4444");
+        }
+    } catch(e) {
+        toast("❌ " + e.message, "#ef4444");
+    }
+}
+
 function getNotaEspecial(p) {
     // "caracterEspecial" (con "er") es el nombre real que usa Consignación/el worker.
     const v = p.caracterEspecial || p.caractEspecial || p.caract_especial || p.caracteristicaEspecial
@@ -3134,22 +3592,26 @@ function getNotaEspecial(p) {
 }
 
 // Cuando hay un filtro de Talla activo, el catálogo exportado (Link/PDF/Imagen)
-// debe mostrar SOLO esa talla en la tarjeta — no todas las que el diseño tiene en stock.
-function _sizesParaExport(p, talla, genero) {
+// debe mostrar SOLO esas tallas en la tarjeta — no todas las que el diseño
+// tiene en stock. Admite varias tallas a la vez ("6.5,7"), no solo una — el
+// cliente puede necesitar ver más de una talla en el mismo link.
+function _sizesParaExport(p, tallaCsv, genero) {
     const catKey = p._catKey || getCatKey(p);
-    if (catKey !== "AN" || !talla) {
+    const tallas = (tallaCsv || "").split(",").filter(Boolean);
+    if (catKey !== "AN" || !tallas.length) {
         return { sizes: p._sizes||[], sizesD: p._sizesD||[], sizesH: p._sizesH||[] };
     }
-    const tieneD = (p._sizesD||[]).includes(talla);
-    const tieneH = (p._sizesH||[]).includes(talla);
-    if (tieneD || tieneH) {
+    const interD = (p._sizesD||[]).filter(s => tallas.includes(s));
+    const interH = (p._sizesH||[]).filter(s => tallas.includes(s));
+    if (interD.length || interH.length) {
         return {
             sizes:  [],
-            sizesD: genero === "caballero" ? [] : (tieneD ? [talla] : []),
-            sizesH: genero === "dama"      ? [] : (tieneH ? [talla] : []),
+            sizesD: genero === "caballero" ? [] : interD,
+            sizesH: genero === "dama"      ? [] : interH,
         };
     }
-    return { sizes: (p._sizes||[]).includes(talla) ? [talla] : (p._sizes||[]), sizesD: [], sizesH: [] };
+    const inter = (p._sizes||[]).filter(s => tallas.includes(s));
+    return { sizes: inter.length ? inter : (p._sizes||[]), sizesD: [], sizesH: [] };
 }
 
 async function generarLinkCatalogo() {
@@ -3165,7 +3627,12 @@ async function generarLinkCatalogo() {
     const talla      = document.getElementById("cat-talla").value;
     const genero     = document.getElementById("cat-genero")?.value || "";
     const dias       = parseInt(document.getElementById("cat-validez").value)||3;
-    const wa         = (document.getElementById("cat-wa")?.value||localStorage.getItem("verex-wa")||"").trim();
+    // Defensa adicional: en catálogo de Cliente, el número SIEMPRE es el
+    // oficial de VEREX, sin importar qué haya quedado en el campo/localStorage
+    // — nunca debe poder colarse el número de un afiliado por error.
+    const wa         = esAfiliado
+        ? (document.getElementById("cat-wa")?.value||localStorage.getItem("verex-wa")||"").trim()
+        : VEREX_WA_OFICIAL;
     const afiliadoId = (document.getElementById("cat-afiliado-id")?.value||"").trim();
     const afiliadoCodigo = (document.getElementById("cat-afiliado-codigo")?.value||"").trim();
 
@@ -3237,7 +3704,10 @@ async function generarLinkCatalogo() {
             })
         };
 
-        if(wa) localStorage.setItem("verex-wa", wa);
+        // Solo se recuerda el número para el próximo catálogo de AFILIADO
+        // (conveniencia si generas varios seguidos para el mismo afiliado) —
+        // nunca para Cliente, que siempre debe ser el oficial de VEREX.
+        if(esAfiliado && wa) localStorage.setItem("verex-wa", wa);
 
         // Save to KV and get short URL
         const saveRes = await fetch("/save-catalog", {
@@ -3266,6 +3736,10 @@ async function generarLinkCatalogo() {
             const cats = [...document.querySelectorAll(".cat-cat-chk:checked")].map(c => c.value);
             const receta = { categorias: cats, talla, genero, tipoAN: document.getElementById("cat-tipo-an")?.value || "", cantidad: codsSel.length, ultimosCodigos: codsSel };
             fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GUARDAR_RECETA_CATALOGO", _pass: ADMIN_PASS, vendedor: afiliadoCodigo, receta }) }).catch(()=>{});
+            // Registro global: marca estos códigos como "recién mostrados" para que
+            // el próximo afiliado que se genere un catálogo reciba otra variedad.
+            fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"REGISTRAR_VARIEDAD_CATALOGO_GLOBAL", _pass: ADMIN_PASS, codigos: codsSel }) }).catch(()=>{});
+            if (_variedadGlobalCache) { const ts = Date.now(); codsSel.forEach(c => { _variedadGlobalCache[c] = ts; }); }
         }
 
     } catch(e){ console.error(e); toast("❌ Error al generar link: "+e.message,"#ef4444"); }
@@ -3358,6 +3832,33 @@ async function desactivarLinkCatalogo(linkOrId) {
         if (!res.ok) throw new Error(out.error || "No se pudo desactivar");
         toast("🚫 Link desactivado","#22c55e");
         document.getElementById("cat-link-desactivar").value = "";
+    } catch(e) {
+        console.error(e);
+        toast("❌ Error: "+e.message,"#ef4444");
+    }
+}
+
+// Cambia cuánto le queda de vida a un link YA generado, sin desactivarlo ni
+// tener que mandar uno nuevo — útil cuando se te olvidó limitar la vigencia
+// o quieres darle más tiempo del que pusiste originalmente.
+async function editarVigenciaCatalogo(linkOrId, dias) {
+    const raw = (linkOrId||"").trim();
+    if (!raw) return toast("⚠️ Pega el link o código a editar","#f97316");
+    const m = raw.match(/\/c\/([a-z0-9-]+)/i);
+    const id = m ? m[1] : raw.replace(/[^a-z0-9-]/gi,"");
+    if (!id) return toast("⚠️ No se pudo leer el código del link","#f97316");
+    if (!confirm(`¿Actualizar la vigencia del catálogo "${id}" a ${dias} día(s) desde ahora?`)) return;
+
+    try {
+        const res = await fetch("/edit-catalog-expiry", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, dias: parseInt(dias) })
+        });
+        const out = await res.json();
+        if (!res.ok) throw new Error(out.error || "No se pudo actualizar");
+        toast(`✅ Vigencia actualizada — ${dias} día(s) desde ahora`,"#22c55e");
+        document.getElementById("cat-link-editar-vig").value = "";
     } catch(e) {
         console.error(e);
         toast("❌ Error: "+e.message,"#ef4444");
@@ -3607,6 +4108,8 @@ function onToggleAfiliado(checked) {
     // ellos ganan comisión por venta y un descuento no acordado les afecta esa comisión.
     const bannerWrap = document.getElementById("cat-banner-wrap");
     if (bannerWrap) bannerWrap.style.display = checked ? "none" : "block";
+    const bannerAfWrap = document.getElementById("cat-banner-afiliado-wrap");
+    if (bannerAfWrap) bannerAfWrap.style.display = checked ? "block" : "none";
     const nombreLabel = document.getElementById("cat-nombre-label");
     if (nombreLabel) nombreLabel.textContent = checked ? "Nota interna (opcional)" : "Nombre del cliente (opcional)";
     if (checked) {
@@ -3617,6 +4120,78 @@ function onToggleAfiliado(checked) {
         const prev = document.getElementById("banner-preview");
         if (prev) prev.style.display = "none";
         cargarVendedoresAfiliados();
+        cargarBannerAfiliadoGlobal();
+    }
+}
+
+// Barra de emojis rápidos para los banners (cliente y afiliado) — inserta el
+// emoji en la posición del cursor del input indicado en data-target, sin
+// pisar lo que el admin ya escribió.
+const EMOJIS_BANNER = ["🎉","🔥","✨","💥","🎁","💸","📦","🚚","⏰","💯","❤️","🛍️","👑","⭐","🆕"];
+function insertarEnCursor(inputId, texto) {
+    const el = document.getElementById(inputId);
+    if (!el) return;
+    const start = el.selectionStart ?? el.value.length;
+    const end   = el.selectionEnd ?? el.value.length;
+    el.value = el.value.slice(0, start) + texto + el.value.slice(end);
+    el.focus();
+    el.setSelectionRange(start + texto.length, start + texto.length);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+function _initEmojiQuickBars() {
+    document.querySelectorAll(".emoji-quick-bar").forEach(bar => {
+        if (bar.dataset.built) return;
+        bar.dataset.built = "1";
+        bar.style.cssText = "display:flex;gap:3px;flex-wrap:wrap;margin-top:4px;";
+        const target = bar.dataset.target;
+        EMOJIS_BANNER.forEach(emo => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.textContent = emo;
+            b.title = "Insertar " + emo;
+            b.style.cssText = "border:1px solid #ddd;background:#fff;border-radius:5px;font-size:14px;padding:2px 5px;cursor:pointer;line-height:1.4;";
+            b.onclick = () => insertarEnCursor(target, emo);
+            bar.appendChild(b);
+        });
+    });
+}
+document.addEventListener("DOMContentLoaded", _initEmojiQuickBars);
+
+let _bannerAfColor = "#7c3aed";
+function selBannerAfColor(btn, color) {
+    _bannerAfColor = color;
+    document.querySelectorAll("#banner-af-colors button").forEach(b => b.style.border = "3px solid transparent");
+    btn.style.border = "3px solid #111";
+}
+async function cargarBannerAfiliadoGlobal() {
+    try {
+        const res = await fetch("/banner-afiliado");
+        const b = await res.json();
+        document.getElementById("cat-banner-af-activo").checked = !!b.activo;
+        document.getElementById("cat-banner-af-txt").value = b.txt || "";
+        document.getElementById("cat-banner-af-sub").value = b.sub || "";
+        _bannerAfColor = b.color || "#7c3aed";
+        document.querySelectorAll("#banner-af-colors button").forEach(btn => {
+            btn.style.border = (btn.getAttribute("onclick")||"").includes(`'${_bannerAfColor}'`) ? "3px solid #111" : "3px solid transparent";
+        });
+    } catch (e) { /* si falla, se deja el formulario en blanco para no bloquear */ }
+}
+async function guardarBannerAfiliadoGlobal() {
+    const activo = document.getElementById("cat-banner-af-activo").checked;
+    const txt = document.getElementById("cat-banner-af-txt").value.trim();
+    const sub = document.getElementById("cat-banner-af-sub").value.trim();
+    if (activo && !txt) return toast("⚠️ Escribe el texto del banner antes de activarlo", "#f97316");
+    try {
+        const res = await fetch("/banner-afiliado", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ activo, txt, sub, color: _bannerAfColor }),
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        toast("✅ Banner global de afiliados actualizado", "#22c55e");
+    } catch (e) {
+        toast("❌ Error al guardar: " + e.message, "#ef4444");
     }
 }
 
@@ -3648,7 +4223,13 @@ function onSeleccionarAfiliado() {
     document.getElementById("cat-afiliado-codigo").value = codigo;
     document.getElementById("cat-afiliado-nombre").value = v?.nombre || "";
     const waEl = document.getElementById("cat-wa");
-    if (waEl && v?.telefono) waEl.value = v.telefono;
+    if (waEl && v?.telefono) {
+        // El teléfono del vendedor se guarda local (8 dígitos, sin "503") —
+        // el link de WhatsApp del catálogo necesita el código de país o el
+        // cliente cree que envió el mensaje y nunca le llega a nadie.
+        const soloDigitos = String(v.telefono).replace(/\D/g, "");
+        waEl.value = soloDigitos.length === 8 ? "503" + soloDigitos : soloDigitos;
+    }
     if (v) generarIdAfiliado(v.nombre);
 
     const btnRefrescar = document.getElementById("btn-refrescar-catalogo-afiliado");
@@ -3671,6 +4252,7 @@ function refrescarCatalogoAfiliado() {
     document.querySelectorAll(".cat-cat-chk").forEach(chk => { chk.checked = (receta.categorias||[]).includes(chk.value); });
     onPillChange();
     if (document.getElementById("cat-talla"))   document.getElementById("cat-talla").value   = receta.talla   || "";
+    sincronizarChipsCatTalla();
     if (document.getElementById("cat-genero"))  document.getElementById("cat-genero").value  = receta.genero  || "";
     if (document.getElementById("cat-tipo-an")) document.getElementById("cat-tipo-an").value = receta.tipoAN  || "";
     if (document.getElementById("cat-var-size")) document.getElementById("cat-var-size").value = receta.cantidad || 36;
@@ -3687,6 +4269,7 @@ function abrirModalCatalogo(tipo) {
         : "📋 Catálogo para Cliente";
     document.getElementById("cat-tipo-an").value = "";
     document.getElementById("cat-talla").value   = "";
+    sincronizarChipsCatTalla();
     document.getElementById("cat-genero").value  = "";
     document.getElementById("cat-nombre").value  = "";
     document.getElementById("cat-validez").value = esAfiliado ? "30" : "15";
@@ -3699,7 +4282,12 @@ function abrirModalCatalogo(tipo) {
     const afChk = document.getElementById("cat-es-afiliado");
     if (afChk) afChk.checked = esAfiliado;
     onToggleAfiliado(esAfiliado);
-    const waEl  = document.getElementById("cat-wa");            if (waEl)  waEl.value  = esAfiliado ? "" : (localStorage.getItem("verex-wa")||"");
+    // El WhatsApp de catálogo Cliente SIEMPRE es el oficial de VEREX — nunca
+    // se debe rellenar con "verex-wa" (eso guarda el ÚLTIMO número usado, que
+    // puede ser el de un afiliado si el admin generó un catálogo de afiliado
+    // justo antes). Reusar ese valor causó que un pedido de cliente directo
+    // le llegara por error al WhatsApp de un afiliado en vez de a VEREX.
+    const waEl  = document.getElementById("cat-wa");            if (waEl)  waEl.value  = esAfiliado ? "" : VEREX_WA_OFICIAL;
     const afNom = document.getElementById("cat-afiliado-nombre"); if (afNom) afNom.value = "";
     const afId  = document.getElementById("cat-afiliado-id");     if (afId)  afId.value  = "";
     const afCod = document.getElementById("cat-afiliado-codigo"); if (afCod) afCod.value = "";
@@ -3713,6 +4301,7 @@ function abrirModalCatalogo(tipo) {
 
 function cerrarModalCatalogo() {
     document.getElementById("modal-catalogo").classList.remove("open");
+    _resetModalCatalogo();
 }
 
 function detectarMaterial(nombre) {
@@ -3737,7 +4326,7 @@ function _actualizarResumenVariado() {
     if (cats.length) partes.push(`Solo: ${cats.map(k => CAT_MAP[k]).join(", ")}`);
     const hasAN = cats.length === 0 || cats.includes("AN");
     if (hasAN) {
-        if (talla)  partes.push(`Anillos → Talla ${talla}`);
+        if (talla)  partes.push(`Anillos → Talla ${_tallasDisplay(talla)}`);
         if (genero) partes.push(`Anillos → ${genero === "dama" ? "Dama" : "Caballero"}`);
         if (tipoAN) partes.push(`Anillos → ${tipoAN === "pareja" ? "Pareja/Argolla" : "Sencillos"}`);
         if (pfx)    partes.push(`Anillos → Prefijo ${pfx}`);
@@ -3749,6 +4338,46 @@ function _actualizarResumenVariado() {
     }
     box.style.display = "block";
     box.innerHTML = `🎯 <strong>Auto-seleccionar variado</strong> respetará: ${partes.join(" · ")}. El resto de categorías se incluyen sin restricción.`;
+}
+
+// Selección múltiple de talla al generar catálogo — antes solo se podía
+// elegir una sola talla (dropdown), pero un cliente puede necesitar ver
+// varias tallas juntas (ej. 6.5 y 7) en el mismo link. El valor real se
+// guarda en el input oculto #cat-talla como texto separado por comas
+// ("6.5,7"), para no tener que tocar los demás lugares del código que ya
+// leen su .value.
+function toggleCatTallaChip(t, btn) {
+    const inp = document.getElementById("cat-talla");
+    const actuales = inp.value ? inp.value.split(",") : [];
+    const idx = actuales.indexOf(t);
+    if (idx >= 0) { actuales.splice(idx, 1); btn.style.background = "#fff"; btn.style.color = "#111"; btn.style.borderColor = "var(--borde)"; }
+    else { actuales.push(t); btn.style.background = "var(--azul)"; btn.style.color = "#fff"; btn.style.borderColor = "var(--azul)"; }
+    inp.value = actuales.join(",");
+    filtrarParaCatalogo();
+}
+
+function limpiarCatTallaChips() {
+    document.getElementById("cat-talla").value = "";
+    document.querySelectorAll(".cat-talla-chip").forEach(b => { b.style.background = "#fff"; b.style.color = "#111"; b.style.borderColor = "var(--borde)"; });
+    filtrarParaCatalogo();
+}
+
+// Repinta los chips activos según el valor actual del input oculto — hace
+// falta llamarla cada vez que #cat-talla.value se asigna desde código (recetas
+// guardadas, reset del modal) en vez de por clic directo en un chip.
+function sincronizarChipsCatTalla() {
+    const seleccionadas = (document.getElementById("cat-talla")?.value || "").split(",").filter(Boolean);
+    document.querySelectorAll(".cat-talla-chip").forEach(b => {
+        const activa = seleccionadas.includes(b.dataset.talla);
+        b.style.background = activa ? "var(--azul)" : "#fff";
+        b.style.color = activa ? "#fff" : "#111";
+        b.style.borderColor = activa ? "var(--azul)" : "var(--borde)";
+    });
+}
+
+// Texto legible para mostrar en resúmenes/subtítulos ("6.5, 7" en vez de "6.5,7")
+function _tallasDisplay(tallaCsv) {
+    return (tallaCsv || "").split(",").filter(Boolean).join(", ");
 }
 
 function filtrarParaCatalogo() {
@@ -3815,8 +4444,9 @@ function filtrarParaCatalogo() {
         return cod.includes("T" + t) || cod.includes("T0" + t);
     };
 
-    if (hasAN && talla) {
-        lista = lista.filter(p => getCatKey(p) !== "AN" || tieneTalla(p, talla));
+    const tallasFiltro = (talla || "").split(",").filter(Boolean);
+    if (hasAN && tallasFiltro.length) {
+        lista = lista.filter(p => getCatKey(p) !== "AN" || tallasFiltro.some(t => tieneTalla(p, t)));
     }
 
     // Agrupar anillos; dejar el resto sin agrupar
@@ -3828,7 +4458,7 @@ function filtrarParaCatalogo() {
     _catFiltrada = lista;
     const catLabel = cats.length ? cats.map(k => CAT_MAP[k]).join(", ") : "Todos los productos";
     info.textContent = lista.length
-        ? `${lista.length} producto(s) — ${catLabel}${talla ? ", Talla " + talla : ""}. Marca los que quieres mostrar:`
+        ? `${lista.length} producto(s) — ${catLabel}${talla ? ", Talla " + _tallasDisplay(talla) : ""}. Marca los que quieres mostrar:`
         : "";
 
     if (!lista.length) {
@@ -3840,14 +4470,14 @@ function filtrarParaCatalogo() {
         let stockLabel = "";
         try {
             const s = JSON.parse(p.caracteristicas || "{}");
-            if (talla) {
+            if (tallasFiltro.length) {
                 const esPareja = Object.keys(s).some(k => k.startsWith("D") || k.startsWith("H"));
                 if (esPareja) {
-                    const d = s["D" + talla] || 0;
-                    const h = s["H" + talla] || 0;
+                    const d = tallasFiltro.reduce((sum, t) => sum + (s["D" + t] || 0), 0);
+                    const h = tallasFiltro.reduce((sum, t) => sum + (s["H" + t] || 0), 0);
                     stockLabel = [d > 0 ? `D:${d}` : "", h > 0 ? `C:${h}` : ""].filter(Boolean).join(" ");
                 } else {
-                    const q = s[talla] || 0;
+                    const q = tallasFiltro.reduce((sum, t) => sum + (s[t] || 0), 0);
                     stockLabel = q > 0 ? `Stock:${q}` : "";
                 }
             }
@@ -3928,48 +4558,150 @@ function ajustarTamanoCatalogo(delta) {
     if (!inp) return;
     const actual = parseInt(inp.value) || 36;
     inp.value = Math.max(10, actual + delta);
+    onCambiarTamanoCatalogo();
 }
 
-function autoSeleccionarVariado(evitarCodigos) {
+// El campo de cantidad (y los botones -10/+10) solo tenían efecto si después
+// se volvía a presionar "Auto-seleccionar variado" a mano — si no, el link se
+// generaba con lo que estuviera marcado, sin respetar el número del campo.
+// Ahora, si ya había una selección previa (algo marcado), cambiar el número
+// vuelve a correr la auto-selección sola, para que el campo siempre sea
+// exactamente lo que se va a generar.
+function onCambiarTamanoCatalogo() {
+    const haySeleccionPrevia = document.querySelectorAll(".cat-chk:checked").length > 0;
+    if (haySeleccionPrevia) autoSeleccionarVariado();
+}
+
+// Historial global de variedad: cuándo se le mostró por última vez cada
+// código a CUALQUIER afiliado (no solo al que se está editando ahora), para
+// repartir la variedad del inventario entre todos los afiliados en vez de que
+// cada uno solo evite repetirse a sí mismo. Se cachea en memoria por sesión.
+let _variedadGlobalCache = null;
+async function cargarVariedadGlobal() {
+    if (_variedadGlobalCache) return _variedadGlobalCache;
+    try {
+        const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ accion: "GET_VARIEDAD_CATALOGO_GLOBAL", _pass: ADMIN_PASS }) });
+        const data = await res.json();
+        _variedadGlobalCache = data.codigos || {};
+    } catch(_) { _variedadGlobalCache = {}; }
+    return _variedadGlobalCache;
+}
+
+async function autoSeleccionarVariado(evitarCodigos) {
     const evitar = evitarCodigos instanceof Set ? evitarCodigos : new Set(evitarCodigos || []);
+    const variedadGlobal = await cargarVariedadGlobal();
     const TOTAL = parseInt(document.getElementById("cat-var-size")?.value) || 36;
     // Proporción base (sobre 36) — se escala al tamaño elegido. Dentro de
     // Anillos se separa "simples" de "alianzas/pares/tríos" con un tope fijo,
     // porque un grupo de pareja suma el stock de varias filas (dama+caballero+
     // tallas) y por pura cantidad de stock terminaba ganando casi todos los
     // cupos de Anillos, dejando el catálogo dominado por alianzas.
-    const DIST_BASE = { AN_simple: 10, AN_pareja: 5, AR: 9, CD: 5, PL: 5 };
+    // Acero 316L es línea secundaria/económica: se fija una proporción 80/20
+    // (plata / acero) sobre el total elegido — a 10 productos son 8 plata + 2
+    // acero, a 50 son 40 + 10, y así sucesivamente — en vez de repartirse por
+    // categoría, porque un producto de acero puede ser AN, AR, CD o PL.
+    const esAcero = p => /acero/i.test(p.material || "") || /acero/i.test(p.nombre || "");
+    const ACERO_QUOTA = Math.round(TOTAL * 0.2);
+    const PLATA_TOTAL = TOTAL - ACERO_QUOTA;
+
+    // Dentro de Anillos se separa en TRES baldes, no dos: pares/tríos
+    // estructurales (dama+caballero), alianzas vendidas como pieza individual
+    // unisex (mismo diseño de alianza pero sin par armado), y anillos normales
+    // (solitarios y demás). Sin este tercer balde, las alianzas individuales
+    // caían junto con los anillos normales en "AN_simple" y, al haber mucho
+    // más stock de alianzas, terminaban ganando casi todos esos cupos.
+    const ES_ALIANZA_NOM = /matrimonio|argolla|novios|pareja|alianza/i;
+    const esAlianzaIndividual = p => !p._esPareja && ES_ALIANZA_NOM.test(p.nombre || "");
+
+    const DIST_BASE = { AN_simple: 8, AN_alianza: 2, AN_pareja: 5, AR: 9, CD: 5, PL: 5 };
+    const DIST_SUM  = Object.values(DIST_BASE).reduce((a, b) => a + b, 0); // 34
     const DIST = {};
-    Object.entries(DIST_BASE).forEach(([cat, n]) => { DIST[cat] = Math.round(n * TOTAL / 36); });
+    Object.entries(DIST_BASE).forEach(([cat, n]) => { DIST[cat] = Math.round(n * PLATA_TOTAL / DIST_SUM); });
+
+    // En catálogos de afiliado se limita aún más: máximo 3 alianzas EN TOTAL
+    // (pares, tríos o pieza individual, todas juntas), sin importar el tamaño
+    // del catálogo — el afiliado vende de todo, no solo alianzas. Se maneja
+    // aparte de los baldes normales (más abajo) para que el tope sea sobre la
+    // suma de ambos baldes, no sobre cada uno por separado.
+    const esCatalogoAfiliado = document.getElementById("cat-es-afiliado")?.checked || false;
+    const ALIANZA_TOTAL_CAP = 3;
+    if (esCatalogoAfiliado) { delete DIST.AN_pareja; delete DIST.AN_alianza; }
 
     const porCat = {};
-    _catFiltrada.forEach(p => {
+    _catFiltrada.filter(p => !esAcero(p)).forEach(p => {
         const catRaw = p._catKey || getCatKey(p);
-        const cat = catRaw === "AN" ? (p._esPareja ? "AN_pareja" : "AN_simple") : catRaw;
+        const cat = catRaw !== "AN" ? catRaw
+            : p._esPareja           ? "AN_pareja"
+            : esAlianzaIndividual(p)? "AN_alianza"
+            :                          "AN_simple";
         if (!porCat[cat]) porCat[cat] = [];
         porCat[cat].push(p);
     });
 
-    // Orden: primero lo NO mostrado antes (variedad), y dentro de cada grupo por
-    // mayor stock. Si evitar está vacío, esto se comporta igual que antes.
+    // Orden: 1) primero lo NO mostrado antes a ESTE afiliado (variedad propia),
+    // 2) luego lo menos mostrado recientemente a CUALQUIER afiliado (variedad
+    // compartida — evita que 10 afiliados con el mismo stock reciban siempre
+    // el mismo catálogo), 3) y dentro de eso, mayor stock primero.
     const cmp = (a, b) => {
         const codA = a._codigos?.[0] || a.codigo, codB = b._codigos?.[0] || b.codigo;
         const evA = evitar.has(codA) ? 1 : 0, evB = evitar.has(codB) ? 1 : 0;
         if (evA !== evB) return evA - evB;
+        const tsA = variedadGlobal[codA] || 0, tsB = variedadGlobal[codB] || 0;
+        if (tsA !== tsB) return tsA - tsB;
         return _stockTotalProd(b) - _stockTotalProd(a);
     };
     Object.values(porCat).forEach(arr => arr.sort(cmp));
 
+    // Reparte la selección de una lista en 3 bandas de precio (bajo/medio/alto)
+    // en vez de tomar simplemente los `count` de mayor stock — sin esto, si las
+    // piezas más caras de una categoría (ej. pulseras) resultan tener más stock,
+    // el catálogo terminaba mostrando solo las caras, sin variedad de precio.
+    // Dentro de cada banda se sigue respetando el orden de variedad/stock (cmp).
+    function _seleccionarDiversoPrecio(lista, count) {
+        if (lista.length <= count) return lista.slice();
+        const porPrecio = lista.slice().sort((a, b) => parseFloat(a.precio || 0) - parseFloat(b.precio || 0));
+        const n = porPrecio.length;
+        const bandas = [
+            porPrecio.slice(0, Math.ceil(n / 3)),
+            porPrecio.slice(Math.ceil(n / 3), Math.ceil(2 * n / 3)),
+            porPrecio.slice(Math.ceil(2 * n / 3)),
+        ].map(b => b.sort(cmp));
+        const out = [];
+        let i = 0;
+        while (out.length < count && bandas.some(b => b.length)) {
+            const banda = bandas[i % 3];
+            if (banda.length) out.push(banda.shift());
+            i++;
+        }
+        return out;
+    }
+
     const selected = new Set();
 
-    // Seleccionar por distribución principal, priorizando variedad y stock alto
+    // Reservar primero la cuota de acero (prioriza variedad + stock igual que las demás)
+    _seleccionarDiversoPrecio(_catFiltrada.filter(esAcero), ACERO_QUOTA)
+        .forEach(p => selected.add(p._codigos?.[0] || p.codigo));
+
+    // Catálogo de afiliado: cupo combinado de alianzas (pares+tríos+individuales
+    // juntos), tope fijo de 3 sin importar el tamaño del catálogo.
+    if (esCatalogoAfiliado) {
+        _seleccionarDiversoPrecio([...(porCat.AN_pareja || []), ...(porCat.AN_alianza || [])], ALIANZA_TOTAL_CAP)
+            .forEach(p => selected.add(p._codigos?.[0] || p.codigo));
+    }
+
+    // Seleccionar por distribución principal, priorizando variedad y diversidad
+    // de precio (se descuenta lo que ya ocupó la cuota de acero para no
+    // pasarse del total)
     Object.entries(DIST).forEach(([cat, count]) => {
-        (porCat[cat] || []).slice(0, count).forEach(p => selected.add(p._codigos?.[0] || p.codigo));
+        const disponibles = (porCat[cat] || []).filter(p => !selected.has(p._codigos?.[0] || p.codigo));
+        _seleccionarDiversoPrecio(disponibles, count).forEach(p => selected.add(p._codigos?.[0] || p.codigo));
     });
 
-    // Completar con otras categorías si hay espacio (mismo criterio)
+    // Completar con otras categorías si hay espacio (mismo criterio) — en
+    // catálogo de afiliado, AN_pareja/AN_alianza ya se manejaron arriba con su
+    // propio tope combinado, así que se excluyen aquí para no colarse sin límite.
     let restante = TOTAL - selected.size;
-    Object.keys(porCat).filter(c => !DIST[c]).forEach(cat => {
+    Object.keys(porCat).filter(c => !DIST[c] && !(esCatalogoAfiliado && (c === "AN_pareja" || c === "AN_alianza"))).forEach(cat => {
         if (restante <= 0) return;
         (porCat[cat] || []).forEach(p => {
             if (restante <= 0) return;
@@ -3978,15 +4710,23 @@ function autoSeleccionarVariado(evitarCodigos) {
         });
     });
 
-    // Si aún falta (categorías principales no tenían suficiente stock), completar con lo que sobre de cualquier categoría
+    // Si aún falta (categorías principales no tenían suficiente stock), completar
+    // con lo que sobre de cualquier categoría — PERO en dos pasadas: primero todo
+    // lo que NO sea pareja/trío (para no dejar que las alianzas, que siempre
+    // ganan por stock acumulado, se coman este relleno), y solo si de verdad no
+    // alcanza, se recurre a más pareja/trío al final.
     if (selected.size < TOTAL) {
-        _catFiltrada
-            .slice()
-            .sort(cmp)
-            .forEach(p => {
+        const esParejaTrio = p => (p._catKey || getCatKey(p)) === "AN" && (p._esPareja || esAlianzaIndividual(p));
+        _catFiltrada.slice().sort(cmp).filter(p => !esParejaTrio(p)).forEach(p => {
+            if (selected.size >= TOTAL) return;
+            selected.add(p._codigos?.[0] || p.codigo);
+        });
+        if (selected.size < TOTAL) {
+            _catFiltrada.slice().sort(cmp).filter(esParejaTrio).forEach(p => {
                 if (selected.size >= TOTAL) return;
                 selected.add(p._codigos?.[0] || p.codigo);
             });
+        }
     }
 
     document.querySelectorAll(".cat-chk").forEach(c => { c.checked = selected.has(c.dataset.cod); });
@@ -4057,7 +4797,7 @@ async function generarPDFCatalogo() {
         doc.setFontSize(10);
         doc.setTextColor(60, 60, 60);
         let sub = nombre ? `Catálogo para: ${nombre}` : "Catálogo de productos";
-        if (talla) sub += `  ·  Talla ${talla}`;
+        if (talla) sub += `  ·  Talla ${_tallasDisplay(talla)}`;
         doc.text(sub, PW / 2, 38, { align: "center" });
 
         // ── Cuadrícula de productos ──
@@ -4167,210 +4907,292 @@ async function generarPDFCatalogo() {
 
 <!-- MODAL CATÁLOGO CLIENTE -->
 <div class="mo" id="modal-catalogo">
-    <div class="mb" style="max-width:620px;">
-        <button class="mc" onclick="cerrarModalCatalogo()">✕</button>
-        <h3 id="modal-catalogo-titulo">📋 Catálogo para Cliente</h3>
+  <div class="mb" style="max-width:940px;">
+    <button class="mc" onclick="cerrarModalCatalogo()">✕</button>
+    <h3 id="modal-catalogo-titulo" style="margin-bottom:18px;">📋 Catálogo para Cliente</h3>
 
-        <div style="background:#f0f7ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px;margin-bottom:14px;">
-            <label style="font-weight:700;color:#1e40af;font-size:12px;">🤖 Armar catálogo con IA</label>
-            <div style="display:flex;gap:8px;margin-top:6px;">
-                <input type="text" id="cat-ia-prompt" placeholder='Ej: "anillos talla 7 dama" o "argollas matrimonio talla 9"'
-                    style="flex:1;font-size:13px;"
-                    onkeydown="if(event.key==='Enter') aplicarPromptIA()">
-                <button onclick="aplicarPromptIA()"
-                    style="background:#1e40af;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">✨ Armar</button>
-            </div>
-            <div id="cat-ia-resultado" style="font-size:11px;color:#1e40af;margin-top:5px;min-height:14px;"></div>
-        </div>
+    <!-- inputs ocultos necesarios para JS -->
+    <input type="checkbox" id="cat-es-afiliado" style="display:none;">
+    <input type="hidden" id="cat-afiliado-nombre">
+    <input type="hidden" id="cat-afiliado-codigo">
+    <input type="hidden" id="cat-talla" value="">
 
-        <div style="margin-bottom:10px;">
-            <label>Categorías / Prefijos</label>
-            <div id="cat-categoria-pills" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;"></div>
-        </div>
-
-        <div id="cat-sec-talla">
-            <div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:11px;color:#9a3412;">
-                💍 Estos filtros solo aplican a la sección de <strong>Anillos</strong> — el resto de categorías (aretes, cadenas, pulseras, etc.) no se ven afectadas y seguirán apareciendo completas en el catálogo variado.
-            </div>
-            <div style="margin-bottom:10px;">
-                <label>Buscar por prefijo del código</label>
-                <div style="position:relative;">
-                    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:15px;pointer-events:none;">🔍</span>
-                    <input type="text" id="cat-prefijo-txt" placeholder="Ej: C, D, U  (varias separadas por coma)"
-                        oninput="filtrarParaCatalogo()"
-                        style="padding-left:34px;width:100%;box-sizing:border-box;font-size:13px;">
-                </div>
-                <div style="font-size:11px;color:#888;margin-top:3px;">C=Caballero &nbsp;·&nbsp; D=Dama &nbsp;·&nbsp; T=Talla &nbsp;·&nbsp; U=Único/Alianza &nbsp;·&nbsp; H=Hombre &nbsp;·&nbsp; Varias: <strong>C, D</strong></div>
-            </div>
-            <div style="margin-bottom:10px;">
-                <label>Tipo de anillo</label>
-                <select id="cat-tipo-an" onchange="filtrarParaCatalogo()">
-                    <option value="">— Todos —</option>
-                    <option value="sencillo">💍 Anillos sencillos</option>
-                    <option value="pareja">💑 Argollas / Pareja / Matrimonio</option>
-                </select>
-            </div>
-            <div class="g2" style="margin-bottom:10px;">
-                <div>
-                    <label>Talla (solo Anillos)</label>
-                    <select id="cat-talla" onchange="filtrarParaCatalogo()">
-                        <option value="">— Todas —</option>
-                        <option value="5">Talla 5</option>
-                        <option value="6">Talla 6</option>
-                        <option value="7">Talla 7</option>
-                        <option value="8">Talla 8</option>
-                        <option value="9">Talla 9</option>
-                        <option value="10">Talla 10</option>
-                        <option value="11">Talla 11</option>
-                        <option value="12">Talla 12</option>
-                        <option value="13">Talla 13</option>
-                        <option value="14">Talla 14</option>
-                    </select>
-                </div>
-                <div>
-                    <label>Género (pareja, solo Anillos)</label>
-                    <select id="cat-genero" onchange="filtrarParaCatalogo()">
-                        <option value="">— Todos —</option>
-                        <option value="dama">👩 Dama</option>
-                        <option value="caballero">👨 Caballero</option>
-                    </select>
-                </div>
-            </div>
-        </div>
-
-        <div style="margin-bottom:12px;">
-            <label id="cat-nombre-label">Nombre del cliente (opcional)</label>
-            <input type="text" id="cat-nombre" placeholder="Ej: María, Juan...">
-        </div>
-
-        <!-- Checkbox oculto — el tipo ya lo decide la pestaña (Catálogo Cliente / Catálogo Afiliado) -->
-        <input type="checkbox" id="cat-es-afiliado" style="display:none;">
-
-        <!-- Solo Afiliado -->
-        <div id="cat-sec-afiliado" style="display:none;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:12px;margin-bottom:12px;">
-            <div style="font-weight:700;color:#166534;font-size:12px;text-transform:uppercase;margin-bottom:10px;">🤝 Datos del Afiliado</div>
-            <div id="cat-afiliado-fields">
-                <div style="margin-bottom:8px;">
-                    <label style="color:#166534;">Afiliado (registrado en Consignación → Vendedores)</label>
-                    <select id="cat-afiliado-select" style="margin-top:4px;" onchange="onSeleccionarAfiliado()">
-                        <option value="">— Selecciona un afiliado —</option>
-                    </select>
-                    <div style="font-size:10px;color:#166534;margin-top:3px;">
-                        Si no aparece, créalo primero en Consignación → Vendedores → tipo 🤝 Afiliado.
-                    </div>
-                    <button type="button" id="btn-refrescar-catalogo-afiliado" onclick="refrescarCatalogoAfiliado()"
-                        style="display:none;width:100%;margin-top:8px;padding:8px 0;border:1px solid #0ea5e9;border-radius:8px;background:#f0f9ff;color:#0369a1;font-size:12px;font-weight:700;cursor:pointer;">
-                        🔄 Refrescar catálogo con stock actual
-                    </button>
-                    <div id="txt-refrescar-nota" style="display:none;font-size:10px;color:#0369a1;margin-top:3px;">
-                        Repone lo agotado y prioriza productos que NO se mostraron la vez anterior (variedad mensual). Solo prellena la selección — falta darle "🔗 Link" para publicar.
-                    </div>
-                </div>
-                <input type="hidden" id="cat-afiliado-nombre">
-                <input type="hidden" id="cat-afiliado-codigo">
-                <div style="margin-bottom:8px;">
-                    <label style="color:#166534;">WhatsApp del afiliado</label>
-                    <input type="text" id="cat-wa" placeholder="Ej: 573001234567" inputmode="numeric" style="margin-top:4px;">
-                    <div style="font-size:10px;color:#166534;margin-top:3px;">Los botones "Quiero este" abrirán este número</div>
-                </div>
-                <div>
-                    <label style="color:#166534;">ID del afiliado (link fijo)</label>
-                    <input type="text" id="cat-afiliado-id" placeholder="Se llena automático al elegir el afiliado" style="margin-top:4px;"
-                        oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')">
-                    <div style="font-size:10px;color:#166534;margin-top:3px;">El link siempre será el mismo — actualizable sin cambiar URL</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Solo Cliente -->
-        <div id="cat-banner-wrap" style="margin-bottom:12px;background:#fffef0;border:1px solid #fde68a;border-radius:8px;padding:10px;">
-            <label style="color:#92400e;font-weight:700;">🏷️ Banner de oferta (opcional)</label>
-            <input type="text" id="cat-banner-txt" placeholder="Ej: 2x1 en aretes este fin de semana 🎉" style="margin-top:6px;">
-            <input type="text" id="cat-banner-sub" placeholder="Subtítulo (ej: Solo hasta el domingo)" style="margin-top:6px;">
-            <div style="margin-top:8px;">
-                <label style="color:#92400e;font-weight:700;font-size:12px;">% Descuento (requiere el texto del banner arriba — calcula el precio final en cada tarjeta)</label>
-                <input type="number" id="cat-banner-desc-pct" placeholder="Ej: 20" min="0" max="90" style="margin-top:4px;">
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
-                <span style="font-size:11px;color:#92400e;font-weight:700;">Color:</span>
-                <div id="banner-colors" style="display:flex;gap:6px;flex-wrap:wrap;">
-                    <button type="button" onclick="selBannerColor(this,'#ef4444')" data-banner-color="#ef4444"
-                        style="width:26px;height:26px;border-radius:50%;background:#ef4444;border:3px solid transparent;cursor:pointer;"></button>
-                    <button type="button" onclick="selBannerColor(this,'#f97316')" data-banner-color="#f97316"
-                        style="width:26px;height:26px;border-radius:50%;background:#f97316;border:3px solid transparent;cursor:pointer;"></button>
-                    <button type="button" onclick="selBannerColor(this,'#7c3aed')" data-banner-color="#7c3aed"
-                        style="width:26px;height:26px;border-radius:50%;background:#7c3aed;border:3px solid transparent;cursor:pointer;"></button>
-                    <button type="button" onclick="selBannerColor(this,'#0277bd')" data-banner-color="#0277bd"
-                        style="width:26px;height:26px;border-radius:50%;background:#0277bd;border:3px solid transparent;cursor:pointer;"></button>
-                    <button type="button" onclick="selBannerColor(this,'#111111')" data-banner-color="#111111"
-                        style="width:26px;height:26px;border-radius:50%;background:#111111;border:3px solid transparent;cursor:pointer;"></button>
-                    <button type="button" onclick="selBannerColor(this,'#22c55e')" data-banner-color="#22c55e"
-                        style="width:26px;height:26px;border-radius:50%;background:#22c55e;border:3px solid transparent;cursor:pointer;"></button>
-                </div>
-                <div id="banner-preview" style="display:none;flex:1;padding:4px 10px;border-radius:5px;font-size:11px;font-weight:700;color:#fff;min-width:80px;text-align:center;"></div>
-            </div>
-        </div>
-
-        <div id="cat-info" style="font-size:12px;color:#888;margin-bottom:8px;"></div>
-        <div id="cat-lista" style="max-height:380px;overflow-y:auto;border:1px solid var(--borde);border-radius:8px;padding:8px;background:var(--gris);"></div>
-
-        <div id="cat-var-resumen" style="font-size:11px;color:#166534;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px;padding:7px 10px;margin-top:10px;display:none;"></div>
-        <div style="display:flex;gap:8px;margin-top:8px;margin-bottom:12px;flex-wrap:wrap;">
-            <button class="btn bg" style="flex:1;font-size:12px;min-width:80px;" onclick="seleccionarTodosCatalogo(true)">✅ Todos</button>
-            <button class="btn bg" style="flex:1;font-size:12px;min-width:80px;" onclick="seleccionarTodosCatalogo(false)">⬜ Ninguno</button>
-            <button class="btn bg" title="Quitar 10 piezas al tamaño del catálogo" style="flex:0 0 auto;font-size:14px;padding:0 10px;font-weight:800;" onclick="ajustarTamanoCatalogo(-10)">−10</button>
-            <input type="number" id="cat-var-size" value="36" min="10" step="10"
-                title="Cantidad de piezas para 'Auto-seleccionar variado' — ajústalo con los botones -10/+10 si quieres mandar un catálogo más grande"
-                style="flex:0 0 70px;font-size:12px;padding:0 6px;border-radius:8px;border:1.5px solid var(--borde);background:var(--gris);color:inherit;font-weight:600;text-align:center;">
-            <button class="btn bg" title="Agregar 10 piezas al tamaño del catálogo" style="flex:0 0 auto;font-size:14px;padding:0 10px;font-weight:800;" onclick="ajustarTamanoCatalogo(10)">+10</button>
-            <button class="btn ba" style="flex:2;font-size:12px;min-width:160px;" onclick="autoSeleccionarVariado()">🔀 Auto-seleccionar variado</button>
-        </div>
-
-        <div style="margin-bottom:12px;">
-            <label>Validez del catálogo</label>
-            <select id="cat-validez">
-                <option value="1">1 día</option>
-                <option value="3">3 días</option>
-                <option value="7">7 días</option>
-                <option value="15">15 días (cliente)</option>
-                <option value="30">30 días (afiliado)</option>
-            </select>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:4px;">
-            <button class="btn bv" id="btn-gen-pdf"  onclick="generarPDFCatalogo()"    style="justify-content:center;padding:11px 6px;">📥 PDF</button>
-            <button class="btn bn" id="btn-gen-img"  onclick="generarImagenCatalogo()" style="justify-content:center;padding:11px 6px;">🖼️ Imagen</button>
-            <button class="btn ba" id="btn-gen-link" onclick="generarLinkCatalogo()"   style="justify-content:center;padding:11px 6px;">🔗 Link</button>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;font-size:9.5px;color:#888;line-height:1.3;">
-            <div>Descarga un PDF estático — para imprimir o enviar como archivo.</div>
-            <div>Genera una imagen (JPG) del catálogo — ideal para estado de WhatsApp.</div>
-            <div>Crea/actualiza el link web interactivo — el que se comparte y detecta stock en vivo.</div>
-        </div>
-
-        <div id="cat-link-box" style="display:none;background:#f0f2f5;border-radius:8px;padding:12px;border:1px solid var(--borde);">
-            <div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Link generado</div>
-            <div id="cat-link-out" style="font-size:13px;color:#0277bd;word-break:break-all;margin-bottom:10px;font-weight:600;"></div>
-            <div style="display:flex;gap:8px;">
-                <button onclick="navigator.clipboard.writeText(document.getElementById('cat-link-out').textContent);toast('✅ Copiado','#22c55e')"
-                    style="flex:1;background:#111;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📋 Copiar</button>
-                <button onclick="window.open('https://wa.me/?text='+encodeURIComponent('Hola, aquí está tu catálogo VEREX: '+document.getElementById('cat-link-out').textContent))"
-                    style="flex:1;background:#25D366;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📱 WhatsApp</button>
-            </div>
-            <button onclick="desactivarLinkCatalogo(document.getElementById('cat-link-out').textContent)"
-                style="width:100%;margin-top:8px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">🚫 Desactivar este link</button>
-        </div>
-
-        <div style="margin-top:14px;background:#fef2f2;border-radius:8px;padding:12px;border:1px solid #fecaca;">
-            <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">🚫 Desactivar un link ya generado antes</div>
-            <div style="font-size:11px;color:#7f1d1d;margin-bottom:8px;">Pega aquí el link completo o solo el código (ej. verexstore.com/c/abc123) para dejarlo sin efecto de inmediato.</div>
-            <div style="display:flex;gap:8px;">
-                <input type="text" id="cat-link-desactivar" placeholder="Link o código a desactivar" style="flex:1;">
-                <button onclick="desactivarLinkCatalogo(document.getElementById('cat-link-desactivar').value)"
-                    style="background:#dc2626;color:#fff;border:none;padding:0 14px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">Desactivar</button>
-            </div>
-        </div>
+    <!-- ══ PASO 1: ¿PARA QUIÉN? ══════════════════════════════════════ -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+      <div style="width:24px;height:24px;border-radius:50%;background:#C9A84C;color:#000;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">1</div>
+      <span style="font-size:13px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.5px;">¿Para quién es?</span>
     </div>
+    <div style="border:1px solid #2a2a2a;border-radius:10px;padding:14px;margin-bottom:16px;background:#111;">
+
+      <!-- Cliente: solo nombre -->
+      <div id="cat-sec-cliente-nombre">
+        <label id="cat-nombre-label" style="font-size:12px;color:#aaa;margin-bottom:4px;display:block;">Nombre del cliente (opcional)</label>
+        <input type="text" id="cat-nombre" placeholder="Ej: María, Juan..." style="width:100%;box-sizing:border-box;">
+      </div>
+
+      <!-- Afiliado: selector + WA + ID -->
+      <div id="cat-sec-afiliado" style="display:none;">
+        <div style="margin-bottom:10px;">
+          <label style="font-size:12px;color:#86efac;margin-bottom:4px;display:block;">Afiliado registrado en Vendedores</label>
+          <select id="cat-afiliado-select" onchange="onSeleccionarAfiliado()" style="width:100%;box-sizing:border-box;">
+            <option value="">— Selecciona un afiliado —</option>
+          </select>
+          <div style="font-size:10px;color:#666;margin-top:3px;">Si no aparece, créalo en Consignación → Vendedores → tipo 🤝 Afiliado.</div>
+        </div>
+        <div id="cat-afiliado-fields">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+            <div>
+              <label style="font-size:12px;color:#86efac;margin-bottom:4px;display:block;">WhatsApp del afiliado</label>
+              <input type="text" id="cat-wa" placeholder="Ej: 50371250725" inputmode="numeric" style="width:100%;box-sizing:border-box;">
+              <div style="font-size:10px;color:#666;margin-top:2px;">Botones "Quiero este" abrirán este número</div>
+            </div>
+            <div>
+              <label style="font-size:12px;color:#86efac;margin-bottom:4px;display:block;">ID del link (fijo)</label>
+              <input type="text" id="cat-afiliado-id" placeholder="Se llena automático" style="width:100%;box-sizing:border-box;"
+                oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')">
+              <div style="font-size:10px;color:#666;margin-top:2px;">El link siempre será el mismo URL</div>
+            </div>
+          </div>
+          <button type="button" id="btn-refrescar-catalogo-afiliado" onclick="refrescarCatalogoAfiliado()"
+            style="display:none;width:100%;padding:8px 0;border:1px solid #0ea5e9;border-radius:8px;background:rgba(14,165,233,0.08);color:#38bdf8;font-size:12px;font-weight:700;cursor:pointer;">
+            🔄 Refrescar catálogo con stock actual
+          </button>
+          <div id="txt-refrescar-nota" style="display:none;font-size:10px;color:#0369a1;margin-top:4px;">
+            Repone lo agotado y prioriza productos NO mostrados la vez anterior. Solo prellena — falta darle "🔗 Link" para publicar.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ PASO 2: FILTRAR PRODUCTOS ════════════════════════════════ -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+      <div style="width:24px;height:24px;border-radius:50%;background:#C9A84C;color:#000;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">2</div>
+      <span style="font-size:13px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.5px;">Filtrar productos</span>
+    </div>
+    <div style="border:1px solid #2a2a2a;border-radius:10px;padding:14px;margin-bottom:16px;background:#111;">
+
+      <!-- IA -->
+      <div style="background:rgba(30,64,175,0.12);border:1px solid rgba(191,219,254,0.2);border-radius:8px;padding:10px;margin-bottom:12px;">
+        <div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:6px;">🤖 Armar con IA — describe lo que buscas</div>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="cat-ia-prompt" placeholder='Ej: "anillos talla 7 dama" o "argollas matrimonio talla 9"'
+            style="flex:1;font-size:13px;" onkeydown="if(event.key==='Enter') aplicarPromptIA()">
+          <button onclick="aplicarPromptIA()"
+            style="background:#2563eb;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">✨ Armar</button>
+        </div>
+        <div id="cat-ia-resultado" style="font-size:11px;color:#93c5fd;margin-top:5px;min-height:14px;"></div>
+      </div>
+
+      <!-- Categorías -->
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px;color:#aaa;margin-bottom:6px;display:block;">Categorías <span style="color:#666;font-weight:400;">(sin selección = todas)</span></label>
+        <div id="cat-categoria-pills" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+      </div>
+
+      <!-- Filtros de Anillos -->
+      <div id="cat-sec-talla" style="background:rgba(251,191,36,0.05);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:10px;">
+        <div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:10px;">💍 Filtros de Anillos <span style="color:#888;font-weight:400;">(no afectan otras categorías)</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <div>
+            <label style="font-size:12px;color:#aaa;margin-bottom:4px;display:block;">Tipo</label>
+            <select id="cat-tipo-an" onchange="filtrarParaCatalogo()" style="width:100%;box-sizing:border-box;">
+              <option value="">— Todos —</option>
+              <option value="sencillo">💍 Sencillos</option>
+              <option value="pareja">💑 Argollas / Pareja</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:12px;color:#aaa;margin-bottom:4px;display:block;">Género (para argollas)</label>
+            <select id="cat-genero" onchange="filtrarParaCatalogo()" style="width:100%;box-sizing:border-box;">
+              <option value="">— Todos —</option>
+              <option value="dama">👩 Dama</option>
+              <option value="caballero">👨 Caballero</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:12px;color:#aaa;margin-bottom:6px;display:block;">Talla — puedes elegir varias</label>
+          <div id="cat-talla-chips" style="display:flex;flex-wrap:wrap;gap:5px;">
+            <button type="button" class="cat-talla-chip" data-talla="5"    onclick="toggleCatTallaChip('5',this)"    style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T5</button>
+            <button type="button" class="cat-talla-chip" data-talla="5.5"  onclick="toggleCatTallaChip('5.5',this)"  style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T5.5</button>
+            <button type="button" class="cat-talla-chip" data-talla="6"    onclick="toggleCatTallaChip('6',this)"    style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T6</button>
+            <button type="button" class="cat-talla-chip" data-talla="6.5"  onclick="toggleCatTallaChip('6.5',this)"  style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T6.5</button>
+            <button type="button" class="cat-talla-chip" data-talla="7"    onclick="toggleCatTallaChip('7',this)"    style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T7</button>
+            <button type="button" class="cat-talla-chip" data-talla="7.5"  onclick="toggleCatTallaChip('7.5',this)"  style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T7.5</button>
+            <button type="button" class="cat-talla-chip" data-talla="8"    onclick="toggleCatTallaChip('8',this)"    style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T8</button>
+            <button type="button" class="cat-talla-chip" data-talla="8.5"  onclick="toggleCatTallaChip('8.5',this)"  style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T8.5</button>
+            <button type="button" class="cat-talla-chip" data-talla="9"    onclick="toggleCatTallaChip('9',this)"    style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T9</button>
+            <button type="button" class="cat-talla-chip" data-talla="9.5"  onclick="toggleCatTallaChip('9.5',this)"  style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T9.5</button>
+            <button type="button" class="cat-talla-chip" data-talla="10"   onclick="toggleCatTallaChip('10',this)"   style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T10</button>
+            <button type="button" class="cat-talla-chip" data-talla="10.5" onclick="toggleCatTallaChip('10.5',this)" style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T10.5</button>
+            <button type="button" class="cat-talla-chip" data-talla="11"   onclick="toggleCatTallaChip('11',this)"   style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T11</button>
+            <button type="button" class="cat-talla-chip" data-talla="12"   onclick="toggleCatTallaChip('12',this)"   style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T12</button>
+            <button type="button" class="cat-talla-chip" data-talla="13"   onclick="toggleCatTallaChip('13',this)"   style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T13</button>
+            <button type="button" class="cat-talla-chip" data-talla="14"   onclick="toggleCatTallaChip('14',this)"   style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T14</button>
+            <button type="button" onclick="limpiarCatTallaChips()" style="padding:5px 10px;border-radius:16px;border:none;background:#222;color:#666;font-size:11px;font-weight:700;cursor:pointer;">✕ Todas</button>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px;color:#aaa;margin-bottom:4px;display:block;">Buscar por prefijo de código</label>
+          <input type="text" id="cat-prefijo-txt" placeholder="C=Cab · D=Dama · U=Único · varias: C, D"
+            oninput="filtrarParaCatalogo()" style="width:100%;box-sizing:border-box;font-size:13px;">
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ PASO 3: SELECCIÓN DE PRODUCTOS ══════════════════════════ -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+      <div style="width:24px;height:24px;border-radius:50%;background:#C9A84C;color:#000;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">3</div>
+      <span style="font-size:13px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.5px;">Seleccionar productos</span>
+      <span id="cat-info" style="font-size:12px;color:#888;margin-left:4px;"></span>
+    </div>
+    <div style="border:1px solid #2a2a2a;border-radius:10px;padding:14px;margin-bottom:16px;background:#111;">
+      <div id="cat-lista" style="max-height:340px;overflow-y:auto;border:1px solid #222;border-radius:8px;padding:8px;background:#0d0d0d;"></div>
+      <div id="cat-var-resumen" style="font-size:11px;color:#86efac;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);border-radius:7px;padding:7px 10px;margin-top:10px;display:none;"></div>
+
+      <!-- Controles de selección -->
+      <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+        <button class="btn bg" style="flex:1;min-width:80px;font-size:12px;" onclick="seleccionarTodosCatalogo(true)">✅ Todos</button>
+        <button class="btn bg" style="flex:1;min-width:80px;font-size:12px;" onclick="seleccionarTodosCatalogo(false)">⬜ Ninguno</button>
+        <div style="flex:1;min-width:200px;display:flex;gap:6px;align-items:center;background:#0d0d0d;border:1px solid #333;border-radius:8px;padding:6px 10px;">
+          <button onclick="ajustarTamanoCatalogo(-10)" style="background:none;border:none;color:#aaa;font-size:16px;font-weight:800;cursor:pointer;padding:0 4px;line-height:1;">−</button>
+          <input type="number" id="cat-var-size" value="36" min="1" style="flex:1;background:none;border:none;color:#fff;font-size:14px;font-weight:700;text-align:center;outline:none;width:40px;">
+          <button onclick="ajustarTamanoCatalogo(10)"  style="background:none;border:none;color:#aaa;font-size:16px;font-weight:800;cursor:pointer;padding:0 4px;line-height:1;">+</button>
+          <span style="font-size:11px;color:#666;white-space:nowrap;">productos</span>
+        </div>
+        <button class="btn ba" style="flex:2;min-width:160px;font-size:12px;" onclick="autoSeleccionarVariado()">🔀 Auto-seleccionar</button>
+      </div>
+    </div>
+
+    <!-- ══ PASO 4: DETALLES DEL LINK ════════════════════════════════ -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+      <div style="width:24px;height:24px;border-radius:50%;background:#C9A84C;color:#000;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">4</div>
+      <span style="font-size:13px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.5px;">Detalles del link</span>
+    </div>
+    <div style="border:1px solid #2a2a2a;border-radius:10px;padding:14px;margin-bottom:16px;background:#111;">
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px;color:#aaa;margin-bottom:4px;display:block;">Vigencia</label>
+        <select id="cat-validez" style="width:100%;box-sizing:border-box;">
+          <option value="1">1 día</option>
+          <option value="3">3 días</option>
+          <option value="7">7 días</option>
+          <option value="15">15 días</option>
+          <option value="30">30 días</option>
+        </select>
+      </div>
+
+      <!-- Banner cliente -->
+      <div id="cat-banner-wrap" style="background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:10px;">
+        <div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:8px;">🏷️ Banner de oferta <span style="color:#666;font-weight:400;">(opcional)</span></div>
+        <input type="text" id="cat-banner-txt" placeholder="Ej: 2x1 en aretes este fin de semana 🎉" style="width:100%;box-sizing:border-box;margin-bottom:6px;">
+        <div class="emoji-quick-bar" data-target="cat-banner-txt"></div>
+        <input type="text" id="cat-banner-sub" placeholder="Subtítulo (ej: Solo hasta el domingo)" style="width:100%;box-sizing:border-box;margin-top:6px;">
+        <div class="emoji-quick-bar" data-target="cat-banner-sub"></div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:160px;">
+            <label style="font-size:11px;color:#aaa;margin-bottom:4px;display:block;">% Descuento <span style="color:#666;">(requiere texto del banner)</span></label>
+            <input type="number" id="cat-banner-desc-pct" placeholder="Ej: 20" min="0" max="90" style="width:100%;box-sizing:border-box;">
+          </div>
+          <div>
+            <label style="font-size:11px;color:#aaa;margin-bottom:6px;display:block;">Color del banner</label>
+            <div id="banner-colors" style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button type="button" onclick="selBannerColor(this,'#ef4444')" data-banner-color="#ef4444" style="width:26px;height:26px;border-radius:50%;background:#ef4444;border:3px solid transparent;cursor:pointer;"></button>
+              <button type="button" onclick="selBannerColor(this,'#f97316')" data-banner-color="#f97316" style="width:26px;height:26px;border-radius:50%;background:#f97316;border:3px solid transparent;cursor:pointer;"></button>
+              <button type="button" onclick="selBannerColor(this,'#7c3aed')" data-banner-color="#7c3aed" style="width:26px;height:26px;border-radius:50%;background:#7c3aed;border:3px solid transparent;cursor:pointer;"></button>
+              <button type="button" onclick="selBannerColor(this,'#0277bd')" data-banner-color="#0277bd" style="width:26px;height:26px;border-radius:50%;background:#0277bd;border:3px solid transparent;cursor:pointer;"></button>
+              <button type="button" onclick="selBannerColor(this,'#111111')" data-banner-color="#111111" style="width:26px;height:26px;border-radius:50%;background:#111111;border:2px solid #555;cursor:pointer;"></button>
+              <button type="button" onclick="selBannerColor(this,'#22c55e')" data-banner-color="#22c55e" style="width:26px;height:26px;border-radius:50%;background:#22c55e;border:3px solid transparent;cursor:pointer;"></button>
+            </div>
+          </div>
+          <div id="banner-preview" style="display:none;padding:4px 12px;border-radius:5px;font-size:11px;font-weight:700;color:#fff;text-align:center;"></div>
+        </div>
+      </div>
+
+      <!-- Banner global afiliado -->
+      <div id="cat-banner-afiliado-wrap" style="display:none;background:rgba(124,58,237,0.08);border:1px solid rgba(167,139,250,0.25);border-radius:8px;padding:10px;margin-top:10px;">
+        <div style="font-size:11px;font-weight:700;color:#c4b5fd;margin-bottom:4px;">🌐 Banner global de Afiliados</div>
+        <div style="font-size:10px;color:#7c3aed;margin-bottom:8px;">Un solo banner para TODOS los catálogos de afiliado — se aplica a todos los links ya compartidos al guardar.</div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#c4b5fd;font-weight:600;margin-bottom:6px;">
+          <input type="checkbox" id="cat-banner-af-activo" style="width:auto;"> Banner activo
+        </label>
+        <input type="text" id="cat-banner-af-txt" placeholder="Ej: Nuevo catálogo de temporada 🎉" style="width:100%;box-sizing:border-box;margin-bottom:6px;">
+        <div class="emoji-quick-bar" data-target="cat-banner-af-txt"></div>
+        <input type="text" id="cat-banner-af-sub" placeholder="Subtítulo (opcional)" style="width:100%;box-sizing:border-box;margin-top:6px;">
+        <div class="emoji-quick-bar" data-target="cat-banner-af-sub"></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+          <div id="banner-af-colors" style="display:flex;gap:6px;">
+            <button type="button" onclick="selBannerAfColor(this,'#ef4444')" style="width:24px;height:24px;border-radius:50%;background:#ef4444;border:3px solid transparent;cursor:pointer;"></button>
+            <button type="button" onclick="selBannerAfColor(this,'#f97316')" style="width:24px;height:24px;border-radius:50%;background:#f97316;border:3px solid transparent;cursor:pointer;"></button>
+            <button type="button" onclick="selBannerAfColor(this,'#7c3aed')" style="width:24px;height:24px;border-radius:50%;background:#7c3aed;border:3px solid transparent;cursor:pointer;"></button>
+            <button type="button" onclick="selBannerAfColor(this,'#0277bd')" style="width:24px;height:24px;border-radius:50%;background:#0277bd;border:3px solid transparent;cursor:pointer;"></button>
+            <button type="button" onclick="selBannerAfColor(this,'#22c55e')" style="width:24px;height:24px;border-radius:50%;background:#22c55e;border:3px solid transparent;cursor:pointer;"></button>
+          </div>
+          <button type="button" onclick="guardarBannerAfiliadoGlobal()"
+            style="flex:1;background:#7c3aed;color:#fff;border:none;padding:7px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">💾 Guardar banner global</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ GENERAR ══════════════════════════════════════════════════ -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:4px;">
+      <button class="btn bv" id="btn-gen-pdf"  onclick="generarPDFCatalogo()"    style="justify-content:center;padding:12px 6px;">📥 PDF</button>
+      <button class="btn bn" id="btn-gen-img"  onclick="generarImagenCatalogo()" style="justify-content:center;padding:12px 6px;">🖼️ Imagen</button>
+      <button class="btn ba" id="btn-gen-link" onclick="generarLinkCatalogo()"   style="justify-content:center;padding:12px 6px;">🔗 Link</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;font-size:10px;color:#555;line-height:1.3;text-align:center;">
+      <div>PDF estático para imprimir o enviar como archivo</div>
+      <div>Imagen JPG — ideal para estado de WhatsApp</div>
+      <div>Link web interactivo con stock en vivo</div>
+    </div>
+
+    <!-- Link generado -->
+    <div id="cat-link-box" style="display:none;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.3);border-radius:10px;padding:14px;margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:700;color:#86efac;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">✅ Link generado</div>
+      <div id="cat-link-out" style="font-size:13px;color:#4ade80;word-break:break-all;margin-bottom:10px;font-weight:600;"></div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="navigator.clipboard.writeText(document.getElementById('cat-link-out').textContent);toast('✅ Copiado','#22c55e')"
+          style="flex:1;background:#166534;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📋 Copiar</button>
+        <button onclick="window.open('https://wa.me/?text='+encodeURIComponent('Hola, aquí está tu catálogo VEREX: '+document.getElementById('cat-link-out').textContent))"
+          style="flex:1;background:#25D366;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📱 WhatsApp</button>
+        <button onclick="desactivarLinkCatalogo(document.getElementById('cat-link-out').textContent)"
+          style="background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.3);padding:9px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">🚫 Desactivar</button>
+      </div>
+    </div>
+
+    <!-- ⚙️ Gestión avanzada (colapsable) -->
+    <details style="border:1px solid #222;border-radius:8px;overflow:hidden;">
+      <summary style="padding:10px 14px;font-size:12px;font-weight:700;color:#666;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;">
+        ⚙️ Gestión de links anteriores
+        <span style="font-size:10px;color:#444;">▼ expandir</span>
+      </summary>
+      <div style="padding:14px;border-top:1px solid #222;background:#0d0d0d;display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <div style="font-size:11px;font-weight:700;color:#f87171;margin-bottom:6px;">🚫 Desactivar link</div>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="cat-link-desactivar" placeholder="Link completo o código (ej: abc123)" style="flex:1;">
+            <button onclick="desactivarLinkCatalogo(document.getElementById('cat-link-desactivar').value)"
+              style="background:#dc2626;color:#fff;border:none;padding:0 14px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">Desactivar</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:6px;">✏️ Editar vigencia</div>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="cat-link-editar-vig" placeholder="Link completo o código" style="flex:1;">
+            <select id="cat-editar-vig-dias" style="width:110px;">
+              <option value="1">1 día</option>
+              <option value="3">3 días</option>
+              <option value="7">7 días</option>
+              <option value="15">15 días</option>
+              <option value="30">30 días</option>
+            </select>
+            <button onclick="editarVigenciaCatalogo(document.getElementById('cat-link-editar-vig').value, document.getElementById('cat-editar-vig-dias').value)"
+              style="background:#2563eb;color:#fff;border:none;padding:0 14px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">Actualizar</button>
+          </div>
+        </div>
+      </div>
+    </details>
+
+  </div>
 </div>
 
 <!-- Modal Cambiar Contraseña -->

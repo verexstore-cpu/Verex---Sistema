@@ -3878,7 +3878,7 @@ async function enviarLinkFirmaRemota() {
     const token = generarLinkId();
     await apiPost({ accion: "GUARDAR_TOKEN_FIRMA", vendedor: v.codigo, token });
     v.tokenFirma = token;
-    const link = "https://verex-consignacion.pages.dev/firmar.html?v=" + encodeURIComponent(v.codigo) + "&token=" + encodeURIComponent(token);
+    const link = "https://verex-nexus.pages.dev/firmar.html?v=" + encodeURIComponent(v.codigo) + "&token=" + encodeURIComponent(token);
     const tel = String(v.telefono || "").replace(/\D/g, "");
     const msg = "Hola " + v.nombre + "! Para completar tu registro con VEREX, por favor firma tu contrato aquí:\n" + link;
     cerrarModal("modal-firma-contrato");
@@ -3912,7 +3912,7 @@ async function enviarLinkPedidos() {
         await apiPost({ accion: "GUARDAR_TOKEN_PEDIDOS", vendedor: vendedorActual.codigo, token });
         vendedorActual.tokenPedidos = token;
     }
-    const link = "https://verex-consignacion.pages.dev/pedido.html?v=" + encodeURIComponent(vendedorActual.codigo) + "&token=" + encodeURIComponent(token);
+    const link = "https://verex-nexus.pages.dev/pedido.html?v=" + encodeURIComponent(vendedorActual.codigo) + "&token=" + encodeURIComponent(token);
     const tel = String(vendedorActual.telefono || "").replace(/\D/g, "");
     const msg = "Hola " + vendedorActual.nombre + "! Aquí completas los datos (nombre, teléfono y dirección) de tus pedidos cerrados, para que VEREX pueda confirmarlos:\n" + link;
     try { await navigator.clipboard.writeText(link); } catch(_){}
@@ -4709,7 +4709,7 @@ async function agregarProductoNuevo() {
 }
 
 // ── FOTOS DESDE CELULAR ──────────────────────────────────────────────
-const UPLOAD_URL = "https://verex-consignacion.pages.dev/upload";
+const UPLOAD_URL = "https://verex-nexus.pages.dev/upload";
 
 // ── FOTO CELULAR SYNC — sesión persistente ───────────────────────────
 // La sesión vive mientras la página esté abierta.
