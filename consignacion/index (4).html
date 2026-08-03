@@ -8307,6 +8307,13 @@ async function descargarSoloPDF() {
 // ═══════════════════════════════════════════════════════════════════════
 let _notaFormato = localStorage.getItem('verex_nota_formato') || 'producto';
 
+// Escala manual del texto de la nota. El tamaño se sigue calculando solo para
+// que el texto entre en la etiqueta, pero esto lo multiplica: sirve para pedir
+// letra más grande en notas cortas (donde el automático se queda corto por el
+// tope de 14pt) o más chica cuando se quiere que quede discreta.
+// El auto-ajuste se mantiene SIEMPRE como tope, así nunca se desborda.
+let _notaEscala = parseFloat(localStorage.getItem('verex_nota_escala')) || 1;
+
 const NOTA_DIMS = {
     mini:         { w: 20, h: 12, label: '📎 Mini',       sub: '2×1.2cm · cinta' },
     producto:     { w: 54, h: 15, label: '🏷️ Producto',   sub: '5×1.5cm' },
@@ -8349,6 +8356,20 @@ function abrirModalNota() {
                         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px;" id="nota-format-grid">
                             ${botonesFormato}
                         </div>
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                            <span style="color:#ccc;font-size:11px;font-weight:600;flex:1;">Tamaño del texto:</span>
+                            <button onclick="cambiarEscalaNota(-0.1)" title="Más chico"
+                                style="width:30px;height:28px;background:#222;color:#ccc;border:1px solid #333;
+                                       border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;line-height:1;">−</button>
+                            <span id="nota-escala-val" style="color:#a47ae8;font-size:12px;font-weight:700;
+                                       min-width:44px;text-align:center;">100%</span>
+                            <button onclick="cambiarEscalaNota(0.1)" title="Más grande"
+                                style="width:30px;height:28px;background:#222;color:#ccc;border:1px solid #333;
+                                       border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;line-height:1;">+</button>
+                            <button onclick="cambiarEscalaNota(0, true)" title="Volver al automático"
+                                style="height:28px;padding:0 8px;background:#1a1a1a;color:#777;border:1px solid #333;
+                                       border-radius:6px;font-size:10px;cursor:pointer;">auto</button>
+                        </div>
                         <p style="color:#ccc;font-size:11px;margin-bottom:6px;font-weight:600;">Texto a imprimir:</p>
                         <textarea id="nota-texto-libre" oninput="actualizarPreviewNota()" placeholder="Escribe aquí la nota…"
                             style="width:100%;min-height:90px;background:#1a1a1a;color:#eee;border:1px solid #333;
@@ -8375,12 +8396,32 @@ function abrirModalNota() {
         b.style.background = '#222'; b.style.color = '#aaa'; b.style.border = '1px solid #333';
     });
     if (activo) { activo.style.background = '#7a4ad4'; activo.style.color = '#fff'; activo.style.border = 'none'; }
+    refrescarEscalaNota();
     actualizarPreviewNota();
 }
 
 function cerrarModalNota() {
     const m = document.getElementById('modal-nota-imprimir');
     if (m) m.style.display = 'none';
+}
+
+// delta = cuánto mover la escala; reset = volver al automático (100%).
+// Se limita entre 50% y 200%: por debajo el texto es ilegible en una etiqueta
+// de 5cm, y por encima el auto-ajuste lo termina recortando igual.
+function cambiarEscalaNota(delta, reset) {
+    _notaEscala = reset ? 1 : Math.min(2, Math.max(0.5, _notaEscala + delta));
+    _notaEscala = Math.round(_notaEscala * 10) / 10;   // evita 0.7000000000000001
+    localStorage.setItem('verex_nota_escala', String(_notaEscala));
+    refrescarEscalaNota();
+    actualizarPreviewNota();
+}
+
+function refrescarEscalaNota() {
+    const el = document.getElementById('nota-escala-val');
+    if (el) {
+        el.textContent = Math.round(_notaEscala * 100) + '%';
+        el.style.color = (_notaEscala === 1) ? '#a47ae8' : '#f0b429';
+    }
 }
 
 function selFormatoNota(fmt, btn) {
@@ -8422,15 +8463,28 @@ async function generarPDFNotaLibre(texto, formato) {
     const orientation = (W >= H) ? 'landscape' : 'portrait';
     const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation });
 
-    let fontSize = Math.min(14, H * 0.6);
+    // Punto de partida = el automático de siempre, multiplicado por la escala
+    // que eligió el usuario. El bucle de abajo lo sigue reduciendo si no entra,
+    // así que subir la escala nunca puede desbordar la etiqueta: en el peor
+    // caso el texto termina en el mismo tamaño que daba el automático.
+    // El piso también se escala, para que al pedir letra chica de verdad baje
+    // (con el piso fijo en 5pt no se notaba el cambio en textos largos).
+    // El tamaño de partida se ALINEA a una grilla de 0.25pt y se baja por esa
+    // misma grilla. Sin esto la escala no era monótona: al 70% arrancaba en
+    // 7.14 y entraba de una, mientras que al 100% arrancaba en 10.2 y bajaba
+    // de a 0.5 hasta 6.7 — o sea que pedir letra MÁS CHICA la daba MÁS GRANDE.
+    // Con la grilla compartida, subir la escala nunca achica.
+    const deseado = Math.min(14, H * 0.6) * _notaEscala;
+    let fontSize = Math.floor(deseado * 4) / 4;
+    const minFont = 3;
     let lineas, lineH;
     doc.setFont('helvetica', 'bold');
-    while (fontSize >= 5) {
+    while (fontSize >= minFont) {
         doc.setFontSize(fontSize);
         lineas = doc.splitTextToSize(t, W - pad * 2);
         lineH = fontSize * 0.42;
         if (lineas.length * lineH <= H - pad * 2) break;
-        fontSize -= 0.5;
+        fontSize -= 0.25;
     }
     doc.setTextColor(0, 0, 0);
     const altoTexto = lineas.length * lineH;
