@@ -637,8 +637,11 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
                   // para que las separe. Sin esto, imprimir 3 etiquetas metía las
                   // 2 páginas aplastadas dentro de una sola.
                   // En rollo continuo NO aplica: ahí la tira larga es lo correcto.
+                  // También cuando el cliente lo pide con separar:true — lo usa la
+                  // nota de texto libre para imprimir varias copias: cada una tiene
+                  // que salir como etiqueta suelta, no como una tira pegada.
                   const esTroquelado = ['29x90', '17x54'].includes(labelId)
-                  const argPages = (esTroquelado && pages > 1) ? ` --pages ${pages}` : ''
+                  const argPages = ((esTroquelado || body.separar) && pages > 1) ? ` --pages ${pages}` : ''
                   const cmd = `python "${pyScript}" --png "${tmpPng}" --ip "${printerIp}" --label "${labelId}" --target-w ${px.w} --target-h ${px.h} --rotate ${rotateDeg}${noCrop}${argPages}`
                   exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
                     if (err) resolve({ ok: false, error: parsePrintError(stderr, err.message) })

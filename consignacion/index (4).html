@@ -8314,6 +8314,11 @@ let _notaFormato = localStorage.getItem('verex_nota_formato') || 'producto';
 // El auto-ajuste se mantiene SIEMPRE como tope, así nunca se desborda.
 let _notaEscala = parseFloat(localStorage.getItem('verex_nota_escala')) || 1;
 
+// Cuántas copias iguales imprimir de una sola vez. Se arma un PDF con una
+// página por copia y se le pide al servidor que las separe en etiquetas
+// distintas, en vez de mandar la misma nota N veces a mano.
+let _notaCopias = parseInt(localStorage.getItem('verex_nota_copias')) || 1;
+
 const NOTA_DIMS = {
     mini:         { w: 20, h: 12, label: '📎 Mini',       sub: '2×1.2cm · cinta' },
     producto:     { w: 54, h: 15, label: '🏷️ Producto',   sub: '5×1.5cm' },
@@ -8370,6 +8375,23 @@ function abrirModalNota() {
                                 style="height:28px;padding:0 8px;background:#1a1a1a;color:#777;border:1px solid #333;
                                        border-radius:6px;font-size:10px;cursor:pointer;">auto</button>
                         </div>
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                            <span style="color:#ccc;font-size:11px;font-weight:600;flex:1;">Copias a imprimir:</span>
+                            <button onclick="cambiarCopiasNota(-1)" title="Una menos"
+                                style="width:30px;height:28px;background:#222;color:#ccc;border:1px solid #333;
+                                       border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;line-height:1;">−</button>
+                            <input id="nota-copias-val" type="number" min="1" max="50" value="1"
+                                onchange="fijarCopiasNota(this.value)"
+                                style="width:52px;height:28px;background:#1a1a1a;color:#a47ae8;border:1px solid #333;
+                                       border-radius:6px;text-align:center;font-size:13px;font-weight:700;
+                                       font-family:'DM Sans',sans-serif;">
+                            <button onclick="cambiarCopiasNota(1)" title="Una más"
+                                style="width:30px;height:28px;background:#222;color:#ccc;border:1px solid #333;
+                                       border-radius:6px;font-size:16px;font-weight:700;cursor:pointer;line-height:1;">+</button>
+                            <button onclick="fijarCopiasNota(1)" title="Volver a una sola"
+                                style="height:28px;padding:0 8px;background:#1a1a1a;color:#777;border:1px solid #333;
+                                       border-radius:6px;font-size:10px;cursor:pointer;">1×</button>
+                        </div>
                         <p style="color:#ccc;font-size:11px;margin-bottom:6px;font-weight:600;">Texto a imprimir:</p>
                         <textarea id="nota-texto-libre" oninput="actualizarPreviewNota()" placeholder="Escribe aquí la nota…"
                             style="width:100%;min-height:90px;background:#1a1a1a;color:#eee;border:1px solid #333;
@@ -8378,7 +8400,7 @@ function abrirModalNota() {
                     <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;">
                         <div id="nota-preview-area" style="border-radius:8px;overflow:hidden;flex:1;margin-bottom:10px;min-height:80px;"></div>
                         <div id="nota-status" style="font-size:11px;color:#888;margin-bottom:8px;min-height:14px;text-align:center;"></div>
-                        <button onclick="enviarNotaImpresion()"
+                        <button onclick="enviarNotaImpresion()" id="nota-btn-imprimir"
                             style="width:100%;background:linear-gradient(135deg,#7a4ad4,#4a2a8c);
                                    color:#ede0ff;border:none;border-radius:10px;padding:12px;
                                    font-size:13px;font-weight:700;cursor:pointer;">
@@ -8397,6 +8419,7 @@ function abrirModalNota() {
     });
     if (activo) { activo.style.background = '#7a4ad4'; activo.style.color = '#fff'; activo.style.border = 'none'; }
     refrescarEscalaNota();
+    refrescarCopiasNota();
     actualizarPreviewNota();
 }
 
@@ -8422,6 +8445,31 @@ function refrescarEscalaNota() {
         el.textContent = Math.round(_notaEscala * 100) + '%';
         el.style.color = (_notaEscala === 1) ? '#a47ae8' : '#f0b429';
     }
+}
+
+// Tope de 50 copias: es una nota, no una tirada — y evita que un dedazo en el
+// campo numérico mande cientos de etiquetas a la impresora.
+function fijarCopiasNota(n) {
+    _notaCopias = Math.max(1, Math.min(50, parseInt(n) || 1));
+    localStorage.setItem('verex_nota_copias', String(_notaCopias));
+    refrescarCopiasNota();
+}
+
+function cambiarCopiasNota(delta) {
+    fijarCopiasNota(_notaCopias + delta);
+}
+
+function refrescarCopiasNota() {
+    const inp = document.getElementById('nota-copias-val');
+    if (inp) {
+        inp.value = _notaCopias;
+        inp.style.color = (_notaCopias === 1) ? '#a47ae8' : '#f0b429';
+    }
+    // El botón dice cuántas se van a imprimir, para que no haya sorpresas.
+    const btn = document.getElementById('nota-btn-imprimir');
+    if (btn) btn.textContent = (_notaCopias === 1)
+        ? '🖨️ Imprimir Nota'
+        : `🖨️ Imprimir ${_notaCopias} copias`;
 }
 
 function selFormatoNota(fmt, btn) {
@@ -8453,7 +8501,7 @@ async function actualizarPreviewNota() {
 
 // Genera un PDF de texto libre centrado, con auto-reducción de tamaño de fuente
 // hasta que el texto quepa en las dimensiones del formato elegido.
-async function generarPDFNotaLibre(texto, formato) {
+async function generarPDFNotaLibre(texto, formato, copias) {
     if (!window.jspdf || !window.jspdf.jsPDF) throw new Error('jsPDF no cargado');
     const t = (texto || '').trim();
     if (!t) throw new Error('Escribe el texto de la nota');
@@ -8488,11 +8536,21 @@ async function generarPDFNotaLibre(texto, formato) {
     }
     doc.setTextColor(0, 0, 0);
     const altoTexto = lineas.length * lineH;
-    let y = (H - altoTexto) / 2 + lineH * 0.8;
-    lineas.forEach(linea => {
-        doc.text(linea, W / 2, y, { align: 'center' });
-        y += lineH;
-    });
+
+    // Una página por copia. El tamaño de fuente ya está resuelto, así que todas
+    // salen idénticas; el servidor las separa después en etiquetas distintas.
+    const n = Math.max(1, Math.min(50, parseInt(copias) || 1));
+    for (let c = 0; c < n; c++) {
+        if (c > 0) doc.addPage([W, H], orientation);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(fontSize);
+        doc.setTextColor(0, 0, 0);
+        let y = (H - altoTexto) / 2 + lineH * 0.8;
+        lineas.forEach(linea => {
+            doc.text(linea, W / 2, y, { align: 'center' });
+            y += lineH;
+        });
+    }
     const raw = doc.output('datauristring');
     return raw.split(',')[1];
 }
@@ -8506,7 +8564,7 @@ async function enviarNotaImpresion() {
     status.textContent = '⏳ Generando PDF…';
     let pdfBase64 = null;
     try {
-        pdfBase64 = await generarPDFNotaLibre(texto, _notaFormato);
+        pdfBase64 = await generarPDFNotaLibre(texto, _notaFormato, _notaCopias);
     } catch(err) {
         status.style.color = '#ef4444';
         status.textContent = '⚠️ Error PDF: ' + (err.message || err);
@@ -8525,7 +8583,9 @@ async function enviarNotaImpresion() {
             const res = await fetch(PRINT_SERVER + '/imprimir', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ formato: _notaFormato, rollo: _rolloImpresion, pdf_base64: pdfBase64, pageCount: 1, printerIp: localStorage.getItem('verex_wifi_ip') || undefined })
+                // separar:true pide que cada página salga como etiqueta aparte y
+                // no como una tira larga — si no, las copias vendrían pegadas.
+                body: JSON.stringify({ formato: _notaFormato, rollo: _rolloImpresion, pdf_base64: pdfBase64, pageCount: _notaCopias, separar: true, printerIp: localStorage.getItem('verex_wifi_ip') || undefined })
             });
             const json = await res.json();
             if (json.ok) {
