@@ -524,11 +524,18 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
                 // dentro de la imagen. toDataURL() devuelve el canvas entero sin
                 // importar cuánto se vea en pantalla.
                 let pngBuf = null
-                const dataUrl = await win.webContents.executeJavaScript(
-                  '(() => { const c = document.getElementById("c"); try { return c ? c.toDataURL("image/png") : ""; } catch(e) { return ""; } })()'
-                ).catch(() => '')
-                if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/png;base64,')) {
-                  pngBuf = Buffer.from(dataUrl.slice('data:image/png;base64,'.length), 'base64')
+                const info = await win.webContents.executeJavaScript(
+                  '(() => { const c = document.getElementById("c");' +
+                  ' if (!c) return { err: "sin canvas" };' +
+                  ' try { const u = c.toDataURL("image/png");' +
+                  '   return { w: c.width, h: c.height, len: u.length, url: u }; }' +
+                  ' catch(e) { return { w: c.width, h: c.height, err: String(e && e.message || e) }; } })()'
+                ).catch(e => ({ err: 'executeJavaScript: ' + (e && e.message || e) }))
+                logDebug(`[captura] formato=${formato} canvas=${info && info.w}x${info && info.h} ` +
+                         `dataUrlLen=${info && info.len} err=${info && info.err}`)
+                if (info && typeof info.url === 'string' && info.url.startsWith('data:image/png;base64,')) {
+                  pngBuf = Buffer.from(info.url.slice('data:image/png;base64,'.length), 'base64')
+                  logDebug(`[captura] canvas leido OK -> ${pngBuf.length} bytes`)
                 }
 
                 // Respaldo: si por lo que sea no se pudo leer el canvas, se cae al
