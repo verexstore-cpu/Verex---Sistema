@@ -10266,7 +10266,11 @@ function _generarHTMLReciboVD(v) {
     font-family:'Courier New',Courier,monospace;
     font-size:9pt; font-weight:normal; color:#000; background:#fff;
   }
-  .page { width:48mm; padding:3mm 2.5mm 6mm 2.5mm; }
+  /* Margen generoso arriba y abajo: la térmica empieza a imprimir apenas entra
+     el papel, y entre el cabezal y la barra de corte queda un tramo que se
+     lleva el final del recibo. Con 3mm/6mm se cortaba el texto de ambas
+     puntas. Los laterales quedan igual, que nunca dieron problema. */
+  .page { width:48mm; padding:8mm 2.5mm 15mm 2.5mm; }
   .c { text-align:center; }
   .store { font-size:7pt; letter-spacing:3px; margin:0 0 1.5mm; }
   hr { border:none; border-top:1px solid #000; margin:2mm 0; }
