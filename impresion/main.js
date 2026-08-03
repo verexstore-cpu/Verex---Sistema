@@ -444,25 +444,38 @@ function startPrintServer() {
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc='file:///${pdfWorkerPath}';
 const url='file:///${pdfPath.replace(/\\/g,'/')}';
-pdfjsLib.getDocument(url).promise.then(pdf=>{
-  const total=pdf.numPages;
-  Promise.all(Array.from({length:total},(_,i)=>pdf.getPage(i+1))).then(pgs=>{
-    const vp=pgs[0].getViewport({scale:4});
-    const W=Math.round(vp.width), H=Math.round(vp.height);
-    const c=document.getElementById('c');
-    c.width=W; c.height=H*total;
-    const ctx=c.getContext('2d');
-    ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H*total);
-    let done=0;
-    pgs.forEach((pg,i)=>{
-      const vp2=pg.getViewport({scale:4});
+// Las paginas se dibujan UNA POR UNA, esperando cada render.
+// Antes se lanzaban todas a la vez con forEach sobre el MISMO contexto de
+// canvas: pdf.js no admite renders concurrentes en un mismo contexto, asi que
+// con 1 pagina funcionaba de casualidad y con varias se colgaba — el servidor
+// esperaba el titulo READY que nunca llegaba y cortaba a los 45s con
+// "Timeout renderizando PDF". Aparecio al imprimir 10 copias de una nota.
+(async () => {
+  try {
+    const pdf = await pdfjsLib.getDocument(url).promise;
+    const total = pdf.numPages;
+    const pgs = [];
+    for (let i = 1; i <= total; i++) pgs.push(await pdf.getPage(i));
+    const vp = pgs[0].getViewport({scale:4});
+    const W = Math.round(vp.width), H = Math.round(vp.height);
+    const c = document.getElementById('c');
+    c.width = W; c.height = H * total;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H * total);
+    for (let i = 0; i < total; i++) {
+      const vp2 = pgs[i].getViewport({scale:4});
       ctx.save();
-      ctx.translate(0, i*H);
-      pg.render({canvasContext:ctx,viewport:vp2}).promise
-        .then(()=>{ ctx.restore(); done++; if(done===total) document.title='READY'; });
-    });
-  });
-});
+      ctx.translate(0, i * H);
+      await pgs[i].render({canvasContext:ctx, viewport:vp2}).promise;
+      ctx.restore();
+    }
+    document.title = 'READY';
+  } catch (e) {
+    // Avisar del fallo en vez de dejar al servidor esperando los 45s completos
+    window.__verexError = String(e && e.message || e);
+    document.title = 'ERROR';
+  }
+})();
 <\/script></body></html>`
 
           const tmpHtml = path.join(os.tmpdir(), `verex-pdf-${Date.now()}.html`)
@@ -491,6 +504,17 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
             const checkReady = setInterval(async () => {
               try {
                 const title = await win.webContents.getTitle()
+                // El HTML pone ERROR si pdf.js falla: mejor avisar el motivo real
+                // enseguida que hacer esperar 45s para decir "Timeout".
+                if (title === 'ERROR') {
+                  clearInterval(checkReady)
+                  const detalle = await win.webContents.executeJavaScript('window.__verexError || ""').catch(() => '')
+                  logDebug(`[render] pdf.js fallo: ${detalle}`)
+                  try { win.close() } catch {}
+                  fs.unlink(tmpHtml, () => {}); fs.unlink(pdfPath, () => {})
+                  done({ success: false, error: 'No se pudo renderizar el PDF' + (detalle ? ': ' + detalle : '') })
+                  return
+                }
                 if (title !== 'READY') return
               } catch { return }
               clearInterval(checkReady)
