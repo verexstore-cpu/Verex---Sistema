@@ -514,12 +514,37 @@ pdfjsLib.getDocument(url).promise.then(pdf=>{
                   if (dims[0] > 0 && dims[1] > 0) { captureW = dims[0]; captureH = dims[1] }
                 }
 
-                const img = await win.webContents.capturePage({ x: 0, y: 0, width: captureW, height: captureH })
+                // Sacar el canvas DIRECTO, sin pasar por capturePage().
+                //
+                // capturePage() fotografía únicamente lo que entra en el viewport,
+                // y la ventana la limita el tamaño de la pantalla: en un monitor
+                // 1920×1080 una ventana de 2000×2000 queda en ~1921×1020. Con un
+                // PDF grande (una guía tamaño carta, por ejemplo) el resultado
+                // salía cortado por abajo — incluso con las barras de scroll
+                // dentro de la imagen. toDataURL() devuelve el canvas entero sin
+                // importar cuánto se vea en pantalla.
+                let pngBuf = null
+                const dataUrl = await win.webContents.executeJavaScript(
+                  '(() => { const c = document.getElementById("c"); try { return c ? c.toDataURL("image/png") : ""; } catch(e) { return ""; } })()'
+                ).catch(() => '')
+                if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/png;base64,')) {
+                  pngBuf = Buffer.from(dataUrl.slice('data:image/png;base64,'.length), 'base64')
+                }
+
+                // Respaldo: si por lo que sea no se pudo leer el canvas, se cae al
+                // método anterior en vez de dejar al usuario sin impresión.
+                if (!pngBuf || !pngBuf.length) {
+                  const img = await win.webContents.capturePage({ x: 0, y: 0, width: captureW, height: captureH })
+                  if (!img || img.isEmpty()) {
+                    win.close()
+                    fs.unlink(tmpHtml, () => {}); fs.unlink(pdfPath, () => {})
+                    done({ success: false, error: 'Captura vacía' }); return
+                  }
+                  pngBuf = img.toPNG()
+                }
+
                 win.close()
                 fs.unlink(tmpHtml, () => {}); fs.unlink(pdfPath, () => {})
-                if (!img || img.isEmpty()) { done({ success: false, error: 'Captura vacía' }); return }
-
-                const pngBuf = img.toPNG()
                 const tmpPng = path.join(os.tmpdir(), `verex-lbl-${Date.now()}.png`)
                 fs.writeFileSync(tmpPng, pngBuf)
                 fs.writeFileSync(path.join(app.getPath('desktop'), 'verex-debug-label.png'), pngBuf)
