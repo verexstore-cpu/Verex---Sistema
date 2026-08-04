@@ -5340,6 +5340,13 @@ function activarEdicionProducto() {
             document.getElementById("ep-precio-caballero").value = pCab || "";
         }
     }
+    // El campo de talla solo aplica para anillos y conjuntos
+    const esAnilloEP = p.categoria === "AN" || p.categoria === "CJ";
+    const tallaWrap = document.getElementById("ep-talla-add")?.closest("div");
+    if (tallaWrap) tallaWrap.style.display = esAnilloEP ? "flex" : "none";
+    const tallaHint = tallaWrap?.nextElementSibling;
+    if (tallaHint) tallaHint.style.display = esAnilloEP ? "block" : "none";
+    if (!esAnilloEP && document.getElementById("ep-talla-add")) document.getElementById("ep-talla-add").value = "";
     document.getElementById("modal-prod-vista").style.display = "none";
     document.getElementById("modal-prod-edicion").style.display = "block";
     // Mostrar foto actual en el preview del editor
@@ -5464,7 +5471,9 @@ async function guardarEdicionProducto() {
     }
     // Sumar existencia a bodega si se ingresó cantidad
     const existencia = parseInt(document.getElementById("ep-existencia")?.value) || 0;
-    const tallaAdd   = (document.getElementById("ep-talla-add")?.value || "").trim();
+    const catEP = productoEditando.p.categoria || "";
+    const esAnilloCategoria = catEP === "AN" || catEP === "CJ";
+    const tallaAdd = esAnilloCategoria ? (document.getElementById("ep-talla-add")?.value || "").trim() : "";
     if (tallaAdd && existencia <= 0) {
         toast("⚠️ Ingresa la cantidad de unidades para la talla " + tallaAdd);
         btn.textContent = "💾 Guardar"; btn.disabled = false;
