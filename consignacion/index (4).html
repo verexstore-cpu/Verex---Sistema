@@ -5455,6 +5455,11 @@ async function guardarEdicionProducto() {
     // Sumar existencia a bodega si se ingresó cantidad
     const existencia = parseInt(document.getElementById("ep-existencia")?.value) || 0;
     const tallaAdd   = (document.getElementById("ep-talla-add")?.value || "").trim();
+    if (tallaAdd && existencia <= 0) {
+        toast("⚠️ Ingresa la cantidad de unidades para la talla " + tallaAdd);
+        btn.textContent = "💾 Guardar"; btn.disabled = false;
+        return;
+    }
     if (existencia > 0) {
         if (tallaAdd) {
             // Registrar variante con talla — puede ser nueva o existente
