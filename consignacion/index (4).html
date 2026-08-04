@@ -5452,6 +5452,16 @@ async function guardarEdicionProducto() {
     const nombreBaseEP = nombre.replace(/\s+T?\d+(\.\d+)?\s*$/i, "").trim() || nombre;
     // Update en servidor
     await apiPost({ accion: "EDITAR_PRODUCTO", codigo: codigoViejo, nuevo_codigo: codigo !== codigoViejo ? codigo : undefined, nombre, nombre_base: nombreBaseEP, descripcion: desc, precio, img, material, caracterEspecial, set_config: setConfigEP || undefined, precio_caballero: precioCaballeroEP });
+    // Propagar nombre_base, foto, material, descripción y caracterEspecial al
+    // resto de tallas del mismo diseño — así editar cualquier talla actualiza
+    // todo el grupo sin tener que hacerlo una por una.
+    const codigoBaseActual = getCodigoBase(codigoViejo);
+    const hermanos = stockData.filter(s => getCodigoBase(s.codigo) === codigoBaseActual && s.codigo !== codigoViejo && s.estado !== "inactivo");
+    for (const h of hermanos) {
+        const tallaH = getTallaFromCodigo(h.codigo);
+        const nombreH = tallaH ? `${nombreBaseEP} T${tallaH}` : nombreBaseEP;
+        await apiPost({ accion: "EDITAR_PRODUCTO", codigo: h.codigo, nombre: nombreH, nombre_base: nombreBaseEP, descripcion: desc, img, material, caracterEspecial });
+    }
     // Sumar existencia a bodega si se ingresó cantidad
     const existencia = parseInt(document.getElementById("ep-existencia")?.value) || 0;
     const tallaAdd   = (document.getElementById("ep-talla-add")?.value || "").trim();
