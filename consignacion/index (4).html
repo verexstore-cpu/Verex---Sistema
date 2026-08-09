@@ -1734,6 +1734,28 @@ function extraerMaterial(nombre, descripcion) {
     return "";
 }
 
+// ── Helpers: estado de etiquetas impresas por código ──────────────────────
+function _getEtiqImpr() { try { return new Set(JSON.parse(localStorage.getItem('verex_etiq_impr') || '[]')); } catch { return new Set(); } }
+function estaEtiquetaImpresa(codigo) { return _getEtiqImpr().has(codigo); }
+function marcarEtiquetaImpresa(codigo) { const s = _getEtiqImpr(); s.add(codigo); localStorage.setItem('verex_etiq_impr', JSON.stringify([...s])); }
+function desmarcarEtiquetaImpresa(codigo) { const s = _getEtiqImpr(); s.delete(codigo); localStorage.setItem('verex_etiq_impr', JSON.stringify([...s])); }
+
+let _codigosImpresionRapida = null;
+
+function imprimirEtiquetaStock(codigo) {
+    if (estaEtiquetaImpresa(codigo)) {
+        if (!confirm(`¿Marcar "${codigo}" como pendiente de imprimir?`)) return;
+        desmarcarEtiquetaImpresa(codigo);
+        renderStock();
+        return;
+    }
+    _colaEtiquetas = [{ codigo, qty: 1 }];
+    _codigosImpresionRapida = [codigo];
+    _formatoImpresion = localStorage.getItem('verex_formato_impresion') || 'mini';
+    abrirModalImpresion();
+}
+// ── Fin helpers etiquetas ──────────────────────────────────────────────────
+
 async function generarEtiquetas() {
     if (seleccionEtiquetas.size === 0) { toast("⚠️ Selecciona al menos un producto"); return; }
 
@@ -6118,6 +6140,7 @@ function renderStock(items) {
                         <button onclick="event.stopPropagation();compartirProducto(${jsArg(item.codigo)})" style="flex:1;padding:4px 0;font-size:10px;background:#25D366;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;" title="Compartir este producto">🔗</button>
                         <button onclick="event.stopPropagation();toggleReservaStock(${jsArg(item.codigo)})" style="flex:1;padding:4px 0;font-size:10px;background:${item.reservado?"#e74c3c":"#4a4a4e"};color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;" title="${item.reservado?"Liberar reserva":"Reservar (ocultar de venta)"}">${item.reservado?"🔓":"🔒"}</button>
                         <button onclick="event.stopPropagation();toggleMenuMover(${jsArg(item.codigo)},this)" style="flex:2;padding:4px 6px;font-size:10px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">⇄ Mover ▾</button>
+                        <button onclick="event.stopPropagation();imprimirEtiquetaStock(${jsArg(item.codigo)})" title="${estaEtiquetaImpresa(item.codigo)?'Etiqueta impresa — clic para desmarcar':'Imprimir etiqueta'}" style="flex:1;padding:4px 0;font-size:12px;background:${estaEtiquetaImpresa(item.codigo)?'#22c55e':'#4a4a4e'};color:#fff;border:none;border-radius:6px;cursor:pointer;">🖨️</button>
                         <div id="menu-mover-${sanitizar(item.codigo)}" style="display:none;position:absolute;bottom:30px;right:0;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
                             <button onclick="event.stopPropagation();moverItemDirecto(${jsArg(item.codigo)},'tienda')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4caf82;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🛍️ Enviar a Tienda</button>
                             <button onclick="event.stopPropagation();moverItemDirecto(${jsArg(item.codigo)},'bodega')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4a6fa5;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">📦 Devolver a Bodega</button>
@@ -6213,6 +6236,7 @@ function renderStock(items) {
                         <button onclick="event.stopPropagation();toggleReservaStock(${jsArg(item.codigo)})" title="${item.reservado?"Liberar":"Reservar"}" style="width:26px;height:26px;padding:0;font-size:12px;background:${item.reservado?"#e74c3c":"#4a4a4e"};color:#fff;border:none;border-radius:6px;cursor:pointer;">${item.reservado?"🔓":"🔒"}</button>
                         <button onclick="event.stopPropagation();toggleMenuMover(${jsArg(item.codigo)},this)" title="Mover" style="width:26px;height:26px;padding:0;font-size:12px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;">⇄</button>
                         <button onclick="event.stopPropagation();eliminarStockItem(${jsArg(item.codigo)})" title="Eliminar" style="width:26px;height:26px;padding:0;font-size:12px;background:#FF453A;color:#fff;border:none;border-radius:6px;cursor:pointer;">🗑️</button>
+                        <button onclick="event.stopPropagation();imprimirEtiquetaStock(${jsArg(item.codigo)})" title="${estaEtiquetaImpresa(item.codigo)?'Etiqueta impresa — clic para desmarcar':'Imprimir etiqueta'}" style="width:26px;height:26px;padding:0;font-size:12px;background:${estaEtiquetaImpresa(item.codigo)?'#22c55e':'#4a4a4e'};color:#fff;border:none;border-radius:6px;cursor:pointer;">🖨️</button>
                         <div id="menu-mover-${sanitizar(item.codigo)}" style="display:none;position:absolute;top:30px;right:0;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
                             <button onclick="event.stopPropagation();moverItemDirecto(${jsArg(item.codigo)},'tienda')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4caf82;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🛍️ Enviar a Tienda</button>
                             <button onclick="event.stopPropagation();moverItemDirecto(${jsArg(item.codigo)},'bodega')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4a6fa5;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">📦 Devolver a Bodega</button>
@@ -8254,7 +8278,8 @@ async function enviarImpresionServidor() {
             if (json.ok) {
                 status.style.color = '#22c55e';
                 status.textContent = `✅ ${json.etiquetas} etiqueta(s) enviadas a Brother QL`;
-                setTimeout(() => { cerrarModalImpresion(); limpiarCola(); }, 1800);
+                if (_codigosImpresionRapida) { _codigosImpresionRapida.forEach(c => marcarEtiquetaImpresa(c)); _codigosImpresionRapida = null; }
+                setTimeout(() => { cerrarModalImpresion(); limpiarCola(); renderStock(); }, 1800);
             } else {
                 const errMsg = (json.error || 'Error en impresora');
                 // Traducir errores técnicos que el Hub no filtró
