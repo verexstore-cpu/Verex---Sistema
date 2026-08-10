@@ -1116,6 +1116,8 @@
                 style="flex:1;padding:8px 0;border:1px solid var(--dorado);border-radius:8px;background:var(--dorado);color:#111;font-size:12px;font-weight:700;cursor:pointer;">📦 Consignación</button>
             <button type="button" id="v-tipo-afiliado-btn" onclick="selTipoVendedor('afiliado')"
                 style="flex:1;padding:8px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:12px;font-weight:700;cursor:pointer;">🤝 Afiliado</button>
+            <button type="button" id="v-tipo-hibrido-btn" onclick="selTipoVendedor('hibrido')"
+                style="flex:1;padding:8px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:12px;font-weight:700;cursor:pointer;">🔄 Híbrido</button>
         </div>
         <div style="font-size:11px;color:var(--plateado);margin-bottom:10px;" id="v-tipo-desc">Recibe piezas físicas, vende, devuelve lo no vendido.</div>
         <label id="v-recibe-fisico-wrap" style="display:none;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--blanco);background:var(--gris2);border:1px solid var(--borde);border-radius:8px;padding:10px 12px;margin-bottom:10px;">
@@ -1919,7 +1921,7 @@ function renderVendedores() {
         // Comisión acumulada en vivo — mismo cálculo exacto que "Hacer Corte",
         // así el número siempre calza con lo que saldría al cortar ahora mismo.
         let comisionLive = 0, comisionPct = 0;
-        if (v.tipo === "afiliado") {
+        if (v.tipo === "afiliado" || v.tipo === "hibrido") {
             const valorVendCard = inv.reduce((s, c) => s + parseInt(c.vendido||0) * parseFloat(c.precio||0), 0);
             comisionPct  = calcularComision(valorVendCard, v.tipo, v.comisionFija);
             comisionLive = valorVendCard * comisionPct / 100;
@@ -1945,15 +1947,17 @@ function renderVendedores() {
             <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin-bottom:4px;">
                 ${v.tipo === "afiliado"
                     ? '<div style="display:inline-block;font-size:9px;font-weight:700;color:#16a34a;background:rgba(22,163,74,0.15);border:1px solid rgba(22,163,74,0.35);border-radius:5px;padding:1px 6px;">🤝 AFILIADO</div>'
+                    : v.tipo === "hibrido"
+                    ? '<div style="display:inline-block;font-size:9px;font-weight:700;color:#a78bfa;background:rgba(167,139,250,0.15);border:1px solid rgba(167,139,250,0.35);border-radius:5px;padding:1px 6px;">🔄 HÍBRIDO</div>'
                     : ''}
-                ${v.tipo === "afiliado" && v.recibeFisico
+                ${(v.tipo === "afiliado" && v.recibeFisico) || v.tipo === "hibrido"
                     ? '<div style="display:inline-block;font-size:9px;font-weight:700;color:#C9A84C;background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.35);border-radius:5px;padding:1px 6px;">📦 RECIBE PIEZAS</div>'
                     : ''}
                 ${inactivo ? '<div style="display:inline-block;font-size:9px;font-weight:700;color:#888;background:rgba(136,136,136,0.15);border:1px solid rgba(136,136,136,0.35);border-radius:5px;padding:1px 6px;">⏸️ INACTIVO</div>' : ''}
                 ${v.comisionFija !== undefined && v.comisionFija !== null ? `<div style="display:inline-block;font-size:9px;font-weight:700;color:#0277bd;background:rgba(2,119,189,0.15);border:1px solid rgba(2,119,189,0.35);border-radius:5px;padding:1px 6px;">${v.comisionFija}% fija</div>` : ''}
             </div>
             <div class="vendedor-stock">${stock} piezas</div>
-            ${v.tipo === "afiliado" ? `<div style="font-size:11px;font-weight:700;color:#27ae60;margin-top:2px;" title="Comisión acumulada sin cortar">💰 $${comisionLive.toFixed(2)} <span style="color:var(--plateado);font-weight:400;">(${comisionPct}%)</span></div>` : ''}
+            ${(v.tipo === "afiliado" || v.tipo === "hibrido") ? `<div style="font-size:11px;font-weight:700;color:#27ae60;margin-top:2px;" title="Comisión acumulada sin cortar">💰 $${comisionLive.toFixed(2)} <span style="color:var(--plateado);font-weight:400;">(${comisionPct}%)</span></div>` : ''}
         </div>`;
     }).join('') + `<button class="btn-nuevo-vendedor" onclick="abrirModalVendedor()">+ Nuevo Vendedor</button>`;
 }
@@ -2555,20 +2559,27 @@ let _tipoVendedorSel = "consignacion";
 
 function selTipoVendedor(tipo) {
     _tipoVendedorSel = tipo;
-    const btnConsig = document.getElementById("v-tipo-consig-btn");
-    const btnAfil   = document.getElementById("v-tipo-afiliado-btn");
-    const desc      = document.getElementById("v-tipo-desc");
+    const btnConsig  = document.getElementById("v-tipo-consig-btn");
+    const btnAfil    = document.getElementById("v-tipo-afiliado-btn");
+    const btnHibrido = document.getElementById("v-tipo-hibrido-btn");
+    const desc       = document.getElementById("v-tipo-desc");
     const fisicoWrap = document.getElementById("v-recibe-fisico-wrap");
     const btnHojaInfo = document.getElementById("v-btn-hoja-info");
+    const off = s => { s.style.background = "var(--gris2)"; s.style.color = "var(--blanco)"; s.style.borderColor = "var(--borde)"; };
+    const on  = s => { s.style.background = "var(--dorado)"; s.style.color = "#111"; s.style.borderColor = "var(--dorado)"; };
+    off(btnConsig); off(btnAfil); if (btnHibrido) off(btnHibrido);
     if (tipo === "afiliado") {
-        btnAfil.style.background   = "var(--dorado)"; btnAfil.style.color   = "#111"; btnAfil.style.borderColor   = "var(--dorado)";
-        btnConsig.style.background = "var(--gris2)";  btnConsig.style.color = "var(--blanco)"; btnConsig.style.borderColor = "var(--borde)";
+        on(btnAfil);
         desc.textContent = "No maneja piezas físicas — cierra la venta por su cuenta y pide la pieza a VEREX para entregarla.";
         if (fisicoWrap) fisicoWrap.style.display = "flex";
         if (btnHojaInfo) btnHojaInfo.style.display = "block";
+    } else if (tipo === "hibrido") {
+        if (btnHibrido) on(btnHibrido);
+        desc.textContent = "Recibe piezas físicas en consignación Y tiene catálogo digital de afiliado.";
+        if (fisicoWrap) fisicoWrap.style.display = "none";
+        if (btnHojaInfo) btnHojaInfo.style.display = "block";
     } else {
-        btnConsig.style.background = "var(--dorado)"; btnConsig.style.color = "#111"; btnConsig.style.borderColor = "var(--dorado)";
-        btnAfil.style.background   = "var(--gris2)";  btnAfil.style.color   = "var(--blanco)"; btnAfil.style.borderColor   = "var(--borde)";
+        on(btnConsig);
         desc.textContent = "Recibe piezas físicas, vende, devuelve lo no vendido.";
         if (fisicoWrap) fisicoWrap.style.display = "none";
         if (btnHojaInfo) btnHojaInfo.style.display = "none";
@@ -2753,7 +2764,7 @@ async function guardarVendedor() {
 }
 
 function generarContratoPDF(vendedor) {
-    const esAfiliado = vendedor.tipo === "afiliado";
+    const esAfiliado = vendedor.tipo === "afiliado" || vendedor.tipo === "hibrido";
     return esAfiliado ? generarContratoAfiliadoPDF(vendedor) : generarContratoConsignacionPDF(vendedor);
 }
 
@@ -3201,7 +3212,7 @@ function abrirPerfil(codigo) {
         if (vendedorActual.comisionFija !== undefined && vendedorActual.comisionFija !== null) partes.push(vendedorActual.comisionFija + "% comisión fija");
         const pinTxt = vendedorActual.pin ? `PIN: ${vendedorActual.pin}` : "Sin PIN";
         fReg.innerHTML = partes.join(" · ") + ' <span onclick="event.stopPropagation();editarComisionFija()" style="color:#0277bd;cursor:pointer;text-decoration:underline;">✏️ comisión</span>'
-            + (vendedorActual.tipo === "afiliado" ? ` · ${pinTxt} <span onclick="event.stopPropagation();editarPin()" style="color:#0277bd;cursor:pointer;text-decoration:underline;">✏️ PIN</span>` : '');
+            + ((vendedorActual.tipo === "afiliado" || vendedorActual.tipo === "hibrido") ? ` · ${pinTxt} <span onclick="event.stopPropagation();editarPin()" style="color:#0277bd;cursor:pointer;text-decoration:underline;">✏️ PIN</span>` : '');
     }
     const notasWrap = document.getElementById("perfil-notas-wrap");
     const notasTxt  = document.getElementById("perfil-notas-txt");
@@ -3214,8 +3225,8 @@ function abrirPerfil(codigo) {
     // Un afiliado normal nunca maneja piezas físicas — oculta lo que solo aplica a consignación.
     // Excepción: si recibeFisico está activo, este afiliado SÍ recibe piezas para entregar,
     // así que se comporta igual que consignación en la parte logística.
-    const esAfil = vendedorActual.tipo === "afiliado";
-    const ocultarFisico = esAfil && !vendedorActual.recibeFisico;
+    const esAfil = vendedorActual.tipo === "afiliado" || vendedorActual.tipo === "hibrido";
+    const ocultarFisico = vendedorActual.tipo === "afiliado" && !vendedorActual.recibeFisico;
     const btnEntrega   = document.getElementById("btn-menu-entrega");
     const btnLinkInv   = document.getElementById("btn-menu-link-inv");
     const btnHistEnt   = document.getElementById("btn-menu-hist-entregas");
@@ -3243,9 +3254,9 @@ function abrirPerfil(codigo) {
     }
     // El portal de "Completar Pedidos" solo aplica a afiliados (catálogo digital + Leads)
     const btnLinkPedidos = document.getElementById("btn-menu-link-pedidos");
-    if (btnLinkPedidos) btnLinkPedidos.style.display = (vendedorActual.tipo === "afiliado") ? "" : "none";
+    if (btnLinkPedidos) btnLinkPedidos.style.display = esAfil ? "" : "none";
     const btnVerCatalogo = document.getElementById("btn-menu-ver-catalogo");
-    if (btnVerCatalogo) btnVerCatalogo.style.display = (vendedorActual.tipo === "afiliado") ? "" : "none";
+    if (btnVerCatalogo) btnVerCatalogo.style.display = esAfil ? "" : "none";
 
     const fechaCorte = vendedorActual.fechaCorte ? new Date(vendedorActual.fechaCorte) : null;
     const recordatorio = document.getElementById("recordatorio-corte");
@@ -3278,7 +3289,7 @@ function abrirPerfil(codigo) {
     // Botón métricas y card — solo para afiliados, oculto hasta que se presione
     const btnMetricas = document.getElementById("btn-menu-metricas-cat");
     const cardCat = document.getElementById("perfil-catalogo-card");
-    if (btnMetricas) btnMetricas.style.display = vendedorActual.tipo === "afiliado" ? "" : "none";
+    if (btnMetricas) btnMetricas.style.display = esAfil ? "" : "none";
     if (cardCat) { cardCat.style.display = "none"; cardCat.dataset.cargado = ""; }
 }
 
@@ -3393,7 +3404,7 @@ function renderPerfilStats() {
     // cortar en ese momento.
     const wrap = document.getElementById("stat-comision-wrap");
     if (wrap) {
-        if (vendedorActual.tipo === "afiliado") {
+        if (vendedorActual.tipo === "afiliado" || vendedorActual.tipo === "hibrido") {
             const valorVend = inv.reduce((s, c) => s + parseInt(c.vendido||0) * parseFloat(c.precio||0), 0);
             const pct       = calcularComision(valorVend, vendedorActual.tipo, vendedorActual.comisionFija);
             const ganancia  = valorVend * pct / 100;
@@ -5263,6 +5274,7 @@ function abrirRegistrarVenta() {
     // Si el afiliado SÍ recibe piezas físicas (recibeFisico), se comporta como
     // consignación normal — vende de lo que ya tiene asignado.
     if (vendedorActual?.tipo === "afiliado" && !vendedorActual?.recibeFisico) { abrirVentaAfiliado(); return; }
+    // hibrido siempre tiene stock físico — continúa al flujo de consignación normal
     const inv = consignacion.filter(c =>
         c.vendedor === vendedorActual.codigo && c.estado === "activo" &&
         parseInt(c.cantidad||0) - parseInt(c.vendido||0) > 0
@@ -5311,7 +5323,7 @@ function calcularComision(totalVendido, tipoVendedor, comisionFija) {
     if (comisionFija !== undefined && comisionFija !== null && comisionFija !== "") {
         return parseFloat(comisionFija);
     }
-    const tabla = tipoVendedor === "afiliado" ? RANGOS_COMISION_AFILIADO : RANGOS_COMISION;
+    const tabla = (tipoVendedor === "afiliado" || tipoVendedor === "hibrido") ? RANGOS_COMISION_AFILIADO : RANGOS_COMISION;
     const rango = tabla.slice().reverse().find(r => totalVendido >= r.min);
     return rango ? rango.pct : tabla[0].pct;
 }
@@ -5346,7 +5358,7 @@ function abrirCorte() {
             </div>
         </div>`;
     }).join('') : '<p style="color:var(--plateado);font-size:13px;">¡Todo vendido! 🎉</p>';
-    const afiliadoSinStockResumen = vendedorActual.tipo === "afiliado" && !vendedorActual.recibeFisico;
+    const afiliadoSinStockResumen = vendedorActual.tipo === "afiliado" && !vendedorActual.recibeFisico; // hibrido siempre tiene físico
     const filaFinalResumen = afiliadoSinStockResumen
         ? `<span style="color:var(--plateado);">VEREX te debe:</span><strong style="font-size:16px;color:#27ae60;">$${ganancia.toFixed(2)}</strong>`
         : `<span style="color:var(--plateado);">A recibir por VEREX:</span><strong style="font-size:16px;">$${(valorVend - ganancia).toFixed(2)}</strong>`;
@@ -6222,7 +6234,7 @@ function _copiarYMostrarLink(link, cantidad) {
 // al de VEREX si no se elige ninguno. Antes el link no fijaba ningún número
 // y el cliente tenía que elegir el destinatario él mismo en WhatsApp.
 function _pedirAfiliadoLink() {
-    const afiliados = (vendedores || []).filter(v => v.tipo === "afiliado");
+    const afiliados = (vendedores || []).filter(v => v.tipo === "afiliado" || v.tipo === "hibrido");
     if (!afiliados.length) return { codigo: "", telefono: "" };
     const lista = afiliados.map(v => `${v.codigo} — ${v.nombre}`).join("\n");
     const r = prompt(`¿Es para un cliente de un afiliado? Escribe su código (o deja vacío si no aplica):\n\n${lista}`, "");
