@@ -958,6 +958,10 @@
                 </button>
             </div>
         </div>
+        <div class="card" id="perfil-catalogo-card" style="display:none;">
+            <h2>🔗 Catálogos</h2>
+            <div id="perfil-catalogo-contenido"><p style="color:var(--plateado);font-size:13px;">⏳ Cargando...</p></div>
+        </div>
         <div class="card">
             <h2>📋 Inventario Actual</h2>
             <div id="lista-inventario"></div>
@@ -2021,6 +2025,92 @@ async function _cargarStatsAfiliados(codigos) {
             el.innerHTML = html;
         } catch(_) { el.innerHTML = ""; }
     }));
+}
+
+async function _cargarCatalogoPerfil(codigo) {
+    const wrap = document.getElementById("perfil-catalogo-contenido");
+    if (!wrap) return;
+    wrap.innerHTML = '<p style="color:var(--plateado);font-size:13px;">⏳ Cargando...</p>';
+    try {
+        const res = await fetch(ADMIN_CAT_URL + "/affiliate-stats", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ afiliadoCodigo: codigo })
+        });
+        if (!res.ok) throw new Error("Sin respuesta");
+        const { totalCatalogos, totalVistas, ultimaVista, catalogos } = await res.json();
+
+        if (!catalogos?.length) {
+            wrap.innerHTML = `<p style="color:var(--plateado);font-size:13px;">No hay catálogos generados para este afiliado.<br><span style="font-size:11px;">Genera el primero desde el Admin → tab Catálogo.</span></p>`;
+            return;
+        }
+
+        // Resumen total
+        const ultimaTxt = ultimaVista ? _catTiempoRelativo(ultimaVista) : "—";
+        let html = `<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:80px;background:var(--gris2);border:1px solid var(--borde);border-radius:8px;padding:8px;text-align:center;">
+                <div style="font-size:20px;font-weight:700;color:#fff;">${totalCatalogos}</div>
+                <div style="font-size:10px;color:var(--plateado);">catálogos</div>
+            </div>
+            <div style="flex:1;min-width:80px;background:var(--gris2);border:1px solid var(--borde);border-radius:8px;padding:8px;text-align:center;">
+                <div style="font-size:20px;font-weight:700;color:#4ade80;">${totalVistas}</div>
+                <div style="font-size:10px;color:var(--plateado);">vistas totales</div>
+            </div>
+            <div style="flex:1;min-width:80px;background:var(--gris2);border:1px solid var(--borde);border-radius:8px;padding:8px;text-align:center;">
+                <div style="font-size:13px;font-weight:700;color:#C9A84C;">${ultimaTxt}</div>
+                <div style="font-size:10px;color:var(--plateado);">última apertura</div>
+            </div>
+        </div>`;
+
+        // Lista de catálogos del más reciente al más antiguo
+        html += catalogos.map(cat => {
+            const fechaGen  = cat.createdAt  ? new Date(cat.createdAt).toLocaleDateString("es-SV",  { day:"numeric", month:"short", year:"numeric" }) : "—";
+            const fechaVence = cat.expiresAt ? new Date(cat.expiresAt).toLocaleDateString("es-SV",  { day:"numeric", month:"short" }) : "—";
+            const primera   = cat.primeraVista ? new Date(cat.primeraVista).toLocaleDateString("es-SV", { day:"numeric", month:"short" }) : null;
+            const ultima    = cat.ultimaVista   ? _catTiempoRelativo(cat.ultimaVista) : null;
+            const borderColor = cat.activo ? "#16a34a" : "#374151";
+            const statusBadge = cat.activo
+                ? `<span style="font-size:10px;background:#14532d;color:#4ade80;border-radius:5px;padding:2px 7px;font-weight:700;">● ACTIVO</span>`
+                : `<span style="font-size:10px;background:#1f2937;color:#6b7280;border-radius:5px;padding:2px 7px;">✕ Vencido</span>`;
+
+            return `<div style="border:1px solid ${borderColor};border-radius:10px;padding:12px;margin-bottom:10px;background:var(--gris2);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;">
+                    <div>
+                        <div style="font-size:12px;font-weight:700;color:#fff;">${cat.nombre || "(Sin nombre)"}</div>
+                        <div style="font-size:10px;color:var(--plateado);">Generado: ${fechaGen} · vence: ${fechaVence} · ${cat.prods} productos</div>
+                    </div>
+                    ${statusBadge}
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px;">
+                    <div style="background:#111;border-radius:7px;padding:7px;text-align:center;">
+                        <div style="font-size:18px;font-weight:700;color:#4ade80;">${cat.vistas}</div>
+                        <div style="font-size:9px;color:var(--plateado);">${cat.vistas === 1 ? "apertura" : "aperturas"}</div>
+                    </div>
+                    <div style="background:#111;border-radius:7px;padding:7px;text-align:center;">
+                        <div style="font-size:12px;font-weight:700;color:#C9A84C;">${primera || "—"}</div>
+                        <div style="font-size:9px;color:var(--plateado);">primera vista</div>
+                    </div>
+                    <div style="background:#111;border-radius:7px;padding:7px;text-align:center;">
+                        <div style="font-size:12px;font-weight:700;color:#C9A84C;">${ultima || "—"}</div>
+                        <div style="font-size:9px;color:var(--plateado);">última vista</div>
+                    </div>
+                </div>
+                ${cat.vistas === 0 ? `<div style="font-size:11px;color:#6b7280;text-align:center;padding:4px 0;">Este catálogo nunca fue abierto</div>` : ""}
+                <div style="display:flex;gap:6px;">
+                    <button onclick="navigator.clipboard.writeText('${cat.url}');toast('✅ Link copiado','#22c55e')"
+                        style="flex:1;font-size:11px;background:#166534;color:#fff;border:none;border-radius:7px;padding:7px 0;cursor:pointer;font-weight:600;">📋 Copiar link</button>
+                    <button onclick="window.open('${cat.url}','_blank')"
+                        style="font-size:11px;background:#1a3a1a;color:#86efac;border:1px solid #1a3a1a;border-radius:7px;padding:7px 10px;cursor:pointer;">👁️ Ver</button>
+                    <button onclick="window.open('https://wa.me/?text='+encodeURIComponent('Hola, aquí está tu catálogo VEREX: ${cat.url}'),'_blank')"
+                        style="font-size:11px;background:#14532d;color:#4ade80;border:none;border-radius:7px;padding:7px 10px;cursor:pointer;">📱</button>
+                </div>
+            </div>`;
+        }).join("");
+
+        wrap.innerHTML = html;
+    } catch(_) {
+        wrap.innerHTML = `<p style="color:var(--plateado);font-size:13px;">No se pudieron cargar las métricas. Verifica tu conexión.</p>`;
+    }
 }
 
 function _catTiempoRelativo(ts) {
@@ -3186,6 +3276,17 @@ function abrirPerfil(codigo) {
     renderInventario();
     renderVentasPerfil();
     cargarDevolucionesPerfil();
+
+    // Sección de catálogos — solo para afiliados
+    const cardCat = document.getElementById("perfil-catalogo-card");
+    if (cardCat) {
+        if (vendedorActual.tipo === "afiliado") {
+            cardCat.style.display = "";
+            _cargarCatalogoPerfil(vendedorActual.codigo);
+        } else {
+            cardCat.style.display = "none";
+        }
+    }
 }
 
 let _devolucionesCache = [];
