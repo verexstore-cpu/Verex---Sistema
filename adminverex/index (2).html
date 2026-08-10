@@ -3810,13 +3810,25 @@ async function generarLinkCatalogo() {
         document.getElementById("cat-link-out").textContent=finalUrl;
         document.getElementById("cat-link-box").style.display="block";
         toast("🔗 Link listo — cópialo o compártelo por WhatsApp","#22c55e");
+        const _recetaCats = [...document.querySelectorAll(".cat-cat-chk:checked")].map(c => c.value);
         guardarEnLogCatalogos({
             url: finalUrl,
             nombre,
             nota: notaInterna,
             filtros: capturarFiltrosCatalogo(),
             expiry: Date.now() + dias * 864e5,
-            esAfiliado
+            esAfiliado,
+            receta: {
+                categorias: _recetaCats,
+                talla,
+                genero,
+                tipoAN: document.getElementById("cat-tipo-an")?.value || "",
+                cantidad: codsSel.length,
+                wa,
+                esAfiliado,
+                afiliadoCodigo,
+                ultimosCodigos: codsSel
+            }
         });
         renderLogCatalogos();
 
@@ -3857,11 +3869,11 @@ function capturarFiltrosCatalogo() {
     return chips;
 }
 
-function guardarEnLogCatalogos({ url, nombre, nota, filtros, expiry, esAfiliado }) {
+function guardarEnLogCatalogos({ url, nombre, nota, filtros, expiry, esAfiliado, receta }) {
     const log = JSON.parse(localStorage.getItem(CAT_LOG_KEY) || "[]");
     const id = url.split("/").pop();
     const idx = log.findIndex(e => e.id === id);
-    const entry = { id, url, nombre: nombre || "Sin nombre", nota: nota || "", filtros: filtros || [], expiry, esAfiliado: !!esAfiliado, createdAt: Date.now() };
+    const entry = { id, url, nombre: nombre || "Sin nombre", nota: nota || "", filtros: filtros || [], expiry, esAfiliado: !!esAfiliado, createdAt: Date.now(), ...(receta && { receta }) };
     if (idx >= 0) log[idx] = entry; else log.unshift(entry);
     localStorage.setItem(CAT_LOG_KEY, JSON.stringify(log.slice(0, 50)));
 }
@@ -3908,6 +3920,27 @@ async function clonarCatalogo(id, nombre) {
     const nuevaExpiry = new Date(fechaInput.value + "T23:59:59").getTime();
     if (nuevaExpiry <= Date.now()) return toast("⚠️ La fecha debe ser futura", "#f97316");
     const dias = Math.max(1, Math.ceil((nuevaExpiry - Date.now()) / 864e5));
+
+    const log = JSON.parse(localStorage.getItem(CAT_LOG_KEY) || "[]");
+    const original = log.find(e => e.id === id);
+    const receta = original?.receta;
+
+    // Con receta + stock cargado: regenerar con productos que tienen stock hoy
+    if (receta && _catFiltrada?.length) {
+        try {
+            await _clonarConStockActual(original, receta, dias, nuevaExpiry);
+        } catch(err) {
+            toast("❌ " + err.message, "#ef4444");
+        }
+        return;
+    }
+
+    // Sin stock cargado pero hay receta: avisar
+    if (receta && !_catFiltrada?.length) {
+        return toast("⚠️ Abre el tab Catálogo y carga el inventario primero para generar con stock actual", "#f97316");
+    }
+
+    // Sin receta (catálogos generados antes de esta versión): clonar snapshot desde KV
     try {
         const res = await fetch("/clone-catalog", {
             method: "POST",
@@ -3917,9 +3950,6 @@ async function clonarCatalogo(id, nombre) {
         const out = await res.json();
         if (!res.ok) throw new Error(out.error || "Error del servidor");
         const nuevaUrl = location.origin + out.url;
-        // Agregar el nuevo link al log como entrada separada
-        const log = JSON.parse(localStorage.getItem(CAT_LOG_KEY) || "[]");
-        const original = log.find(e => e.id === id);
         const newEntry = {
             id: out.url.split("/").pop(),
             url: nuevaUrl,
@@ -3938,6 +3968,91 @@ async function clonarCatalogo(id, nombre) {
     } catch(err) {
         toast("❌ No se pudo generar el link: " + err.message, "#ef4444");
     }
+}
+
+async function _clonarConStockActual(original, receta, dias, nuevaExpiry) {
+    // Filtrar stock actual por los mismos criterios de la receta original
+    let items = [..._catFiltrada];
+
+    if (receta.categorias?.length) {
+        items = items.filter(p => receta.categorias.includes(p._catKey || getCatKey(p)));
+    }
+    if (receta.genero === "dama")      items = items.filter(p => !/caballero|hombre/i.test(p.genero || ""));
+    if (receta.genero === "caballero") items = items.filter(p => /caballero|hombre/i.test(p.genero || ""));
+    if (receta.tipoAN === "pareja")    items = items.filter(p => p._esPareja);
+    if (receta.tipoAN === "sencillo")  items = items.filter(p => !p._esPareja && (p._catKey || getCatKey(p)) === "AN");
+
+    if (!items.length) throw new Error("No hay productos con stock disponible con esos criterios");
+
+    // Priorizar productos que NO estaban en el catálogo anterior (variedad)
+    const anteriores = new Set(receta.ultimosCodigos || []);
+    const nuevos = items.filter(p => !anteriores.has(p._codigos?.[0] || p.codigo));
+    const pool = nuevos.length >= Math.min(receta.cantidad, items.length) ? nuevos : items;
+    const seleccionados = pool.slice(0, receta.cantidad || pool.length);
+
+    const talla = receta.talla || "";
+    const genero = receta.genero || "";
+
+    const data = {
+        expiry: nuevaExpiry,
+        nombre: original.nombre || "",
+        talla,
+        wa: receta.wa || VEREX_WA_OFICIAL,
+        dias,
+        ...(original.nota && { nota_interna: original.nota }),
+        ...(original.esAfiliado && { afiliado: true }),
+        ...(receta.afiliadoCodigo && { afiliadoCodigo: receta.afiliadoCodigo }),
+        prods: seleccionados.map(p => {
+            const szExport = _sizesParaExport(p, talla, genero);
+            return {
+                n: p.nombre || "—",
+                p: parseFloat(p.precio || 0).toFixed(2),
+                i: p.foto || p.img || "",
+                m: p.material || detectarMaterial(p.nombre) || "",
+                cat: p._catKey || getCatKey(p),
+                c: p._codigos?.[0] || p.codigo || "",
+                sizes: szExport.sizes,
+                sizesD: szExport.sizesD,
+                sizesH: szExport.sizesH,
+                par: p._esPareja || false,
+                piezas: p._piezas || (p._esPareja ? 2 : null),
+                pD: p._precioDama || null,
+                pH: p._precioCab || null,
+                cD: p._piezasCodigosDama || null,
+                cC: p._piezasCodigosCab || null,
+                avisoPieza: /matrimonio|argolla|novios|pareja|alianza/i.test(p.nombre || ""),
+                ne: getNotaEspecial(p),
+                nota: ""
+            };
+        })
+    };
+
+    const saveRes = await fetch("/save-catalog", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+    });
+    if (!saveRes.ok) throw new Error("Error al guardar catálogo");
+    const { url } = await saveRes.json();
+    const nuevaUrl = location.origin + url;
+
+    const log = JSON.parse(localStorage.getItem(CAT_LOG_KEY) || "[]");
+    const nuevaReceta = { ...receta, ultimosCodigos: seleccionados.map(p => p._codigos?.[0] || p.codigo) };
+    log.unshift({
+        id: url.split("/").pop(),
+        url: nuevaUrl,
+        nombre: original.nombre || "",
+        nota: original.nota || "",
+        filtros: original.filtros || [],
+        expiry: nuevaExpiry,
+        esAfiliado: original.esAfiliado || false,
+        createdAt: Date.now(),
+        receta: nuevaReceta
+    });
+    localStorage.setItem(CAT_LOG_KEY, JSON.stringify(log.slice(0, 50)));
+    try { await navigator.clipboard.writeText(nuevaUrl); } catch(_){}
+    toast(`🔗 Nuevo link — ${seleccionados.length} productos con stock actual`, "#22c55e");
+    renderLogCatalogos();
 }
 
 // Link/QR fijo hacia la página de Garantía Limitada — vive en el dominio
