@@ -953,6 +953,9 @@
                 <button class="menu-btn menu-btn-full" id="btn-menu-ver-catalogo" data-color="#9333ea" onclick="verCatalogoActualAfiliado()" style="display:none;">
                     <span class="menu-ico">🛍️</span><span class="menu-txt">Ver Catálogo Actual</span><span class="menu-arr">›</span>
                 </button>
+                <button class="menu-btn menu-btn-full" id="btn-menu-metricas-cat" data-color="#0ea5e9" onclick="verMetricasCatalogo()" style="display:none;">
+                    <span class="menu-ico">📊</span><span class="menu-txt">Ver Métricas del Catálogo</span><span class="menu-arr">›</span>
+                </button>
                 <button class="menu-btn menu-btn-full" id="btn-marcar-firmado-fisico" data-color="#16a34a" onclick="marcarFirmadoFisico()" style="display:none;">
                     <span class="menu-ico">✅</span><span class="menu-txt">Marcar como firmado en papel</span><span class="menu-arr">›</span>
                 </button>
@@ -1951,13 +1954,8 @@ function renderVendedores() {
             </div>
             <div class="vendedor-stock">${stock} piezas</div>
             ${v.tipo === "afiliado" ? `<div style="font-size:11px;font-weight:700;color:#27ae60;margin-top:2px;" title="Comisión acumulada sin cortar">💰 $${comisionLive.toFixed(2)} <span style="color:var(--plateado);font-weight:400;">(${comisionPct}%)</span></div>` : ''}
-            ${v.tipo === "afiliado" ? `<div id="cat-stats-${sanitizar(v.codigo)}" style="margin-top:6px;"></div>` : ''}
         </div>`;
     }).join('') + `<button class="btn-nuevo-vendedor" onclick="abrirModalVendedor()">+ Nuevo Vendedor</button>`;
-
-    // Cargar stats de catálogo para afiliados en background
-    const afiliados = vendedores.filter(v => v.tipo === "afiliado");
-    if (afiliados.length) _cargarStatsAfiliados(afiliados.map(v => v.codigo));
 }
 
 const ADMIN_CAT_URL = "https://admin-tienda.pages.dev";
@@ -3277,16 +3275,22 @@ function abrirPerfil(codigo) {
     renderVentasPerfil();
     cargarDevolucionesPerfil();
 
-    // Sección de catálogos — solo para afiliados
+    // Botón métricas y card — solo para afiliados, oculto hasta que se presione
+    const btnMetricas = document.getElementById("btn-menu-metricas-cat");
     const cardCat = document.getElementById("perfil-catalogo-card");
-    if (cardCat) {
-        if (vendedorActual.tipo === "afiliado") {
-            cardCat.style.display = "";
-            _cargarCatalogoPerfil(vendedorActual.codigo);
-        } else {
-            cardCat.style.display = "none";
-        }
+    if (btnMetricas) btnMetricas.style.display = vendedorActual.tipo === "afiliado" ? "" : "none";
+    if (cardCat) { cardCat.style.display = "none"; cardCat.dataset.cargado = ""; }
+}
+
+function verMetricasCatalogo() {
+    const cardCat = document.getElementById("perfil-catalogo-card");
+    if (!cardCat) return;
+    cardCat.style.display = "";
+    if (!cardCat.dataset.cargado) {
+        cardCat.dataset.cargado = "1";
+        _cargarCatalogoPerfil(vendedorActual.codigo);
     }
+    setTimeout(() => cardCat.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
 }
 
 let _devolucionesCache = [];
