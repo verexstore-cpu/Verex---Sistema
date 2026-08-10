@@ -3920,6 +3920,28 @@ function renderLogCatalogos() {
     _cargarVistasCatalogos(log.map(e => e.id));
 }
 
+async function reconstruirIndiceAfiliados() {
+    const btn = document.getElementById("btn-backfill");
+    const orig = btn.textContent;
+    btn.textContent = "⏳ Reconstruyendo…";
+    btn.disabled = true;
+    try {
+        const res = await fetch("/backfill-affiliate-index", { method: "POST" });
+        const out = await res.json();
+        if (out.ok) {
+            toast(`✅ ${out.message}`, "#22c55e");
+            renderLogCatalogos();
+        } else {
+            toast("❌ " + (out.error || "Error"), "#ef4444");
+        }
+    } catch(e) {
+        toast("❌ " + e.message, "#ef4444");
+    } finally {
+        btn.textContent = orig;
+        btn.disabled = false;
+    }
+}
+
 async function _cargarVistasCatalogos(ids) {
     try {
         const res = await fetch("/catalog-views", {
@@ -5592,7 +5614,7 @@ async function generarPDFCatalogo() {
     <div style="margin-top:20px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
         <span style="font-size:13px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.5px;">Mis catálogos</span>
-        <span style="font-size:10px;color:#555;">guardados en este dispositivo</span>
+        <button onclick="reconstruirIndiceAfiliados()" id="btn-backfill" style="font-size:10px;background:none;border:1px solid #333;color:#666;border-radius:6px;padding:3px 8px;cursor:pointer;" title="Reconstruir índice de catálogos por afiliado — ejecutar una vez para incluir catálogos anteriores en las estadísticas">🔄 Reconstruir stats</button>
       </div>
       <div id="cat-log-lista"></div>
     </div>
