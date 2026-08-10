@@ -3818,6 +3818,7 @@ async function generarLinkCatalogo() {
             filtros: capturarFiltrosCatalogo(),
             expiry: Date.now() + dias * 864e5,
             esAfiliado,
+            afiliadoCodigo: afiliadoCodigo || "",
             receta: {
                 categorias: _recetaCats,
                 talla,
@@ -3869,11 +3870,11 @@ function capturarFiltrosCatalogo() {
     return chips;
 }
 
-function guardarEnLogCatalogos({ url, nombre, nota, filtros, expiry, esAfiliado, receta }) {
+function guardarEnLogCatalogos({ url, nombre, nota, filtros, expiry, esAfiliado, receta, afiliadoCodigo }) {
     const log = JSON.parse(localStorage.getItem(CAT_LOG_KEY) || "[]");
     const id = url.split("/").pop();
     const idx = log.findIndex(e => e.id === id);
-    const entry = { id, url, nombre: nombre || "Sin nombre", nota: nota || "", filtros: filtros || [], expiry, esAfiliado: !!esAfiliado, createdAt: Date.now(), ...(receta && { receta }) };
+    const entry = { id, url, nombre: nombre || "Sin nombre", nota: nota || "", filtros: filtros || [], expiry, esAfiliado: !!esAfiliado, createdAt: Date.now(), ...(receta && { receta }), ...(afiliadoCodigo && { afiliadoCodigo }) };
     if (idx >= 0) log[idx] = entry; else log.unshift(entry);
     localStorage.setItem(CAT_LOG_KEY, JSON.stringify(log.slice(0, 50)));
 }
@@ -3909,7 +3910,8 @@ function renderLogCatalogos() {
             </div>
             ${notaHtml}
             ${chips ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;">${chips}</div>` : ""}
-            <div id="views-${e.id}" style="font-size:11px;color:#9ca3af;margin-bottom:4px;">👁️ cargando vistas…</div>
+            <div id="views-${e.id}" style="font-size:11px;color:#9ca3af;margin-bottom:2px;">👁️ cargando vistas…</div>
+            ${e.esAfiliado && e.afiliadoCodigo ? `<div id="views-total-${e.afiliadoCodigo}" style="font-size:11px;color:#6b7280;margin-bottom:4px;"></div>` : '<div style="margin-bottom:4px;"></div>'}
             ${acciones}
         </div>`;
     }).join("");
@@ -3927,17 +3929,38 @@ async function _cargarVistasCatalogos(ids) {
         });
         if (!res.ok) return;
         const { views } = await res.json();
+        const log = JSON.parse(localStorage.getItem(CAT_LOG_KEY) || "[]");
+
+        // Actualizar vistas individuales por catálogo
         ids.forEach(id => {
             const el = document.getElementById("views-" + id);
             if (!el) return;
             const v = views[id];
-            if (!v || !v.count) {
-                el.textContent = "👁️ Sin aperturas aún";
-                return;
-            }
+            if (!v || !v.count) { el.textContent = "👁️ Sin aperturas aún"; return; }
             const ultima = v.last ? _tiempoRelativo(v.last) : "—";
             const primera = v.first ? new Date(v.first).toLocaleDateString("es-SV", { day:"numeric", month:"short" }) : "—";
             el.innerHTML = `👁️ <b style="color:#374151">${v.count}</b> ${v.count === 1 ? "apertura" : "aperturas"} · primera: ${primera} · última: ${ultima}`;
+        });
+
+        // Calcular y mostrar totales acumulados por afiliado
+        const porAfiliado = new Map();
+        log.forEach(e => {
+            if (!e.esAfiliado || !e.afiliadoCodigo) return;
+            const v = views[e.id];
+            if (!porAfiliado.has(e.afiliadoCodigo)) porAfiliado.set(e.afiliadoCodigo, { total: 0, catalogos: 0, ultima: null });
+            const agg = porAfiliado.get(e.afiliadoCodigo);
+            agg.catalogos++;
+            if (v) {
+                agg.total += v.count || 0;
+                if (!agg.ultima || (v.last && v.last > agg.ultima)) agg.ultima = v.last;
+            }
+        });
+        porAfiliado.forEach((agg, codigo) => {
+            const el = document.getElementById("views-total-" + codigo);
+            if (!el) return;
+            if (!agg.total) { el.textContent = ""; return; }
+            const ultima = agg.ultima ? _tiempoRelativo(agg.ultima) : "—";
+            el.innerHTML = `📊 Total afiliado: <b style="color:#374151">${agg.total}</b> vistas en ${agg.catalogos} catálogo${agg.catalogos !== 1 ? "s" : ""} · última: ${ultima}`;
         });
     } catch(_) {
         document.querySelectorAll('[id^="views-"]').forEach(el => el.textContent = "");

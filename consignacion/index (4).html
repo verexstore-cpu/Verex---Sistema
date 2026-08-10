@@ -1947,8 +1947,47 @@ function renderVendedores() {
             </div>
             <div class="vendedor-stock">${stock} piezas</div>
             ${v.tipo === "afiliado" ? `<div style="font-size:11px;font-weight:700;color:#27ae60;margin-top:2px;" title="Comisión acumulada sin cortar">💰 $${comisionLive.toFixed(2)} <span style="color:var(--plateado);font-weight:400;">(${comisionPct}%)</span></div>` : ''}
+            ${v.tipo === "afiliado" ? `<div id="cat-stats-${sanitizar(v.codigo)}" style="font-size:10px;color:#666;margin-top:3px;">📊 …</div>` : ''}
         </div>`;
     }).join('') + `<button class="btn-nuevo-vendedor" onclick="abrirModalVendedor()">+ Nuevo Vendedor</button>`;
+
+    // Cargar stats de catálogo para afiliados en background
+    const afiliados = vendedores.filter(v => v.tipo === "afiliado");
+    if (afiliados.length) _cargarStatsAfiliados(afiliados.map(v => v.codigo));
+}
+
+const ADMIN_CAT_URL = "https://admin-tienda.pages.dev";
+
+async function _cargarStatsAfiliados(codigos) {
+    await Promise.all(codigos.map(async codigo => {
+        const el = document.getElementById("cat-stats-" + codigo);
+        if (!el) return;
+        try {
+            const res = await fetch(ADMIN_CAT_URL + "/affiliate-stats", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ afiliadoCodigo: codigo })
+            });
+            if (!res.ok) { el.textContent = ""; return; }
+            const { totalCatalogos, totalVistas, ultimaVista } = await res.json();
+            if (!totalCatalogos) { el.textContent = "📊 Sin catálogos aún"; return; }
+            const ultima = ultimaVista ? _catTiempoRelativo(ultimaVista) : "—";
+            const vistasLabel = totalVistas === 1 ? "1 vista" : `${totalVistas} vistas`;
+            el.innerHTML = `📊 ${totalCatalogos} cat. · ${vistasLabel} · última: ${ultima}`;
+        } catch(_) { el.textContent = ""; }
+    }));
+}
+
+function _catTiempoRelativo(ts) {
+    const diff = Date.now() - ts;
+    const min = Math.floor(diff / 60000);
+    const hrs = Math.floor(diff / 3600000);
+    const dias = Math.floor(diff / 86400000);
+    if (min < 2)  return "ahora";
+    if (min < 60) return `hace ${min}min`;
+    if (hrs < 24) return `hace ${hrs}h`;
+    if (dias < 7) return `hace ${dias}d`;
+    return new Date(ts).toLocaleDateString("es-SV", { day:"numeric", month:"short" });
 }
 
 const LEAD_ESTADO_INFO = {
