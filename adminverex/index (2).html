@@ -3982,6 +3982,20 @@ async function _clonarConStockActual(original, receta, dias, nuevaExpiry) {
     if (receta.tipoAN === "pareja")    items = items.filter(p => p._esPareja);
     if (receta.tipoAN === "sencillo")  items = items.filter(p => !p._esPareja && (p._catKey || getCatKey(p)) === "AN");
 
+    // Para anillos: filtrar solo los que tienen al menos una de las tallas pedidas
+    if (receta.talla) {
+        const tallasReq = receta.talla.split(",").map(t => t.trim()).filter(Boolean);
+        if (tallasReq.length) {
+            items = items.filter(p => {
+                const catKey = p._catKey || getCatKey(p);
+                if (catKey !== "AN") return true; // pulseras, cadenas, etc. no filtran por talla
+                const todasLasTallas = [...(p._sizes || []), ...(p._sizesD || []), ...(p._sizesH || [])];
+                if (!todasLasTallas.length) return true; // sin info de talla → incluir
+                return tallasReq.some(t => todasLasTallas.includes(t));
+            });
+        }
+    }
+
     if (!items.length) throw new Error("No hay productos con stock disponible con esos criterios");
 
     // Priorizar productos que NO estaban en el catálogo anterior (variedad)
