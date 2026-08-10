@@ -3747,6 +3747,23 @@ async function generarLinkCatalogo() {
             toast("⚠️ Pusiste % de descuento pero el banner está vacío — no se aplicará. Escribe el texto del banner para activarlo.", "#f97316");
         }
 
+        // Para híbridos: excluir productos que ya tienen asignados físicamente en consignación
+        let listaFinal = lista;
+        if (esAfiliado && afiliadoCodigo) {
+            const vHib = _vendedoresAfiliados.find(x => x.codigo === afiliadoCodigo);
+            if (vHib?.tipo === "hibrido") {
+                try {
+                    const rFis = await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "GET_CODIGOS_FISICOS", vendedor: afiliadoCodigo, _pass: ADMIN_PASS }) });
+                    const { codigos: codsFis = [] } = await rFis.json();
+                    if (codsFis.length) {
+                        listaFinal = lista.filter(p => !codsFis.includes(p._codigos?.[0] || p.codigo));
+                        if (listaFinal.length < lista.length)
+                            toast(`ℹ️ ${lista.length - listaFinal.length} producto(s) excluidos del catálogo (ya los tiene físicamente)`, "#0277bd");
+                    }
+                } catch(_) {}
+            }
+        }
+
         const data={
             expiry: Date.now()+dias*864e5,
             nombre, talla, wa, banner, dias,
@@ -3755,7 +3772,7 @@ async function generarLinkCatalogo() {
             ...(esAfiliado && { afiliado: true }),
             ...(afiliadoId && { customId: afiliadoId }),
             ...(afiliadoCodigo && { afiliadoCodigo }),
-            prods: lista.map(p=>{
+            prods: listaFinal.map(p=>{
                 const szExport = _sizesParaExport(p, talla, genero);
                 return {
                 n: p.nombre||"—",
@@ -4080,6 +4097,23 @@ async function _clonarConStockActual(original, receta, dias, nuevaExpiry) {
                 if (!todasLasTallas.length) return true; // sin info de talla → incluir
                 return tallasReq.some(t => todasLasTallas.includes(t));
             });
+        }
+    }
+
+    // Para híbridos: excluir productos que ya tienen físicamente en consignación
+    if (receta.afiliadoCodigo) {
+        const vHib = _vendedoresAfiliados.find(x => x.codigo === receta.afiliadoCodigo);
+        if (vHib?.tipo === "hibrido") {
+            try {
+                const rFis = await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "GET_CODIGOS_FISICOS", vendedor: receta.afiliadoCodigo, _pass: ADMIN_PASS }) });
+                const { codigos: codsFis = [] } = await rFis.json();
+                if (codsFis.length) {
+                    const antes = items.length;
+                    items = items.filter(p => !codsFis.includes(p._codigos?.[0] || p.codigo));
+                    if (items.length < antes)
+                        toast(`ℹ️ ${antes - items.length} producto(s) excluidos del catálogo (ya los tiene físicamente)`, "#0277bd");
+                }
+            } catch(_) {}
         }
     }
 

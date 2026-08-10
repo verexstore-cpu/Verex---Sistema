@@ -661,6 +661,18 @@ async function enviar(){
           break;
         }
 
+        case "GET_CODIGOS_FISICOS": {
+          // Retorna los códigos de productos activos en consignación para un vendedor híbrido
+          if (!esAdmin) return forbidden();
+          if (!d.vendedor) return json({ ok: false, error: "vendedor requerido" });
+          const todaCons = await sb.getAll("consignacion");
+          const codigos = todaCons
+            .filter(c => c.vendedor === d.vendedor && c.estado === "activo" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0)
+            .map(c => c.codigo);
+          result = { ok: true, codigos };
+          break;
+        }
+
         case "REGISTRAR_ENTREGA": {
           if (!esAdmin) return forbidden();
           const items = d.items || [];
