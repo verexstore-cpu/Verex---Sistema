@@ -3909,9 +3909,51 @@ function renderLogCatalogos() {
             </div>
             ${notaHtml}
             ${chips ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;">${chips}</div>` : ""}
+            <div id="views-${e.id}" style="font-size:11px;color:#9ca3af;margin-bottom:4px;">👁️ cargando vistas…</div>
             ${acciones}
         </div>`;
     }).join("");
+
+    // Cargar vistas en background sin bloquear el render
+    _cargarVistasCatalogos(log.map(e => e.id));
+}
+
+async function _cargarVistasCatalogos(ids) {
+    try {
+        const res = await fetch("/catalog-views", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids })
+        });
+        if (!res.ok) return;
+        const { views } = await res.json();
+        ids.forEach(id => {
+            const el = document.getElementById("views-" + id);
+            if (!el) return;
+            const v = views[id];
+            if (!v || !v.count) {
+                el.textContent = "👁️ Sin aperturas aún";
+                return;
+            }
+            const ultima = v.last ? _tiempoRelativo(v.last) : "—";
+            const primera = v.first ? new Date(v.first).toLocaleDateString("es-SV", { day:"numeric", month:"short" }) : "—";
+            el.innerHTML = `👁️ <b style="color:#374151">${v.count}</b> ${v.count === 1 ? "apertura" : "aperturas"} · primera: ${primera} · última: ${ultima}`;
+        });
+    } catch(_) {
+        document.querySelectorAll('[id^="views-"]').forEach(el => el.textContent = "");
+    }
+}
+
+function _tiempoRelativo(ts) {
+    const diff = Date.now() - ts;
+    const min  = Math.floor(diff / 60000);
+    const hrs  = Math.floor(diff / 3600000);
+    const dias = Math.floor(diff / 86400000);
+    if (min < 2)   return "ahora mismo";
+    if (min < 60)  return `hace ${min} min`;
+    if (hrs < 24)  return `hace ${hrs}h`;
+    if (dias < 7)  return `hace ${dias} día${dias > 1 ? "s" : ""}`;
+    return new Date(ts).toLocaleDateString("es-SV", { day:"numeric", month:"short" });
 }
 
 async function clonarCatalogo(id, nombre) {
