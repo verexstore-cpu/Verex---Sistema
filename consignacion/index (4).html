@@ -1947,7 +1947,7 @@ function renderVendedores() {
             </div>
             <div class="vendedor-stock">${stock} piezas</div>
             ${v.tipo === "afiliado" ? `<div style="font-size:11px;font-weight:700;color:#27ae60;margin-top:2px;" title="Comisión acumulada sin cortar">💰 $${comisionLive.toFixed(2)} <span style="color:var(--plateado);font-weight:400;">(${comisionPct}%)</span></div>` : ''}
-            ${v.tipo === "afiliado" ? `<div id="cat-stats-${sanitizar(v.codigo)}" style="font-size:10px;color:#666;margin-top:3px;">📊 …</div>` : ''}
+            ${v.tipo === "afiliado" ? `<div id="cat-stats-${sanitizar(v.codigo)}" style="margin-top:6px;"></div>` : ''}
         </div>`;
     }).join('') + `<button class="btn-nuevo-vendedor" onclick="abrirModalVendedor()">+ Nuevo Vendedor</button>`;
 
@@ -1968,13 +1968,58 @@ async function _cargarStatsAfiliados(codigos) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ afiliadoCodigo: codigo })
             });
-            if (!res.ok) { el.textContent = ""; return; }
-            const { totalCatalogos, totalVistas, ultimaVista } = await res.json();
-            if (!totalCatalogos) { el.textContent = "📊 Sin catálogos aún"; return; }
-            const ultima = ultimaVista ? _catTiempoRelativo(ultimaVista) : "—";
-            const vistasLabel = totalVistas === 1 ? "1 vista" : `${totalVistas} vistas`;
-            el.innerHTML = `📊 ${totalCatalogos} cat. · ${vistasLabel} · última: ${ultima}`;
-        } catch(_) { el.textContent = ""; }
+            if (!res.ok) { el.innerHTML = ""; return; }
+            const { totalCatalogos, totalVistas, ultimaVista, catalogoActivo } = await res.json();
+
+            if (!totalCatalogos && !catalogoActivo) {
+                el.innerHTML = `<div style="font-size:10px;color:#555;text-align:center;">Sin catálogos generados</div>`;
+                return;
+            }
+
+            const ultimaTotal = ultimaVista ? _catTiempoRelativo(ultimaVista) : "—";
+            let html = "";
+
+            if (catalogoActivo) {
+                const vence = new Date(catalogoActivo.expiresAt).toLocaleDateString("es-SV", { day:"numeric", month:"short" });
+                const ultimaCat = catalogoActivo.ultimaVista ? _catTiempoRelativo(catalogoActivo.ultimaVista) : null;
+                const primeraApertura = catalogoActivo.primeraVista
+                    ? new Date(catalogoActivo.primeraVista).toLocaleDateString("es-SV", { day:"numeric", month:"short" })
+                    : null;
+
+                html += `<div style="background:#0d1f0d;border:1px solid #1a3a1a;border-radius:8px;padding:7px 9px;margin-bottom:4px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                        <span style="font-size:10px;font-weight:700;color:#4ade80;">🔗 Catálogo activo</span>
+                        <span style="font-size:9px;color:#555;">vence ${vence}</span>
+                    </div>
+                    <div style="font-size:10px;color:#86efac;word-break:break-all;margin-bottom:5px;">${catalogoActivo.url}</div>
+                    <div style="display:flex;gap:5px;margin-bottom:5px;">
+                        <button onclick="navigator.clipboard.writeText('${catalogoActivo.url}');toast('✅ Link copiado','#22c55e')"
+                            style="flex:1;font-size:10px;background:#166534;color:#fff;border:none;border-radius:5px;padding:4px 0;cursor:pointer;font-weight:600;">📋 Copiar</button>
+                        <button onclick="window.open('${catalogoActivo.url}','_blank')"
+                            style="font-size:10px;background:#1a3a1a;color:#86efac;border:1px solid #1a3a1a;border-radius:5px;padding:4px 8px;cursor:pointer;">👁️ Ver</button>
+                        <button onclick="window.open('https://wa.me/?text='+encodeURIComponent('Hola, aquí está tu catálogo VEREX: ${catalogoActivo.url}'),'_blank')"
+                            style="font-size:10px;background:#14532d;color:#4ade80;border:none;border-radius:5px;padding:4px 8px;cursor:pointer;">📱</button>
+                    </div>
+                    <div style="font-size:10px;color:#6b7280;">
+                        👁️ <b style="color:#d1fae5">${catalogoActivo.vistas}</b> ${catalogoActivo.vistas === 1 ? "apertura" : "aperturas"}
+                        ${primeraApertura ? ` · primera: ${primeraApertura}` : ""}
+                        ${ultimaCat ? ` · última: ${ultimaCat}` : " · aún no abierto"}
+                        &nbsp;·&nbsp; ${catalogoActivo.prods} productos
+                    </div>
+                </div>`;
+            } else {
+                html += `<div style="font-size:10px;color:#555;text-align:center;margin-bottom:4px;">Sin catálogo activo</div>`;
+            }
+
+            if (totalCatalogos > 0) {
+                html += `<div style="font-size:10px;color:#6b7280;text-align:center;">
+                    📊 Total histórico: <b style="color:#9ca3af">${totalVistas}</b> vistas en ${totalCatalogos} catálogo${totalCatalogos !== 1 ? "s" : ""}
+                    ${ultimaVista ? ` · última: ${ultimaTotal}` : ""}
+                </div>`;
+            }
+
+            el.innerHTML = html;
+        } catch(_) { el.innerHTML = ""; }
     }));
 }
 
