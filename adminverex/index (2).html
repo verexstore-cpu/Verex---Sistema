@@ -220,6 +220,16 @@
         .mb h3{font-size:15px;margin-bottom:16px;}
         .mc{float:right;background:none;border:none;font-size:20px;cursor:pointer;color:#888;margin-top:-4px;}
 
+        /* MODAL CATÁLOGO — tema claro */
+        #modal-catalogo .mb { background: #f9fafb; }
+        #modal-catalogo label { color: #374151 !important; }
+        #modal-catalogo span[style*="color:#aaa"], #modal-catalogo span[style*="color:#888"],
+        #modal-catalogo span[style*="color:#666"], #modal-catalogo span[style*="color:#555"] { color: #6b7280 !important; }
+        #modal-catalogo div[style*="color:#666"], #modal-catalogo div[style*="color:#555"] { color: #6b7280 !important; }
+        #modal-catalogo #cat-info { color: #374151 !important; }
+        #modal-catalogo .mb h3 { color: #111827; }
+        #modal-catalogo button[style*="color:#aaa"] { color: #374151 !important; }
+
         /* TOAST */
         #toast{position:fixed;bottom:22px;right:22px;background:#111;color:#fff;padding:11px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;opacity:0;transform:translateY(8px);transition:all .3s;pointer-events:none;max-width:280px;}
         #toast.show{opacity:1;transform:translateY(0);}
@@ -3271,38 +3281,92 @@ async function generarImagenCatalogo() {
 }
 
 function aplicarPromptIA() {
-    const prompt = (document.getElementById("cat-ia-prompt")?.value||"").toLowerCase();
-    if (!prompt.trim()) return;
+    const promptRaw = (document.getElementById("cat-ia-prompt")?.value || "").trim();
+    if (!promptRaw) return;
+    const prompt = promptRaw.toLowerCase()
+        .replace(/á/g,'a').replace(/é/g,'e').replace(/í/g,'i')
+        .replace(/ó/g,'o').replace(/ú/g,'u').replace(/ü/g,'u').replace(/ñ/g,'n');
 
+    // ── Categorías + exclusiones ─────────────────────────────────────────
     const catKws = {
         AN: /anillo|argolla|alianza|matrimonio|solitario|novio|pareja/,
-        AR: /arete|aretes|pendiente/,
+        AR: /arete|aretes|pendiente|zarcillo/,
         CD: /cadena|collar|gargantilla/,
         PL: /pulsera|brazalete/,
         CN: /conjunto|set/,
         RL: /reloj/,
+        DJ: /dije|charm/,
     };
-    const catsDetect = Object.entries(catKws).filter(([,re])=>re.test(prompt)).map(([k])=>k);
+    const exclKws = {
+        AN: /sin anillo|no anillo|sin argolla|no argolla/,
+        AR: /sin arete|no arete|sin zarcillo|sin pendiente/,
+        CD: /sin cadena|no cadena|sin collar/,
+        PL: /sin pulsera|no pulsera|sin brazalete/,
+        CN: /sin conjunto|no conjunto/,
+    };
+    const catsDetect  = Object.entries(catKws).filter(([,re]) => re.test(prompt)).map(([k]) => k);
+    const catsExcluir = Object.entries(exclKws).filter(([,re]) => re.test(prompt)).map(([k]) => k);
 
-    const mTalla = prompt.match(/talla\s*(\d+(?:[.,]\d+)?)|t\s*(\d+(?:[.,]\d+)?)\b/);
-    const talla  = mTalla ? (mTalla[1]||mTalla[2]).replace(",",".") : "";
+    // ── Tallas: rango "del 8 al 10", lista "talla 8, 9 y 10", o una sola ─
+    let tallas = [];
+    const mRango = prompt.match(/del?\s*(\d+(?:[.,]\d+)?)\s*al?\s*(\d+(?:[.,]\d+)?)/);
+    if (mRango) {
+        const desde = parseFloat(mRango[1].replace(",",".")), hasta = parseFloat(mRango[2].replace(",","."));
+        for (let t = desde; t <= hasta + 0.01; t += 0.5)
+            tallas.push(String(t % 1 < 0.01 ? Math.round(t) : t.toFixed(1)));
+    } else {
+        const afterTalla = prompt.match(/tallas?\s*([\d.,y \-y]+)/);
+        if (afterTalla) tallas = [...afterTalla[1].matchAll(/\d+(?:[.,]\d+)?/g)].map(m => m[0].replace(",","."));
+        if (!tallas.length) {
+            const mT = prompt.match(/\bt\s*(\d+(?:[.,]\d+)?)\b/);
+            if (mT) tallas = [mT[1].replace(",",".")];
+        }
+    }
+    const tallaStr = tallas.join(",");
 
+    // ── Género ───────────────────────────────────────────────────────────
     let pfx = "";
     if (/\bdama\b|\bmujer\b/.test(prompt))            pfx = "D";
     else if (/\bcaballero\b|\bhombre\b/.test(prompt)) pfx = "C";
-    else if (/\bunico\b|\bún[io]co\b/.test(prompt))   pfx = "U";
+    else if (/\bunico\b|\bunisex\b/.test(prompt))     pfx = "U";
 
-    // Si no se pide explícitamente una alianza/argolla/pareja, se asume que el
-    // pedido es de anillos normales — así "anillos talla 8 de mujer" no mezcla
-    // alianzas, que solo deben aparecer cuando el prompt las pide a propósito.
+    // ── Tipo anillo ──────────────────────────────────────────────────────
     let tipoAN = "sencillo";
     if (/argolla|matrimonio|pareja|novios|alianza/.test(prompt)) tipoAN = "pareja";
 
-    const mNom = prompt.match(/para\s+([a-záéíóúüñ]+)/i);
-    const clienteNom = mNom ? mNom[1].charAt(0).toUpperCase()+mNom[1].slice(1) : "";
+    // ── Material ─────────────────────────────────────────────────────────
+    let materialFiltro = "";
+    if (/laminado|oro laminado|chapado/.test(prompt))        materialFiltro = "laminado";
+    else if (/acero|316/.test(prompt))                       materialFiltro = "acero";
+    else if (/plata\s*(?:925|fina)?|silver/.test(prompt))   materialFiltro = "plata";
+    else if (/\boro\b(?!.*laminado)/.test(prompt))           materialFiltro = "oro";
 
+    // ── Precio ───────────────────────────────────────────────────────────
+    let precioMax = 0, precioMin = 0;
+    const mPMax = prompt.match(/(?:menos de|hasta|maximo|no mas de)\s*\$?\s*(\d+)/);
+    const mPMin = prompt.match(/(?:mas de|desde|minimo)\s*\$?\s*(\d+)/);
+    if (mPMax) precioMax = parseFloat(mPMax[1]);
+    if (mPMin) precioMin = parseFloat(mPMin[1]);
+    if (!precioMax && /economico|barato|accesible/.test(prompt)) precioMax = 20;
+    if (!precioMin && /premium|fino|lujoso|exclusivo/.test(prompt)) precioMin = 25;
+
+    // ── Cantidad desde prompt ─────────────────────────────────────────────
+    const mCant = prompt.match(/\b(\d+)\s*(?:productos?|piezas?|referencias?)\b/) ||
+                  prompt.match(/\bunos?\s*(\d+)\b/) ||
+                  prompt.match(/\bseleccion\s*(?:de)?\s*(\d+)\b/);
+    if (mCant) {
+        const sizeEl = document.getElementById("cat-var-size");
+        if (sizeEl) sizeEl.value = mCant[1];
+    }
+
+    // ── Nombre del cliente ────────────────────────────────────────────────
+    const mNom = promptRaw.match(/para\s+([A-ZÁÉÍÓÚ][a-záéíóúüñ]+)/);
+    if (mNom) document.getElementById("cat-nombre").value = mNom[1];
+
+    // ── Aplicar categorías al UI ─────────────────────────────────────────
     document.querySelectorAll(".cat-cat-chk").forEach(chk => {
-        chk.checked = catsDetect.includes(chk.value);
+        const incluir = catsDetect.includes(chk.value) && !catsExcluir.includes(chk.value);
+        chk.checked = incluir;
         const lbl = chk.closest("label");
         if (chk.checked) { lbl.style.background="var(--azul)"; lbl.style.color="#fff"; lbl.style.borderColor="var(--azul)"; }
         else             { lbl.style.background="#fff"; lbl.style.color=""; lbl.style.borderColor="var(--borde)"; }
@@ -3310,27 +3374,39 @@ function aplicarPromptIA() {
 
     const hasAN = catsDetect.length === 0 || catsDetect.includes("AN");
     document.getElementById("cat-sec-talla").style.display = hasAN ? "block" : "none";
-    document.getElementById("cat-talla").value   = talla;
+    document.getElementById("cat-talla").value = tallaStr;
     sincronizarChipsCatTalla();
     document.getElementById("cat-tipo-an").value = tipoAN;
     document.getElementById("cat-genero").value  = "";
     const pfEl = document.getElementById("cat-prefijo-txt");
     if (pfEl) pfEl.value = pfx;
-    if (clienteNom) document.getElementById("cat-nombre").value = clienteNom;
 
     filtrarParaCatalogo();
 
-    let sinStock = 0;
+    // ── Post-filtro: stock, material y precio ────────────────────────────
+    let sinStock = 0, sinMaterial = 0, sinPrecio = 0;
     document.querySelectorAll(".cat-chk").forEach(chk => {
-        const cod = chk.dataset.cod;
-        const prod = _catFiltrada.find(p => (p._codigos?.[0]||p.codigo) === cod);
-        if (prod && !tieneStock(prod, talla)) { chk.checked = false; sinStock++; }
+        if (!chk.checked) return;
+        const cod  = chk.dataset.cod;
+        const prod = _catFiltrada.find(p => (p._codigos?.[0] || p.codigo) === cod);
+        if (!prod) return;
+
+        if (tallaStr && !tieneStock(prod, tallas[0])) { chk.checked = false; sinStock++; return; }
+
+        if (materialFiltro) {
+            const mat = (prod.material || detectarMaterial(prod.nombre) || "").toLowerCase();
+            const nom = (prod.nombre || "").toLowerCase();
+            const ok = { laminado: /laminado|chapado/.test(mat+nom), acero: /acero/.test(mat+nom),
+                         plata: /plata/.test(mat+nom), oro: /\boro\b(?!\s*laminado)/.test(mat+nom) }[materialFiltro] || false;
+            if (!ok) { chk.checked = false; sinMaterial++; return; }
+        }
+
+        const precio = parseFloat(prod.precio || 0);
+        if (precioMax > 0 && precio > precioMax) { chk.checked = false; sinPrecio++; return; }
+        if (precioMin > 0 && precio < precioMin) { chk.checked = false; sinPrecio++; return; }
     });
 
-    // Respetar el campo de cantidad de piezas (el mismo que usa "Auto-seleccionar
-    // variado") — antes marcaba TODO lo que coincidiera con el prompt sin importar
-    // ese número. Si hay más coincidencias que el límite, se recorta priorizando
-    // mayor stock, dejando el resto sin marcar.
+    // ── Recortar al límite ────────────────────────────────────────────────
     const limite = parseInt(document.getElementById("cat-var-size")?.value) || 0;
     if (limite > 0) {
         const marcados = [...document.querySelectorAll(".cat-chk:checked")]
@@ -3339,16 +3415,20 @@ function aplicarPromptIA() {
         marcados.slice(limite).forEach(({chk}) => { chk.checked = false; });
     }
 
-    const total   = document.querySelectorAll(".cat-chk").length;
+    // ── Resumen ───────────────────────────────────────────────────────────
     const activos = document.querySelectorAll(".cat-chk:checked").length;
-    const partes  = [];
-    if (catsDetect.length) partes.push(catsDetect.map(k=>CAT_MAP[k].replace(/\p{Emoji}/gu,"").trim()).join(", "));
-    if (talla)   partes.push(`talla ${talla}`);
-    if (pfx)     partes.push({D:"dama",C:"caballero",U:"único"}[pfx]||pfx);
-    if (tipoAN)  partes.push(tipoAN==="pareja"?"argollas/pareja":"sencillos");
+    const omitidos = sinStock + sinMaterial + sinPrecio;
+    const resPartes = [];
+    if (catsDetect.length)   resPartes.push(catsDetect.map(k=>CAT_MAP[k].replace(/\p{Emoji}/gu,"").trim()).join(", "));
+    if (tallas.length)       resPartes.push("Talla " + tallas.join(", "));
+    if (pfx)                 resPartes.push({D:"Dama",C:"Caballero",U:"Único"}[pfx]||pfx);
+    if (materialFiltro)      resPartes.push(materialFiltro.charAt(0).toUpperCase()+materialFiltro.slice(1));
+    if (precioMax)           resPartes.push(`máx $${precioMax}`);
+    if (precioMin)           resPartes.push(`mín $${precioMin}`);
+    if (catsExcluir.length)  resPartes.push("excluye " + catsExcluir.map(k=>CAT_MAP[k].replace(/\p{Emoji}/gu,"").trim()).join(", "));
     document.getElementById("cat-ia-resultado").textContent =
-        `✅ ${activos} producto(s) con stock listo(s)${sinStock?" · "+sinStock+" sin stock omitido(s)":""}`
-        + (partes.length ? ` — ${partes.join(", ")}` : "");
+        `✅ ${activos} producto(s) listo(s)${omitidos ? ` · ${omitidos} omitido(s)` : ""}`
+        + (resPartes.length ? ` — ${resPartes.join(" · ")}` : "");
 }
 
 let _bannerColor = "#ef4444";
@@ -3416,44 +3496,44 @@ function _renderHistLinks(filtro) {
         const url      = `https://admin-tienda.pages.dev/c/${l.id}`;
         const nProd    = l.data?.prods?.length || 0;
         return `
-        <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:12px 14px;">
+        <div style="background:#ffffff;border:2.5px solid ${l.activo ? '#6ee7b7' : '#fca5a5'};border-radius:10px;padding:12px 14px;">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
                 <div style="flex:1;min-width:0;">
                     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px;">
                         ${badge} ${estado}
                     </div>
-                    <div style="font-size:14px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                        ${l.nombre || "(Sin nombre)"}${l.afiliadoCodigo ? ` <span style="color:#888;font-size:12px;">(${l.afiliadoCodigo})</span>` : ""}
+                    <div style="font-size:14px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                        ${l.nombre || "(Sin nombre)"}${l.afiliadoCodigo ? ` <span style="color:#6b7280;font-size:12px;">(${l.afiliadoCodigo})</span>` : ""}
                     </div>
-                    <div style="font-size:11px;color:#666;margin-top:3px;">
+                    <div style="font-size:11px;color:#9ca3af;margin-top:3px;">
                         ${nProd} producto${nProd!==1?"s":""} · Creado: ${fCreado} · Vence: ${fExpira}
                     </div>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0;">
                     <button onclick="navigator.clipboard.writeText('${url}');toast('✅ Link copiado','#22c55e')"
-                        style="background:none;border:1px solid #444;color:#aaa;border-radius:7px;padding:4px 10px;font-size:11px;cursor:pointer;">
+                        style="background:#f9fafb;border:1px solid #e5e7eb;color:#374151;border-radius:7px;padding:4px 10px;font-size:11px;cursor:pointer;">
                         📋 Copiar link
                     </button>
                     ${!l.activo ? `
                     <div style="display:flex;gap:5px;align-items:center;">
-                        <select id="dias-react-${l.id}" style="background:#111;border:1px solid #444;color:#fff;border-radius:7px;padding:4px 6px;font-size:11px;">
+                        <select id="dias-react-${l.id}" style="background:#fff;border:1px solid #fcd34d;color:#111;border-radius:7px;padding:4px 6px;font-size:11px;">
                             <option value="1">1 día</option>
                             <option value="7">7 días</option>
                             <option value="15" selected>15 días</option>
                             <option value="30">30 días</option>
                         </select>
                         <button onclick="reactivarLink('${l.id}')"
-                            style="background:rgba(201,168,76,0.15);border:1px solid #C9A84C;color:#C9A84C;border-radius:7px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">
+                            style="background:#B8860B;border:none;color:#fff;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">
                             ↺ Reactivar
                         </button>
                     </div>` : `
                     <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
                         ${esAfil ? `<button onclick="abrirAgregarProductos('${l.id}','${(l.nombre||'').replace(/'/g,'\\\'')}')"
-                            style="background:rgba(34,197,94,0.1);border:1px solid #22c55e;color:#22c55e;border-radius:7px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">
+                            style="background:#f0fdf4;border:1px solid #a7f3d0;color:#065f46;border-radius:7px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">
                             ✚ Agregar productos
                         </button>` : ''}
                         <button onclick="eliminarLink('${l.id}')"
-                            style="background:rgba(239,68,68,0.1);border:1px solid #ef4444;color:#ef4444;border-radius:7px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">
+                            style="background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;border-radius:7px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">
                             🗑 Eliminar
                         </button>
                     </div>`}
@@ -3627,6 +3707,7 @@ async function generarLinkCatalogo() {
     const talla      = document.getElementById("cat-talla").value;
     const genero     = document.getElementById("cat-genero")?.value || "";
     const dias       = parseInt(document.getElementById("cat-validez").value)||3;
+    const notaInterna = (document.getElementById("cat-nota-interna")?.value || "").trim();
     // Defensa adicional: en catálogo de Cliente, el número SIEMPRE es el
     // oficial de VEREX, sin importar qué haya quedado en el campo/localStorage
     // — nunca debe poder colarse el número de un afiliado por error.
@@ -3669,6 +3750,7 @@ async function generarLinkCatalogo() {
         const data={
             expiry: Date.now()+dias*864e5,
             nombre, talla, wa, banner, dias,
+            ...(notaInterna && { nota_interna: notaInterna }),
             ...(descPct > 0 && { descPct }),
             ...(esAfiliado && { afiliado: true }),
             ...(afiliadoId && { customId: afiliadoId }),
@@ -3728,6 +3810,15 @@ async function generarLinkCatalogo() {
         document.getElementById("cat-link-out").textContent=finalUrl;
         document.getElementById("cat-link-box").style.display="block";
         toast("🔗 Link listo — cópialo o compártelo por WhatsApp","#22c55e");
+        guardarEnLogCatalogos({
+            url: finalUrl,
+            nombre,
+            nota: notaInterna,
+            filtros: capturarFiltrosCatalogo(),
+            expiry: Date.now() + dias * 864e5,
+            esAfiliado
+        });
+        renderLogCatalogos();
 
         // Guardar los criterios usados y los códigos mostrados — permite
         // "Refrescar" este mismo catálogo más adelante con stock actualizado
@@ -3744,6 +3835,109 @@ async function generarLinkCatalogo() {
 
     } catch(e){ console.error(e); toast("❌ Error al generar link: "+e.message,"#ef4444"); }
     finally { btn.textContent="🔗 Link"; btn.disabled=false; }
+}
+
+// ── Catálogos: log, captura de filtros, render y reactivar ─────────────
+
+const CAT_LOG_KEY = "verex-cat-log";
+
+function capturarFiltrosCatalogo() {
+    const chips = [];
+    const cats = [...document.querySelectorAll(".cat-cat-chk:checked")].map(c => c.value);
+    const catLabels = { AN:"Anillos", PU:"Pulseras", CD:"Cadenas", AR:"Aretes", CJ:"Conjuntos", DR:"Dijes", AL:"Alianzas", AC:"Accesorios" };
+    cats.forEach(k => chips.push(catLabels[k] || k));
+    const tallas = (document.getElementById("cat-talla")?.value || "").split(",").filter(Boolean);
+    tallas.forEach(t => chips.push("T" + t));
+    const genero = document.getElementById("cat-genero")?.value;
+    if (genero === "dama") chips.push("Dama");
+    else if (genero === "caballero") chips.push("Caballero");
+    const tipoAN = document.getElementById("cat-tipo-an")?.value;
+    if (tipoAN === "pareja") chips.push("Argollas / Pareja");
+    else if (tipoAN === "sencillo") chips.push("Sencillos");
+    return chips;
+}
+
+function guardarEnLogCatalogos({ url, nombre, nota, filtros, expiry, esAfiliado }) {
+    const log = JSON.parse(localStorage.getItem(CAT_LOG_KEY) || "[]");
+    const id = url.split("/").pop();
+    const idx = log.findIndex(e => e.id === id);
+    const entry = { id, url, nombre: nombre || "Sin nombre", nota: nota || "", filtros: filtros || [], expiry, esAfiliado: !!esAfiliado, createdAt: Date.now() };
+    if (idx >= 0) log[idx] = entry; else log.unshift(entry);
+    localStorage.setItem(CAT_LOG_KEY, JSON.stringify(log.slice(0, 50)));
+}
+
+function renderLogCatalogos() {
+    const wrap = document.getElementById("cat-log-lista");
+    if (!wrap) return;
+    const log = JSON.parse(localStorage.getItem(CAT_LOG_KEY) || "[]");
+    if (!log.length) { wrap.innerHTML = '<p style="font-size:12px;color:#9ca3af;text-align:center;margin:10px 0;">Aún no hay catálogos generados.</p>'; return; }
+    const now = Date.now();
+    wrap.innerHTML = log.map(e => {
+        const activo = e.expiry > now;
+        const fechaVence = new Date(e.expiry).toLocaleDateString("es-SV", { day:"numeric", month:"short" });
+        const statusHtml = activo
+            ? `<span style="display:inline-flex;align-items:center;gap:4px;background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;border-radius:20px;padding:3px 9px;font-size:11px;font-weight:600;">● Activo · vence ${fechaVence}</span>`
+            : `<span style="display:inline-flex;align-items:center;gap:4px;background:#fef2f2;color:#991b1b;border:1px solid #fca5a5;border-radius:20px;padding:3px 9px;font-size:11px;font-weight:600;">✕ Vencido ${fechaVence}</span>`;
+        const chips = (e.filtros || []).map(f => `<span style="display:inline-flex;align-items:center;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;border-radius:20px;padding:3px 9px;font-size:11px;">${f}</span>`).join("");
+        const notaHtml = e.nota ? `<div style="font-size:12px;color:#6b7280;font-style:italic;margin-bottom:7px;">"${e.nota}"</div>` : "";
+        const acciones = activo
+            ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+                <button onclick="navigator.clipboard.writeText('${e.url}');toast('✅ Link copiado','#22c55e')" style="flex:1;background:#f0fdf4;color:#166534;border:1px solid #a7f3d0;padding:6px 10px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📋 Copiar link</button>
+                <button onclick="window.open('${e.url}','_blank')" style="background:#f9fafb;color:#374151;border:1px solid #e5e7eb;padding:6px 10px;border-radius:7px;font-size:12px;cursor:pointer;">👁️ Ver</button>
+               </div>`
+            : `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;background:#fffbeb;border:1px solid #fcd34d;border-radius:7px;padding:8px 10px;">
+                <span style="font-size:12px;color:#92400e;flex:1;">Nuevo link hasta:</span>
+                <input type="date" id="reac-fecha-${e.id}" style="font-size:12px;background:#fff;border:1px solid #fcd34d;border-radius:6px;padding:4px 8px;color:#111;" min="${new Date().toISOString().split('T')[0]}">
+                <button onclick="clonarCatalogo('${e.id}','${e.nombre||''}')" style="background:#B8860B;color:#fff;border:none;padding:6px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">🔗 Nuevo link</button>
+               </div>`;
+        return `<div style="background:#ffffff;border:1px solid ${activo ? '#d1fae5' : '#fee2e2'};border-radius:10px;padding:12px 14px;margin-bottom:8px;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px;">
+                <span style="font-size:13px;font-weight:600;color:#111827;">${e.nombre || "(Sin nombre)"} ${e.esAfiliado ? '<span style="font-size:10px;color:#065f46;background:#dcfce7;padding:2px 6px;border-radius:4px;">Afiliado</span>' : ''}</span>
+                ${statusHtml}
+            </div>
+            ${notaHtml}
+            ${chips ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;">${chips}</div>` : ""}
+            ${acciones}
+        </div>`;
+    }).join("");
+}
+
+async function clonarCatalogo(id, nombre) {
+    const fechaInput = document.getElementById("reac-fecha-" + id);
+    if (!fechaInput?.value) return toast("⚠️ Elige una fecha de vigencia", "#f97316");
+    const nuevaExpiry = new Date(fechaInput.value + "T23:59:59").getTime();
+    if (nuevaExpiry <= Date.now()) return toast("⚠️ La fecha debe ser futura", "#f97316");
+    const dias = Math.max(1, Math.ceil((nuevaExpiry - Date.now()) / 864e5));
+    try {
+        const res = await fetch("/clone-catalog", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, dias })
+        });
+        const out = await res.json();
+        if (!res.ok) throw new Error(out.error || "Error del servidor");
+        const nuevaUrl = location.origin + out.url;
+        // Agregar el nuevo link al log como entrada separada
+        const log = JSON.parse(localStorage.getItem(CAT_LOG_KEY) || "[]");
+        const original = log.find(e => e.id === id);
+        const newEntry = {
+            id: out.url.split("/").pop(),
+            url: nuevaUrl,
+            nombre: original?.nombre || nombre || "Sin nombre",
+            nota: original?.nota || "",
+            filtros: original?.filtros || [],
+            expiry: nuevaExpiry,
+            esAfiliado: original?.esAfiliado || false,
+            createdAt: Date.now()
+        };
+        log.unshift(newEntry);
+        localStorage.setItem(CAT_LOG_KEY, JSON.stringify(log.slice(0, 50)));
+        try { await navigator.clipboard.writeText(nuevaUrl); } catch(_){}
+        toast("🔗 Nuevo link generado y copiado", "#22c55e");
+        renderLogCatalogos();
+    } catch(err) {
+        toast("❌ No se pudo generar el link: " + err.message, "#ef4444");
+    }
 }
 
 // Link/QR fijo hacia la página de Garantía Limitada — vive en el dominio
@@ -4277,6 +4471,8 @@ function abrirModalCatalogo(tipo) {
     if (descPctEl) descPctEl.value = "";
     document.getElementById("cat-link-box").style.display  = "none";
     document.getElementById("cat-sec-talla").style.display = "block";
+    if (document.getElementById("cat-nota-interna")) document.getElementById("cat-nota-interna").value = "";
+    renderLogCatalogos();
 
     // Sección afiliado
     const afChk = document.getElementById("cat-es-afiliado");
@@ -4922,7 +5118,7 @@ async function generarPDFCatalogo() {
       <div style="width:24px;height:24px;border-radius:50%;background:#C9A84C;color:#000;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">1</div>
       <span style="font-size:13px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.5px;">¿Para quién es?</span>
     </div>
-    <div style="border:1px solid #2a2a2a;border-radius:10px;padding:14px;margin-bottom:16px;background:#111;">
+    <div style="border:2px solid #C9A84C;border-radius:10px;padding:14px;margin-bottom:16px;background:#fff;">
 
       <!-- Cliente: solo nombre -->
       <div id="cat-sec-cliente-nombre">
@@ -4964,23 +5160,29 @@ async function generarPDFCatalogo() {
       </div>
     </div>
 
+    <!-- ══ NOTA INTERNA ══════════════════════════════════════════════ -->
+    <div style="margin-bottom:16px;">
+      <label style="font-size:12px;color:#aaa;margin-bottom:4px;display:block;">Nota interna <span style="color:#555;font-weight:400;">(opcional — para identificar este catálogo)</span></label>
+      <input type="text" id="cat-nota-interna" placeholder='Ej: "anillos talla 9, pidió solo dorados"' style="width:100%;box-sizing:border-box;">
+    </div>
+
     <!-- ══ PASO 2: FILTRAR PRODUCTOS ════════════════════════════════ -->
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
       <div style="width:24px;height:24px;border-radius:50%;background:#C9A84C;color:#000;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">2</div>
       <span style="font-size:13px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.5px;">Filtrar productos</span>
     </div>
-    <div style="border:1px solid #2a2a2a;border-radius:10px;padding:14px;margin-bottom:16px;background:#111;">
+    <div style="border:2px solid #C9A84C;border-radius:10px;padding:14px;margin-bottom:16px;background:#fff;">
 
       <!-- IA -->
       <div style="background:rgba(30,64,175,0.12);border:1px solid rgba(191,219,254,0.2);border-radius:8px;padding:10px;margin-bottom:12px;">
-        <div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:6px;">🤖 Armar con IA — describe lo que buscas</div>
+        <div style="font-size:11px;font-weight:700;color:#1d4ed8;margin-bottom:6px;">🤖 Armar con IA — describe lo que buscas</div>
         <div style="display:flex;gap:8px;">
           <input type="text" id="cat-ia-prompt" placeholder='Ej: "anillos talla 7 dama" o "argollas matrimonio talla 9"'
-            style="flex:1;font-size:13px;" onkeydown="if(event.key==='Enter') aplicarPromptIA()">
+            style="flex:1;font-size:13px;" placeholder='Ej: "30 anillos laminados talla 9 dama" · "cadenas acero menos de $20" · "aretes sin conjuntos"' onkeydown="if(event.key==='Enter') aplicarPromptIA()">
           <button onclick="aplicarPromptIA()"
             style="background:#2563eb;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">✨ Armar</button>
         </div>
-        <div id="cat-ia-resultado" style="font-size:11px;color:#93c5fd;margin-top:5px;min-height:14px;"></div>
+        <div id="cat-ia-resultado" style="font-size:11px;color:#1d4ed8;margin-top:5px;min-height:14px;"></div>
       </div>
 
       <!-- Categorías -->
@@ -5046,7 +5248,7 @@ async function generarPDFCatalogo() {
       <span style="font-size:13px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.5px;">Seleccionar productos</span>
       <span id="cat-info" style="font-size:12px;color:#888;margin-left:4px;"></span>
     </div>
-    <div style="border:1px solid #2a2a2a;border-radius:10px;padding:14px;margin-bottom:16px;background:#111;">
+    <div style="border:2px solid #C9A84C;border-radius:10px;padding:14px;margin-bottom:16px;background:#fff;">
       <div id="cat-lista" style="max-height:340px;overflow-y:auto;border:1px solid #222;border-radius:8px;padding:8px;background:#0d0d0d;"></div>
       <div id="cat-var-resumen" style="font-size:11px;color:#86efac;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);border-radius:7px;padding:7px 10px;margin-top:10px;display:none;"></div>
 
@@ -5069,7 +5271,7 @@ async function generarPDFCatalogo() {
       <div style="width:24px;height:24px;border-radius:50%;background:#C9A84C;color:#000;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">4</div>
       <span style="font-size:13px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.5px;">Detalles del link</span>
     </div>
-    <div style="border:1px solid #2a2a2a;border-radius:10px;padding:14px;margin-bottom:16px;background:#111;">
+    <div style="border:2px solid #C9A84C;border-radius:10px;padding:14px;margin-bottom:16px;background:#fff;">
       <div style="margin-bottom:12px;">
         <label style="font-size:12px;color:#aaa;margin-bottom:4px;display:block;">Vigencia</label>
         <select id="cat-validez" style="width:100%;box-sizing:border-box;">
@@ -5175,7 +5377,7 @@ async function generarPDFCatalogo() {
           </div>
         </div>
         <div>
-          <div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:6px;">✏️ Editar vigencia</div>
+          <div style="font-size:11px;font-weight:700;color:#1d4ed8;margin-bottom:6px;">✏️ Editar vigencia</div>
           <div style="display:flex;gap:8px;">
             <input type="text" id="cat-link-editar-vig" placeholder="Link completo o código" style="flex:1;">
             <select id="cat-editar-vig-dias" style="width:110px;">
@@ -5191,6 +5393,15 @@ async function generarPDFCatalogo() {
         </div>
       </div>
     </details>
+
+    <!-- ══ MIS CATÁLOGOS ════════════════════════════════════════════ -->
+    <div style="margin-top:20px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <span style="font-size:13px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.5px;">Mis catálogos</span>
+        <span style="font-size:10px;color:#555;">guardados en este dispositivo</span>
+      </div>
+      <div id="cat-log-lista"></div>
+    </div>
 
   </div>
 </div>
