@@ -9282,9 +9282,9 @@ async function generarPDFParaServidor(codigos, formato, notaTexto) {
 // si se ajusta el diseño acá, cambia en los dos formatos a la vez.
 function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma, engrosar) {
     const B = [0, 0, 0];
-    const QS = 7.5;                 // QR: bajado de 8.5mm
-    const QX = 20 - QS - 0.0;       // pegado al borde derecho de la mini (12.5)
-    const dataX = 0.2, dataW = 11.1;
+    const QS = 9;                   // QR más grande — pedido explícito del usuario
+    const QX = 20 - QS - 0.0;       // pegado al borde derecho de la mini
+    const dataX = 0.2, dataW = QX - dataX - 0.3;
     const W = 20;
 
     // "Negrita extra": se dibuja el contorno de cada letra además del relleno,
@@ -9308,11 +9308,11 @@ function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma, engrosar) {
         try { doc.addImage(qrImg, 'PNG', ox + QX, oy + 0.2, QS, QS); } catch(e) {}
     }
 
-    // Precio — 8.5pt helvetica bold (igual que DK-2214)
+    // Precio — 9.5pt helvetica bold — más grande, pedido explícito del usuario
     const precio = '$ ' + parseFloat(p.precio || 0).toFixed(2);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...B);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...B);
     if (engrosar) doc.setLineWidth(trazoGrande);
-    doc.text(precio, ox + dataX, oy + 3.5, modo);
+    doc.text(precio, ox + dataX, oy + 3.8, modo);
 
     // Código — 5pt Tahoma Bold (igual que DK-2214), hasta 2 líneas
     const cod = p.codigo || '';
@@ -9361,7 +9361,7 @@ async function _generarPDFMini(prods, qrImages) {
             doc.addPage([W, H], 'landscape');
         }
 
-        _dibujarMiniEn(doc, p, qrImages[p.codigo], 0, 0, hasTahoma);
+        _dibujarMiniEn(doc, p, qrImages[p.codigo], 0, 0, hasTahoma, true);
     }
 
     if (!doc) {
