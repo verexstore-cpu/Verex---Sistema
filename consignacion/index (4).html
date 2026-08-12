@@ -9284,7 +9284,7 @@ function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma, engrosar) {
     const B = [0, 0, 0];
     const QS = 9;                   // QR más grande — pedido explícito del usuario
     const QX = 20 - QS - 0.0;       // pegado al borde derecho de la mini
-    const dataX = 0.2, dataW = QX - dataX - 0.3;
+    const dataX = 0.2, dataW = QX - dataX - 1.2;   // más separación del QR
     const W = 20;
 
     // "Negrita extra": se dibuja el contorno de cada letra además del relleno,
@@ -9308,11 +9308,11 @@ function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma, engrosar) {
         try { doc.addImage(qrImg, 'PNG', ox + QX, oy + 0.2, QS, QS); } catch(e) {}
     }
 
-    // Precio — 9.5pt helvetica bold — más grande, pedido explícito del usuario
+    // Precio — 9pt helvetica bold
     const precio = '$ ' + parseFloat(p.precio || 0).toFixed(2);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...B);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...B);
     if (engrosar) doc.setLineWidth(trazoGrande);
-    doc.text(precio, ox + dataX, oy + 3.8, modo);
+    doc.text(precio, ox + dataX, oy + 3.7, modo);
 
     // Código — 5pt Tahoma Bold (igual que DK-2214), hasta 2 líneas
     const cod = p.codigo || '';
@@ -9330,7 +9330,7 @@ function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma, engrosar) {
     if (mat) {
         doc.setFont('helvetica', 'bold'); doc.setFontSize(5.5); doc.setTextColor(...B);
         if (engrosar) doc.setLineWidth(trazoMaterial);
-        doc.text(doc.splitTextToSize(mat, W - 1)[0], ox + 0.5, oy + 10.7, modo);
+        doc.text(doc.splitTextToSize(mat, W - 1)[0], ox + 0.5, oy + 10.3, modo);
     }
 }
 
