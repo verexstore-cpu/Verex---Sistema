@@ -239,8 +239,13 @@
             .tab{padding:11px 12px;font-size:12px;}
             .tab-content{padding:16px 12px;}
 
-            /* Ocultar tabla en móvil */
+            /* Ocultar tabla en móvil (las que sí tienen tarjeta alterna) */
             .tw { display: none; }
+
+            /* La tabla de "Ventas del Vendedor" no tiene tarjetas alternas —
+               ocultarla la dejaba completamente invisible en el celular en
+               vez de solo desbordada. Se muestra con scroll horizontal. */
+            #modal-ventas-vend .tw { display: block; }
 
             /* Tarjetas de pedidos y clientes en móvil */
             #cards-ped { display: block; }
