@@ -603,10 +603,10 @@ const url='file:///${pdfPath.replace(/\\/g,'/')}';
                 const P = 696 / 62  // 11.226 px/mm
                 const formatPx = {
                   'producto': { w: Math.round(54 * P), h: 117  },  // original: 606×117
-                  // 'mini' es DK-2214 (cinta continua 12mm). h=0 → modo continuo:
-                  // solo se fuerza el ancho (106 dots = 12mm) y el alto se ajusta
-                  // proporcional al contenido recortado, sin deformar QR ni texto
-                  // (un h fijo aquí estira/encoge el diseño para llenar esa medida).
+                  // 'mini' es DK-2214 (cinta continua 12mm). El PDF ya mide exacto
+                  // 20×12mm (_generarPDFMini) — con --no-crop (ver abajo) y h=0,
+                  // solo se fuerza el ancho (106 dots = 12mm imprimibles) y el alto
+                  // se ajusta proporcional a la página real, sin recortar ni deformar.
                   'mini':     { w: 106, h: 0 },
                   // DK-1204 es TROQUELADA 17×54mm, no rollo continuo: brother_ql
                   // exige la imagen del tamaño imprimible exacto del troquel
@@ -658,7 +658,10 @@ const url='file:///${pdfPath.replace(/\\/g,'/')}';
                   // salió MÁS pálido, así que se mantiene el dithering. La negrita
                   // se consigue engrosando el texto en el propio PDF (ver
                   // _dibujarMiniEn), que es más efectivo que tocar la conversión.
-                  const noCrop = (formato === 'dk1204') ? ' --no-crop' : ''
+                  // 'mini' también va sin crop: su PDF ya mide exacto 20×12mm
+                  // (_generarPDFMini), igual que dk1204 — recortar cambia la
+                  // proporción de forma impredecible en vez de respetar el diseño.
+                  const noCrop = (formato === 'dk1204' || formato === 'mini') ? ' --no-crop' : ''
 
                   // En papel TROQUELADO cada página del PDF es una etiqueta física
                   // distinta. El PNG las trae apiladas (pdfjs las dibuja en un solo
