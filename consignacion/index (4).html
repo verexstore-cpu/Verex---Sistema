@@ -432,6 +432,15 @@
         .prod-card-qty { gap: 14px; padding: 8px; }
         .qty-num { font-size: 15px; min-width: 18px; text-align: center; }
 
+        /* Pastillas de talla (entrega a vendedor): los botones +/- llevan
+           tamaño inline (20px) porque en desktop van muy apretados uno junto
+           a otro — pero eso también le gana al media query de arriba, así
+           que hace falta !important acá para agrandarlos en móvil. La
+           pastilla necesita más ancho para que los botones más grandes quepan. */
+        .talla-pill { min-width: 72px !important; padding: 6px 4px !important; }
+        .talla-pill-btn { width: 32px !important; height: 32px !important; font-size: 16px !important; }
+        .menu-punto-btn { width: 34px !important; height: 34px !important; }
+
         /* iOS hace zoom automático al enfocar un campo con font-size menor a
            16px — con menos de eso, tocar "Nombre del cliente" o cualquier
            input dispara un zoom que luego queda pegado y descuadra el resto
@@ -3772,16 +3781,16 @@ function renderGridEntrega(prods) {
                 const bodega   = parseInt(p.stock_bodega) || 0;
                 const isSel    = qty > 0;
                 const domId    = safeId(p.codigo);
-                return `<div id="pill-${domId}" style="display:flex;flex-direction:column;align-items:center;gap:2px;
+                return `<div id="pill-${domId}" class="talla-pill" style="display:flex;flex-direction:column;align-items:center;gap:2px;
                         background:${isSel ? 'rgba(201,168,76,0.18)' : 'rgba(0,0,0,0.25)'};
                         border:1px solid ${isSel ? 'var(--dorado)' : 'var(--borde)'};
                         border-radius:8px;padding:5px 3px;min-width:48px;transition:all 0.15s;">
                     <div style="font-size:11px;font-weight:700;color:${isSel ? 'var(--dorado)' : 'var(--blanco)'};">T${talla}</div>
                     <div style="font-size:9px;color:${bodega > 0 ? '#2ecc71' : '#e74c3c'};">×${bodega}</div>
                     <div style="display:flex;align-items:center;gap:2px;margin-top:1px;">
-                        <button class="qty-btn" style="width:20px;height:20px;font-size:13px;line-height:1;" onclick="cambiarQtyEntrega('${p.codigo}',-1)">−</button>
+                        <button class="qty-btn talla-pill-btn" style="width:20px;height:20px;font-size:13px;line-height:1;" onclick="cambiarQtyEntrega('${p.codigo}',-1)">−</button>
                         <span id="qty-${domId}" style="min-width:14px;text-align:center;font-size:11px;font-weight:700;">${qty}</span>
-                        <button class="qty-btn" style="width:20px;height:20px;font-size:13px;line-height:1;" onclick="cambiarQtyEntrega('${p.codigo}',1)">+</button>
+                        <button class="qty-btn talla-pill-btn" style="width:20px;height:20px;font-size:13px;line-height:1;" onclick="cambiarQtyEntrega('${p.codigo}',1)">+</button>
                     </div>
                 </div>`;
             }).join('');
@@ -3798,7 +3807,7 @@ function renderGridEntrega(prods) {
         }
 
         return `<div class="prod-card ${totalQtyCarrito > 0 ? 'seleccionado' : ''}" id="${cardId}" style="position:relative;">
-            <button onclick="event.stopPropagation();toggleMenuProducto('${menuId}')"
+            <button class="menu-punto-btn" onclick="event.stopPropagation();toggleMenuProducto('${menuId}')"
                 style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.5);border:none;color:#fff;border-radius:50%;width:24px;height:24px;font-size:13px;cursor:pointer;z-index:2;display:flex;align-items:center;justify-content:center;">⋯</button>
             <div id="${menuId}" style="display:none;position:absolute;top:32px;right:6px;background:var(--gris2);border:1px solid var(--borde);border-radius:8px;z-index:10;min-width:130px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
                 <button onclick="event.stopPropagation();verProducto('${ref.codigo}')"
