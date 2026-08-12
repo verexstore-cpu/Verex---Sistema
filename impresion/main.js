@@ -603,10 +603,11 @@ const url='file:///${pdfPath.replace(/\\/g,'/')}';
                 const P = 696 / 62  // 11.226 px/mm
                 const formatPx = {
                   'producto': { w: Math.round(54 * P), h: 117  },  // original: 606×117
-                  // 'mini' es DK-2214 (cinta continua 12mm) recortada a ~20mm de largo.
-                  // h=190 (no 236) porque el recorte de contenido (_preparar crop)
-                  // ya ajusta al diseño real, más angosto que 20mm nominales.
-                  'mini':     { w: 106, h: 190 },
+                  // 'mini' es DK-2214 (cinta continua 12mm). h=0 → modo continuo:
+                  // solo se fuerza el ancho (106 dots = 12mm) y el alto se ajusta
+                  // proporcional al contenido recortado, sin deformar QR ni texto
+                  // (un h fijo aquí estira/encoge el diseño para llenar esa medida).
+                  'mini':     { w: 106, h: 0 },
                   // DK-1204 es TROQUELADA 17×54mm, no rollo continuo: brother_ql
                   // exige la imagen del tamaño imprimible exacto del troquel
                   // (165×566 dots de 201×636 totales — la QL no imprime ~1.5mm
