@@ -6302,6 +6302,8 @@ async function compartirSeleccionados() {
 }
 
 function renderStock(items) {
+    if (!items) items = stockData;
+    if (!items) return;
     // KPIs
     document.getElementById("sk-total").textContent   = items.reduce((s,i) => s + (parseInt(i.stock_bodega)||0) + (parseInt(i.stock_tienda)||0) + (parseInt(i.stock_consignacion)||0), 0);
     document.getElementById("sk-bodega").textContent  = items.reduce((s,i) => s + (parseInt(i.stock_bodega)||0), 0);
