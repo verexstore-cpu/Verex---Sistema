@@ -9328,7 +9328,7 @@ function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma, engrosar) {
     if (cod) {
         if (hasTahoma) doc.setFont('TahomaBold', 'normal');
         else doc.setFont('helvetica', 'bold');
-        doc.setFontSize(5); doc.setTextColor(...B);
+        doc.setFontSize(5.5); doc.setTextColor(...B);
         if (engrosar) doc.setLineWidth(trazoChico);
         const codLines = doc.splitTextToSize(cod, dataW).slice(0, 2);
         codLines.forEach((l, j) => doc.text(l, ox + dataX, oy + 6.5 + j * 1.6, modo));
