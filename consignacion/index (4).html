@@ -1755,7 +1755,7 @@ function imprimirEtiquetaStock(codigo) {
     if (estaEtiquetaImpresa(codigo)) {
         if (!confirm(`¿Marcar "${codigo}" como pendiente de imprimir?`)) return;
         desmarcarEtiquetaImpresa(codigo);
-        renderStock();
+        renderStock(stockData);
         return;
     }
     _colaEtiquetas = [{ codigo, qty: 1 }];
@@ -8506,7 +8506,7 @@ async function enviarImpresionServidor() {
                 status.style.color = '#22c55e';
                 status.textContent = `✅ ${json.etiquetas} etiqueta(s) enviadas a Brother QL`;
                 if (_codigosImpresionRapida) { _codigosImpresionRapida.forEach(c => marcarEtiquetaImpresa(c)); _codigosImpresionRapida = null; }
-                setTimeout(() => { cerrarModalImpresion(); limpiarCola(); renderStock(); }, 1800);
+                setTimeout(() => { cerrarModalImpresion(); limpiarCola(); renderStock(stockData); }, 1800);
             } else {
                 const errMsg = (json.error || 'Error en impresora');
                 // Traducir errores técnicos que el Hub no filtró
