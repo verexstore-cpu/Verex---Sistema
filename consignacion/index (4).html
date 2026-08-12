@@ -567,7 +567,7 @@
                     <button id="btn-scanner-stock" onclick="toggleModoScanner()" style="padding:8px 12px;font-size:13px;background:#222;color:#888;border:1px solid #444;border-radius:8px;cursor:pointer;white-space:nowrap;">📡 Scanner</button>
                     <button class="btn" style="background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1,#38bdf8,#0a4a6b);color:#e0f7ff;font-weight:700;padding:8px 12px;font-size:13px;" onclick="abrirScannerQR(cod=>buscarStockPorScanner(String(cod).trim().toUpperCase()), '📷 Escanear producto')">📷 QR</button>
                     <button id="btn-vista-stock" onclick="toggleVistaStock()" title="Cambiar vista" style="padding:8px 12px;font-size:15px;background:#222;color:#aaa;border:1px solid #444;border-radius:8px;cursor:pointer;">▦</button>
-                    <select id="fil-stock-estado" onchange="filtrarStock()" style="width:130px;">
+                    <select id="fil-stock-estado" onchange="filtrarStock()" style="flex:1;min-width:100px;">
                         <option value="">Todos</option>
                         <option value="bodega">🏠 Bodega</option>
                         <option value="tienda">🛍️ Tienda</option>
@@ -575,10 +575,10 @@
                         <option value="reservado">⏳ Reservado</option>
                         <option value="vendido">✅ Vendido</option>
                     </select>
-                    <select id="fil-stock-material" onchange="filtrarStock()" style="width:150px;">
+                    <select id="fil-stock-material" onchange="filtrarStock()" style="flex:1;min-width:100px;">
                         <option value="">Todo material</option>
                     </select>
-                    <select id="fil-stock-categoria" onchange="filtrarStock()" style="width:150px;">
+                    <select id="fil-stock-categoria" onchange="filtrarStock()" style="flex:1;min-width:100px;">
                         <option value="">Todo tipo</option>
                     </select>
                     <button class="btn btn-dorado" onclick="abrirStockNuevoProd()" style="padding:8px 14px;font-size:13px;">+ Agregar</button>
