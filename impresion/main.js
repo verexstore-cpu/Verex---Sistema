@@ -603,7 +603,10 @@ const url='file:///${pdfPath.replace(/\\/g,'/')}';
                 const P = 696 / 62  // 11.226 px/mm
                 const formatPx = {
                   'producto': { w: Math.round(54 * P), h: 117  },  // original: 606×117
-                  'mini':     { w: 306, h: 991 },  // DK-11201 29×90mm: dots_printable exactos
+                  // 'mini' es DK-2214 (cinta continua 12mm), igual que 'dk2214' pero
+                  // con etiquetas de 20mm de largo en vez de 50mm — mismo ancho
+                  // imprimible (106 dots), largo proporcional (11.82 dots/mm ≈ 300dpi).
+                  'mini':     { w: 106, h: 236 },
                   // DK-1204 es TROQUELADA 17×54mm, no rollo continuo: brother_ql
                   // exige la imagen del tamaño imprimible exacto del troquel
                   // (165×566 dots de 201×636 totales — la QL no imprime ~1.5mm
@@ -625,12 +628,13 @@ const url='file:///${pdfPath.replace(/\\/g,'/')}';
                 // como '62' (rollo continuo) es un desajuste de medio y la
                 // QL-810W aborta el trabajo con luz roja — la impresora reporta
                 // el papel como "17mm x 54mm" y espera el label troquelado.
-                const formatLabelOverride = { 'mini': '29x90', 'dk2214': '12', 'dk1204': '17x54' }
+                const formatLabelOverride = { 'mini': '12', 'dk2214': '12', 'dk1204': '17x54' }
                 const labelId = formatLabelOverride[formato] || labelMap[rollo] || '62'
                 const px = formatPx[formato] || { w: 696, h: 117 }
                 // dk1204 se rota porque el PDF viene apaisado (54×17mm) y el
-                // troquel se alimenta en vertical (165 ancho × 566 alto)
-                const rotateDeg = (formato === 'dk2214' || formato === 'guia' || formato === 'dk1204') ? 90 : 0
+                // troquel se alimenta en vertical (165 ancho × 566 alto).
+                // 'mini' se rota igual que 'dk2214': misma cinta 12mm, mismo sentido.
+                const rotateDeg = (formato === 'dk2214' || formato === 'guia' || formato === 'dk1204' || formato === 'mini') ? 90 : 0
                 // Antes de mandar nada: ¿el papel cargado es el que espera este
                 // formato? Si no, se avisa en vez de dejar la impresora en rojo.
                 const mediaCargada = await leerMediaImpresora(printerIp)
