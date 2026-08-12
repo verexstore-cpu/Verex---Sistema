@@ -3126,6 +3126,30 @@ async function editarNotasVendedor() {
     toast("✅ Notas actualizadas");
 }
 
+async function editarTipoVendedor() {
+    if (!vendedorActual) return;
+    const tipos = { consignacion: "📦 Consignación", afiliado: "🤝 Afiliado", hibrido: "🔄 Híbrido" };
+    const opciones = Object.entries(tipos).map(([v, l]) => `${v === vendedorActual.tipo ? "✓ " : ""}${l} → ${v}`).join("\n");
+    const input = prompt(`Tipo actual: ${tipos[vendedorActual.tipo] || vendedorActual.tipo}\n\nEscribe el nuevo tipo:\n  consignacion\n  afiliado\n  hibrido`, vendedorActual.tipo);
+    if (!input || input.trim() === vendedorActual.tipo) return;
+    const nuevo = input.trim().toLowerCase();
+    if (!["consignacion", "afiliado", "hibrido"].includes(nuevo)) return toast("⚠️ Tipo inválido — usa: consignacion, afiliado o hibrido", "#f97316");
+    if (!confirm(`¿Cambiar tipo de "${vendedorActual.nombre}" de ${tipos[vendedorActual.tipo]} → ${tipos[nuevo]}?`)) return;
+    try {
+        const res = await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "GUARDAR_VENDEDOR", vendedor: { ...vendedorActual, tipo: nuevo }, _pass: ADMIN_PASS }) });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "Error");
+        vendedorActual.tipo = nuevo;
+        const idx = vendedores.findIndex(v => v.codigo === vendedorActual.codigo);
+        if (idx !== -1) vendedores[idx].tipo = nuevo;
+        renderVendedores();
+        abrirPerfil(vendedorActual.codigo);
+        toast(`✅ Tipo actualizado a ${tipos[nuevo]}`, "#22c55e");
+    } catch(e) {
+        toast("❌ " + e.message, "#ef4444");
+    }
+}
+
 async function editarComisionFija() {
     if (!vendedorActual) return;
     const actual = vendedorActual.comisionFija !== undefined && vendedorActual.comisionFija !== null ? String(vendedorActual.comisionFija) : "";
@@ -3211,7 +3235,9 @@ function abrirPerfil(codigo) {
         const partes = ["Desde " + (vendedorActual.fechaRegistro ? new Date(vendedorActual.fechaRegistro).toLocaleDateString("es-SV",{day:"numeric",month:"short",year:"numeric"}) : "—")];
         if (vendedorActual.comisionFija !== undefined && vendedorActual.comisionFija !== null) partes.push(vendedorActual.comisionFija + "% comisión fija");
         const pinTxt = vendedorActual.pin ? `PIN: ${vendedorActual.pin}` : "Sin PIN";
-        fReg.innerHTML = partes.join(" · ") + ' <span onclick="event.stopPropagation();editarComisionFija()" style="color:#0277bd;cursor:pointer;text-decoration:underline;">✏️ comisión</span>'
+        const tipoLabel = { consignacion: "📦 Consignación", afiliado: "🤝 Afiliado", hibrido: "🔄 Híbrido" }[vendedorActual.tipo] || vendedorActual.tipo;
+        fReg.innerHTML = partes.join(" · ") + ` · ${tipoLabel} <span onclick="event.stopPropagation();editarTipoVendedor()" style="color:#0277bd;cursor:pointer;text-decoration:underline;">✏️ tipo</span>`
+            + ' · <span onclick="event.stopPropagation();editarComisionFija()" style="color:#0277bd;cursor:pointer;text-decoration:underline;">✏️ comisión</span>'
             + ((vendedorActual.tipo === "afiliado" || vendedorActual.tipo === "hibrido") ? ` · ${pinTxt} <span onclick="event.stopPropagation();editarPin()" style="color:#0277bd;cursor:pointer;text-decoration:underline;">✏️ PIN</span>` : '');
     }
     const notasWrap = document.getElementById("perfil-notas-wrap");
