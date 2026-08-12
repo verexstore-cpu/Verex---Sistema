@@ -9308,9 +9308,9 @@ function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma, engrosar) {
         try { doc.addImage(qrImg, 'PNG', ox + QX, oy + 0.2, QS, QS); } catch(e) {}
     }
 
-    // Precio — 9pt helvetica bold
+    // Precio — 8.5pt helvetica bold
     const precio = '$ ' + parseFloat(p.precio || 0).toFixed(2);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...B);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...B);
     if (engrosar) doc.setLineWidth(trazoGrande);
     doc.text(precio, ox + dataX, oy + 3.7, modo);
 
