@@ -5598,13 +5598,17 @@ function activarEdicionProducto() {
             document.getElementById("ep-precio-caballero").value = pCab || "";
         }
     }
-    // El campo de talla solo aplica para anillos y conjuntos
+    // El campo de talla y el "Tipo de venta" (par/trío) solo aplican a
+    // anillos y conjuntos — antes ocultaban por error también la "Cantidad
+    // a sumar" (compartían el mismo div contenedor vía .closest("div")).
     const esAnilloEP = p.categoria === "AN" || p.categoria === "CJ";
-    const tallaWrap = document.getElementById("ep-talla-add")?.closest("div");
-    if (tallaWrap) tallaWrap.style.display = esAnilloEP ? "flex" : "none";
-    const tallaHint = tallaWrap?.nextElementSibling;
+    const tallaWrap = document.getElementById("ep-talla-add-wrap");
+    if (tallaWrap) tallaWrap.style.display = esAnilloEP ? "inline-block" : "none";
+    const tallaHint = document.getElementById("ep-talla-hint");
     if (tallaHint) tallaHint.style.display = esAnilloEP ? "block" : "none";
     if (!esAnilloEP && document.getElementById("ep-talla-add")) document.getElementById("ep-talla-add").value = "";
+    const setAnilloWrap = document.getElementById("ep-set-anillo-wrap");
+    if (setAnilloWrap) setAnilloWrap.style.display = esAnilloEP ? "block" : "none";
     document.getElementById("modal-prod-vista").style.display = "none";
     document.getElementById("modal-prod-edicion").style.display = "block";
     // Mostrar foto actual en el preview del editor
@@ -11705,23 +11709,27 @@ function enviarWAEstadoCuenta(ventaId) {
                 <button type="button" class="ep-mat-btn" data-mat="Oro 14 Kilates"        onclick="selMatEdit(this)" style="padding:5px 10px;border:1px solid #d4a017;border-radius:8px;background:var(--gris2);color:#f0c040;font-size:11px;font-weight:600;cursor:pointer;">👑 Oro 14K</button>
                 <button type="button" class="ep-mat-btn" data-mat="Reloj"                 onclick="selMatEdit(this)" style="padding:5px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:600;cursor:pointer;">⌚ Reloj</button>
             </div>
-            <!-- Tipo de venta -->
-            <label style="font-size:11px;color:var(--plateado);display:block;margin:8px 0 4px;font-weight:600;">Tipo de venta:</label>
-            <div style="display:flex;gap:6px;margin-bottom:8px;">
-                <button type="button" class="ep-set-btn" data-set="" onclick="selSetEP(this)" style="flex:1;padding:5px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:700;cursor:pointer;">Individual</button>
-                <button type="button" class="ep-set-btn" data-set="1+1" onclick="selSetEP(this)" style="flex:1;padding:5px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:700;cursor:pointer;">Set Par 1+1</button>
-                <button type="button" class="ep-set-btn" data-set="2+1" onclick="selSetEP(this)" style="flex:1;padding:5px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:700;cursor:pointer;">Set Trío 2+1</button>
+            <!-- Tipo de venta — solo aplica a anillos/conjuntos (pares y tríos) -->
+            <div id="ep-set-anillo-wrap">
+                <label style="font-size:11px;color:var(--plateado);display:block;margin:8px 0 4px;font-weight:600;">Tipo de venta:</label>
+                <div style="display:flex;gap:6px;margin-bottom:8px;">
+                    <button type="button" class="ep-set-btn" data-set="" onclick="selSetEP(this)" style="flex:1;padding:5px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:700;cursor:pointer;">Individual</button>
+                    <button type="button" class="ep-set-btn" data-set="1+1" onclick="selSetEP(this)" style="flex:1;padding:5px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:700;cursor:pointer;">Set Par 1+1</button>
+                    <button type="button" class="ep-set-btn" data-set="2+1" onclick="selSetEP(this)" style="flex:1;padding:5px 0;border:1px solid var(--borde);border-radius:8px;background:var(--gris2);color:var(--blanco);font-size:11px;font-weight:700;cursor:pointer;">Set Trío 2+1</button>
+                </div>
+                <button type="button" onclick="agregarSegundaPiezaDamaTrio()"
+                    style="width:100%;padding:9px 0;margin-bottom:10px;border:1px solid #16a34a;border-radius:8px;background:#0f1f14;color:#4ade80;font-size:12px;font-weight:700;cursor:pointer;">
+                    ➕ Agregar 2da pieza de dama (convertir en trío)
+                </button>
             </div>
-            <button type="button" onclick="agregarSegundaPiezaDamaTrio()"
-                style="width:100%;padding:9px 0;margin-bottom:10px;border:1px solid #16a34a;border-radius:8px;background:#0f1f14;color:#4ade80;font-size:12px;font-weight:700;cursor:pointer;">
-                ➕ Agregar 2da pieza de dama (convertir en trío)
-            </button>
             <label style="font-size:11px;color:var(--plateado);display:block;margin:8px 0 4px;font-weight:600;">📦 Agregar a Bodega</label>
             <div style="display:flex;gap:8px;margin-bottom:4px;">
                 <input type="number" id="ep-existencia" placeholder="Cantidad a sumar" min="0" value="0" style="flex:2;border-color:var(--dorado);">
-                <input type="number" id="ep-talla-add" placeholder="Talla (opcional)" min="5" max="15" step="0.5" style="flex:1;">
+                <span id="ep-talla-add-wrap" style="flex:1;">
+                    <input type="number" id="ep-talla-add" placeholder="Talla (opcional)" min="5" max="15" step="0.5" style="width:100%;">
+                </span>
             </div>
-            <div style="font-size:10px;color:var(--plateado);margin-bottom:8px;">Si ingresas talla, se registra como variante separada (ej: ANP039<b style="color:#FF9500;">T10</b>)</div>
+            <div id="ep-talla-hint" style="font-size:10px;color:var(--plateado);margin-bottom:8px;">Si ingresas talla, se registra como variante separada (ej: ANP039<b style="color:#FF9500;">T10</b>)</div>
             <div style="text-align:center;margin-bottom:12px;">
                 <label for="ep-foto" style="display:block;cursor:pointer;">
                     <div id="ep-foto-preview" style="width:100%;height:150px;background:var(--gris2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:8px;overflow:hidden;">📷</div>
