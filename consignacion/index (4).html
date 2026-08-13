@@ -2858,7 +2858,7 @@ function generarContratoConsignacionPDF(vendedor) {
     doc.setFontSize(9);
     doc.text("Ventas del período", mL + 4, y + 5);
     doc.text("Comisión del vendedor", mL + 100, y + 5); y += 8;
-    [["$0 — $199.99", "25%"], ["$200 — $399.99", "30%"], ["$400 o más", "40%"]].forEach(([rango, pct], i) => {
+    [["$0 — $199.99", "25%"], ["$200 — $399.99", "30%"], ["$400 o más", "35%"]].forEach(([rango, pct], i) => {
         doc.setFillColor(i % 2 === 0 ? 248 : 255, i % 2 === 0 ? 248 : 255, i % 2 === 0 ? 248 : 255);
         doc.rect(mL, y, textW, 7, 'F');
         doc.setTextColor(40, 40, 40);
