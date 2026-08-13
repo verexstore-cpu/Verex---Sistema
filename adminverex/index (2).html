@@ -1422,7 +1422,10 @@ function renderVentasAdmin() {
                     ${parseFloat(v.saldoPendiente||0)>0 ? `<div style="font-size:11px;color:#e74c3c;font-weight:600;">Debe: $${parseFloat(v.saldoPendiente).toFixed(2)}</div>` : ""}
                 </div>
             </div>
-            ${v.tipo === "directa" ? `<button onclick="event.stopPropagation();cambiarProductoVentaDirecta('${esc(v.id)}')" style="margin-top:8px;padding:6px 10px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">🔄 Cambiar producto (devolución/cambio)</button>` : ""}
+            ${v.tipo === "directa" ? `<div style="display:flex;gap:6px;margin-top:8px;">
+                <button onclick="event.stopPropagation();agregarProductoVentaDirecta('${esc(v.id)}')" style="flex:1;padding:6px 10px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">➕ Agregar pieza</button>
+                <button onclick="event.stopPropagation();cambiarProductoVentaDirecta('${esc(v.id)}')" style="flex:1;padding:6px 10px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">🔄 Cambiar producto</button>
+            </div>` : ""}
         </div>`;
     }).join("");
 }
@@ -1465,6 +1468,34 @@ async function cambiarProductoVentaDirecta(ventaId) {
         const diff = parseFloat(data.diferencia) || 0;
         const msgDiff = diff > 0 ? `El saldo del cliente subió $${diff.toFixed(2)}` : diff < 0 ? `El saldo del cliente bajó $${Math.abs(diff).toFixed(2)}` : "Sin cambio en el monto";
         toast(`✅ Producto cambiado. ${msgDiff}`, "#22c55e");
+        cargarVentasAdmin();
+    } catch (e) {
+        toast("❌ " + e.message, "#ef4444");
+    }
+}
+
+// Agrega una pieza NUEVA a una venta ya registrada (ej. el cliente aprovecha
+// un cambio para llevarse algo más) — no quita nada, solo suma al mismo
+// saldo, para que quede un solo crédito combinado por cliente.
+async function agregarProductoVentaDirecta(ventaId) {
+    const venta = _adminVentas.find(v => v.id === ventaId);
+    if (!venta) return toast("⚠️ Venta no encontrada", "#ef4444");
+
+    const codigo = prompt("Código del producto NUEVO que se lleva el cliente (además de lo que ya tiene):", "");
+    if (!codigo) return;
+    const cantStr = prompt("¿Cuántas piezas de ese producto?", "1");
+    const cantidad = Math.max(1, parseInt(cantStr) || 1);
+
+    if (!confirm(`¿Agregar "${codigo.trim()}" x${cantidad} a la venta de ${venta.cliente || "este cliente"}?\n\nEl monto se suma al saldo pendiente actual.`)) return;
+
+    try {
+        const res = await fetch(API_URL, {
+            method: "POST",
+            body: JSON.stringify({ accion: "AGREGAR_PRODUCTO_VENTA_DIRECTA", _pass: ADMIN_PASS, id: ventaId, codigo: codigo.trim(), cantidad })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "Error del servidor");
+        toast(`✅ Pieza agregada — nuevo saldo pendiente: $${parseFloat(data.nuevoSaldo).toFixed(2)}`, "#22c55e");
         cargarVentasAdmin();
     } catch (e) {
         toast("❌ " + e.message, "#ef4444");

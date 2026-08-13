@@ -10439,6 +10439,7 @@ function renderHistorialVD() {
                     ${saldo > 0 ? `<button onclick="abrirModalAbono('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1);color:#e0f7ff;font-size:11px;font-weight:700;cursor:pointer;">💰 Abono</button>` : '<span style="font-size:11px;color:#52d68a;font-weight:700;">✅ Saldado</span>'}
                 </div>` : ""}
                 <div style="margin-top:8px;display:flex;justify-content:flex-end;gap:6px;">
+                    <button onclick="agregarProductoVentaDirectaVD('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #444;color:#52d68a;font-size:11px;font-weight:700;cursor:pointer;">➕ Agregar</button>
                     <button onclick="cambiarProductoVentaDirectaVD('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #444;color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;">🔄 Cambiar</button>
                     <button onclick="editarDescuentoVD('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #444;color:#888;font-size:11px;font-weight:700;cursor:pointer;">✏️ Descuento</button>
                     <button onclick="abrirModalImprimirRecibo58('${v.id}')" style="padding:5px 12px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #333;color:#C9A84C;font-size:11px;font-weight:700;cursor:pointer;">🧾 Recibo</button>
@@ -10581,6 +10582,31 @@ async function cambiarProductoVentaDirectaVD(ventaId) {
         const diff = parseFloat(data.diferencia) || 0;
         const msgDiff = diff > 0 ? `El saldo del cliente subió $${diff.toFixed(2)}` : diff < 0 ? `El saldo del cliente bajó $${Math.abs(diff).toFixed(2)}` : "Sin cambio en el monto";
         toast(`✅ Producto cambiado. ${msgDiff}`);
+        cargarHistorialVD();
+    } catch(e) {
+        toast("⚠️ " + e.message, "#c0392b");
+    }
+}
+
+// Agrega una pieza NUEVA a una venta ya registrada (ej. el cliente aprovecha
+// un cambio para llevarse algo más) — a diferencia de "Cambiar", esto no
+// quita nada, solo suma al mismo saldo. Así queda un solo crédito combinado
+// por cliente en vez de dos ventas sueltas que rastrear por separado.
+async function agregarProductoVentaDirectaVD(ventaId) {
+    const venta = _historialVD.find(v => v.id === ventaId);
+    if (!venta) return toast("⚠️ Venta no encontrada", "#c0392b");
+
+    const codigo = prompt("Código del producto NUEVO que se lleva el cliente (además de lo que ya tiene):", "");
+    if (!codigo) return;
+    const cantStr = prompt("¿Cuántas piezas de ese producto?", "1");
+    const cantidad = Math.max(1, parseInt(cantStr) || 1);
+
+    if (!confirm(`¿Agregar "${codigo.trim()}" x${cantidad} a la venta de ${venta.cliente || "este cliente"}?\n\nEl monto se suma al saldo pendiente actual.`)) return;
+
+    try {
+        const data = await apiPost({ accion: "AGREGAR_PRODUCTO_VENTA_DIRECTA", id: ventaId, codigo: codigo.trim(), cantidad });
+        if (!data.ok) throw new Error(data.error || "Error del servidor");
+        toast(`✅ Pieza agregada — nuevo saldo pendiente: $${parseFloat(data.nuevoSaldo).toFixed(2)}`);
         cargarHistorialVD();
     } catch(e) {
         toast("⚠️ " + e.message, "#c0392b");

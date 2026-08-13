@@ -1037,6 +1037,58 @@ async function enviar(){
           break;
         }
 
+        case "AGREGAR_PRODUCTO_VENTA_DIRECTA": {
+          // Suma una pieza NUEVA a una venta directa ya registrada (ej. el
+          // cliente aprovecha una devolución/cambio para llevarse algo más)
+          // — a diferencia de CAMBIAR_PRODUCTO_VENTA_DIRECTA, esto no quita
+          // nada, solo agrega, así el cliente queda con un solo saldo
+          // combinado en vez de dos créditos sueltos que rastrear.
+          if (!esAdmin) return forbidden();
+          const vdAdd = await sb.get("ventas_directas", d.id);
+          if (!vdAdd) { result = { ok: false, error: "Venta no encontrada" }; break; }
+          const codigoAdd = String(d.codigo || "").trim();
+          if (!codigoAdd) { result = { ok: false, error: "Falta el código del producto" }; break; }
+          const cantAdd = Math.max(1, parseInt(d.cantidad) || 1);
+          const sAdd = await sb.get("stock", codigoAdd);
+          if (!sAdd) { result = { ok: false, error: "El producto (" + codigoAdd + ") no existe en stock" }; break; }
+          const dispAdd = (parseInt(sAdd.stock_bodega)||0) + (parseInt(sAdd.stock_tienda)||0);
+          if (dispAdd < cantAdd) { result = { ok: false, error: "Sin stock suficiente" }; break; }
+
+          const bodAdd = parseInt(sAdd.stock_bodega)||0, tieAdd = parseInt(sAdd.stock_tienda)||0;
+          const restaBodAdd = Math.min(cantAdd, bodAdd);
+          await sb.update("stock", codigoAdd, {
+            stock_bodega: Math.max(0, bodAdd - restaBodAdd),
+            stock_tienda: Math.max(0, tieAdd - (cantAdd - restaBodAdd)),
+            stock_vendido: (parseInt(sAdd.stock_vendido)||0) + cantAdd
+          });
+
+          const itemsAdd = JSON.parse(vdAdd.items || "[]");
+          const precioAdd = parseFloat(sAdd.precio) || 0;
+          itemsAdd.push({
+            codigo: codigoAdd,
+            nombre: sAdd.nombre_base || sAdd.nombre || codigoAdd,
+            precio: precioAdd,
+            cantidad: cantAdd
+          });
+          const montoAdd = precioAdd * cantAdd;
+          const totalAdd = (parseFloat(vdAdd.total)||0) + montoAdd;
+          const subtotalAdd = (parseFloat(vdAdd.subtotal)||0) + montoAdd;
+          const saldoAdd = (parseFloat(vdAdd.saldoPendiente)||0) + montoAdd;
+          const fechaAdd = new Date().toLocaleDateString("es-SV", { day: "numeric", month: "short", year: "numeric" });
+          const notaAdd = `➕ Pieza agregada el ${fechaAdd}: "${itemsAdd[itemsAdd.length-1].nombre}" (${codigoAdd}) x${cantAdd} — $${montoAdd.toFixed(2)}`;
+
+          await sb.update("ventas_directas", d.id, {
+            items: JSON.stringify(itemsAdd),
+            total: totalAdd,
+            subtotal: subtotalAdd,
+            saldoPendiente: saldoAdd,
+            estado: saldoAdd <= 0 ? "pagado" : "credito",
+            nota: (vdAdd.nota ? vdAdd.nota + "\n" : "") + notaAdd
+          });
+          result = { ok: true, montoAgregado: montoAdd, nuevoTotal: totalAdd, nuevoSaldo: saldoAdd };
+          break;
+        }
+
         case "GET_ABONOS_VENTA": {
           if (!esAdmin) return forbidden();
           const abonos = await sb.query("abonos", "ventaId", "==", d.ventaId);
