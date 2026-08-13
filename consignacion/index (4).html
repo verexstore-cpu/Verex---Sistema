@@ -11689,23 +11689,37 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
         y += 2;
     }
 
-    // Nota crédito — puede tener varias líneas acumuladas (cambios, piezas
-    // agregadas, etc.), así que hay que envolver el texto Y avanzar "y" según
-    // cuántas líneas salieron realmente, si no el resto del recibo (saldo,
-    // historial, frase final) queda empalmado o se corre fuera de la hoja.
+    // Notas — cada cambio/pieza agregada quedó como su propia línea (separadas
+    // por "\n" al guardarse), así que se listan una por una en formato
+    // compacto en vez de un párrafo largo — más ordenado y ocupa menos.
     if (venta.nota) {
-        doc.setFont('courier', 'bold');
-        doc.setFontSize(9);
-        doc.setTextColor(100, 100, 100);
         // La fuente Courier del PDF no soporta emoji (🔄, ➕, etc.) — salen como
         // caracteres corruptos. Se quitan acá antes de imprimir; en WhatsApp/
         // pantalla la nota se sigue mostrando con emoji normal, esto es solo
         // para este PDF.
-        const notaSinEmoji = venta.nota.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}️]/gu, '').replace(/[ \t]{2,}/g, ' ').trim();
-        const notaLineas = doc.splitTextToSize('Nota: ' + notaSinEmoji, W - pad*2);
-        checkPage(notaLineas.length * 4 + 4);
-        notaLineas.forEach(linea => { doc.text(linea, pad, y); y += 4; });
-        y += 4;
+        const quitarEmoji = s => s.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}️]/gu, '').replace(/[ \t]{2,}/g, ' ').trim();
+        const notaItems = venta.nota.split('\n').map(quitarEmoji).filter(Boolean);
+        if (notaItems.length) {
+            checkPage(9);
+            doc.setFont('courier', 'bold');
+            doc.setFontSize(9);
+            doc.setTextColor(180, 150, 60);
+            doc.text('NOTAS', pad, y);
+            y += 4;
+            doc.setDrawColor(220, 220, 220);
+            doc.line(pad, y, W - pad, y);
+            y += 4;
+            notaItems.forEach(item => {
+                doc.setFont('courier', 'normal');
+                doc.setFontSize(7.5);
+                doc.setTextColor(110, 110, 110);
+                const lineas = doc.splitTextToSize('• ' + item, W - pad*2 - 2);
+                checkPage(lineas.length * 3.3 + 1);
+                lineas.forEach(linea => { doc.text(linea, pad + 2, y); y += 3.3; });
+                y += 1;
+            });
+            y += 3;
+        }
     }
 
     checkPage(16);
