@@ -995,6 +995,16 @@
 </div>
 
 <div class="tab-content" id="tab-8">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+        <button onclick="abrirModalCatalogo('cliente')"
+            style="flex:1;min-width:180px;padding:12px 16px;background:#0369a1;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;gap:8px;">
+            📋 Nuevo Link para Cliente
+        </button>
+        <button onclick="abrirModalCatalogo('afiliado')"
+            style="flex:1;min-width:180px;padding:12px 16px;background:#7c3aed;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;gap:8px;">
+            🤝 Nuevo Link para Afiliado
+        </button>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">
         <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #C9A84C;border-radius:10px;padding:14px;text-align:center;">
             <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Links Activos</div>
@@ -3934,6 +3944,7 @@ async function generarLinkCatalogo() {
             }
         });
         renderLogCatalogos();
+        if (document.getElementById("lk-lista")) cargarPanelLinks();
 
         // Guardar los criterios usados y los códigos mostrados — permite
         // "Refrescar" este mismo catálogo más adelante con stock actualizado
