@@ -10439,6 +10439,7 @@ function renderHistorialVD() {
                     ${saldo > 0 ? `<button onclick="abrirModalAbono('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1);color:#e0f7ff;font-size:11px;font-weight:700;cursor:pointer;">💰 Abono</button>` : '<span style="font-size:11px;color:#52d68a;font-weight:700;">✅ Saldado</span>'}
                 </div>` : ""}
                 <div style="margin-top:8px;display:flex;justify-content:flex-end;gap:6px;">
+                    <button onclick="cambiarProductoVentaDirectaVD('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #444;color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;">🔄 Cambiar</button>
                     <button onclick="editarDescuentoVD('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #444;color:#888;font-size:11px;font-weight:700;cursor:pointer;">✏️ Descuento</button>
                     <button onclick="abrirModalImprimirRecibo58('${v.id}')" style="padding:5px 12px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #333;color:#C9A84C;font-size:11px;font-weight:700;cursor:pointer;">🧾 Recibo</button>
                 </div>
@@ -10545,6 +10546,46 @@ async function guardarEditDescVD(id, totalRegistrado) {
 }
 
 function editarDescuentoVD(id) { abrirModalEditDescuento(id); }
+
+// Cambio de producto en una venta directa (devolución para cambiar de
+// pieza). Regresa la vieja a bodega, descuenta la nueva, y ajusta
+// total/saldoPendiente por la diferencia de precio — sube el saldo si la
+// pieza nueva vale más, lo baja si vale menos.
+async function cambiarProductoVentaDirectaVD(ventaId) {
+    const venta = _historialVD.find(v => v.id === ventaId);
+    if (!venta) return toast("⚠️ Venta no encontrada", "#c0392b");
+    let items = [];
+    try { items = typeof venta.items === "string" ? JSON.parse(venta.items || "[]") : (venta.items || []); } catch(_) {}
+    if (!items.length) return toast("⚠️ Esta venta no tiene productos registrados", "#c0392b");
+
+    let codigoViejo;
+    if (items.length === 1) {
+        codigoViejo = items[0].codigo;
+    } else {
+        const lista = items.map((it, i) => `${i+1}. ${it.codigo} — ${it.nombre || "—"} ($${parseFloat(it.precio||0).toFixed(2)})`).join("\n");
+        const eleccion = prompt(`¿Cuál producto se devuelve para cambio?\n\n${lista}\n\nEscribe el número:`, "1");
+        const idx = parseInt(eleccion) - 1;
+        if (isNaN(idx) || !items[idx]) return;
+        codigoViejo = items[idx].codigo;
+    }
+
+    const codigoNuevo = prompt(`Código del producto NUEVO que se lleva el cliente (reemplaza a "${codigoViejo}"):`, "");
+    if (!codigoNuevo) return;
+    const motivo = prompt("Motivo del cambio (opcional):", "") || "";
+
+    if (!confirm(`¿Confirmar cambio?\n\n"${codigoViejo}" → "${codigoNuevo.trim()}"\n\nSi la pieza nueva vale más, el saldo pendiente del cliente sube. Si vale menos, baja.`)) return;
+
+    try {
+        const data = await apiPost({ accion: "CAMBIAR_PRODUCTO_VENTA_DIRECTA", id: ventaId, codigoViejo, codigoNuevo: codigoNuevo.trim(), motivo });
+        if (!data.ok) throw new Error(data.error || "Error del servidor");
+        const diff = parseFloat(data.diferencia) || 0;
+        const msgDiff = diff > 0 ? `El saldo del cliente subió $${diff.toFixed(2)}` : diff < 0 ? `El saldo del cliente bajó $${Math.abs(diff).toFixed(2)}` : "Sin cambio en el monto";
+        toast(`✅ Producto cambiado. ${msgDiff}`);
+        cargarHistorialVD();
+    } catch(e) {
+        toast("⚠️ " + e.message, "#c0392b");
+    }
+}
 
 // Construye el PDF del recibo térmico (62mm) y devuelve el objeto jsPDF —
 // separado de descargarReciboVD() para poder reutilizarlo también en el
