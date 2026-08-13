@@ -10438,15 +10438,44 @@ function renderHistorialVD() {
                     <div style="font-size:11px;color:var(--plateado);">Pagado $${pagado.toFixed(2)} · Pendiente <strong style="color:#e85555;">$${saldo.toFixed(2)}</strong></div>
                     ${saldo > 0 ? `<button onclick="abrirModalAbono('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1);color:#e0f7ff;font-size:11px;font-weight:700;cursor:pointer;">💰 Abono</button>` : '<span style="font-size:11px;color:#52d68a;font-weight:700;">✅ Saldado</span>'}
                 </div>` : ""}
-                <div style="margin-top:8px;display:flex;justify-content:flex-end;gap:6px;">
-                    <button onclick="agregarProductoVentaDirectaVD('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #444;color:#52d68a;font-size:11px;font-weight:700;cursor:pointer;">➕ Agregar</button>
-                    <button onclick="cambiarProductoVentaDirectaVD('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #444;color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;">🔄 Cambiar</button>
-                    <button onclick="corregirSaldoVD('${v.id}')" title="Corregir saldo pendiente manualmente" style="padding:5px 8px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #444;color:#e85555;font-size:11px;font-weight:700;cursor:pointer;">🩹</button>
-                    <button onclick="editarDescuentoVD('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #444;color:#888;font-size:11px;font-weight:700;cursor:pointer;">✏️ Descuento</button>
+                <div style="margin-top:8px;display:flex;justify-content:flex-end;gap:6px;position:relative;">
+                    <div id="menu-mas-vd-${v.id}" style="display:none;position:absolute;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:170px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+                        <button onclick="toggleMenuMasVD('${v.id}');agregarProductoVentaDirectaVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#52d68a;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">➕ Agregar pieza</button>
+                        <button onclick="toggleMenuMasVD('${v.id}');cambiarProductoVentaDirectaVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#a78bfa;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🔄 Cambiar producto</button>
+                        <button onclick="toggleMenuMasVD('${v.id}');editarDescuentoVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#ccc;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">✏️ Descuento</button>
+                        <button onclick="toggleMenuMasVD('${v.id}');corregirSaldoVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#e85555;border:none;cursor:pointer;text-align:left;font-weight:600;">🩹 Corregir saldo</button>
+                    </div>
+                    <button onclick="toggleMenuMasVD('${v.id}',this)" style="padding:5px 10px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #444;color:#888;font-size:11px;font-weight:700;cursor:pointer;">⋯ Más acciones</button>
                     <button onclick="abrirModalImprimirRecibo58('${v.id}')" style="padding:5px 12px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #333;color:#C9A84C;font-size:11px;font-weight:700;cursor:pointer;">🧾 Recibo</button>
                 </div>
             </div>`;
         }).join("")}`;
+}
+
+// Menú "⋯ Más acciones" de cada tarjeta de venta directa — agrupa Agregar/
+// Cambiar/Descuento/Corregir saldo para no saturar la tarjeta, dejando solo
+// Abono y Recibo visibles a simple vista (mismo patrón que toggleMenuMover).
+function toggleMenuMasVD(id, btn) {
+    document.querySelectorAll('[id^="menu-mas-vd-"]').forEach(m => {
+        if (m.id !== `menu-mas-vd-${id}`) m.style.display = "none";
+    });
+    const menu = document.getElementById(`menu-mas-vd-${id}`);
+    if (!menu) return;
+    menu.style.display = menu.style.display === "none" ? "block" : "none";
+    if (menu.style.display === "block" && btn) {
+        menu.style.position = "fixed";
+        const rect = btn.getBoundingClientRect();
+        const menuAltura = menu.offsetHeight || 160;
+        const espacioAbajo = window.innerHeight - rect.bottom;
+        if (espacioAbajo < menuAltura + 10) {
+            menu.style.top = "auto";
+            menu.style.bottom = (window.innerHeight - rect.top + 4) + "px";
+        } else {
+            menu.style.bottom = "auto";
+            menu.style.top = (rect.bottom + 4) + "px";
+        }
+        menu.style.right = (window.innerWidth - rect.right) + "px";
+    }
 }
 
 function abrirModalEditDescuento(id) {
