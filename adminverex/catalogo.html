@@ -465,13 +465,14 @@
         // ocupa el alto completo del banner (flex + align-stretch) para que
         // llame más la atención que un emoji suelto en el texto.
         const promo2x50HTML = _promo2x50 ? `
-            <div style="background:#7c3aed;color:#fff;display:flex;align-items:stretch;">
-                <div style="display:flex;align-items:center;justify-content:center;font-size:34px;padding:8px 14px;background:rgba(255,255,255,0.12);">🎁</div>
+            <div style="background:linear-gradient(135deg,#8a6a1f 0%,#e8c766 22%,#fff3c4 42%,#C9A84C 58%,#8a6a1f 78%,#f4dd8a 100%);background-size:200% 200%;animation:doradoShine 3.5s ease-in-out infinite;color:#3a2a05;display:flex;align-items:stretch;box-shadow:inset 0 1px 0 rgba(255,255,255,0.5);">
+                <div style="display:flex;align-items:center;justify-content:center;font-size:34px;padding:8px 14px;background:rgba(255,255,255,0.18);text-shadow:0 1px 2px rgba(255,255,255,0.6);">🎁</div>
                 <div style="flex:1;text-align:center;padding:10px 14px 10px 8px;">
-                    <div style="font-size:15px;font-weight:900;letter-spacing:.3px;">2do producto al 50% de descuento</div>
-                    <div style="font-size:11.5px;font-weight:500;margin-top:2px;opacity:.9;">Se aplica automático a la pieza de menor precio — agrega 2 o más al carrito</div>
+                    <div style="font-size:15px;font-weight:900;letter-spacing:.3px;text-shadow:0 1px 0 rgba(255,255,255,0.35);">2do producto al 50% de descuento</div>
+                    <div style="font-size:11.5px;font-weight:600;margin-top:2px;opacity:.85;">Se aplica automático a la pieza de menor precio — agrega 2 o más al carrito</div>
                 </div>
-            </div>` : '';
+            </div>
+            <style>@keyframes doradoShine{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}</style>` : '';
 
         // Filtro de talla — solo se arma si el catálogo tiene al menos un
         // anillo con tallas registradas; junta las tallas de todos los
