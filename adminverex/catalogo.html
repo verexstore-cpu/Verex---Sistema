@@ -90,6 +90,25 @@
         }
         .wa-order.brillando .wa-shine{ animation:waShineSweep .6s ease; }
         @keyframes waShineSweep{ from{left:-60%;} to{left:130%;} }
+        @keyframes doradoShine{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+        /* Regalo del banner promo: bamboleo suave hasta que se toca/abre */
+        @keyframes giftWiggle{
+            0%,100%{transform:rotate(0deg);}
+            20%{transform:rotate(-12deg);}
+            40%{transform:rotate(10deg);}
+            60%{transform:rotate(-6deg);}
+            80%{transform:rotate(4deg);}
+        }
+        #promo2x50-icon{ display:inline-block; font-size:26px; animation:giftWiggle 1.8s ease-in-out infinite; cursor:pointer; }
+        #promo2x50-icon.abierto{ animation:none; transform:scale(1.3); }
+        @keyframes confettiFall{
+            0%{ transform:translateY(0) rotate(0deg); opacity:1; }
+            100%{ transform:translateY(70px) rotate(360deg); opacity:0; }
+        }
+        .confetti-bit{
+            position:absolute; top:0; left:50%; width:6px; height:10px;
+            pointer-events:none; animation:confettiFall 900ms ease-out forwards;
+        }
         .cart-add{
             align-self:flex-end;width:44px;
             background:#fff;color:#111;border:1.5px solid #ddd;
@@ -465,14 +484,13 @@
         // ocupa el alto completo del banner (flex + align-stretch) para que
         // llame más la atención que un emoji suelto en el texto.
         const promo2x50HTML = _promo2x50 ? `
-            <div style="background:linear-gradient(135deg,#8a6a1f 0%,#e8c766 22%,#fff3c4 42%,#C9A84C 58%,#8a6a1f 78%,#f4dd8a 100%);background-size:200% 200%;animation:doradoShine 3.5s ease-in-out infinite;color:#3a2a05;display:flex;align-items:stretch;box-shadow:inset 0 1px 0 rgba(255,255,255,0.5);">
-                <div style="display:flex;align-items:center;justify-content:center;font-size:34px;padding:8px 14px;background:rgba(255,255,255,0.18);text-shadow:0 1px 2px rgba(255,255,255,0.6);">🎁</div>
-                <div style="flex:1;text-align:center;padding:10px 14px 10px 8px;">
-                    <div style="font-size:15px;font-weight:900;letter-spacing:.3px;text-shadow:0 1px 0 rgba(255,255,255,0.35);">2do producto al 50% de descuento</div>
-                    <div style="font-size:11.5px;font-weight:600;margin-top:2px;opacity:.85;">Se aplica automático a la pieza de igual o menor precio — agrega 2 o más al carrito</div>
+            <div style="background:linear-gradient(135deg,#8a6a1f 0%,#e8c766 22%,#fff3c4 42%,#C9A84C 58%,#8a6a1f 78%,#f4dd8a 100%);background-size:200% 200%;animation:doradoShine 3.5s ease-in-out infinite;color:#3a2a05;text-align:center;padding:12px 20px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.5);position:relative;overflow:hidden;">
+                <div style="display:flex;align-items:center;justify-content:center;gap:8px;position:relative;">
+                    <span id="promo2x50-icon" onclick="_abrirRegaloPromo(this)" title="Toca para abrir">🎁</span>
+                    <span style="font-size:15px;font-weight:900;letter-spacing:.3px;text-shadow:0 1px 0 rgba(255,255,255,0.35);">2do producto al 50% de descuento</span>
                 </div>
-            </div>
-            <style>@keyframes doradoShine{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}</style>` : '';
+                <div style="font-size:11.5px;font-weight:600;margin-top:2px;opacity:.85;">Se aplica automático a la pieza de igual o menor precio — agrega 2 o más al carrito</div>
+            </div>` : '';
 
         // Filtro de talla — solo se arma si el catálogo tiene al menos un
         // anillo con tallas registradas; junta las tallas de todos los
@@ -507,6 +525,15 @@
             ${filtroTallaHTML}
             <div class="grid">${cards}</div>
             <footer>VEREX · La expresión de tu mejor versión</footer>`;
+
+        // Primer vistazo: el regalo se abre solo una vez, sin que el cliente
+        // tenga que tocarlo, para que la promo se note de inmediato.
+        if(_promo2x50){
+            setTimeout(() => {
+                const icono = document.getElementById("promo2x50-icon");
+                if(icono) _abrirRegaloPromo(icono);
+            }, 900);
+        }
     }
 
     /* ── Filtro de talla (anillos) ── */
@@ -773,6 +800,31 @@
     // Discreto a propósito: no cambia el flujo de "¡Hazlo tuyo!" (que sigue
     // mandando un WhatsApp inmediato), solo agrega una alternativa para
     // juntar varios productos y mandarlos en un solo mensaje al final.
+
+    // Regalo del banner promo: al tocarlo (o solo, un segundo después de
+    // cargar la página) deja de bambolear, se agranda, y lanza confeti de
+    // colores dorados desde su posición — puramente decorativo, se puede
+    // volver a tocar para repetir.
+    function _abrirRegaloPromo(el){
+        if(!el) return;
+        el.classList.add("abierto");
+        el.textContent = "🎉";
+        setTimeout(() => { el.classList.remove("abierto"); el.textContent = "🎁"; }, 700);
+
+        const contenedor = el.closest("div[style*='position:relative']") || el.parentElement;
+        const colores = ["#C9A84C","#fff3c4","#8a6a1f","#fff","#e8c766"];
+        for(let i=0;i<22;i++){
+            const bit = document.createElement("span");
+            bit.className = "confetti-bit";
+            bit.style.background = colores[i % colores.length];
+            bit.style.left = (45 + Math.random()*10) + "%";
+            bit.style.transform = `translateX(${(Math.random()-0.5)*140}px)`;
+            bit.style.animationDelay = (Math.random()*120) + "ms";
+            bit.style.animationDuration = (700 + Math.random()*400) + "ms";
+            contenedor.appendChild(bit);
+            setTimeout(() => bit.remove(), 1300);
+        }
+    }
 
     function guardarCarrito(){
         try { sessionStorage.setItem("verex-carrito", JSON.stringify(_carrito)); } catch(_) {}
