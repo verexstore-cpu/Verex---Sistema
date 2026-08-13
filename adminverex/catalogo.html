@@ -539,9 +539,15 @@
         // cliente tenga que tocar nada, para que la promo se note de
         // inmediato. El regalo también se abre en simultáneo — después se
         // puede volver a tocar para repetir solo el efecto chico.
+        console.log("[DEBUG] _promo2x50 al final de render():", _promo2x50);
         if(_promo2x50){
+            console.log("[DEBUG] agendando setTimeout de confeti");
             setTimeout(() => {
-                _lluviaConfettiPromo();
+                console.log("[DEBUG] setTimeout disparado, llamando lluvia+regalo");
+                try {
+                    _lluviaConfettiPromo();
+                    console.log("[DEBUG] lluvia OK");
+                } catch(e) { console.log("[DEBUG] error en lluvia:", e.message); }
                 const icono = document.getElementById("promo2x50-icon");
                 if(icono) _abrirRegaloPromo(icono);
             }, 900);
