@@ -3538,6 +3538,35 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 
+function onCambioPromoTipo() {
+    const tipo = document.getElementById("cat-promo-tipo")?.value || "";
+    const montoFijoWrap = document.getElementById("cat-promo-montofijo-wrap");
+    const escalonadoWrap = document.getElementById("cat-promo-escalonado-wrap");
+    if (montoFijoWrap) montoFijoWrap.style.display = (tipo === "montoFijo") ? "block" : "none";
+    if (escalonadoWrap) escalonadoWrap.style.display = (tipo === "escalonado") ? "block" : "none";
+}
+
+// Lee los campos de la promo de carrito y arma el objeto a guardar —
+// devuelve null si no hay ninguna promo activa (select en "Ninguna").
+function _leerPromoCarritoUI() {
+    const tipo = document.getElementById("cat-promo-tipo")?.value || "";
+    if (!tipo) return null;
+    if (tipo === "montoFijo") {
+        const monto = parseFloat(document.getElementById("cat-promo-montofijo")?.value) || 0;
+        if (monto <= 0) return null;
+        return { tipo, montoFijo: monto };
+    }
+    if (tipo === "escalonado") {
+        const escalones = [1,2,3].map(n => ({
+            minCant: parseInt(document.getElementById(`cat-esc-cant-${n}`)?.value) || 0,
+            pct: parseInt(document.getElementById(`cat-esc-pct-${n}`)?.value) || 0
+        })).filter(e => e.minCant >= 2 && e.pct > 0 && e.pct <= 90);
+        if (!escalones.length) return null;
+        return { tipo, escalones };
+    }
+    return { tipo }; // 2x50 / 3x2 no necesitan datos extra
+}
+
 // ── HISTORIAL DE LINKS ──────────────────────────────────────────────────────
 let _histLinks = [];
 
@@ -3836,7 +3865,11 @@ async function generarLinkCatalogo() {
             toast("⚠️ Pusiste % de descuento pero el banner está vacío — no se aplicará. Escribe el texto del banner para activarlo.", "#f97316");
         }
         // Igual que el % de descuento: solo aplica a Cliente, nunca a Afiliado.
-        const promo2x50 = esAfiliado ? false : !!document.getElementById("cat-promo2x50")?.checked;
+        const promoCarrito = esAfiliado ? null : _leerPromoCarritoUI();
+        const envioGratisDesde = esAfiliado ? 0 : (parseFloat(document.getElementById("cat-envio-gratis-desde")?.value) || 0);
+        const regaloMonto = esAfiliado ? 0 : (parseFloat(document.getElementById("cat-regalo-monto")?.value) || 0);
+        const regaloTexto = esAfiliado ? "" : (document.getElementById("cat-regalo-texto")?.value || "").trim();
+        const regaloSorpresa = (regaloMonto > 0 && regaloTexto) ? { monto: regaloMonto, texto: regaloTexto } : null;
 
         // Para híbridos: excluir productos que ya tienen asignados físicamente en consignación
         let listaFinal = lista;
@@ -3874,7 +3907,9 @@ async function generarLinkCatalogo() {
             nombre, talla, wa, banner, dias, receta,
             ...(notaInterna && { nota_interna: notaInterna }),
             ...(descPct > 0 && { descPct }),
-            ...(promo2x50 && { promo2x50: true }),
+            ...(promoCarrito && { promoCarrito }),
+            ...(envioGratisDesde > 0 && { envioGratisDesde }),
+            ...(regaloSorpresa && { regaloSorpresa }),
             ...(esAfiliado && { afiliado: true }),
             ...(afiliadoId && { customId: afiliadoId }),
             ...(afiliadoCodigo && { afiliadoCodigo }),
@@ -4221,11 +4256,27 @@ async function reactivarLinkPanel(id) {
         ? confirm(`Este catálogo tenía un descuento del ${item.descPct}% ("${item.banner.txt || ""}"). ¿Sigue vigente y quieres mantenerlo en el nuevo link?\n\nAceptar = mantenerlo\nCancelar = generar sin descuento`)
         : false;
 
+    // Mismo criterio para la promo de carrito (2x50/3x2/monto fijo/escalonado)
+    // y los incentivos de envío gratis / regalo sorpresa.
+    const nombresPromo = { "2x50": "2do al 50%", "3x2": "3x2", montoFijo: "monto fijo", escalonado: "escalonado por cantidad" };
+    const teniaOtrasPromos = !!(item?.promoCarrito || item?.envioGratisDesde > 0 || item?.regaloSorpresa);
+    let mantenerOtras = false;
+    if (teniaOtrasPromos) {
+        const partes = [];
+        if (item.promoCarrito) partes.push(`promo "${nombresPromo[item.promoCarrito.tipo] || item.promoCarrito.tipo}"`);
+        if (item.envioGratisDesde > 0) partes.push(`envío gratis desde $${item.envioGratisDesde}`);
+        if (item.regaloSorpresa) partes.push(`regalo sorpresa desde $${item.regaloSorpresa.monto}`);
+        mantenerOtras = confirm(`Este catálogo también tenía: ${partes.join(", ")}. ¿Sigue vigente y quieres mantenerlo?\n\nAceptar = mantenerlo\nCancelar = generar sin eso`);
+    }
+
     if (item?.receta && _catFiltrada?.length) {
         try {
             await _clonarConStockActual(
                 { nombre: item.nombre, nota: item.nota, esAfiliado: item.tipo === "afiliado",
-                  banner: mantenerDescuento ? item.banner : null, descPct: mantenerDescuento ? item.descPct : 0 },
+                  banner: mantenerDescuento ? item.banner : null, descPct: mantenerDescuento ? item.descPct : 0,
+                  promoCarrito: mantenerOtras ? item.promoCarrito : null,
+                  envioGratisDesde: mantenerOtras ? item.envioGratisDesde : 0,
+                  regaloSorpresa: mantenerOtras ? item.regaloSorpresa : null },
                 item.receta, dias, nuevaExpiry
             );
             cargarPanelLinks();
@@ -4242,7 +4293,7 @@ async function reactivarLinkPanel(id) {
         const res = await fetch("/clone-catalog", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, dias, stripDescuento: teniaDescuento && !mantenerDescuento })
+            body: JSON.stringify({ id, dias, stripDescuento: teniaDescuento && !mantenerDescuento, stripPromos: teniaOtrasPromos && !mantenerOtras })
         });
         const out = await res.json();
         if (!res.ok) throw new Error(out.error || "Error del servidor");
@@ -4380,6 +4431,9 @@ async function _clonarConStockActual(original, receta, dias, nuevaExpiry) {
         // (ver reactivarLinkPanel) — nunca se reactiva en automático sin preguntar.
         ...(original.banner && { banner: original.banner }),
         ...(original.descPct > 0 && { descPct: original.descPct }),
+        ...(original.promoCarrito && { promoCarrito: original.promoCarrito }),
+        ...(original.envioGratisDesde > 0 && { envioGratisDesde: original.envioGratisDesde }),
+        ...(original.regaloSorpresa && { regaloSorpresa: original.regaloSorpresa }),
         prods: seleccionados.map(p => {
             const szExport = _sizesParaExport(p, talla, genero);
             return {
@@ -4961,8 +5015,20 @@ function abrirModalCatalogo(tipo) {
     document.getElementById("cat-validez").value = esAfiliado ? "30" : "15";
     const descPctEl = document.getElementById("cat-banner-desc-pct");
     if (descPctEl) descPctEl.value = "";
-    const promo2x50El = document.getElementById("cat-promo2x50");
-    if (promo2x50El) promo2x50El.checked = false;
+    const promoTipoEl = document.getElementById("cat-promo-tipo");
+    if (promoTipoEl) { promoTipoEl.value = ""; onCambioPromoTipo(); }
+    [1,2,3].forEach(n => {
+        const c = document.getElementById(`cat-esc-cant-${n}`), p = document.getElementById(`cat-esc-pct-${n}`);
+        if (c) c.value = ""; if (p) p.value = "";
+    });
+    const montoFijoEl = document.getElementById("cat-promo-montofijo");
+    if (montoFijoEl) montoFijoEl.value = "";
+    const envioEl = document.getElementById("cat-envio-gratis-desde");
+    if (envioEl) envioEl.value = "";
+    const regaloMontoEl = document.getElementById("cat-regalo-monto");
+    if (regaloMontoEl) regaloMontoEl.value = "";
+    const regaloTextoEl = document.getElementById("cat-regalo-texto");
+    if (regaloTextoEl) regaloTextoEl.value = "";
     document.getElementById("cat-link-box").style.display  = "none";
     document.getElementById("cat-sec-talla").style.display = "block";
     if (document.getElementById("cat-nota-interna")) document.getElementById("cat-nota-interna").value = "";
@@ -5802,10 +5868,45 @@ async function generarPDFCatalogo() {
           </div>
           <div id="banner-preview" style="display:none;padding:4px 12px;border-radius:5px;font-size:11px;font-weight:700;color:#fff;text-align:center;"></div>
         </div>
-        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:#ccc;cursor:pointer;">
-          <input type="checkbox" id="cat-promo2x50" style="width:16px;height:16px;">
-          🎁 Promo "2do producto al 50%" — se aplica al más barato de cada par en el carrito
-        </label>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px dashed rgba(251,191,36,0.25);">
+          <label style="font-size:11px;color:#aaa;margin-bottom:4px;display:block;">🎁 Promo de carrito <span style="color:#666;font-weight:400;">(se aplica sola cuando el cliente agrega piezas)</span></label>
+          <select id="cat-promo-tipo" onchange="onCambioPromoTipo()" style="width:100%;box-sizing:border-box;margin-bottom:6px;">
+            <option value="">Ninguna</option>
+            <option value="2x50">2do producto al 50% (el más barato del par)</option>
+            <option value="3x2">3x2 — la 3ra pieza (más barata) gratis</option>
+            <option value="montoFijo">Monto fijo de descuento ($)</option>
+            <option value="escalonado">Descuento escalonado por cantidad</option>
+          </select>
+          <div id="cat-promo-montofijo-wrap" style="display:none;margin-bottom:6px;">
+            <input type="number" id="cat-promo-montofijo" placeholder="Ej: 5 (descuenta $5 del total)" min="0" step="0.5" style="width:100%;box-sizing:border-box;">
+          </div>
+          <div id="cat-promo-escalonado-wrap" style="display:none;margin-bottom:6px;">
+            <div style="font-size:10px;color:#888;margin-bottom:4px;">Deja en blanco los tramos que no uses</div>
+            <div style="display:flex;gap:6px;margin-bottom:4px;">
+              <input type="number" id="cat-esc-cant-1" placeholder="Cant. mín." min="2" style="flex:1;box-sizing:border-box;">
+              <input type="number" id="cat-esc-pct-1" placeholder="% desc." min="1" max="90" style="flex:1;box-sizing:border-box;">
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:4px;">
+              <input type="number" id="cat-esc-cant-2" placeholder="Cant. mín." min="2" style="flex:1;box-sizing:border-box;">
+              <input type="number" id="cat-esc-pct-2" placeholder="% desc." min="1" max="90" style="flex:1;box-sizing:border-box;">
+            </div>
+            <div style="display:flex;gap:6px;">
+              <input type="number" id="cat-esc-cant-3" placeholder="Cant. mín." min="2" style="flex:1;box-sizing:border-box;">
+              <input type="number" id="cat-esc-pct-3" placeholder="% desc." min="1" max="90" style="flex:1;box-sizing:border-box;">
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px dashed rgba(251,191,36,0.25);">
+          <label style="font-size:11px;color:#aaa;margin-bottom:4px;display:block;">🚚 Envío gratis desde <span style="color:#666;font-weight:400;">(opcional — deja vacío para desactivar)</span></label>
+          <input type="number" id="cat-envio-gratis-desde" placeholder="Ej: 60 (monto mínimo del pedido)" min="0" step="1" style="width:100%;box-sizing:border-box;">
+        </div>
+        <div style="margin-top:10px;">
+          <label style="font-size:11px;color:#aaa;margin-bottom:4px;display:block;">🎁 Regalo sorpresa desde <span style="color:#666;font-weight:400;">(opcional)</span></label>
+          <div style="display:flex;gap:6px;">
+            <input type="number" id="cat-regalo-monto" placeholder="Monto mín. $" min="0" step="1" style="flex:1;box-sizing:border-box;">
+            <input type="text" id="cat-regalo-texto" placeholder="Ej: dije de cortesía" style="flex:2;box-sizing:border-box;">
+          </div>
+        </div>
       </div>
 
       <!-- Banner global afiliado -->
