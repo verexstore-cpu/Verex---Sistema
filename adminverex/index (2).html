@@ -3809,9 +3809,23 @@ async function generarLinkCatalogo() {
             }
         }
 
+        // Receta de generación — se guarda también en el catálogo (KV), no
+        // solo en localStorage, para que "Reactivar" desde la pestaña Links
+        // pueda regenerar con stock actual sin importar en qué dispositivo
+        // se abra (antes solo funcionaba en el navegador donde se creó).
+        const _recetaCatsGen = [...document.querySelectorAll(".cat-cat-chk:checked")].map(c => c.value);
+        const receta = {
+            categorias: _recetaCatsGen,
+            talla, genero,
+            tipoAN: document.getElementById("cat-tipo-an")?.value || "",
+            cantidad: codsSel.length,
+            wa, esAfiliado, afiliadoCodigo,
+            ultimosCodigos: codsSel
+        };
+
         const data={
             expiry: Date.now()+dias*864e5,
-            nombre, talla, wa, banner, dias,
+            nombre, talla, wa, banner, dias, receta,
             ...(notaInterna && { nota_interna: notaInterna }),
             ...(descPct > 0 && { descPct }),
             ...(esAfiliado && { afiliado: true }),
@@ -3872,7 +3886,6 @@ async function generarLinkCatalogo() {
         document.getElementById("cat-link-out").textContent=finalUrl;
         document.getElementById("cat-link-box").style.display="block";
         toast("🔗 Link listo — cópialo o compártelo por WhatsApp","#22c55e");
-        const _recetaCats = [...document.querySelectorAll(".cat-cat-chk:checked")].map(c => c.value);
         guardarEnLogCatalogos({
             url: finalUrl,
             nombre,
@@ -3882,14 +3895,7 @@ async function generarLinkCatalogo() {
             esAfiliado,
             afiliadoCodigo: afiliadoCodigo || "",
             receta: {
-                categorias: _recetaCats,
-                talla,
-                genero,
-                tipoAN: document.getElementById("cat-tipo-an")?.value || "",
-                cantidad: codsSel.length,
-                wa,
-                esAfiliado,
-                afiliadoCodigo,
+                ...receta,
                 ultimosCodigos: codsSel
             }
         });
@@ -4139,21 +4145,43 @@ function renderPanelLinks() {
                 <a href="${esc(c.url)}" target="_blank" style="flex:1;text-align:center;padding:7px 0;background:#f3f4f6;color:#111827;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">👁️ Ver</a>
                 ${c.wa ? `<a href="https://wa.me/${esc(String(c.wa).replace(/\D/g, ""))}?text=${encodeURIComponent(c.url)}" target="_blank" style="flex:1;text-align:center;padding:7px 0;background:#25D366;color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">💬 WhatsApp</a>` : ""}
                 ` : `
-                <button onclick="reactivarLinkPanel('${esc(c.id)}','${esc(c.nombre).replace(/'/g,"\\'")}')" style="flex:1;padding:7px 0;background:#C9A84C;color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">🔄 Reactivar (nuevo link)</button>
+                <button onclick="reactivarLinkPanel('${esc(c.id)}')" style="flex:1;padding:7px 0;background:#C9A84C;color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">🔄 Reactivar (nuevo link)</button>
                 `}
             </div>
         </div>`;
     }).join("");
 }
 
-// Clona el snapshot guardado en KV con un nuevo ID y vigencia — funciona
-// desde cualquier dispositivo porque no depende del localStorage (a
-// diferencia de clonarCatalogo(), que regenera con stock actual pero
-// solo si la "receta" quedó guardada en el navegador donde se creó).
-async function reactivarLinkPanel(id, nombre) {
+// Reactivar desde la pestaña Links — funciona desde cualquier dispositivo
+// porque la receta ahora vive en la base de datos (KV), no solo en
+// localStorage. Si hay receta guardada Y ya se cargó el stock en esta
+// sesión (abriendo el tab Catálogo), regenera con productos que SÍ tienen
+// stock hoy. Si no, cae al clon simple del snapshot guardado (comportamiento
+// anterior — mismos productos que tenía en ese momento, sin filtrar stock).
+async function reactivarLinkPanel(id) {
+    const item = _todosLosLinks.find(c => c.id === id);
+    const nombre = item?.nombre || "este catálogo";
     const diasStr = prompt(`Reactivar "${nombre}" — ¿cuántos días de vigencia?`, "7");
     if (!diasStr) return;
     const dias = Math.max(1, Math.min(30, parseInt(diasStr) || 7));
+    const nuevaExpiry = Date.now() + dias * 864e5;
+
+    if (item?.receta && _catFiltrada?.length) {
+        try {
+            await _clonarConStockActual(
+                { nombre: item.nombre, nota: item.nota, esAfiliado: item.tipo === "afiliado" },
+                item.receta, dias, nuevaExpiry
+            );
+            cargarPanelLinks();
+        } catch (err) {
+            toast("❌ " + err.message, "#ef4444");
+        }
+        return;
+    }
+    if (item?.receta && !_catFiltrada?.length) {
+        toast("ℹ️ Abre el tab Catálogo primero para regenerar con stock actual — reactivando con el snapshot guardado por ahora", "#0277bd");
+    }
+
     try {
         const res = await fetch("/clone-catalog", {
             method: "POST",
@@ -4280,6 +4308,7 @@ async function _clonarConStockActual(original, receta, dias, nuevaExpiry) {
 
     const talla = receta.talla || "";
     const genero = receta.genero || "";
+    const nuevaReceta = { ...receta, ultimosCodigos: seleccionados.map(p => p._codigos?.[0] || p.codigo) };
 
     const data = {
         expiry: nuevaExpiry,
@@ -4287,6 +4316,7 @@ async function _clonarConStockActual(original, receta, dias, nuevaExpiry) {
         talla,
         wa: receta.wa || VEREX_WA_OFICIAL,
         dias,
+        receta: nuevaReceta,
         ...(original.nota && { nota_interna: original.nota }),
         ...(original.esAfiliado && { afiliado: true }),
         ...(receta.afiliadoCodigo && { afiliadoCodigo: receta.afiliadoCodigo }),
@@ -4325,7 +4355,6 @@ async function _clonarConStockActual(original, receta, dias, nuevaExpiry) {
     const nuevaUrl = location.origin + url;
 
     const log = JSON.parse(localStorage.getItem(CAT_LOG_KEY) || "[]");
-    const nuevaReceta = { ...receta, ultimosCodigos: seleccionados.map(p => p._codigos?.[0] || p.codigo) };
     log.unshift({
         id: url.split("/").pop(),
         url: nuevaUrl,
