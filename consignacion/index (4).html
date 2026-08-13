@@ -6391,12 +6391,13 @@ function renderStock(items) {
                 if (!piezasUnicas.has(piezaKey)) piezasUnicas.set(piezaKey, item);
             });
             const precioTotal = [...piezasUnicas.values()].reduce((s,it) => s + parseFloat(it.precio||0), 0);
-            const chips = g.items.map(item => {
+            const activo = g.items[0];
+            const chips = g.items.map((item, idx) => {
                 const total = (parseInt(item.stock_bodega)||0) + (parseInt(item.stock_tienda)||0) + (parseInt(item.stock_consignacion)||0);
                 const label = item.talla ? `T${sanitizar(item.talla)}` : sanitizar(item.codigo);
-                return `<span onclick="event.stopPropagation();abrirEditarStockItem(${jsArg(item.codigo)})" title="${sanitizar(item.codigo)} · ${total} en stock" style="display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;cursor:pointer;background:${total===0?'rgba(136,136,136,0.15)':'rgba(52,211,153,0.15)'};border:1px solid ${total===0?'#666':'#34D399'};color:${total===0?'#888':'#34D399'};">${label}${total>0?` ×${total}`:''}</span>`;
+                return `<span class="grid-chip-talla" data-codigo="${sanitizar(item.codigo)}" onclick="event.stopPropagation();_stockGridActivarTalla(this,${jsArg(item.codigo)})" title="${sanitizar(item.codigo)} · ${total} en stock" style="display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;cursor:pointer;background:${total===0?'rgba(136,136,136,0.15)':'rgba(52,211,153,0.15)'};border:1px solid ${idx===0?'var(--dorado)':(total===0?'#666':'#34D399')};color:${total===0?'#888':'#34D399'};">${label}${total>0?` ×${total}`:''}</span>`;
             }).join('');
-            return `<div data-grupo="${sanitizar(g.key)}" onclick="toggleSeleccionGrupo(${jsArgArr(codigos)})" style="background:#2C2C2E;border:${selAll?"2px solid var(--dorado)":"1px solid var(--dorado)"};border-radius:12px;overflow:hidden;cursor:pointer;position:relative;">
+            return `<div data-grupo="${sanitizar(g.key)}" data-activo="${sanitizar(activo.codigo)}" onclick="toggleSeleccionGrupo(${jsArgArr(codigos)})" style="background:#2C2C2E;border:${selAll?"2px solid var(--dorado)":"1px solid var(--dorado)"};border-radius:12px;overflow:hidden;cursor:pointer;position:relative;">
                 <div onclick="event.stopPropagation();toggleSeleccionGrupo(${jsArgArr(codigos)})" style="position:absolute;top:6px;left:6px;width:18px;height:18px;border:2px solid ${selAll?"var(--dorado)":"#666"};border-radius:4px;background:${selAll?"var(--dorado)":"rgba(0,0,0,0.5)"};display:flex;align-items:center;justify-content:center;font-size:11px;z-index:2;">${selAll?"✓":""}</div>
                 <div style="width:100%;aspect-ratio:1;background:#1a1a1a;overflow:hidden;">
                     ${g.foto ? `<img src="${sanitizar(ikFoto(g.foto,300))}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;">💍</div>`}
@@ -6411,8 +6412,20 @@ function renderStock(items) {
                     ${g.caracterEspecial ? `<div style="display:inline-block;font-size:9px;font-weight:700;margin-bottom:3px;margin-left:3px;background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.4);color:#c9a8ff;border-radius:4px;padding:1px 6px;" title="Característica especial">✨ ${sanitizar(g.caracterEspecial)}</div>` : ''}
                     ${agotadoGrupo
                         ? '<div style="text-align:center;font-size:11px;font-weight:700;color:#fff;background:#C0392B;border-radius:6px;padding:3px 4px;margin-top:4px;letter-spacing:1px;">AGOTADO</div>'
-                        : `<div style="display:flex;justify-content:space-between;font-size:10px;color:#666;margin-top:2px;"><span>B:<b style="color:#fff">${totalBodega}</b></span><span>T:<b style="color:#34D399">${totalTienda}</b></span><span>C:<b style="color:var(--dorado)">${totalConsig}</b></span></div>`}
+                        : `<div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px;font-size:9px;color:#666;margin-top:2px;"><span>🏠 Bodega:<b style="color:#fff"> ${totalBodega}</b></span><span>🛍️ Tienda:<b style="color:#34D399"> ${totalTienda}</b></span><span>👤 Consig.:<b style="color:var(--dorado)"> ${totalConsig}</b></span></div>`}
                     <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">${chips}</div>
+                    <div style="display:flex;gap:4px;margin-top:6px;position:relative;" data-grupo-botones="${sanitizar(g.key)}">
+                        <button onclick="event.stopPropagation();abrirEditarStockItem(_stockGridCodActivo(this))" style="flex:1;padding:4px 0;font-size:10px;background:#5AC8FA;color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✏️</button>
+                        <button onclick="event.stopPropagation();compartirProducto(_stockGridCodActivo(this))" style="flex:1;padding:4px 0;font-size:10px;background:#25D366;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;" title="Compartir la talla activa">🔗</button>
+                        <button onclick="event.stopPropagation();toggleReservaStock(_stockGridCodActivo(this))" style="flex:1;padding:4px 0;font-size:10px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;" title="Reservar/liberar la talla activa">🔒</button>
+                        <button onclick="event.stopPropagation();_stockGridToggleMover(this)" style="flex:2;padding:4px 6px;font-size:10px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">⇄ Mover ▾</button>
+                        <button onclick="event.stopPropagation();imprimirEtiquetaStock(_stockGridCodActivo(this))" title="Imprimir etiqueta de la talla activa" style="flex:1;padding:4px 0;font-size:12px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;">🖨️</button>
+                        <div class="menu-mover-grid" style="display:none;position:absolute;bottom:30px;right:0;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+                            <button onclick="event.stopPropagation();moverItemDirecto(_stockGridCodActivo(this),'tienda')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4caf82;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🛍️ Enviar a Tienda</button>
+                            <button onclick="event.stopPropagation();moverItemDirecto(_stockGridCodActivo(this),'bodega')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4a6fa5;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">📦 Devolver a Bodega</button>
+                            <button onclick="event.stopPropagation();moverItemDirectoVendedor(_stockGridCodActivo(this))" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:var(--dorado);border:none;cursor:pointer;text-align:left;font-weight:600;">👤 Asignar a Vendedor</button>
+                        </div>
+                    </div>
                 </div>
             </div>`;
         }).join('') + `</div>`;
@@ -6529,6 +6542,28 @@ function renderStock(items) {
             <div onclick="event.stopPropagation();">${statsRow}${detalles}</div>
         </div>`;
     }).join('');
+}
+
+// Vista grid: cada tarjeta agrupada guarda en data-activo el código de la
+// talla sobre la que actúan los botones (editar/compartir/reservar/mover/
+// imprimir) — por defecto la primera, y cambia al tocar un chip de talla.
+function _stockGridActivarTalla(chipEl, codigo) {
+    const card = chipEl.closest('[data-grupo]');
+    if (!card) return;
+    card.dataset.activo = codigo;
+    card.querySelectorAll('.grid-chip-talla').forEach(c => {
+        c.style.borderColor = (c.dataset.codigo === codigo) ? 'var(--dorado)' : (c.style.color === 'rgb(136, 136, 136)' ? '#666' : '#34D399');
+    });
+}
+function _stockGridCodActivo(el) {
+    const card = el.closest('[data-grupo]');
+    return card ? card.dataset.activo : '';
+}
+function _stockGridToggleMover(btn) {
+    const menu = btn.parentElement.querySelector('.menu-mover-grid');
+    document.querySelectorAll('.menu-mover-grid').forEach(m => { if (m !== menu) m.style.display = 'none'; });
+    if (!menu) return;
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
 }
 
 function toggleSeleccionGrupo(codigos) {
