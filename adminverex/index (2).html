@@ -4134,12 +4134,41 @@ function renderPanelLinks() {
                 ${c.ultimaVista ? `<span>Última: ${_tiempoRelativo(c.ultimaVista)}</span>` : ""}
             </div>
             <div style="display:flex;gap:6px;margin-top:10px;">
+                ${c.activo ? `
                 <button onclick="navigator.clipboard.writeText('${esc(c.url)}');toast('📋 Link copiado')" style="flex:1;padding:7px 0;background:#111827;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;">📋 Copiar</button>
                 <a href="${esc(c.url)}" target="_blank" style="flex:1;text-align:center;padding:7px 0;background:#f3f4f6;color:#111827;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">👁️ Ver</a>
                 ${c.wa ? `<a href="https://wa.me/${esc(String(c.wa).replace(/\D/g, ""))}?text=${encodeURIComponent(c.url)}" target="_blank" style="flex:1;text-align:center;padding:7px 0;background:#25D366;color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">💬 WhatsApp</a>` : ""}
+                ` : `
+                <button onclick="reactivarLinkPanel('${esc(c.id)}','${esc(c.nombre).replace(/'/g,"\\'")}')" style="flex:1;padding:7px 0;background:#C9A84C;color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">🔄 Reactivar (nuevo link)</button>
+                `}
             </div>
         </div>`;
     }).join("");
+}
+
+// Clona el snapshot guardado en KV con un nuevo ID y vigencia — funciona
+// desde cualquier dispositivo porque no depende del localStorage (a
+// diferencia de clonarCatalogo(), que regenera con stock actual pero
+// solo si la "receta" quedó guardada en el navegador donde se creó).
+async function reactivarLinkPanel(id, nombre) {
+    const diasStr = prompt(`Reactivar "${nombre}" — ¿cuántos días de vigencia?`, "7");
+    if (!diasStr) return;
+    const dias = Math.max(1, Math.min(30, parseInt(diasStr) || 7));
+    try {
+        const res = await fetch("/clone-catalog", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, dias })
+        });
+        const out = await res.json();
+        if (!res.ok) throw new Error(out.error || "Error del servidor");
+        const nuevaUrl = location.origin + out.url;
+        try { await navigator.clipboard.writeText(nuevaUrl); } catch(_){}
+        toast("🔗 Nuevo link generado y copiado", "#22c55e");
+        cargarPanelLinks();
+    } catch (err) {
+        toast("❌ No se pudo reactivar: " + err.message, "#ef4444");
+    }
 }
 
 async function clonarCatalogo(id, nombre) {
