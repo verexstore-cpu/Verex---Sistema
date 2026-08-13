@@ -969,6 +969,74 @@ async function enviar(){
           break;
         }
 
+        case "CAMBIAR_PRODUCTO_VENTA_DIRECTA": {
+          // Cambio de pieza en una venta directa ya registrada (ej. devolución
+          // por cambio). Regresa la pieza vieja a bodega, descuenta la nueva,
+          // y ajusta total/saldoPendiente por la diferencia de precio — puede
+          // subir el saldo (pieza nueva más cara) o bajarlo (más barata).
+          if (!esAdmin) return forbidden();
+          const vdCam = await sb.get("ventas_directas", d.id);
+          if (!vdCam) { result = { ok: false, error: "Venta no encontrada" }; break; }
+          const itemsCam = JSON.parse(vdCam.items || "[]");
+          const idxCam = itemsCam.findIndex(it => it.codigo === d.codigoViejo);
+          if (idxCam === -1) { result = { ok: false, error: "Ese producto no está en esta venta" }; break; }
+          const itemViejo = itemsCam[idxCam];
+          const cantCam = parseInt(itemViejo.cantidad) || 1;
+
+          const codigoNuevoCam = String(d.codigoNuevo || "").trim();
+          if (!codigoNuevoCam) { result = { ok: false, error: "Falta el código del producto nuevo" }; break; }
+          const sNuevoCam = await sb.get("stock", codigoNuevoCam);
+          if (!sNuevoCam) { result = { ok: false, error: "El producto nuevo (" + codigoNuevoCam + ") no existe en stock" }; break; }
+          const dispNuevoCam = (parseInt(sNuevoCam.stock_bodega)||0) + (parseInt(sNuevoCam.stock_tienda)||0);
+          if (dispNuevoCam < cantCam) { result = { ok: false, error: "Sin stock suficiente del producto nuevo" }; break; }
+
+          // Devolver la pieza vieja a bodega
+          const sViejoCam = await sb.get("stock", d.codigoViejo);
+          if (sViejoCam) {
+            await sb.update("stock", d.codigoViejo, {
+              stock_bodega: (parseInt(sViejoCam.stock_bodega)||0) + cantCam,
+              stock_vendido: Math.max(0, (parseInt(sViejoCam.stock_vendido)||0) - cantCam)
+            });
+          }
+          // Descontar la pieza nueva (bodega primero, luego tienda)
+          const bodNuevoCam = parseInt(sNuevoCam.stock_bodega)||0, tieNuevoCam = parseInt(sNuevoCam.stock_tienda)||0;
+          const restaBodCam = Math.min(cantCam, bodNuevoCam);
+          await sb.update("stock", codigoNuevoCam, {
+            stock_bodega: Math.max(0, bodNuevoCam - restaBodCam),
+            stock_tienda: Math.max(0, tieNuevoCam - (cantCam - restaBodCam)),
+            stock_vendido: (parseInt(sNuevoCam.stock_vendido)||0) + cantCam
+          });
+
+          // Reemplazar el item y ajustar montos por la diferencia de precio
+          const precioViejoCam = parseFloat(itemViejo.precio) || 0;
+          const precioNuevoCam = parseFloat(sNuevoCam.precio) || 0;
+          const diffCam = (precioNuevoCam - precioViejoCam) * cantCam;
+          itemsCam[idxCam] = {
+            ...itemViejo,
+            codigo: codigoNuevoCam,
+            nombre: sNuevoCam.nombre_base || sNuevoCam.nombre || codigoNuevoCam,
+            precio: precioNuevoCam,
+            cambiadoDe: d.codigoViejo
+          };
+
+          const totalCam = Math.max(0, (parseFloat(vdCam.total)||0) + diffCam);
+          const subtotalCam = Math.max(0, (parseFloat(vdCam.subtotal)||0) + diffCam);
+          const saldoCam = Math.max(0, (parseFloat(vdCam.saldoPendiente)||0) + diffCam);
+          const fechaCam = new Date().toLocaleDateString("es-SV", { day: "numeric", month: "short", year: "numeric" });
+          const notaCam = `🔄 Cambio el ${fechaCam}: "${itemViejo.nombre||d.codigoViejo}" (${d.codigoViejo}) → "${itemsCam[idxCam].nombre}" (${codigoNuevoCam})${diffCam !== 0 ? ` — diferencia $${diffCam.toFixed(2)}` : ""}${d.motivo ? " — Motivo: " + d.motivo : ""}`;
+
+          await sb.update("ventas_directas", d.id, {
+            items: JSON.stringify(itemsCam),
+            total: totalCam,
+            subtotal: subtotalCam,
+            saldoPendiente: saldoCam,
+            estado: saldoCam <= 0 ? "pagado" : "credito",
+            nota: (vdCam.nota ? vdCam.nota + "\n" : "") + notaCam
+          });
+          result = { ok: true, diferencia: diffCam, nuevoTotal: totalCam, nuevoSaldo: saldoCam };
+          break;
+        }
+
         case "GET_ABONOS_VENTA": {
           if (!esAdmin) return forbidden();
           const abonos = await sb.query("abonos", "ventaId", "==", d.ventaId);

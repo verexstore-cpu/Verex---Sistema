@@ -1422,8 +1422,53 @@ function renderVentasAdmin() {
                     ${parseFloat(v.saldoPendiente||0)>0 ? `<div style="font-size:11px;color:#e74c3c;font-weight:600;">Debe: $${parseFloat(v.saldoPendiente).toFixed(2)}</div>` : ""}
                 </div>
             </div>
+            ${v.tipo === "directa" ? `<button onclick="event.stopPropagation();cambiarProductoVentaDirecta('${esc(v.id)}')" style="margin-top:8px;padding:6px 10px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">🔄 Cambiar producto (devolución/cambio)</button>` : ""}
         </div>`;
     }).join("");
+}
+
+// Cambio de producto en una venta directa ya registrada (ej. devolución
+// para cambiar de pieza). Regresa la vieja a bodega, descuenta la nueva, y
+// ajusta total/saldoPendiente por la diferencia de precio — puede subir el
+// saldo (pieza nueva más cara) o bajarlo (más barata).
+async function cambiarProductoVentaDirecta(ventaId) {
+    const venta = _adminVentas.find(v => v.id === ventaId);
+    if (!venta) return toast("⚠️ Venta no encontrada", "#ef4444");
+    let items = [];
+    try { items = typeof venta.items === "string" ? JSON.parse(venta.items || "[]") : (venta.items || []); } catch(_) {}
+    if (!items.length) return toast("⚠️ Esta venta no tiene productos registrados", "#ef4444");
+
+    let codigoViejo;
+    if (items.length === 1) {
+        codigoViejo = items[0].codigo;
+    } else {
+        const lista = items.map((it, i) => `${i+1}. ${it.codigo} — ${it.nombre || "—"} ($${parseFloat(it.precio||0).toFixed(2)})`).join("\n");
+        const eleccion = prompt(`¿Cuál producto se devuelve para cambio?\n\n${lista}\n\nEscribe el número:`, "1");
+        const idx = parseInt(eleccion) - 1;
+        if (isNaN(idx) || !items[idx]) return;
+        codigoViejo = items[idx].codigo;
+    }
+
+    const codigoNuevo = prompt(`Código del producto NUEVO que se lleva el cliente (reemplaza a "${codigoViejo}"):`, "");
+    if (!codigoNuevo) return;
+    const motivo = prompt("Motivo del cambio (opcional):", "") || "";
+
+    if (!confirm(`¿Confirmar cambio?\n\n"${codigoViejo}" → "${codigoNuevo.trim()}"\n\nSi la pieza nueva vale más, el saldo pendiente del cliente sube. Si vale menos, baja.`)) return;
+
+    try {
+        const res = await fetch(API_URL, {
+            method: "POST",
+            body: JSON.stringify({ accion: "CAMBIAR_PRODUCTO_VENTA_DIRECTA", _pass: ADMIN_PASS, id: ventaId, codigoViejo, codigoNuevo: codigoNuevo.trim(), motivo })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "Error del servidor");
+        const diff = parseFloat(data.diferencia) || 0;
+        const msgDiff = diff > 0 ? `El saldo del cliente subió $${diff.toFixed(2)}` : diff < 0 ? `El saldo del cliente bajó $${Math.abs(diff).toFixed(2)}` : "Sin cambio en el monto";
+        toast(`✅ Producto cambiado. ${msgDiff}`, "#22c55e");
+        cargarVentasAdmin();
+    } catch (e) {
+        toast("❌ " + e.message, "#ef4444");
+    }
 }
 
 // ═════════════════════════════════════════════
