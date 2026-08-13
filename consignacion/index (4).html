@@ -11495,6 +11495,14 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
     const _origSetTextColor = doc.setTextColor.bind(doc);
     doc.setTextColor = (...args) => _origSetTextColor(0, 0, 0);
 
+    // Salto de página de seguridad — con ventas que acumulan varios cambios/
+    // piezas agregadas/abonos el contenido puede crecer más de lo que cabe
+    // en una A5 (210mm); sin esto, el saldo/historial/frase final quedaban
+    // cortados en vez de pasar a una segunda hoja.
+    const checkPage = (needed) => {
+        if (y + needed > 195) { doc.addPage('a5'); y = 14; }
+    };
+
     // Encabezado — sin franja negra
     doc.setFont('courier', 'bold');
     doc.setFontSize(24);
@@ -11554,6 +11562,7 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
     doc.setFontSize(10.5);
     doc.setTextColor(30, 30, 30);
     items.forEach(item => {
+        checkPage(20);
         const qty    = parseInt(item.cantidad || 1);
         const precio = parseFloat(item.precio || 0);
         const sub    = (qty * precio).toFixed(2);
@@ -11588,11 +11597,13 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
         const fechaExtra = item.fechaAgregado || item.fechaCambio;
         if (fechaExtra) {
             y += 4.5;
-            const etiquetaExtra = item.fechaAgregado ? 'Agregado el' : 'Cambiado el';
+            const etiquetaExtra = item.fechaAgregado ? 'agregado' : 'cambiado';
             const fechaTxt = new Date(fechaExtra).toLocaleDateString('es-SV', { day:'2-digit', month:'short', year:'numeric' });
-            doc.setFontSize(9);
-            doc.setTextColor(201, 168, 76);
-            doc.text(`↳ ${etiquetaExtra} ${fechaTxt}`, pad, y);
+            doc.setFont('courier', 'normal');
+            doc.setFontSize(8);
+            doc.setTextColor(160, 160, 160);
+            doc.text(`(${etiquetaExtra} ${fechaTxt})`, pad, y);
+            doc.setFont('courier', 'bold');
             doc.setFontSize(10.5);
             doc.setTextColor(30, 30, 30);
         }
@@ -11650,6 +11661,7 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
 
     // Historial de abonos
     if (abonos.length > 0) {
+        checkPage(14 + abonos.length * 8.5);
         doc.setFont('courier', 'bold');
         doc.setFontSize(10);
         doc.setTextColor(201, 168, 76);
@@ -11659,6 +11671,7 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
         doc.line(pad, y, W - pad, y);
         y += 4;
         abonos.forEach((ab, i) => {
+            checkPage(8.5);
             const fa = ab.fecha ? new Date(ab.fecha).toLocaleDateString('es-SV', { day:'2-digit', month:'short', year:'numeric' }) : '';
             doc.setFont('courier', 'bold');
             doc.setFontSize(9.5);
@@ -11676,15 +11689,21 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
         y += 2;
     }
 
-    // Nota crédito
+    // Nota crédito — puede tener varias líneas acumuladas (cambios, piezas
+    // agregadas, etc.), así que hay que envolver el texto Y avanzar "y" según
+    // cuántas líneas salieron realmente, si no el resto del recibo (saldo,
+    // historial, frase final) queda empalmado o se corre fuera de la hoja.
     if (venta.nota) {
         doc.setFont('courier', 'bold');
-        doc.setFontSize(10);
+        doc.setFontSize(9);
         doc.setTextColor(100, 100, 100);
-        doc.text('Nota: ' + venta.nota, pad, y);
-        y += 8;
+        const notaLineas = doc.splitTextToSize('Nota: ' + venta.nota, W - pad*2);
+        checkPage(notaLineas.length * 4 + 4);
+        notaLineas.forEach(linea => { doc.text(linea, pad, y); y += 4; });
+        y += 4;
     }
 
+    checkPage(16);
     // Saldo destacado si hay pendiente
     if (saldo > 0) {
         doc.setDrawColor(0, 0, 0);
@@ -11706,6 +11725,7 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
         y += 16;
     }
 
+    checkPage(18);
     // Footer
     doc.setFont('courier', 'bold');
     doc.setFontSize(10);
