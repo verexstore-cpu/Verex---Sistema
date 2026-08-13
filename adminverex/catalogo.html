@@ -109,6 +109,15 @@
             position:absolute; top:0; left:50%; width:6px; height:10px;
             pointer-events:none; animation:confettiFall 900ms ease-out forwards;
         }
+        /* Lluvia de confeti a pantalla completa — anuncia la promo una sola
+           vez al cargar, cayendo desde arriba del todo, no solo cerca del
+           ícono del banner. */
+        @keyframes confettiRainFall{
+            0%{ transform:translateY(-20px) rotate(0deg); opacity:1; }
+            100%{ transform:translateY(105vh) rotate(720deg); opacity:.9; }
+        }
+        #confetti-rain-wrap{ position:fixed; inset:0; pointer-events:none; z-index:9999; overflow:hidden; }
+        .confetti-rain-bit{ position:absolute; top:-20px; pointer-events:none; animation:confettiRainFall linear forwards; }
         .cart-add{
             align-self:flex-end;width:44px;
             background:#fff;color:#111;border:1.5px solid #ddd;
@@ -526,10 +535,13 @@
             <div class="grid">${cards}</div>
             <footer>VEREX · La expresión de tu mejor versión</footer>`;
 
-        // Primer vistazo: el regalo se abre solo una vez, sin que el cliente
-        // tenga que tocarlo, para que la promo se note de inmediato.
+        // Primer vistazo: la lluvia de confeti cae UNA vez, sin que el
+        // cliente tenga que tocar nada, para que la promo se note de
+        // inmediato. El regalo también se abre en simultáneo — después se
+        // puede volver a tocar para repetir solo el efecto chico.
         if(_promo2x50){
             setTimeout(() => {
+                _lluviaConfettiPromo();
                 const icono = document.getElementById("promo2x50-icon");
                 if(icono) _abrirRegaloPromo(icono);
             }, 900);
@@ -824,6 +836,32 @@
             contenedor.appendChild(bit);
             setTimeout(() => bit.remove(), 1300);
         }
+    }
+
+    // Lluvia de confeti a pantalla completa — anuncia la promo UNA sola vez
+    // al cargar la página, cayendo desde arriba de todo el viewport (no solo
+    // cerca del ícono). Se dispara aparte de _abrirRegaloPromo, que sigue
+    // siendo el efecto chico y repetible al tocar el regalo.
+    function _lluviaConfettiPromo(){
+        const wrap = document.createElement("div");
+        wrap.id = "confetti-rain-wrap";
+        document.body.appendChild(wrap);
+        const colores = ["#C9A84C","#fff3c4","#8a6a1f","#fff","#e8c766","#7c3aed"];
+        const formas = ["50%", "2px"]; // algunas redondas, algunas cuadradas
+        for(let i=0;i<70;i++){
+            const bit = document.createElement("span");
+            bit.className = "confetti-rain-bit";
+            const w = 6 + Math.random()*5;
+            bit.style.width = w + "px";
+            bit.style.height = (w*1.5) + "px";
+            bit.style.borderRadius = formas[i % 2];
+            bit.style.background = colores[i % colores.length];
+            bit.style.left = Math.random()*100 + "vw";
+            bit.style.animationDuration = (1800 + Math.random()*1400) + "ms";
+            bit.style.animationDelay = (Math.random()*900) + "ms";
+            wrap.appendChild(bit);
+        }
+        setTimeout(() => wrap.remove(), 3500);
     }
 
     function guardarCarrito(){
