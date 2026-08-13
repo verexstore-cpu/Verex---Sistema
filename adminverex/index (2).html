@@ -369,6 +369,7 @@
         <div class="tab" onclick="abrirModalCatalogo('cliente')">📋 Catálogo Cliente</div>
         <div class="tab" onclick="abrirModalCatalogo('afiliado')">🤝 Catálogo Afiliado</div>
         <div class="tab" onclick="tab(7);cargarVentasAdmin()">💰 Ventas</div>
+        <div class="tab" onclick="tab(8);cargarPanelLinks()">🔗 Links</div>
     </div>
 
     <!-- TAB 0: DASHBOARD -->
@@ -991,6 +992,43 @@
             style="padding:9px 14px;background:#059669;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">&#x21BA; Actualizar</button>
     </div>
     <div id="av-lista"></div>
+</div>
+
+<div class="tab-content" id="tab-8">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #C9A84C;border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Links Activos</div>
+            <div id="lk-total-activos" style="font-size:26px;font-weight:800;color:#1a1a1a;">—</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #059669;border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Vistas Totales</div>
+            <div id="lk-total-vistas" style="font-size:26px;font-weight:800;color:#059669;">—</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #e74c3c;border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Vencidos</div>
+            <div id="lk-total-vencidos" style="font-size:26px;font-weight:800;color:#e74c3c;">—</div>
+        </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">
+        <input type="text" id="lk-buscar" placeholder="🔍 Buscar por nombre o código..."
+            oninput="renderPanelLinks()"
+            style="flex:1;min-width:180px;padding:9px 12px;background:#fff;border:1px solid #d1d5db;border-radius:8px;color:#1a1a1a;font-size:13px;">
+        <select id="lk-tipo" onchange="renderPanelLinks()"
+            style="padding:9px 10px;background:#fff;border:1px solid #d1d5db;border-radius:8px;color:#1a1a1a;font-size:13px;">
+            <option value="">Todos (clientes y afiliados)</option>
+            <option value="cliente">Solo clientes</option>
+            <option value="afiliado">Solo afiliados</option>
+        </select>
+        <select id="lk-estado" onchange="renderPanelLinks()"
+            style="padding:9px 10px;background:#fff;border:1px solid #d1d5db;border-radius:8px;color:#1a1a1a;font-size:13px;">
+            <option value="">Activos y vencidos</option>
+            <option value="activo">Solo activos</option>
+            <option value="vencido">Solo vencidos</option>
+        </select>
+        <button onclick="cargarPanelLinks()"
+            style="padding:9px 14px;background:#059669;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">&#x21BA; Actualizar</button>
+    </div>
+    <div id="lk-lista"></div>
 </div>
 
 <!-- MODAL VENTAS VENDEDOR -->
@@ -4023,6 +4061,85 @@ function _tiempoRelativo(ts) {
     if (hrs < 24)  return `hace ${hrs}h`;
     if (dias < 7)  return `hace ${dias} día${dias > 1 ? "s" : ""}`;
     return new Date(ts).toLocaleDateString("es-SV", { day:"numeric", month:"short" });
+}
+
+// ═════════════════════════════════════════════
+//  PESTAÑA "🔗 LINKS" — vista consolidada de todos los catálogos
+//  (clientes + afiliados), leída directo de la base de datos, no del
+//  localStorage — así se ve igual desde cualquier PC o el celular.
+// ═════════════════════════════════════════════
+let _todosLosLinks = [];
+
+async function cargarPanelLinks() {
+    const cont = document.getElementById("lk-lista");
+    cont.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:20px;">Cargando...</p>';
+    try {
+        const res = await fetch("/list-catalogs", { method: "POST" });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "Error");
+        _todosLosLinks = data.catalogos || [];
+        renderPanelLinks();
+    } catch (e) {
+        cont.innerHTML = `<p style="color:#ef4444;text-align:center;padding:20px;">⚠️ Error cargando links: ${esc(e.message)}</p>`;
+    }
+}
+
+function renderPanelLinks() {
+    const cont = document.getElementById("lk-lista");
+    const busq = (document.getElementById("lk-buscar")?.value || "").toLowerCase().trim();
+    const filtroTipo = document.getElementById("lk-tipo")?.value || "";
+    const filtroEstado = document.getElementById("lk-estado")?.value || "";
+
+    let lista = _todosLosLinks;
+    if (filtroTipo) lista = lista.filter(c => c.tipo === filtroTipo);
+    if (filtroEstado === "activo") lista = lista.filter(c => c.activo);
+    if (filtroEstado === "vencido") lista = lista.filter(c => !c.activo);
+    if (busq) lista = lista.filter(c =>
+        (c.nombre || "").toLowerCase().includes(busq) ||
+        (c.afiliadoCodigo || "").toLowerCase().includes(busq) ||
+        (c.id || "").toLowerCase().includes(busq)
+    );
+
+    document.getElementById("lk-total-activos").textContent = _todosLosLinks.filter(c => c.activo).length;
+    document.getElementById("lk-total-vistas").textContent = _todosLosLinks.reduce((s, c) => s + (c.vistas || 0), 0);
+    document.getElementById("lk-total-vencidos").textContent = _todosLosLinks.filter(c => !c.activo).length;
+
+    if (!lista.length) {
+        cont.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:20px;">No hay links que coincidan con el filtro.</p>';
+        return;
+    }
+
+    cont.innerHTML = lista.map(c => {
+        const fechaGen = c.createdAt ? new Date(c.createdAt).toLocaleDateString("es-SV", { day: "numeric", month: "short", year: "numeric" }) : "—";
+        const fechaVence = c.expiresAt ? new Date(c.expiresAt).toLocaleDateString("es-SV", { day: "numeric", month: "short" }) : "—";
+        const badgeTipo = c.tipo === "afiliado"
+            ? `<span style="font-size:10px;font-weight:700;color:#7c3aed;background:#ede9fe;border-radius:5px;padding:2px 8px;">🤝 Afiliado${c.afiliadoCodigo ? " · " + esc(c.afiliadoCodigo) : ""}</span>`
+            : `<span style="font-size:10px;font-weight:700;color:#0369a1;background:#e0f2fe;border-radius:5px;padding:2px 8px;">👤 Cliente</span>`;
+        const badgeEstado = c.activo
+            ? `<span style="font-size:10px;font-weight:700;color:#059669;background:#d1fae5;border-radius:5px;padding:2px 8px;">● ACTIVO</span>`
+            : `<span style="font-size:10px;font-weight:700;color:#9ca3af;background:#f3f4f6;border-radius:5px;padding:2px 8px;">● VENCIDO</span>`;
+        return `<div style="background:#fff;border:1px solid #e5e7eb;border-left:3px solid ${c.activo ? "#059669" : "#d1d5db"};border-radius:10px;padding:14px;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;flex-wrap:wrap;">
+                <div style="min-width:0;">
+                    <div style="font-weight:700;color:#111827;font-size:14px;">${esc(c.nombre || "(Sin nombre)")}</div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">${badgeTipo}${badgeEstado}</div>
+                </div>
+                <div style="text-align:right;font-size:11px;color:#6b7280;flex-shrink:0;">
+                    Generado: ${fechaGen}<br>Vence: ${fechaVence}
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;font-size:12px;color:#374151;">
+                <span>👁️ <b>${c.vistas || 0}</b> vista${c.vistas === 1 ? "" : "s"}</span>
+                <span>📦 <b>${c.prods || 0}</b> producto${c.prods === 1 ? "" : "s"}</span>
+                ${c.ultimaVista ? `<span>Última: ${_tiempoRelativo(c.ultimaVista)}</span>` : ""}
+            </div>
+            <div style="display:flex;gap:6px;margin-top:10px;">
+                <button onclick="navigator.clipboard.writeText('${esc(c.url)}');toast('📋 Link copiado')" style="flex:1;padding:7px 0;background:#111827;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;">📋 Copiar</button>
+                <a href="${esc(c.url)}" target="_blank" style="flex:1;text-align:center;padding:7px 0;background:#f3f4f6;color:#111827;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">👁️ Ver</a>
+                ${c.wa ? `<a href="https://wa.me/${esc(String(c.wa).replace(/\D/g, ""))}?text=${encodeURIComponent(c.url)}" target="_blank" style="flex:1;text-align:center;padding:7px 0;background:#25D366;color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">💬 WhatsApp</a>` : ""}
+            </div>
+        </div>`;
+    }).join("");
 }
 
 async function clonarCatalogo(id, nombre) {
