@@ -1119,6 +1119,22 @@ async function enviar(){
           break;
         }
 
+        case "MARCAR_FECHA_ITEM_VD": {
+          // Repara piezas agregadas/cambiadas ANTES de que existiera el
+          // marcador de fecha en el recibo (AGREGAR/CAMBIAR_PRODUCTO_VENTA_
+          // DIRECTA) — les asigna fechaAgregado retroactivamente.
+          if (!esAdmin) return forbidden();
+          const vdFecha = await sb.get("ventas_directas", d.id);
+          if (!vdFecha) { result = { ok: false, error: "Venta no encontrada" }; break; }
+          const itemsFecha = JSON.parse(vdFecha.items || "[]");
+          const idxFecha = itemsFecha.findIndex(it => it.codigo === d.codigo);
+          if (idxFecha === -1) { result = { ok: false, error: "Producto no encontrado en esta venta" }; break; }
+          itemsFecha[idxFecha] = { ...itemsFecha[idxFecha], fechaAgregado: d.fecha || new Date().toISOString() };
+          await sb.update("ventas_directas", d.id, { items: JSON.stringify(itemsFecha) });
+          result = { ok: true };
+          break;
+        }
+
         case "GET_ABONOS_VENTA": {
           if (!esAdmin) return forbidden();
           const abonos = await sb.query("abonos", "ventaId", "==", d.ventaId);

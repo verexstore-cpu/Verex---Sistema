@@ -10439,7 +10439,8 @@ function renderHistorialVD() {
                         <button onclick="toggleMenuMasVD('${v.id}');editarDescuentoVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#ccc;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">✏️ Descuento</button>
                         <button onclick="toggleMenuMasVD('${v.id}');corregirSaldoVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#e85555;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🩹 Corregir saldo</button>
                         <button onclick="toggleMenuMasVD('${v.id}');verEstadoCuenta('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#e8b07a;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">📄 Estado de cuenta (PDF)</button>
-                        <button onclick="toggleMenuMasVD('${v.id}');enviarWAEstadoCuenta('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#25D366;border:none;cursor:pointer;text-align:left;font-weight:600;">💬 Enviar estado de cuenta</button>
+                        <button onclick="toggleMenuMasVD('${v.id}');enviarWAEstadoCuenta('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#25D366;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">💬 Enviar estado de cuenta</button>
+                        <button onclick="toggleMenuMasVD('${v.id}');marcarFechaItemVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#C9A84C;border:none;cursor:pointer;text-align:left;font-weight:600;">📅 Marcar fecha de una pieza</button>
                     </div>
                     <button onclick="toggleMenuMasVD('${v.id}',this)" style="padding:5px 10px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #444;color:#888;font-size:11px;font-weight:700;cursor:pointer;">⋯ Más acciones</button>
                     <button onclick="abrirModalImprimirRecibo58('${v.id}')" style="padding:5px 12px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #333;color:#C9A84C;font-size:11px;font-weight:700;cursor:pointer;">🧾 Recibo</button>
@@ -10683,6 +10684,54 @@ async function corregirSaldoVD(ventaId) {
         });
         if (!data.ok) throw new Error(data.error || "Error del servidor");
         toast(`✅ Venta corregida — saldo pendiente: $${saldoCorrecto.toFixed(2)}`);
+        cargarHistorialVD();
+    } catch(e) {
+        toast("⚠️ " + e.message, "#c0392b");
+    }
+}
+
+// Repara piezas agregadas/cambiadas ANTES de que existiera el marcador de
+// fecha en el recibo — les asigna una fecha retroactivamente. Intenta
+// adivinar la fecha real buscando en la nota de la venta (ej: "Pieza
+// agregada el 13 ago 2026: ... (CODIGO) ..."), y si no la encuentra, deja
+// que se escriba manual.
+async function marcarFechaItemVD(ventaId) {
+    const venta = _historialVD.find(v => v.id === ventaId);
+    if (!venta) return toast("⚠️ Venta no encontrada", "#c0392b");
+    let items = [];
+    try { items = typeof venta.items === "string" ? JSON.parse(venta.items || "[]") : (venta.items || []); } catch(_) {}
+    if (!items.length) return toast("⚠️ Esta venta no tiene productos registrados", "#c0392b");
+
+    let codigo;
+    if (items.length === 1) {
+        codigo = items[0].codigo;
+    } else {
+        const lista = items.map((it, i) => `${i+1}. ${it.codigo} — ${it.nombre || "—"}${(it.fechaAgregado||it.fechaCambio) ? " (ya tiene fecha)" : ""}`).join("\n");
+        const eleccion = prompt(`¿A cuál pieza le falta la fecha?\n\n${lista}\n\nEscribe el número:`, "1");
+        const idx = parseInt(eleccion) - 1;
+        if (isNaN(idx) || !items[idx]) return;
+        codigo = items[idx].codigo;
+    }
+
+    // Buscar en la nota una pista de fecha para ese código, ej:
+    // "➕ Pieza agregada el 13 ago 2026: "..." (COD049T9) x1 — $48.00"
+    let fechaSugerida = "";
+    const regexNota = new RegExp(`agregad[ao] el ([\\d]{1,2} \\w+ [\\d]{4})[^\\n]*\\(${codigo}\\)`, "i");
+    const match = (venta.nota || "").match(regexNota);
+    if (match) {
+        const parsed = new Date(match[1] + " UTC-6");
+        if (!isNaN(parsed)) fechaSugerida = parsed.toISOString().slice(0,10);
+    }
+
+    const fechaStr = prompt(`Fecha en que el cliente se llevó "${codigo}" (AAAA-MM-DD):`, fechaSugerida || new Date().toISOString().slice(0,10));
+    if (!fechaStr) return;
+    const fechaObj = new Date(fechaStr + "T12:00:00");
+    if (isNaN(fechaObj)) return toast("⚠️ Fecha inválida", "#c0392b");
+
+    try {
+        const data = await apiPost({ accion: "MARCAR_FECHA_ITEM_VD", id: ventaId, codigo, fecha: fechaObj.toISOString() });
+        if (!data.ok) throw new Error(data.error || "Error del servidor");
+        toast(`✅ Fecha asignada a "${codigo}"`);
         cargarHistorialVD();
     } catch(e) {
         toast("⚠️ " + e.message, "#c0392b");
@@ -11610,14 +11659,19 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
         doc.line(pad, y, W - pad, y);
         y += 4;
         abonos.forEach((ab, i) => {
-            const fa = ab.fecha ? new Date(ab.fecha).toLocaleDateString('es-SV') : '';
+            const fa = ab.fecha ? new Date(ab.fecha).toLocaleDateString('es-SV', { day:'2-digit', month:'short', year:'numeric' }) : '';
             doc.setFont('courier', 'bold');
             doc.setFontSize(9.5);
             doc.setTextColor(30, 30, 30);
-            doc.text(`${i+1}. ${fa}`, pad, y);
+            doc.text(`Abono ${i+1}`, pad, y);
             doc.setTextColor(39, 174, 96);
             doc.text(`+$${parseFloat(ab.monto).toFixed(2)}`, W - pad, y, { align: 'right' });
-            y += 5.5;
+            y += 4;
+            doc.setFont('courier', 'normal');
+            doc.setFontSize(8);
+            doc.setTextColor(150, 150, 150);
+            doc.text(fa, pad, y);
+            y += 4.5;
         });
         y += 2;
     }
@@ -11718,7 +11772,7 @@ async function generarPDFVentaDirecta58mm(venta, abonos) {
     const alturaEstim = 26                                    // header
         + 10 + (venta.departamentoEnvio ? 4 : 0)               // cliente
         + 6 + lineasItems*4                                    // productos
-        + 6 + (descuento>0?8:0) + (costoEnvio>0?4:0) + 4 + (venta.tipo==='credito' ? 8+(abonos.length*4.5) : 0) // totales
+        + 6 + (descuento>0?8:0) + (costoEnvio>0?4:0) + 4 + (venta.tipo==='credito' ? 8+(abonos.length*6.6) : 0) // totales
         + 10 + 14;                                             // footer + margen
     const H = Math.max(70, Math.ceil(alturaEstim));
     const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'portrait' });
@@ -11785,7 +11839,14 @@ async function generarPDFVentaDirecta58mm(venta, abonos) {
     if (venta.tipo === 'credito') {
         doc.setFont('courier','normal'); doc.setFontSize(7);
         doc.text('Enganche: $'+enganche.toFixed(2), pad, y); y += 3.6;
-        abonos.forEach((ab,i) => { doc.text(`Abono ${i+1}: $${parseFloat(ab.monto).toFixed(2)}`, pad, y); y += 3.6; });
+        abonos.forEach((ab,i) => {
+            doc.setFont('courier','normal'); doc.setFontSize(7);
+            doc.text(`Abono ${i+1}: $${parseFloat(ab.monto).toFixed(2)}`, pad, y); y += 3.2;
+            const faTerm = ab.fecha ? new Date(ab.fecha).toLocaleDateString('es-SV', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
+            doc.setFontSize(6); doc.setTextColor(150,150,150);
+            doc.text(faTerm, pad + 2, y); y += 3.4;
+            doc.setTextColor(30,30,30);
+        });
         doc.setFont('courier','bold'); doc.setTextColor(saldo>0?200:0,saldo>0?0:120,0);
         doc.text('SALDO: $'+saldo.toFixed(2), pad, y); y += 5;
     }
