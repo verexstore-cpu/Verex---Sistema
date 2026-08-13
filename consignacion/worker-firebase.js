@@ -938,13 +938,18 @@ async function enviar(){
           const subtotalNuevo = parseFloat(d.subtotal) || parseFloat(vd.total || 0);
           const totalNuevo    = (d.totalReal != null) ? parseFloat(d.totalReal) : parseFloat(vd.total || 0);
           const descNuevo     = Math.max(0, subtotalNuevo - totalNuevo);
+          // Lo ya pagado hasta ahora = total viejo - saldo viejo (incluye enganche
+          // Y cualquier abono ya registrado). Usar "enganche" acá era el bug: con
+          // enganche=0 (crédito sin inicial), "0 || totalNuevo" da totalNuevo en JS
+          // (0 es falsy), dejando el saldo en $0 aunque no se hubiera pagado nada.
+          const pagadoHastaAhora = Math.max(0, (parseFloat(vd.total)||0) - (parseFloat(vd.saldoPendiente)||0));
           await sb.update("ventas_directas", d.id, {
             subtotal:       subtotalNuevo,
             total:          totalNuevo,
             descuento:      descNuevo,
             descuentoTipo:  d.descuentoTipo  || "monto",
             descuentoValor: d.descuentoValor || descNuevo,
-            saldoPendiente: Math.max(0, totalNuevo - (parseFloat(vd.enganche) || totalNuevo)),
+            saldoPendiente: Math.max(0, totalNuevo - pagadoHastaAhora),
           });
           result = { ok: true };
           break;
