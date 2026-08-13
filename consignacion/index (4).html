@@ -10441,6 +10441,7 @@ function renderHistorialVD() {
                 <div style="margin-top:8px;display:flex;justify-content:flex-end;gap:6px;">
                     <button onclick="agregarProductoVentaDirectaVD('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #444;color:#52d68a;font-size:11px;font-weight:700;cursor:pointer;">➕ Agregar</button>
                     <button onclick="cambiarProductoVentaDirectaVD('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #444;color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;">🔄 Cambiar</button>
+                    <button onclick="corregirSaldoVD('${v.id}')" title="Corregir saldo pendiente manualmente" style="padding:5px 8px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #444;color:#e85555;font-size:11px;font-weight:700;cursor:pointer;">🩹</button>
                     <button onclick="editarDescuentoVD('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #444;color:#888;font-size:11px;font-weight:700;cursor:pointer;">✏️ Descuento</button>
                     <button onclick="abrirModalImprimirRecibo58('${v.id}')" style="padding:5px 12px;border:none;border-radius:6px;background:#1a1a1a;border:1px solid #333;color:#C9A84C;font-size:11px;font-weight:700;cursor:pointer;">🧾 Recibo</button>
                 </div>
@@ -10607,6 +10608,28 @@ async function agregarProductoVentaDirectaVD(ventaId) {
         const data = await apiPost({ accion: "AGREGAR_PRODUCTO_VENTA_DIRECTA", id: ventaId, codigo: codigo.trim(), cantidad });
         if (!data.ok) throw new Error(data.error || "Error del servidor");
         toast(`✅ Pieza agregada — nuevo saldo pendiente: $${parseFloat(data.nuevoSaldo).toFixed(2)}`);
+        cargarHistorialVD();
+    } catch(e) {
+        toast("⚠️ " + e.message, "#c0392b");
+    }
+}
+
+// Corrección manual directa del saldo pendiente — para reparar casos donde
+// quedó mal por algún error (ej. el bug de "Descuento" con enganche $0,
+// ya corregido, pero no repara retroactivamente lo ya guardado).
+async function corregirSaldoVD(ventaId) {
+    const venta = _historialVD.find(v => v.id === ventaId);
+    if (!venta) return toast("⚠️ Venta no encontrada", "#c0392b");
+    const actual = parseFloat(venta.saldoPendiente || 0);
+    const nuevoStr = prompt(`Saldo pendiente actual: $${actual.toFixed(2)}\n\n¿Cuál es el saldo pendiente REAL de "${venta.cliente || "este cliente"}"?`, actual.toFixed(2));
+    if (nuevoStr === null) return;
+    const nuevo = parseFloat(nuevoStr);
+    if (isNaN(nuevo) || nuevo < 0) return toast("⚠️ Monto inválido", "#c0392b");
+    if (!confirm(`¿Corregir el saldo pendiente a $${nuevo.toFixed(2)}?`)) return;
+    try {
+        const data = await apiPost({ accion: "CORREGIR_SALDO_VD", id: ventaId, saldoPendiente: nuevo });
+        if (!data.ok) throw new Error(data.error || "Error del servidor");
+        toast(`✅ Saldo corregido a $${nuevo.toFixed(2)}`);
         cargarHistorialVD();
     } catch(e) {
         toast("⚠️ " + e.message, "#c0392b");

@@ -1094,6 +1094,22 @@ async function enviar(){
           break;
         }
 
+        case "CORREGIR_SALDO_VD": {
+          // Ajuste manual directo del saldo pendiente — para reparar casos
+          // donde quedó mal por un bug ya corregido (ver ACTUALIZAR_DESCUENTO_VD)
+          // u otro error de captura. No recalcula nada, pone el valor tal cual.
+          if (!esAdmin) return forbidden();
+          const vdCorr = await sb.get("ventas_directas", d.id);
+          if (!vdCorr) { result = { ok: false, error: "Venta no encontrada" }; break; }
+          const nuevoSaldoCorr = Math.max(0, parseFloat(d.saldoPendiente) || 0);
+          await sb.update("ventas_directas", d.id, {
+            saldoPendiente: nuevoSaldoCorr,
+            estado: nuevoSaldoCorr <= 0 ? "pagado" : "credito",
+          });
+          result = { ok: true, nuevoSaldo: nuevoSaldoCorr };
+          break;
+        }
+
         case "GET_ABONOS_VENTA": {
           if (!esAdmin) return forbidden();
           const abonos = await sb.query("abonos", "ventaId", "==", d.ventaId);
