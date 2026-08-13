@@ -3835,6 +3835,8 @@ async function generarLinkCatalogo() {
         if (descPctRaw > 0 && !banner) {
             toast("⚠️ Pusiste % de descuento pero el banner está vacío — no se aplicará. Escribe el texto del banner para activarlo.", "#f97316");
         }
+        // Igual que el % de descuento: solo aplica a Cliente, nunca a Afiliado.
+        const promo2x50 = esAfiliado ? false : !!document.getElementById("cat-promo2x50")?.checked;
 
         // Para híbridos: excluir productos que ya tienen asignados físicamente en consignación
         let listaFinal = lista;
@@ -3872,6 +3874,7 @@ async function generarLinkCatalogo() {
             nombre, talla, wa, banner, dias, receta,
             ...(notaInterna && { nota_interna: notaInterna }),
             ...(descPct > 0 && { descPct }),
+            ...(promo2x50 && { promo2x50: true }),
             ...(esAfiliado && { afiliado: true }),
             ...(afiliadoId && { customId: afiliadoId }),
             ...(afiliadoCodigo && { afiliadoCodigo }),
@@ -4958,6 +4961,8 @@ function abrirModalCatalogo(tipo) {
     document.getElementById("cat-validez").value = esAfiliado ? "30" : "15";
     const descPctEl = document.getElementById("cat-banner-desc-pct");
     if (descPctEl) descPctEl.value = "";
+    const promo2x50El = document.getElementById("cat-promo2x50");
+    if (promo2x50El) promo2x50El.checked = false;
     document.getElementById("cat-link-box").style.display  = "none";
     document.getElementById("cat-sec-talla").style.display = "block";
     if (document.getElementById("cat-nota-interna")) document.getElementById("cat-nota-interna").value = "";
@@ -5797,6 +5802,10 @@ async function generarPDFCatalogo() {
           </div>
           <div id="banner-preview" style="display:none;padding:4px 12px;border-radius:5px;font-size:11px;font-weight:700;color:#fff;text-align:center;"></div>
         </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:#ccc;cursor:pointer;">
+          <input type="checkbox" id="cat-promo2x50" style="width:16px;height:16px;">
+          🎁 Promo "2do producto al 50%" — se aplica al más barato de cada par en el carrito
+        </label>
       </div>
 
       <!-- Banner global afiliado -->
