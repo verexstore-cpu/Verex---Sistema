@@ -4211,10 +4211,18 @@ async function reactivarLinkPanel(id) {
     const dias = Math.max(1, Math.min(30, parseInt(diasStr) || 7));
     const nuevaExpiry = Date.now() + dias * 864e5;
 
+    // El descuento/banner NO se reactiva en automático — se pregunta primero,
+    // porque una promoción vieja puede ya no estar vigente para ofrecer.
+    const teniaDescuento = item?.banner && item.descPct > 0;
+    const mantenerDescuento = teniaDescuento
+        ? confirm(`Este catálogo tenía un descuento del ${item.descPct}% ("${item.banner.txt || ""}"). ¿Sigue vigente y quieres mantenerlo en el nuevo link?\n\nAceptar = mantenerlo\nCancelar = generar sin descuento`)
+        : false;
+
     if (item?.receta && _catFiltrada?.length) {
         try {
             await _clonarConStockActual(
-                { nombre: item.nombre, nota: item.nota, esAfiliado: item.tipo === "afiliado" },
+                { nombre: item.nombre, nota: item.nota, esAfiliado: item.tipo === "afiliado",
+                  banner: mantenerDescuento ? item.banner : null, descPct: mantenerDescuento ? item.descPct : 0 },
                 item.receta, dias, nuevaExpiry
             );
             cargarPanelLinks();
@@ -4231,7 +4239,7 @@ async function reactivarLinkPanel(id) {
         const res = await fetch("/clone-catalog", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, dias })
+            body: JSON.stringify({ id, dias, stripDescuento: teniaDescuento && !mantenerDescuento })
         });
         const out = await res.json();
         if (!res.ok) throw new Error(out.error || "Error del servidor");
@@ -4365,6 +4373,10 @@ async function _clonarConStockActual(original, receta, dias, nuevaExpiry) {
         ...(original.nota && { nota_interna: original.nota }),
         ...(original.esAfiliado && { afiliado: true }),
         ...(receta.afiliadoCodigo && { afiliadoCodigo: receta.afiliadoCodigo }),
+        // El banner/descuento solo se incluye si el llamador lo pasó explícitamente
+        // (ver reactivarLinkPanel) — nunca se reactiva en automático sin preguntar.
+        ...(original.banner && { banner: original.banner }),
+        ...(original.descPct > 0 && { descPct: original.descPct }),
         prods: seleccionados.map(p => {
             const szExport = _sizesParaExport(p, talla, genero);
             return {
