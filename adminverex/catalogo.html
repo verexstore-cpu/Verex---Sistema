@@ -509,7 +509,7 @@
                 const min = parseFloat(_promoCarrito.minimoCompra) || 0;
                 return {
                     titulo: `$${(parseFloat(_promoCarrito.montoFijo)||0).toFixed(2)} de descuento en tu pedido`,
-                    sub: min > 0 ? `En compras desde $${min.toFixed(2)} — se aplica automático` : "Se aplica automático al agregar productos al carrito"
+                    sub: min > 0 ? `Por cada $${min.toFixed(2)} que gastes — se repite y se aplica automático` : "Se aplica automático al agregar productos al carrito"
                 };
             }
             if(_promoCarrito.tipo === "escalonado"){
@@ -926,13 +926,15 @@
                 bloques.push(`<div style="background:#fef9c3;color:#854d0e;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;margin-top:8px;">🎁 Te faltan $${falta.toFixed(2)} para un regalo sorpresa</div>`);
             }
         }
-        // Monto fijo con mínimo de compra: avisar cuánto falta si aún no se
-        // desbloquea (cuando _calcularPromoCarrito() no la aplicó por eso).
+        // Monto fijo con mínimo de compra: se repite por tramos, así que
+        // siempre avisa cuánto falta para el PRÓXIMO tramo (no solo el primero).
         if(_promoCarrito?.tipo === "montoFijo"){
             const minimo = parseFloat(_promoCarrito.minimoCompra) || 0;
-            if(minimo > 0 && totalActual < minimo){
-                const falta = minimo - totalActual;
-                bloques.push(`<div style="background:#fef9c3;color:#854d0e;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;margin-top:8px;">🎁 Te faltan $${falta.toFixed(2)} para el descuento de $${(parseFloat(_promoCarrito.montoFijo)||0).toFixed(2)}</div>`);
+            const base = parseFloat(_promoCarrito.montoFijo) || 0;
+            if(minimo > 0){
+                const tramosActuales = Math.floor(totalActual / minimo);
+                const faltaProximo = (minimo * (tramosActuales + 1)) - totalActual;
+                bloques.push(`<div style="background:#fef9c3;color:#854d0e;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;margin-top:8px;">🎁 Te faltan $${faltaProximo.toFixed(2)} para ${tramosActuales > 0 ? "otro" : "el"} descuento de $${base.toFixed(2)}</div>`);
             }
         }
         cont.innerHTML = bloques.join("");
@@ -965,9 +967,19 @@
             return { total, descuento, etiqueta: "🎁 Promo 3x2 (la más barata gratis)" };
         }
         if(_promoCarrito.tipo === "montoFijo"){
+            const base = parseFloat(_promoCarrito.montoFijo) || 0;
             const minimo = parseFloat(_promoCarrito.minimoCompra) || 0;
-            if(subtotal < minimo) return null; // no llega al mínimo requerido todavía
-            const monto = Math.min(parseFloat(_promoCarrito.montoFijo) || 0, subtotal);
+            let monto;
+            if(minimo > 0){
+                // Se repite por cada tramo completo — $10 por cada $50 gastados:
+                // $100 = 2 tramos = $20 off, $150 = 3 tramos = $30 off.
+                const tramos = Math.floor(subtotal / minimo);
+                if(tramos < 1) return null;
+                monto = Math.min(base * tramos, subtotal);
+                if(monto <= 0) return null;
+                return { total: subtotal - monto, descuento: monto, etiqueta: `🎁 Descuento de $${monto.toFixed(2)} (${tramos}× $${base.toFixed(2)} por cada $${minimo.toFixed(2)})` };
+            }
+            monto = Math.min(base, subtotal);
             if(monto <= 0) return null;
             return { total: subtotal - monto, descuento: monto, etiqueta: `🎁 Descuento de $${monto.toFixed(2)}` };
         }
@@ -1026,7 +1038,7 @@
             totalEl.textContent = "$" + subtotal.toFixed(2);
             if(promoLineaEl) promoLineaEl.style.display = "none";
         }
-        _renderProgresoIncentivos(promo ? promo.total : subtotal);
+        _renderProgresoIncentivos(subtotal);
     }
 
     function cambiarQtyCarrito(key, delta){
