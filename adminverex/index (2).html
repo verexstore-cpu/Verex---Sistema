@@ -3554,7 +3554,8 @@ function _leerPromoCarritoUI() {
     if (tipo === "montoFijo") {
         const monto = parseFloat(document.getElementById("cat-promo-montofijo")?.value) || 0;
         if (monto <= 0) return null;
-        return { tipo, montoFijo: monto };
+        const minimoCompra = parseFloat(document.getElementById("cat-promo-montofijo-minimo")?.value) || 0;
+        return { tipo, montoFijo: monto, ...(minimoCompra > 0 && { minimoCompra }) };
     }
     if (tipo === "escalonado") {
         const escalones = [1,2,3].map(n => ({
@@ -5023,6 +5024,8 @@ function abrirModalCatalogo(tipo) {
     });
     const montoFijoEl = document.getElementById("cat-promo-montofijo");
     if (montoFijoEl) montoFijoEl.value = "";
+    const montoFijoMinEl = document.getElementById("cat-promo-montofijo-minimo");
+    if (montoFijoMinEl) montoFijoMinEl.value = "";
     const envioEl = document.getElementById("cat-envio-gratis-desde");
     if (envioEl) envioEl.value = "";
     const regaloMontoEl = document.getElementById("cat-regalo-monto");
@@ -5878,7 +5881,11 @@ async function generarPDFCatalogo() {
             <option value="escalonado">Descuento escalonado por cantidad</option>
           </select>
           <div id="cat-promo-montofijo-wrap" style="display:none;margin-bottom:6px;">
-            <input type="number" id="cat-promo-montofijo" placeholder="Ej: 5 (descuenta $5 del total)" min="0" step="0.5" style="width:100%;box-sizing:border-box;">
+            <div style="display:flex;gap:6px;">
+              <input type="number" id="cat-promo-montofijo" placeholder="Ej: 10 (descuenta $10)" min="0" step="0.5" style="flex:1;box-sizing:border-box;">
+              <input type="number" id="cat-promo-montofijo-minimo" placeholder="A partir de $ (opcional)" min="0" step="1" style="flex:1;box-sizing:border-box;">
+            </div>
+            <div style="font-size:10px;color:#888;margin-top:3px;">Si dejas "A partir de" vacío, el descuento se aplica siempre que haya algo en el carrito</div>
           </div>
           <div id="cat-promo-escalonado-wrap" style="display:none;margin-bottom:6px;">
             <div style="font-size:10px;color:#888;margin-bottom:4px;">Deja en blanco los tramos que no uses</div>

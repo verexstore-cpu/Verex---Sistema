@@ -505,7 +505,13 @@
             if(!_promoCarrito) return null;
             if(_promoCarrito.tipo === "2x50") return { titulo: "2do producto al 50% de descuento", sub: "Se aplica automático a la pieza de igual o menor precio — agrega 2 o más al carrito" };
             if(_promoCarrito.tipo === "3x2")  return { titulo: "3x2 — la 3ra pieza (más barata) es GRATIS", sub: "Agrega 3 o más piezas al carrito y el descuento se aplica automático" };
-            if(_promoCarrito.tipo === "montoFijo") return { titulo: `$${(parseFloat(_promoCarrito.montoFijo)||0).toFixed(2)} de descuento en tu pedido`, sub: "Se aplica automático al agregar productos al carrito" };
+            if(_promoCarrito.tipo === "montoFijo"){
+                const min = parseFloat(_promoCarrito.minimoCompra) || 0;
+                return {
+                    titulo: `$${(parseFloat(_promoCarrito.montoFijo)||0).toFixed(2)} de descuento en tu pedido`,
+                    sub: min > 0 ? `En compras desde $${min.toFixed(2)} — se aplica automático` : "Se aplica automático al agregar productos al carrito"
+                };
+            }
             if(_promoCarrito.tipo === "escalonado"){
                 const max = [...(_promoCarrito.escalones||[])].sort((a,b)=>b.pct-a.pct)[0];
                 return { titulo: max ? `Hasta ${max.pct}% de descuento por cantidad` : "Descuento por cantidad", sub: "Entre más piezas agregues al carrito, más grande el descuento" };
@@ -920,6 +926,15 @@
                 bloques.push(`<div style="background:#fef9c3;color:#854d0e;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;margin-top:8px;">🎁 Te faltan $${falta.toFixed(2)} para un regalo sorpresa</div>`);
             }
         }
+        // Monto fijo con mínimo de compra: avisar cuánto falta si aún no se
+        // desbloquea (cuando _calcularPromoCarrito() no la aplicó por eso).
+        if(_promoCarrito?.tipo === "montoFijo"){
+            const minimo = parseFloat(_promoCarrito.minimoCompra) || 0;
+            if(minimo > 0 && totalActual < minimo){
+                const falta = minimo - totalActual;
+                bloques.push(`<div style="background:#fef9c3;color:#854d0e;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;margin-top:8px;">🎁 Te faltan $${falta.toFixed(2)} para el descuento de $${(parseFloat(_promoCarrito.montoFijo)||0).toFixed(2)}</div>`);
+            }
+        }
         cont.innerHTML = bloques.join("");
     }
 
@@ -950,6 +965,8 @@
             return { total, descuento, etiqueta: "🎁 Promo 3x2 (la más barata gratis)" };
         }
         if(_promoCarrito.tipo === "montoFijo"){
+            const minimo = parseFloat(_promoCarrito.minimoCompra) || 0;
+            if(subtotal < minimo) return null; // no llega al mínimo requerido todavía
             const monto = Math.min(parseFloat(_promoCarrito.montoFijo) || 0, subtotal);
             if(monto <= 0) return null;
             return { total: subtotal - monto, descuento: monto, etiqueta: `🎁 Descuento de $${monto.toFixed(2)}` };
