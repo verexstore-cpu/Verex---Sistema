@@ -1021,7 +1021,8 @@ async function enviar(){
             codigo: codigoNuevoCam,
             nombre: sNuevoCam.nombre_base || sNuevoCam.nombre || codigoNuevoCam,
             precio: precioNuevoCam,
-            cambiadoDe: d.codigoViejo
+            cambiadoDe: d.codigoViejo,
+            fechaCambio: new Date().toISOString() // para que el recibo marque que esta pieza no es de la fecha original
           };
 
           const totalCam = Math.max(0, (parseFloat(vdCam.total)||0) + diffCam);
@@ -1073,7 +1074,8 @@ async function enviar(){
             codigo: codigoAdd,
             nombre: sAdd.nombre_base || sAdd.nombre || codigoAdd,
             precio: precioAdd,
-            cantidad: cantAdd
+            cantidad: cantAdd,
+            fechaAgregado: new Date().toISOString() // para que el recibo marque que no es de la compra original
           });
           const montoAdd = precioAdd * cantAdd;
           const totalAdd = (parseFloat(vdAdd.total)||0) + montoAdd;
@@ -1095,18 +1097,25 @@ async function enviar(){
         }
 
         case "CORREGIR_SALDO_VD": {
-          // Ajuste manual directo del saldo pendiente — para reparar casos
-          // donde quedó mal por un bug ya corregido (ver ACTUALIZAR_DESCUENTO_VD)
-          // u otro error de captura. No recalcula nada, pone el valor tal cual.
+          // Corrección manual — repara ventas donde subtotal/total/saldo quedaron
+          // desalineados de la suma real de productos (ver nota de arriba en
+          // AGREGAR/CAMBIAR: cada acción solo suma/resta un número al anterior,
+          // así que un error en un paso arrastra a todos los siguientes).
+          // Si solo viene saldoPendiente, se comporta como antes (ajuste rápido).
+          // Si vienen subtotal/total, se corrigen también esos campos juntos.
           if (!esAdmin) return forbidden();
           const vdCorr = await sb.get("ventas_directas", d.id);
           if (!vdCorr) { result = { ok: false, error: "Venta no encontrada" }; break; }
           const nuevoSaldoCorr = Math.max(0, parseFloat(d.saldoPendiente) || 0);
-          await sb.update("ventas_directas", d.id, {
+          const patchCorr = {
             saldoPendiente: nuevoSaldoCorr,
             estado: nuevoSaldoCorr <= 0 ? "pagado" : "credito",
-          });
-          result = { ok: true, nuevoSaldo: nuevoSaldoCorr };
+          };
+          if (d.subtotal != null) patchCorr.subtotal = Math.max(0, parseFloat(d.subtotal) || 0);
+          if (d.total != null)    patchCorr.total    = Math.max(0, parseFloat(d.total) || 0);
+          if (d.descuento != null) patchCorr.descuento = Math.max(0, parseFloat(d.descuento) || 0);
+          await sb.update("ventas_directas", d.id, patchCorr);
+          result = { ok: true, nuevoSaldo: nuevoSaldoCorr, patch: patchCorr };
           break;
         }
 

@@ -10639,22 +10639,50 @@ async function agregarProductoVentaDirectaVD(ventaId) {
     }
 }
 
-// Corrección manual directa del saldo pendiente — para reparar casos donde
-// quedó mal por algún error (ej. el bug de "Descuento" con enganche $0,
-// ya corregido, pero no repara retroactivamente lo ya guardado).
+// Corrección manual — repara casos donde subtotal/total/saldo quedaron
+// desalineados de la suma real de los productos (cada cambio/agregado solo
+// suma un número al anterior; un error en un paso arrastra a los siguientes).
+// Calcula el subtotal REAL sumando los productos guardados, y a partir de
+// ahí guía el resto: descuento acumulado → total → saldo (restando lo que
+// ya se pagó, sin importar si el total viejo estaba mal).
 async function corregirSaldoVD(ventaId) {
     const venta = _historialVD.find(v => v.id === ventaId);
     if (!venta) return toast("⚠️ Venta no encontrada", "#c0392b");
-    const actual = parseFloat(venta.saldoPendiente || 0);
-    const nuevoStr = prompt(`Saldo pendiente actual: $${actual.toFixed(2)}\n\n¿Cuál es el saldo pendiente REAL de "${venta.cliente || "este cliente"}"?`, actual.toFixed(2));
-    if (nuevoStr === null) return;
-    const nuevo = parseFloat(nuevoStr);
-    if (isNaN(nuevo) || nuevo < 0) return toast("⚠️ Monto inválido", "#c0392b");
-    if (!confirm(`¿Corregir el saldo pendiente a $${nuevo.toFixed(2)}?`)) return;
+    let items = [];
+    try { items = typeof venta.items === "string" ? JSON.parse(venta.items || "[]") : (venta.items || []); } catch(_) {}
+    const subtotalReal = items.reduce((s, it) => s + (parseFloat(it.precio||0) * (parseInt(it.cantidad)||1)), 0);
+    const totalViejo = parseFloat(venta.total || 0);
+    const saldoViejo = parseFloat(venta.saldoPendiente || 0);
+    const yaPagado = Math.max(0, totalViejo - saldoViejo);
+
+    const descStr = prompt(
+        `Suma real de los productos guardados: $${subtotalReal.toFixed(2)}\n` +
+        `(Total registrado actualmente: $${totalViejo.toFixed(2)} — puede estar desalineado)\n\n` +
+        `¿Cuánto descuento ACUMULADO tiene esta venta en total? (todo lo que se le ha rebajado desde el inicio)`,
+        Math.max(0, subtotalReal - totalViejo).toFixed(2)
+    );
+    if (descStr === null) return;
+    const descuento = Math.max(0, parseFloat(descStr) || 0);
+    const totalCorrecto = Math.max(0, subtotalReal - descuento);
+    const saldoCorrecto = Math.max(0, totalCorrecto - yaPagado);
+
+    if (!confirm(
+        `Resumen de la corrección:\n\n` +
+        `Subtotal (productos): $${subtotalReal.toFixed(2)}\n` +
+        `Descuento acumulado: -$${descuento.toFixed(2)}\n` +
+        `Total correcto: $${totalCorrecto.toFixed(2)}\n` +
+        `Ya pagado (abonos + enganche): $${yaPagado.toFixed(2)}\n` +
+        `Saldo pendiente correcto: $${saldoCorrecto.toFixed(2)}\n\n` +
+        `¿Guardar esta corrección?`
+    )) return;
+
     try {
-        const data = await apiPost({ accion: "CORREGIR_SALDO_VD", id: ventaId, saldoPendiente: nuevo });
+        const data = await apiPost({
+            accion: "CORREGIR_SALDO_VD", id: ventaId,
+            subtotal: subtotalReal, descuento, total: totalCorrecto, saldoPendiente: saldoCorrecto
+        });
         if (!data.ok) throw new Error(data.error || "Error del servidor");
-        toast(`✅ Saldo corregido a $${nuevo.toFixed(2)}`);
+        toast(`✅ Venta corregida — saldo pendiente: $${saldoCorrecto.toFixed(2)}`);
         cargarHistorialVD();
     } catch(e) {
         toast("⚠️ " + e.message, "#c0392b");
@@ -11505,6 +11533,20 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
             doc.setFontSize(10.5);
             doc.setTextColor(30, 30, 30);
         }
+        // Pieza que entró después de la compra original (cambio o agregado) —
+        // se marca con su propia fecha para que el estado de cuenta no dé a
+        // entender que todo se compró el mismo día.
+        const fechaExtra = item.fechaAgregado || item.fechaCambio;
+        if (fechaExtra) {
+            y += 4.5;
+            const etiquetaExtra = item.fechaAgregado ? 'Agregado el' : 'Cambiado el';
+            const fechaTxt = new Date(fechaExtra).toLocaleDateString('es-SV', { day:'2-digit', month:'short', year:'numeric' });
+            doc.setFontSize(9);
+            doc.setTextColor(201, 168, 76);
+            doc.text(`↳ ${etiquetaExtra} ${fechaTxt}`, pad, y);
+            doc.setFontSize(10.5);
+            doc.setTextColor(30, 30, 30);
+        }
         y += 6.5;
     });
 
@@ -11671,8 +11713,8 @@ async function generarPDFVentaDirecta58mm(venta, abonos) {
 
     const descuento = parseFloat(venta.descuento || 0);
 
-    // Estimar alto: header + cliente + 1 línea por item (+2 si tiene material/ref) + totales + footer
-    const lineasItems = items.reduce((s,it) => s + 2 + (it.material?1:0) + ((it.codigo||it.ref)?1:0), 0);
+    // Estimar alto: header + cliente + 1 línea por item (+2 si tiene material/ref/fecha) + totales + footer
+    const lineasItems = items.reduce((s,it) => s + 2 + (it.material?1:0) + ((it.codigo||it.ref)?1:0) + ((it.fechaAgregado||it.fechaCambio)?1:0), 0);
     const alturaEstim = 26                                    // header
         + 10 + (venta.departamentoEnvio ? 4 : 0)               // cliente
         + 6 + lineasItems*4                                    // productos
@@ -11715,6 +11757,13 @@ async function generarPDFVentaDirecta58mm(venta, abonos) {
         doc.setFont('courier','bold'); doc.setFontSize(7.5); doc.setTextColor(30,30,30);
         doc.text(`${qty} x $${precio.toFixed(2)}`, pad, y);
         doc.text(`$${sub}`, W-pad, y, { align:'right' }); y += 4.2;
+        const fechaExtra58 = item.fechaAgregado || item.fechaCambio;
+        if (fechaExtra58) {
+            const etq = item.fechaAgregado ? 'Agregado' : 'Cambiado';
+            const ftx = new Date(fechaExtra58).toLocaleDateString('es-SV', { day:'2-digit', month:'2-digit', year:'2-digit' });
+            doc.setFont('courier','normal'); doc.setFontSize(6.5); doc.setTextColor(201,168,76);
+            doc.text(`↳ ${etq} ${ftx}`, pad, y); y += 3.6;
+        }
     });
 
     doc.setDrawColor(150,150,150); doc.line(pad, y, W-pad, y); y += 4.5;
