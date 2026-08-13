@@ -1149,9 +1149,43 @@
     </div>
 </div>
 
+<!-- Botón flotante de acceso rápido — genera un link sin importar en qué
+     pestaña estés ni cuánto hayas hecho scroll (la barra de tabs de arriba
+     no queda fija, así que en listas largas se pierde de vista). -->
+<div id="fab-link-wrap" style="position:fixed;bottom:22px;right:22px;z-index:400;">
+    <div id="fab-link-menu" style="display:none;flex-direction:column;gap:8px;margin-bottom:10px;">
+        <button onclick="toggleFabLink(false);abrirModalCatalogo('cliente')"
+            style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:#fff;color:#111827;border:1px solid #e5e7eb;border-radius:24px;box-shadow:0 4px 14px rgba(0,0,0,.18);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">
+            📋 Link para Cliente
+        </button>
+        <button onclick="toggleFabLink(false);abrirModalCatalogo('afiliado')"
+            style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:#fff;color:#111827;border:1px solid #e5e7eb;border-radius:24px;box-shadow:0 4px 14px rgba(0,0,0,.18);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">
+            🤝 Link para Afiliado
+        </button>
+    </div>
+    <button id="fab-link-btn" onclick="toggleFabLink()"
+        style="width:56px;height:56px;border-radius:50%;background:#C9A84C;color:#111;border:none;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:24px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .15s;">
+        🔗
+    </button>
+</div>
+
 <div id="toast"></div>
 
 <script>
+function toggleFabLink(force) {
+    const menu = document.getElementById("fab-link-menu");
+    const btn  = document.getElementById("fab-link-btn");
+    const abrir = force !== undefined ? force : menu.style.display === "none";
+    menu.style.display = abrir ? "flex" : "none";
+    btn.style.transform = abrir ? "rotate(45deg)" : "rotate(0deg)";
+    btn.textContent = abrir ? "✕" : "🔗";
+}
+// Cerrar el menú del FAB si se hace clic fuera de él
+document.addEventListener("click", (e) => {
+    const wrap = document.getElementById("fab-link-wrap");
+    if (wrap && !wrap.contains(e.target)) toggleFabLink(false);
+});
+
 // ═════════════════════════════════════════════
 //  SANITIZACIÓN HTML (previene XSS)
 // ═════════════════════════════════════════════
