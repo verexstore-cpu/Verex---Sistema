@@ -11697,7 +11697,12 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
         doc.setFont('courier', 'bold');
         doc.setFontSize(9);
         doc.setTextColor(100, 100, 100);
-        const notaLineas = doc.splitTextToSize('Nota: ' + venta.nota, W - pad*2);
+        // La fuente Courier del PDF no soporta emoji (🔄, ➕, etc.) — salen como
+        // caracteres corruptos. Se quitan acá antes de imprimir; en WhatsApp/
+        // pantalla la nota se sigue mostrando con emoji normal, esto es solo
+        // para este PDF.
+        const notaSinEmoji = venta.nota.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}️]/gu, '').replace(/[ \t]{2,}/g, ' ').trim();
+        const notaLineas = doc.splitTextToSize('Nota: ' + notaSinEmoji, W - pad*2);
         checkPage(notaLineas.length * 4 + 4);
         notaLineas.forEach(linea => { doc.text(linea, pad, y); y += 4; });
         y += 4;
