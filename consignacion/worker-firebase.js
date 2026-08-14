@@ -673,6 +673,20 @@ async function enviar(){
           break;
         }
 
+        case "GET_CODIGOS_VENDEDOR": {
+          // Endpoint público: devuelve códigos base disponibles de un vendedor para el catálogo
+          if (!d.vendedor) return json({ ok: false, error: "vendedor requerido" });
+          const todaCons = await sb.getAll("consignacion");
+          const codigos = [...new Set(
+            todaCons
+              .filter(c => c.vendedor === d.vendedor && c.estado === "activo" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0)
+              .map(c => (c.codigo || "").replace(/-\d+$/, "").toUpperCase())
+              .filter(Boolean)
+          )];
+          result = { ok: true, codigos };
+          break;
+        }
+
         case "REGISTRAR_ENTREGA": {
           if (!esAdmin) return forbidden();
           const items = d.items || [];
