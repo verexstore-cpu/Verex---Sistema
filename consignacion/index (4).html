@@ -10406,7 +10406,7 @@ function renderHistorialVD() {
             let items = [];
             try { items = typeof v.items === "string" ? JSON.parse(v.items) : (v.items||[]); } catch(e){}
             const itemsResumen = items.map(i => `${i.nombre||i.codigo} ×${i.cantidad||1}`).join(", ");
-            return `<div style="background:#0f0f0f;border:1px solid ${esCredito ? "#5c3a1a" : "#1a3a1a"};border-radius:10px;padding:12px;margin-bottom:8px;">
+            return `<div style="background:#0f0f0f;border:1px solid ${esCredito ? "#c97a2b" : "#1a3a1a"};border-radius:10px;padding:12px;margin-bottom:8px;">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
                     <div style="flex:1;min-width:0;">
                         <div style="font-size:14px;font-weight:700;color:#fff;">${sanitizar(v.cliente || "Sin nombre")}</div>
@@ -10425,7 +10425,7 @@ function renderHistorialVD() {
                 ${itemsResumen ? `<div style="font-size:11px;color:#666;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${itemsResumen}</div>` : ""}
                 ${v.empresaEnvio ? `<div style="font-size:11px;color:#0ea5e9;margin-bottom:4px;">🚚 ${sanitizar(v.empresaEnvio)}</div>` : ""}
                 ${esCredito ? `
-                <div style="background:#1a1408;border-radius:5px;height:5px;margin-bottom:6px;overflow:hidden;">
+                <div style="background:#3a2a12;border-radius:5px;height:5px;margin-bottom:6px;overflow:hidden;">
                     <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#27ae60,#52d68a);border-radius:5px;"></div>
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;">
