@@ -124,6 +124,7 @@
         <div id="btn-check-entrega-wrap" style="display:none;margin-bottom:12px;">
             <button class="btn btn-gris btn-full" onclick="verificarEntregasPendientes()" style="font-size:13px;">🔄 Verificar entregas pendientes</button>
         </div>
+        <button onclick="compartirMiCatalogo()" style="width:100%;margin-bottom:14px;padding:13px;border:none;border-radius:10px;background:linear-gradient(135deg,#7a5500,#C9A84C,#a87d20,#F5D78E,#7a5500);color:#fff8e1;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 2px 10px rgba(201,168,76,0.35);letter-spacing:0.5px;">🛍️ Compartir Mi Catálogo por WhatsApp</button>
         <div class="stats">
             <div class="stat"><div class="stat-num" id="st-stock">0</div><div class="stat-label">En Stock</div></div>
             <div class="stat"><div class="stat-num" id="st-vendido">0</div><div class="stat-label">Vendidos</div></div>
@@ -354,6 +355,16 @@ function renderVentas() {
             +'<button onclick="solicitarEliminar(\''+v.id+'\')" style="background:rgba(192,57,43,0.15);border:none;color:#e74c3c;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;">Solicitar corrección</button>'
             +'</div></div>';
     }).join('');
+}
+
+function compartirMiCatalogo() {
+    const activos = invActivo.filter(c => parseInt(c.cantidad||0) - parseInt(c.vendido||0) > 0);
+    if (!activos.length) { alert("No tienes productos disponibles en este momento."); return; }
+    const codigos = [...new Set(activos.map(c => (c.codigo||"").replace(/-\d+$/, "").toUpperCase()).filter(Boolean))];
+    const url = "https://verex-store.pages.dev?codigos=" + codigos.join(",");
+    const nombre = vendedorData.nombre || "tu vendedora VEREX";
+    const msg = "✨ Hola! Te comparto el catálogo de productos disponibles con " + nombre + ":\n\n" + url + "\n\nPuedes ver fotos, precios y hacer tu pedido directo 💍";
+    window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
 }
 
 function filtrarVentas() {
