@@ -5271,15 +5271,22 @@ function _onScanQREntrega(codRaw) {
     const codigo = String(codRaw || "").trim().toUpperCase();
     if (!codigo) return;
     const prod = productosDisponibles.find(p => String(p.codigo).toUpperCase() === codigo);
-    if (prod) {
-        cambiarQtyEntrega(prod.codigo, 1);
-        toast("✅ " + prod.nombre + " agregado");
-    } else {
+    if (!prod) {
         toast("⚠️ Producto no encontrado — agrégalo manualmente");
         document.getElementById("np-codigo").value = codigo;
         abrirModalProductoNuevo();
         onCodigoNPInput();
+        return;
     }
+    // mapaProductos solo trae variantes con stock_bodega > 0 — si el código no
+    // está ahí, cambiarQtyEntrega no lo agrega. Verificar antes de confirmar éxito.
+    const key = Object.keys(mapaProductos).find(k => String(k).toUpperCase() === codigo) || prod.codigo;
+    if (!mapaProductos[key]) {
+        toast("⚠️ " + prod.nombre + " no tiene stock en bodega — no se puede entregar");
+        return;
+    }
+    cambiarQtyEntrega(key, 1);
+    toast("✅ " + prod.nombre + " agregado");
 }
 
 async function eliminarItemInventario(id, nombre) {
