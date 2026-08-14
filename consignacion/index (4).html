@@ -907,6 +907,12 @@
                 <div id="perfil-notas-txt" style="font-size:13px;"></div>
             </div>
             <div id="recordatorio-corte" style="display:none;padding:10px 14px;border-radius:8px;border:1px solid;font-size:13px;font-weight:600;margin-bottom:14px;"></div>
+            <div id="banner-borradores" style="display:none;padding:12px 14px;border-radius:8px;border:1px solid #4a6fa5;background:rgba(74,111,165,0.12);margin-bottom:14px;">
+                <div style="font-size:13px;color:#8ab4f0;font-weight:600;margin-bottom:8px;">
+                    📝 <span id="banner-borradores-txt"></span> pendientes de publicar — aún no visibles en su link
+                </div>
+                <button class="btn" style="background:#4a6fa5;color:#fff;width:100%;padding:9px;font-size:13px;" onclick="finalizarBorradoresVendedor()">✅ Finalizar y publicar entrega completa</button>
+            </div>
             <div class="stats-grid">
                 <div class="stat-box"><div class="stat-num" id="stat-stock">0</div><div class="stat-label">En Stock</div></div>
                 <div class="stat-box"><div class="stat-num" id="stat-vendido">0</div><div class="stat-label">Vendidos</div></div>
@@ -996,6 +1002,10 @@
             <div class="carrito-info">
                 <strong id="carrito-count">0</strong> productos · <strong id="carrito-valor">$0</strong>
             </div>
+            <label id="chk-borrador-wrap" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--plateado);margin-bottom:8px;cursor:pointer;">
+                <input type="checkbox" id="chk-borrador" style="width:auto;margin:0;">
+                📝 Guardar como borrador (no publicar aún en el link del vendedor)
+            </label>
             <div style="display:flex;gap:8px;" id="carrito-entrega-acciones">
                 <button class="btn btn-gris" id="btn-entrega-en-mano" onclick="abrirModalFirma()" title="El vendedor firma en este momento">✅ En Mano</button>
                 <button class="btn btn-dorado" id="btn-entrega-mensajeria" onclick="enviarPorMensajeria()" title="Se genera un código para que el vendedor confirme al recibir">📦 Mensajería</button>
@@ -3413,7 +3423,36 @@ function descargarPDFDevolucion(idx) {
     doc.save("Devolucion-" + devId + ".pdf");
 }
 
+function renderBannerBorradores() {
+    const banner = document.getElementById("banner-borradores");
+    if (!banner || !vendedorActual) return;
+    const borradores = consignacion.filter(c => c.vendedor === vendedorActual.codigo && c.estado === "borrador");
+    if (borradores.length > 0) {
+        const totalPiezas = borradores.reduce((s, c) => s + (parseInt(c.cantidad)||1), 0);
+        document.getElementById("banner-borradores-txt").textContent = totalPiezas + " pieza" + (totalPiezas !== 1 ? "s" : "");
+        banner.style.display = "block";
+    } else {
+        banner.style.display = "none";
+    }
+}
+
+async function finalizarBorradoresVendedor() {
+    if (!vendedorActual) return;
+    if (!confirm("¿Publicar todos los borradores pendientes? Aparecerán de inmediato en el link del vendedor.")) return;
+    try {
+        const res = await apiPost({ accion: "FINALIZAR_ENTREGA_VENDEDOR", vendedor: vendedorActual.codigo });
+        consignacion.forEach(c => {
+            if (c.vendedor === vendedorActual.codigo && c.estado === "borrador") c.estado = "activo";
+        });
+        toast("✅ " + (res.publicados||0) + " producto(s) publicados en el link del vendedor");
+        renderPerfilStats();
+        renderInventario();
+        renderBannerBorradores();
+    } catch(e) { toast("⚠️ Error al publicar: " + e.message); }
+}
+
 function renderPerfilStats() {
+    renderBannerBorradores();
     const inv = consignacion.filter(c => c.vendedor === vendedorActual.codigo && c.estado === "activo");
     const stock   = inv.reduce((s, c) => s + Math.max(0, parseInt(c.cantidad||0) - parseInt(c.vendido||0)), 0);
     const vendido = inv.reduce((s, c) => s + parseInt(c.vendido||0), 0);
@@ -3618,6 +3657,8 @@ async function abrirEntrega() {
     document.getElementById("pantalla-perfil").style.display = "none";
     document.getElementById("pantalla-entrega").style.display = "block";
     document.getElementById("bus-entrega").value = "";
+    const chkB = document.getElementById("chk-borrador");
+    if (chkB) chkB.checked = false;
     document.getElementById("grid-entrega").innerHTML = '<p style="color:var(--plateado);font-size:13px;padding:10px;">⏳ Cargando inventario...</p>';
 
     const titulo = document.getElementById("entrega-titulo");
@@ -4190,12 +4231,14 @@ async function confirmarEntrega(firmaImg, codigoFirma) {
     }));
     if (!items.length) return;
 
+    const esBorrador = !!document.getElementById("chk-borrador")?.checked;
+
     // Registrar en el backend — si falla, continuar de todas formas para generar el PDF
     try {
-        await apiPost({ accion: "REGISTRAR_ENTREGA", vendedor: vendedorActual.codigo, items });
+        await apiPost({ accion: "REGISTRAR_ENTREGA", vendedor: vendedorActual.codigo, items, borrador: esBorrador });
     } catch(e) { console.warn("REGISTRAR_ENTREGA error:", e); }
 
-    items.forEach(item => consignacion.push({ ...item, vendedor: vendedorActual.codigo, vendido: 0, estado: "activo" }));
+    items.forEach(item => consignacion.push({ ...item, vendedor: vendedorActual.codigo, vendido: 0, estado: esBorrador ? "borrador" : "activo" }));
 
     const entregaId = "ENT_" + Date.now();
     try {
@@ -4211,7 +4254,7 @@ async function confirmarEntrega(firmaImg, codigoFirma) {
     // Guardar copia del vendedor actual antes de volver al perfil
     const vendedorParaPDF = { ...vendedorActual };
 
-    toast("✅ Entrega registrada — generando recibo...");
+    toast(esBorrador ? "📝 Borrador guardado — aún no visible en el link del vendedor" : "✅ Entrega registrada — generando recibo...");
     volverPerfil();
     renderPerfilStats();
     renderInventario();

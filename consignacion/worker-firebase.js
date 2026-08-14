@@ -690,6 +690,9 @@ async function enviar(){
         case "REGISTRAR_ENTREGA": {
           if (!esAdmin) return forbidden();
           const items = d.items || [];
+          // Borrador: se descuenta stock y queda respaldado en BD, pero invisible
+          // en el link del vendedor y demás vistas hasta FINALIZAR_ENTREGA_VENDEDOR.
+          const estadoInicial = d.borrador ? "borrador" : "activo";
           for (const item of items) {
             const id = item.id || `CONS_${Date.now()}_${item.codigo}`;
             await sb.set("consignacion", id, {
@@ -698,7 +701,7 @@ async function enviar(){
               talla: item.talla || "", nombre_base: item.nombre_base || item.nombre,
               categoria: item.categoria || "", precio: item.precio || 0,
               cantidad: item.cantidad || 1, vendido: 0,
-              foto: item.foto || "", fecha: new Date().toISOString(), estado: "activo"
+              foto: item.foto || "", fecha: new Date().toISOString(), estado: estadoInicial
             });
             const s = await sb.get("stock", item.codigo);
             if (s) {
@@ -709,6 +712,29 @@ async function enviar(){
             }
           }
           result = { ok: true };
+          break;
+        }
+
+        case "FINALIZAR_ENTREGA_VENDEDOR": {
+          // Publica de una vez todos los borradores acumulados de un vendedor:
+          // estado "borrador" → "activo". A partir de aquí aparecen en su link.
+          if (!esAdmin) return forbidden();
+          if (!d.vendedor) return json({ ok: false, error: "vendedor requerido" });
+          const todaCons = await sb.getAll("consignacion");
+          const borradores = todaCons.filter(c => c.vendedor === d.vendedor && c.estado === "borrador");
+          for (const c of borradores) {
+            await sb.update("consignacion", c.id, { estado: "activo" });
+          }
+          result = { ok: true, publicados: borradores.length };
+          break;
+        }
+
+        case "GET_BORRADORES_VENDEDOR": {
+          if (!esAdmin) return forbidden();
+          if (!d.vendedor) return json({ ok: false, error: "vendedor requerido" });
+          const todaCons = await sb.getAll("consignacion");
+          const borradores = todaCons.filter(c => c.vendedor === d.vendedor && c.estado === "borrador");
+          result = { ok: true, borradores };
           break;
         }
 
