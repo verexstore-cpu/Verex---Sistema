@@ -11361,11 +11361,11 @@ async function confirmarVentaDirecta() {
             seleccionarTipoVD('contado');
             filtrarVD();
             renderCarritoVD();
-            // Abrir panel créditos si fue a crédito
+            // Abrir Historial filtrado en "Crédito" si la venta quedó a crédito
+            // (el panel propio de "Créditos Pendientes" ya no existe, se
+            // fusionó con Historial).
             if (saldo > 0) {
-                document.getElementById("panel-creditos-vd").style.display = "block";
-                document.getElementById("btn-toggle-creditos").textContent = "📋 Ocultar Créditos";
-                cargarCreditosPendientes();
+                abrirHistorialSoloPendientes();
             }
         } else {
             const msg = resp.error || "no se pudo registrar";
