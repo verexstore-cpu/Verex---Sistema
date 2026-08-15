@@ -942,6 +942,9 @@
                     📝 <span id="banner-borradores-txt"></span> en lista — aún no entregados ni visibles en su link
                 </div>
                 <div id="banner-borradores-desglose" style="margin-bottom:10px;"></div>
+                <button class="btn" style="background:none;border:1px solid #8ab4f0;color:#8ab4f0;width:100%;padding:7px;font-size:12px;margin-bottom:6px;" onclick="toggleDetalleBorradores()">👁️ <span id="btn-detalle-borradores-txt">Ver lista completa (para contar físicamente)</span></button>
+                <button class="btn" style="background:none;border:1px solid #27ae60;color:#52d68a;width:100%;padding:7px;font-size:12px;margin-bottom:6px;" onclick="toggleVerificacionFisica()">🔍 <span id="btn-verificar-fisico-txt">Verificar conteo — escanea cada pieza</span></button>
+                <div id="banner-borradores-detalle" style="display:none;max-height:260px;overflow-y:auto;background:rgba(0,0,0,0.2);border-radius:8px;padding:8px;margin-bottom:8px;"></div>
                 <button class="btn" style="background:#4a6fa5;color:#fff;width:100%;padding:9px;font-size:13px;" onclick="finalizarBorradoresVendedor()">✅ Entregar todo ahora — firmar recibo</button>
                 <button class="btn" style="background:none;border:1px solid #e74c3c;color:#e74c3c;width:100%;padding:7px;font-size:12px;margin-top:6px;" onclick="borrarBorradoresVendedor()">🗑️ Borrar todo el borrador y empezar de cero</button>
             </div>
@@ -3492,9 +3495,100 @@ function renderBannerBorradores() {
                 .join('');
         }
         banner.style.display = "block";
+        if (_modoVerificarBorrador) renderDetalleBorradores();
     } else {
         banner.style.display = "none";
+        _modoVerificarBorrador = false;
+        _verificadosBorrador.clear();
     }
+}
+
+function toggleDetalleBorradores() {
+    const det = document.getElementById("banner-borradores-detalle");
+    if (!det) return;
+    const abrir = det.style.display === "none";
+    det.style.display = abrir ? "block" : "none";
+    document.getElementById("btn-detalle-borradores-txt").textContent = abrir ? "Ocultar lista" : "Ver lista completa (para contar físicamente)";
+    if (abrir) renderDetalleBorradores();
+}
+
+// ── Verificación física por reescaneo ────────────────────────────────
+// El admin re-escanea cada pieza que tiene en mano; cada código que
+// coincide con la lista guardada se marca "✅ verificado". Al final, lo
+// que quede sin marcar es exactamente lo que falta físicamente.
+let _modoVerificarBorrador = false;
+let _verificadosBorrador = new Set();
+
+function toggleVerificacionFisica() {
+    _modoVerificarBorrador = !_modoVerificarBorrador;
+    if (_modoVerificarBorrador) {
+        _verificadosBorrador.clear();
+        document.getElementById("btn-verificar-fisico-txt").textContent = "🟢 Modo activo — escanea cada pieza física";
+        document.getElementById("banner-borradores-detalle").style.display = "block";
+        document.getElementById("btn-detalle-borradores-txt").textContent = "Ocultar lista";
+    } else {
+        document.getElementById("btn-verificar-fisico-txt").textContent = "Verificar conteo — escanea cada pieza";
+    }
+    renderDetalleBorradores();
+}
+
+function renderDetalleBorradores() {
+    const det = document.getElementById("banner-borradores-detalle");
+    if (!det || !vendedorActual) return;
+    const borradores = consignacion.filter(c => c.vendedor === vendedorActual.codigo && c.estado === "borrador");
+    det.innerHTML = borradores.map(c => {
+        const verificado = _verificadosBorrador.has(c.codigo);
+        const marcaOk = _modoVerificarBorrador ? (verificado ? "✅" : "⏳") : "";
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 6px;border-bottom:1px solid rgba(255,255,255,0.06);font-size:12px;
+                ${_modoVerificarBorrador && !verificado ? 'background:rgba(231,76,60,0.08);' : ''}">
+            <span>${marcaOk} <strong style="color:var(--dorado);">${sanitizar(c.codigo)}</strong> — ${sanitizar(c.nombre)} ${(c.cantidad>1)?('×'+c.cantidad):''}</span>
+            <button onclick="eliminarUnBorrador('${String(c.id).replace(/'/g,"\\'")}','${sanitizar(c.nombre).replace(/'/g,"\\'")}')" style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:14px;padding:2px 6px;">✕</button>
+        </div>`;
+    }).join('');
+    if (_modoVerificarBorrador) {
+        const total = borradores.length;
+        const ok    = borradores.filter(c => _verificadosBorrador.has(c.codigo)).length;
+        det.insertAdjacentHTML('afterbegin', `<div style="text-align:center;font-weight:700;color:${ok===total?'#52d68a':'#e8b07a'};padding:6px;font-size:13px;">${ok} / ${total} verificados</div>`);
+    }
+}
+
+function _onScanVerificarBorrador(codRaw) {
+    const codigo = String(codRaw || "").trim().toUpperCase();
+    if (!codigo || !vendedorActual) return;
+    const borradores = consignacion.filter(c => c.vendedor === vendedorActual.codigo && c.estado === "borrador");
+    const codigoNorm = _normalizarCodigoScanner(codigo);
+    let match = borradores.find(c => String(c.codigo).toUpperCase() === codigo);
+    if (!match) match = borradores.find(c => _normalizarCodigoScanner(c.codigo) === codigoNorm);
+    if (!match) {
+        for (let recorte = 1; recorte <= 3 && !match; recorte++) {
+            match = borradores.find(c => _normalizarCodigoScanner(c.codigo).slice(recorte) === codigoNorm);
+        }
+    }
+    if (!match) {
+        toast("⚠️ \"" + codigo + "\" no está en la lista de este borrador");
+        return;
+    }
+    if (_verificadosBorrador.has(match.codigo)) {
+        toast("↩️ " + match.nombre + " ya estaba verificado");
+        return;
+    }
+    _verificadosBorrador.add(match.codigo);
+    renderDetalleBorradores();
+    const total = borradores.length;
+    const ok    = _verificadosBorrador.size;
+    toast("✅ " + match.nombre + " verificado (" + ok + "/" + total + ")");
+}
+
+async function eliminarUnBorrador(id, nombre) {
+    if (!confirm("¿Quitar " + nombre + " de este borrador? El stock vuelve a bodega.")) return;
+    try {
+        await apiPost({ accion: "ELIMINAR_ITEM_CONSIGNACION", id });
+        const idx = consignacion.findIndex(c => String(c.id) === String(id));
+        if (idx >= 0) consignacion.splice(idx, 1);
+        toast("🗑️ " + nombre + " quitado — stock devuelto a bodega");
+        renderPerfilStats();
+        renderInventario();
+    } catch(e) { toast("⚠️ Error al quitar: " + e.message); }
 }
 
 // Este es el momento de la entrega física real: el vendedor recibe TODO lo
@@ -10083,8 +10177,9 @@ function toast(msg, bg) {
         // ignoraba entero antes de llegar al buffer). Se revisa esto PRIMERO,
         // antes de cualquier exclusión pensada para las pantallas de Stock/Etiquetas.
         const entregaVis = document.getElementById("pantalla-entrega")?.style.display === "block";
+        const verificandoBorrador = typeof _modoVerificarBorrador !== "undefined" && _modoVerificarBorrador;
 
-        if (!entregaVis) {
+        if (!entregaVis && !verificandoBorrador) {
             const activeId = document.activeElement?.id || "";
             // Solo ignorar si el foco está en un input de otro módulo (modal, precio, etc.)
             // Los campos de búsqueda de stock/etiquetas SÍ deben pasar
@@ -10113,6 +10208,11 @@ function toast(msg, bg) {
                 if (entregaVis && cod.length > 0 && typeof _registrarEscaneoFallido === "function") {
                     _registrarEscaneoFallido((cod || "(vacío)") + " (lectura muy corta/corrupta)");
                 }
+                return;
+            }
+
+            if (verificandoBorrador) {
+                _onScanVerificarBorrador(cod);
                 return;
             }
 
