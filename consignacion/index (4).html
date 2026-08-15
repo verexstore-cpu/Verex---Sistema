@@ -5452,6 +5452,12 @@ function abrirQR() {
     abrirScannerQR(_onScanQREntrega, "📷 Escanear producto");
 }
 
+// Algunos lectores físicos (keyboard-wedge) leen mal el primer carácter del
+// código (se pierde) y/o confunden "0" con "O". Normaliza para comparar.
+function _normalizarCodigoScanner(s) {
+    return String(s || "").trim().toUpperCase().replace(/O/g, "0");
+}
+
 function _onScanQREntrega(codRaw) {
     const codigo = String(codRaw || "").trim().toUpperCase();
     if (!codigo) return;
@@ -5459,7 +5465,19 @@ function _onScanQREntrega(codRaw) {
     // de entrega, que nunca se reduce por el filtro de búsqueda (a diferencia
     // de mapaProductos, que renderGridEntrega achica letra por letra mientras
     // el lector físico "escribe" el código en el buscador).
-    const key = Object.keys(mapaProductosCompleto).find(k => String(k).toUpperCase() === codigo);
+    let key = Object.keys(mapaProductosCompleto).find(k => String(k).toUpperCase() === codigo);
+
+    // Fallback 1: confusión 0/O del lector físico
+    if (!key) {
+        const codigoNorm = _normalizarCodigoScanner(codigo);
+        key = Object.keys(mapaProductosCompleto).find(k => _normalizarCodigoScanner(k) === codigoNorm);
+    }
+    // Fallback 2: el lector se comió el primer carácter del código
+    if (!key) {
+        const codigoNorm = _normalizarCodigoScanner(codigo);
+        key = Object.keys(mapaProductosCompleto).find(k => _normalizarCodigoScanner(k).slice(1) === codigoNorm);
+    }
+
     if (!key) {
         // Nueva Entrega solo asigna stock EXISTENTE a un vendedor — nunca debe
         // abrir el modal de registrar producto nuevo (eso es otro flujo, en Stock).
