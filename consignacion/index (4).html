@@ -9914,12 +9914,19 @@ function toast(msg, bg) {
             _scanBuf = "";
             if (cod.length < 3) return;
 
-            const tabStock = document.getElementById("tab-content-stock");
-            const tabEtiq  = document.getElementById("tab-content-etiquetas");
-            const stockVis = tabStock && tabStock.style.display !== "none";
-            const etiqVis  = tabEtiq  && tabEtiq.style.display  !== "none";
+            const tabStock   = document.getElementById("tab-content-stock");
+            const tabEtiq    = document.getElementById("tab-content-etiquetas");
+            const stockVis   = tabStock && tabStock.style.display !== "none";
+            const etiqVis    = tabEtiq  && tabEtiq.style.display  !== "none";
+            const entregaVis = document.getElementById("pantalla-entrega")?.style.display === "block";
 
-            if (stockVis) {
+            if (entregaVis) {
+                // Nueva Entrega: el lector físico agrega directo al carrito/borrador,
+                // sin necesidad de tocar "+" manualmente por cada producto.
+                const busEntrega = document.getElementById("bus-entrega");
+                if (busEntrega) busEntrega.value = "";
+                _onScanQREntrega(cod);
+            } else if (stockVis) {
                 buscarStockPorScanner(cod);
             } else if (etiqVis) {
                 buscarEtiquetasPorScanner(cod);
