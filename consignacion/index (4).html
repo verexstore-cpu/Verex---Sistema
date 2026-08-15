@@ -344,11 +344,35 @@
     .carrito-entrega {
         position: fixed; bottom: 0; left: 0; right: 0;
         background: var(--gris); border-top: 1px solid var(--dorado);
-        padding: 14px 20px; display: none; align-items: center; justify-content: space-between; z-index: 200;
+        padding: 12px 16px; display: none; flex-direction: column; gap: 8px; z-index: 200;
+        max-height: 62vh;
     }
     .carrito-entrega.visible { display: flex; }
-    .carrito-info { font-size: 13px; }
+    .carrito-info { font-size: 13px; display: flex; align-items: center; justify-content: space-between; }
     .carrito-info strong { color: var(--dorado); font-size: 15px; }
+    .carrito-preview {
+        max-height: 26vh; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
+        border-top: 1px solid var(--borde); border-bottom: 1px solid var(--borde);
+        padding: 6px 0; margin: 2px 0;
+    }
+    .carrito-preview:empty { display: none; border: none; padding: 0; margin: 0; }
+    .carrito-preview-item {
+        display: flex; align-items: center; gap: 8px; padding: 5px 6px;
+        background: rgba(255,255,255,0.03); border-radius: 6px; font-size: 12px;
+    }
+    .carrito-preview-item img { width: 30px; height: 30px; object-fit: cover; border-radius: 4px; flex-shrink: 0; background: #222; }
+    .carrito-preview-item .cpi-info { flex: 1; min-width: 0; }
+    .carrito-preview-item .cpi-codigo { color: var(--dorado); font-weight: 700; font-size: 10px; }
+    .carrito-preview-item .cpi-nombre { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .carrito-preview-item .cpi-qty { font-weight: 700; color: #8ab4f0; flex-shrink: 0; }
+    .carrito-preview-item .cpi-quitar {
+        flex-shrink: 0; background: none; border: none; color: #e74c3c; font-size: 16px;
+        cursor: pointer; padding: 2px 6px; line-height: 1;
+    }
+    .carrito-entrega-acciones-btn {
+        padding: 16px 14px !important; font-size: 15px !important; font-weight: 700 !important;
+        border-radius: 10px !important;
+    }
 
     .inv-item { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--gris2); border: 1px solid var(--borde); border-radius: 10px; margin-bottom: 8px; }
     .inv-item img { width: 52px; height: 52px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
@@ -1000,17 +1024,15 @@
         </div>
         <div class="carrito-entrega" id="carrito-entrega">
             <div class="carrito-info">
-                <strong id="carrito-count">0</strong> productos · <strong id="carrito-valor">$0</strong>
+                <span><strong id="carrito-count">0</strong> productos · <strong id="carrito-valor">$0</strong></span>
+                <button onclick="vaciarCarritoEntrega()" style="background:none;border:none;color:#e74c3c;font-size:11px;cursor:pointer;padding:4px 8px;">🗑️ Vaciar</button>
             </div>
-            <label id="chk-borrador-wrap" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--plateado);margin-bottom:8px;cursor:pointer;">
-                <input type="checkbox" id="chk-borrador" style="width:auto;margin:0;" onchange="toggleModoBorrador()">
-                📝 Aún no se la entrego — solo ir armando la lista (sin firma, sin publicar)
-            </label>
-            <div style="display:flex;gap:8px;" id="carrito-entrega-acciones">
-                <button class="btn btn-gris" id="btn-entrega-en-mano" onclick="abrirModalFirma()" title="El vendedor firma en este momento">✅ En Mano</button>
-                <button class="btn btn-dorado" id="btn-entrega-mensajeria" onclick="enviarPorMensajeria()" title="Se genera un código para que el vendedor confirme al recibir">📦 Mensajería</button>
-                <button class="btn" style="background:#27ae60;color:#fff;display:none;" id="btn-venta-afiliado" onclick="confirmarVentaAfiliado()" title="Registra la entrega y la venta al mismo tiempo — el afiliado ya cerró la venta por su cuenta">💰 Registrar Venta</button>
-                <button class="btn" style="background:#4a6fa5;color:#fff;display:none;" id="btn-guardar-borrador" onclick="guardarBorrador()" title="Solo guarda el avance en el sistema — no requiere firma ni entrega física todavía">💾 Guardar avance (sin firma)</button>
+            <div class="carrito-preview" id="carrito-preview"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;" id="carrito-entrega-acciones">
+                <button class="btn carrito-entrega-acciones-btn" style="flex:1;min-width:150px;background:#4a6fa5;color:#fff;" id="btn-guardar-borrador" onclick="guardarBorrador()" title="Guarda el avance en el sistema — NO se publica en el link del vendedor ni requiere firma todavía">📝 Borrador (guardar, no publicar)</button>
+                <button class="btn carrito-entrega-acciones-btn" style="flex:1;min-width:150px;background:#27ae60;color:#fff;display:none;" id="btn-venta-afiliado" onclick="confirmarVentaAfiliado()" title="Registra la entrega y la venta al mismo tiempo — el afiliado ya cerró la venta por su cuenta">💰 Registrar Venta</button>
+                <button class="btn btn-dorado carrito-entrega-acciones-btn" style="flex:1;min-width:150px;" id="btn-entrega-en-mano" onclick="abrirModalFirma()" title="El vendedor firma ahora y se publica de inmediato en su link">✅ Confirmar y Publicar</button>
+                <button class="btn btn-gris carrito-entrega-acciones-btn" style="flex:1;min-width:150px;" id="btn-entrega-mensajeria" onclick="enviarPorMensajeria()" title="Se genera un código para que el vendedor confirme al recibir">📦 Mensajería</button>
             </div>
         </div>
     </div>
@@ -3692,23 +3714,24 @@ async function abrirEntrega() {
     document.getElementById("pantalla-perfil").style.display = "none";
     document.getElementById("pantalla-entrega").style.display = "block";
     document.getElementById("bus-entrega").value = "";
-    const chkB = document.getElementById("chk-borrador");
-    if (chkB) chkB.checked = false;
     document.getElementById("grid-entrega").innerHTML = '<p style="color:var(--plateado);font-size:13px;padding:10px;">⏳ Cargando inventario...</p>';
 
     const titulo = document.getElementById("entrega-titulo");
-    const btnMano = document.getElementById("btn-entrega-en-mano");
-    const btnMens = document.getElementById("btn-entrega-mensajeria");
+    const btnMano  = document.getElementById("btn-entrega-en-mano");
+    const btnMens  = document.getElementById("btn-entrega-mensajeria");
     const btnVenta = document.getElementById("btn-venta-afiliado");
+    const btnBorr  = document.getElementById("btn-guardar-borrador");
     if (_esVentaDirectaAfiliado) {
         if (titulo) titulo.textContent = "💰 Registrar Venta de Afiliado";
         if (btnMano) btnMano.style.display = "none";
         if (btnMens) btnMens.style.display = "none";
+        if (btnBorr) btnBorr.style.display = "none";
         if (btnVenta) btnVenta.style.display = "inline-flex";
     } else {
         if (titulo) titulo.textContent = "📦 Nueva Entrega";
         if (btnMano) btnMano.style.display = "";
         if (btnMens) btnMens.style.display = "";
+        if (btnBorr) btnBorr.style.display = "";
         if (btnVenta) btnVenta.style.display = "none";
     }
 
@@ -3963,16 +3986,39 @@ function cambiarQtyEntrega(codigo, delta) {
 }
 
 function actualizarCarritoEntrega() {
-    const items = Object.values(carritoEntrega);
+    const items = Object.entries(carritoEntrega).filter(([, e]) => e.qty > 0);
     // Total de piezas físicas
-    const totalPiezas = items.reduce((s, e) => s + e.qty, 0);
+    const totalPiezas = items.reduce((s, [, e]) => s + e.qty, 0);
     // Valor total
-    const valor = items.reduce((s, e) => s + e.qty * parseFloat(e.item.precio || e.item.precioNum || 0), 0);
-    // Productos únicos (agrupados por código)
-    const productosUnicos = new Set(items.map(e => e.item.codigo)).size;
+    const valor = items.reduce((s, [, e]) => s + e.qty * parseFloat(e.item.precio || e.item.precioNum || 0), 0);
     document.getElementById("carrito-count").textContent = totalPiezas;
     document.getElementById("carrito-valor").textContent = "$" + valor.toFixed(2);
     document.getElementById("carrito-entrega").classList.toggle("visible", totalPiezas > 0);
+
+    // Vista previa en vivo de lo que se ha ido escaneando/agregando
+    const preview = document.getElementById("carrito-preview");
+    if (preview) {
+        preview.innerHTML = items.slice().reverse().map(([codigo, e]) => {
+            const foto = ikFoto(e.item.foto || e.item.img, 80) || '';
+            return `<div class="carrito-preview-item">
+                <img src="${sanitizar(foto)}" onerror="this.style.display='none'">
+                <div class="cpi-info">
+                    <div class="cpi-codigo">${sanitizar(codigo)}</div>
+                    <div class="cpi-nombre">${sanitizar(e.item.nombre || '')}</div>
+                </div>
+                <div class="cpi-qty">×${e.qty}</div>
+                <button class="cpi-quitar" onclick="cambiarQtyEntrega('${codigo.replace(/'/g,"\\'")}',-${e.qty})" title="Quitar">✕</button>
+            </div>`;
+        }).join('');
+    }
+}
+
+function vaciarCarritoEntrega() {
+    if (!Object.keys(carritoEntrega).length) return;
+    if (!confirm("¿Vaciar todo el carrito? Se perderá lo que llevas agregado (aún no guardado).")) return;
+    carritoEntrega = {};
+    actualizarCarritoEntrega();
+    filtrarProductosEntrega();
 }
 
 function filtrarProductosEntrega() {
@@ -4000,16 +4046,6 @@ function generarCodigoFirma() {
     return code;
 }
 
-function toggleModoBorrador() {
-    const esBorrador = !!document.getElementById("chk-borrador")?.checked;
-    const btnMano = document.getElementById("btn-entrega-en-mano");
-    const btnMens = document.getElementById("btn-entrega-mensajeria");
-    const btnBorr = document.getElementById("btn-guardar-borrador");
-    if (btnMano) btnMano.style.display = esBorrador ? "none" : "";
-    if (btnMens) btnMens.style.display = esBorrador ? "none" : "";
-    if (btnBorr) btnBorr.style.display = esBorrador ? "" : "none";
-}
-
 // Guarda el avance seleccionado como borrador — SIN firma, SIN entrega física,
 // SIN publicar en el link del vendedor. Solo respalda en el servidor para no
 // perder el progreso si se arma la lista en varias sesiones.
@@ -4033,13 +4069,14 @@ async function guardarBorrador() {
     try {
         await apiPost({ accion: "REGISTRAR_ENTREGA", vendedor: vendedorActual.codigo, items, borrador: true });
         items.forEach(item => consignacion.push({ ...item, vendedor: vendedorActual.codigo, vendido: 0, estado: "borrador" }));
+        carritoEntrega = {};
         toast("📝 Avance guardado — aún no entregado ni publicado");
         volverPerfil();
         renderPerfilStats();
     } catch(e) {
         toast("⚠️ Error al guardar: " + e.message);
     } finally {
-        if (btn) { btn.disabled = false; btn.textContent = "💾 Guardar avance (sin firma)"; }
+        if (btn) { btn.disabled = false; btn.textContent = "📝 Borrador (guardar, no publicar)"; }
     }
 }
 
