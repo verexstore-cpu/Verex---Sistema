@@ -5555,6 +5555,20 @@ function _onScanQREntrega(codRaw) {
         return;
     }
     const prod = mapaProductosCompleto[key];
+
+    // BLOQUEO — no dejar re-escanear un producto que ya tiene unidades en un
+    // borrador pendiente de este vendedor. Esto fue justo lo que causó
+    // duplicados/stock descontado dos veces al re-escanear todo el lote sin
+    // darse cuenta de que una parte ya estaba guardada.
+    const yaEnBorrador = vendedorActual && consignacion.some(c =>
+        getCodigoBase(c.codigo) === getCodigoBase(prod.codigo) && c.estado === "borrador" && c.vendedor === vendedorActual.codigo
+    );
+    if (yaEnBorrador) {
+        _registrarEscaneoFallido(codigo + " (YA ESTÁ en un borrador sin publicar — no se agregó de nuevo)");
+        toast("🚫 " + prod.nombre + " YA está en un borrador pendiente — no se agregó otra vez");
+        return;
+    }
+
     cambiarQtyEntrega(key, 1);
     // Restaurar la vista completa del grid tras el escaneo — pero POSPUESTO:
     // reconstruir el grid completo (1000+ productos) bloquea el hilo principal
@@ -5565,12 +5579,7 @@ function _onScanQREntrega(codRaw) {
     if (busEntrega) busEntrega.value = "";
     clearTimeout(_refrescarGridEntregaTimer);
     _refrescarGridEntregaTimer = setTimeout(() => { filtrarProductosEntrega(); }, 500);
-    const yaEnBorrador = vendedorActual && consignacion.some(c =>
-        getCodigoBase(c.codigo) === getCodigoBase(prod.codigo) && c.estado === "borrador" && c.vendedor === vendedorActual.codigo
-    );
-    toast(yaEnBorrador
-        ? "⚠️ " + prod.nombre + " agregado — OJO: ya hay unidades de este producto en un borrador sin entregar"
-        : "✅ " + prod.nombre + " agregado");
+    toast("✅ " + prod.nombre + " agregado");
 }
 
 async function eliminarItemInventario(id, nombre) {
