@@ -5513,6 +5513,7 @@ function _normalizarCodigoScanner(s) {
 // desaparece en segundos y al escanear rápido y seguido es fácil no verlo,
 // causando pérdidas silenciosas de piezas que el vendedor sí debía recibir.
 let _scansFallidosSesion = [];
+let _refrescarGridEntregaTimer = null;
 function _registrarEscaneoFallido(codigo) {
     _scansFallidosSesion.push({ codigo, hora: new Date().toLocaleTimeString("es-SV", {hour:"2-digit",minute:"2-digit",second:"2-digit"}) });
     const wrap  = document.getElementById("escaneos-fallidos-wrap");
@@ -5555,11 +5556,15 @@ function _onScanQREntrega(codRaw) {
     }
     const prod = mapaProductosCompleto[key];
     cambiarQtyEntrega(key, 1);
-    // Restaurar la vista completa del grid tras el escaneo, para que la
-    // tarjeta recién agregada sea visible y el buscador no quede "atascado"
-    // en un filtro parcial de la última letra escaneada.
+    // Restaurar la vista completa del grid tras el escaneo — pero POSPUESTO:
+    // reconstruir el grid completo (1000+ productos) bloquea el hilo principal
+    // una fracción de segundo, y si el siguiente escaneo llega justo en ese
+    // instante, el navegador puede perder esas teclas silenciosamente. Se
+    // espera una pausa breve sin nuevos escaneos antes de redibujar.
     const busEntrega = document.getElementById("bus-entrega");
-    if (busEntrega) { busEntrega.value = ""; filtrarProductosEntrega(); }
+    if (busEntrega) busEntrega.value = "";
+    clearTimeout(_refrescarGridEntregaTimer);
+    _refrescarGridEntregaTimer = setTimeout(() => { filtrarProductosEntrega(); }, 500);
     const yaEnBorrador = vendedorActual && consignacion.some(c =>
         getCodigoBase(c.codigo) === getCodigoBase(prod.codigo) && c.estado === "borrador" && c.vendedor === vendedorActual.codigo
     );
