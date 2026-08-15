@@ -5461,10 +5461,9 @@ function _onScanQREntrega(codRaw) {
     // el lector físico "escribe" el código en el buscador).
     const key = Object.keys(mapaProductosCompleto).find(k => String(k).toUpperCase() === codigo);
     if (!key) {
-        toast("⚠️ Producto no encontrado o sin stock en bodega — agrégalo manualmente");
-        document.getElementById("np-codigo").value = codigo;
-        abrirModalProductoNuevo();
-        onCodigoNPInput();
+        // Nueva Entrega solo asigna stock EXISTENTE a un vendedor — nunca debe
+        // abrir el modal de registrar producto nuevo (eso es otro flujo, en Stock).
+        toast("⚠️ \"" + codigo + "\" no existe o no tiene stock en bodega");
         return;
     }
     const prod = mapaProductosCompleto[key];
