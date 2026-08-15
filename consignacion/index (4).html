@@ -938,9 +938,10 @@
             </div>
             <div id="recordatorio-corte" style="display:none;padding:10px 14px;border-radius:8px;border:1px solid;font-size:13px;font-weight:600;margin-bottom:14px;"></div>
             <div id="banner-borradores" style="display:none;padding:12px 14px;border-radius:8px;border:1px solid #4a6fa5;background:rgba(74,111,165,0.12);margin-bottom:14px;">
-                <div style="font-size:13px;color:#8ab4f0;font-weight:600;margin-bottom:8px;">
+                <div style="font-size:13px;color:#8ab4f0;font-weight:600;margin-bottom:6px;">
                     📝 <span id="banner-borradores-txt"></span> en lista — aún no entregados ni visibles en su link
                 </div>
+                <div id="banner-borradores-desglose" style="margin-bottom:10px;"></div>
                 <button class="btn" style="background:#4a6fa5;color:#fff;width:100%;padding:9px;font-size:13px;" onclick="finalizarBorradoresVendedor()">✅ Entregar todo ahora — firmar recibo</button>
                 <button class="btn" style="background:none;border:1px solid #e74c3c;color:#e74c3c;width:100%;padding:7px;font-size:12px;margin-top:6px;" onclick="borrarBorradoresVendedor()">🗑️ Borrar todo el borrador y empezar de cero</button>
             </div>
@@ -3460,6 +3461,15 @@ function descargarPDFDevolucion(idx) {
     doc.save("Devolucion-" + devId + ".pdf");
 }
 
+// Mismo mapa de categorías que usa el catálogo público, para que el
+// desglose del borrador hable el mismo idioma que el resto del sistema.
+const CAT_INFO_BORRADOR = {
+    AN: "💍 Anillos", CO: "📿 Collares", AR: "✨ Aretes",
+    PU: "⌚ Pulseras", CJ: "🎁 Conjuntos", CD: "🔗 Cadenas",
+    DJ: "🌟 Dijes", TB: "🦶 Tobilleras", RS: "📿 Rosarios",
+    RE: "⌚ Relojes", CA: "🔗 Cadenas solas"
+};
+
 function renderBannerBorradores() {
     const banner = document.getElementById("banner-borradores");
     if (!banner || !vendedorActual) return;
@@ -3467,6 +3477,20 @@ function renderBannerBorradores() {
     if (borradores.length > 0) {
         const totalPiezas = borradores.reduce((s, c) => s + (parseInt(c.cantidad)||1), 0);
         document.getElementById("banner-borradores-txt").textContent = totalPiezas + " pieza" + (totalPiezas !== 1 ? "s" : "");
+
+        // Desglose por categoría (anillos, aretes, etc.)
+        const porCategoria = {};
+        borradores.forEach(c => {
+            const pref = (c.categoria || getCodigoBase(c.codigo).match(/^[A-Z]+/)?.[0] || "GEN").toUpperCase();
+            porCategoria[pref] = (porCategoria[pref] || 0) + (parseInt(c.cantidad) || 1);
+        });
+        const desglose = document.getElementById("banner-borradores-desglose");
+        if (desglose) {
+            desglose.innerHTML = Object.entries(porCategoria)
+                .sort((a, b) => b[1] - a[1])
+                .map(([cat, cant]) => `<span style="display:inline-block;margin:2px 6px 2px 0;background:rgba(74,111,165,0.18);border-radius:12px;padding:2px 9px;font-size:11px;">${CAT_INFO_BORRADOR[cat] || cat} × ${cant}</span>`)
+                .join('');
+        }
         banner.style.display = "block";
     } else {
         banner.style.display = "none";
