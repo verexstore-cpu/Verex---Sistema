@@ -3826,6 +3826,15 @@ function renderGridEntrega(prods) {
             ? `<div style="display:inline-flex;align-items:center;gap:3px;margin-top:2px;background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.4);border-radius:20px;padding:2px 7px;font-size:10px;color:var(--dorado);font-weight:600;">📦 Consig: ${enConsig}</div>`
             : '';
 
+        // Piezas de este producto YA guardadas en borrador para el vendedor actual
+        // (aún no entregadas físicamente ni visibles en su link) — avisa para no duplicar.
+        const enBorradorVendedor = vendedorActual ? consignacion
+            .filter(c => getCodigoBase(c.codigo) === codigoBase && c.estado === "borrador" && c.vendedor === vendedorActual.codigo)
+            .reduce((s, c) => s + (parseInt(c.cantidad) || 0), 0) : 0;
+        const borradorBadge = enBorradorVendedor > 0
+            ? `<div style="display:inline-flex;align-items:center;gap:3px;margin-top:2px;background:rgba(74,111,165,0.18);border:1px solid rgba(74,111,165,0.5);border-radius:20px;padding:2px 7px;font-size:10px;color:#8ab4f0;font-weight:600;">📝 Ya en borrador: ${enBorradorVendedor}</div>`
+            : '';
+
         const cardId = "pc-group-" + safeId(codigoBase);
         const menuId = "pmenu-" + safeId(codigoBase);
 
@@ -3885,7 +3894,7 @@ function renderGridEntrega(prods) {
                 <div class="prod-card-codigo">${sanitizar(codigoBase)}</div>
                 <div class="prod-card-nombre">${sanitizar(baseName)}</div>
                 <div class="prod-card-precio">$${parseFloat(ref.precio||ref.precioNum||0).toFixed(2)}</div>
-                ${estadoBadge}${consigBadge}
+                ${estadoBadge}${consigBadge}${borradorBadge}
             </div>
             ${controlSection}
         </div>`;
@@ -5407,7 +5416,12 @@ function _onScanQREntrega(codRaw) {
         return;
     }
     cambiarQtyEntrega(key, 1);
-    toast("✅ " + prod.nombre + " agregado");
+    const yaEnBorrador = vendedorActual && consignacion.some(c =>
+        getCodigoBase(c.codigo) === getCodigoBase(prod.codigo) && c.estado === "borrador" && c.vendedor === vendedorActual.codigo
+    );
+    toast(yaEnBorrador
+        ? "⚠️ " + prod.nombre + " agregado — OJO: ya hay unidades de este producto en un borrador sin entregar"
+        : "✅ " + prod.nombre + " agregado");
 }
 
 async function eliminarItemInventario(id, nombre) {
