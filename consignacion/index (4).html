@@ -3242,7 +3242,7 @@ async function editarTelefonoVendedor() {
 
 async function editarPin() {
     if (!vendedorActual) return;
-    const nuevo = prompt("PIN de 4 dígitos para el portal del afiliado (deja vacío para quitar el PIN):", vendedorActual.pin || "");
+    const nuevo = prompt("PIN de 4 dígitos para proteger su inventario/portal (deja vacío para quitar el PIN):", vendedorActual.pin || "");
     if (nuevo === null) return;
     const val = nuevo.trim().replace(/\D/g, "").slice(0, 4);
     if (val === "") {
@@ -3284,7 +3284,7 @@ function abrirPerfil(codigo) {
         const tipoLabel = { consignacion: "📦 Consignación", afiliado: "🤝 Afiliado", hibrido: "🔄 Híbrido" }[vendedorActual.tipo] || vendedorActual.tipo;
         fReg.innerHTML = partes.join(" · ") + ` · ${tipoLabel} <span onclick="event.stopPropagation();editarTipoVendedor()" style="color:#0277bd;cursor:pointer;text-decoration:underline;">✏️ tipo</span>`
             + ' · <span onclick="event.stopPropagation();editarComisionFija()" style="color:#0277bd;cursor:pointer;text-decoration:underline;">✏️ comisión</span>'
-            + ((vendedorActual.tipo === "afiliado" || vendedorActual.tipo === "hibrido") ? ` · ${pinTxt} <span onclick="event.stopPropagation();editarPin()" style="color:#0277bd;cursor:pointer;text-decoration:underline;">✏️ PIN</span>` : '');
+            + ` · ${pinTxt} <span onclick="event.stopPropagation();editarPin()" style="color:#0277bd;cursor:pointer;text-decoration:underline;">✏️ PIN</span>`;
     }
     const notasWrap = document.getElementById("perfil-notas-wrap");
     const notasTxt  = document.getElementById("perfil-notas-txt");
