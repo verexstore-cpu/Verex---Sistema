@@ -9905,9 +9905,6 @@ function toast(msg, bg) {
             const stockVis = tabStock && tabStock.style.display !== "none";
             const etiqVis  = tabEtiq  && tabEtiq.style.display  !== "none";
 
-            // DEBUG: mostrar qué captó el scanner
-            toast(`🔍 Scanner: "${cod}" | stock:${stockVis} etiq:${etiqVis}`);
-
             if (stockVis) {
                 buscarStockPorScanner(cod);
             } else if (etiqVis) {
