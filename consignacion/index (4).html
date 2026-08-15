@@ -3712,13 +3712,13 @@ async function abrirEntrega() {
         if (btnVenta) btnVenta.style.display = "none";
     }
 
-    // Asegurar que el stock esté cargado antes de mostrar el grid
-    if (stockData.length === 0) {
-        try {
-            const res = await apiPost({ accion: "STOCK_GET_ALL" });
-            stockData = res.stock || [];
-        } catch(e) { stockData = []; }
-    }
+    // Refrescar SIEMPRE el stock al abrir — otras pantallas (Etiquetas, Stock)
+    // pueden haber sobrescrito stockData/productosDisponibles con datos viejos,
+    // y aquí necesitamos ver el inventario de bodega más actual posible.
+    try {
+        const res = await apiPost({ accion: "STOCK_GET_ALL" });
+        stockData = res.stock || [];
+    } catch(e) { if (!stockData.length) stockData = []; }
 
     // Construir lista a mostrar usando stockData (puede tener múltiples entradas por código/talla)
     // Solo mostrar variantes con stock en bodega > 0
@@ -5400,21 +5400,18 @@ function abrirQR() {
 function _onScanQREntrega(codRaw) {
     const codigo = String(codRaw || "").trim().toUpperCase();
     if (!codigo) return;
-    const prod = productosDisponibles.find(p => String(p.codigo).toUpperCase() === codigo);
-    if (!prod) {
-        toast("⚠️ Producto no encontrado — agrégalo manualmente");
+    // Buscar directo en mapaProductos — es la fuente construida en vivo para
+    // ESTA pantalla (Nueva Entrega), a diferencia de productosDisponibles que
+    // otras pestañas (Etiquetas, Stock) pueden sobrescribir con datos viejos.
+    const key = Object.keys(mapaProductos).find(k => String(k).toUpperCase() === codigo);
+    if (!key) {
+        toast("⚠️ Producto no encontrado o sin stock en bodega — agrégalo manualmente");
         document.getElementById("np-codigo").value = codigo;
         abrirModalProductoNuevo();
         onCodigoNPInput();
         return;
     }
-    // mapaProductos solo trae variantes con stock_bodega > 0 — si el código no
-    // está ahí, cambiarQtyEntrega no lo agrega. Verificar antes de confirmar éxito.
-    const key = Object.keys(mapaProductos).find(k => String(k).toUpperCase() === codigo) || prod.codigo;
-    if (!mapaProductos[key]) {
-        toast("⚠️ " + prod.nombre + " no tiene stock en bodega — no se puede entregar");
-        return;
-    }
+    const prod = mapaProductos[key];
     cambiarQtyEntrega(key, 1);
     const yaEnBorrador = vendedorActual && consignacion.some(c =>
         getCodigoBase(c.codigo) === getCodigoBase(prod.codigo) && c.estado === "borrador" && c.vendedor === vendedorActual.codigo
