@@ -10050,18 +10050,27 @@ function toast(msg, bg) {
 ;(function() {
     let _scanBuf = "", _scanT = 0;
     document.addEventListener("keydown", function(e) {
-        const activeId = document.activeElement?.id || "";
-        // Solo ignorar si el foco está en un input de otro módulo (modal, precio, etc.)
-        // Los campos de búsqueda de stock/etiquetas SÍ deben pasar
-        const inputsExcluidos = ["sn-multicod-input","sn-codigo-manual","sn-nombre","sn-precio","sn-precio-dama","sn-precio-caballero",
-            "sn-cantidad","sn-desc","sn-desc-tienda","sn-caract","inp-pass",
-            "np-nombre","np-desc","np-precio","np-codigo","np-qty","np-caract",
-            "ep-codigo","ep-nombre","ep-desc","ep-precio","ep-precio-dama","ep-precio-caballero","ep-caract","ep-existencia",
-            "lote-precio-global"];
-        if (inputsExcluidos.includes(activeId)) return;
-        // Ignorar si hay un modal visible con un textarea/input activo
-        const modalAbierto = document.querySelector(".modal-overlay.active input:focus, .modal-overlay[style*='flex'] input:focus");
-        if (modalAbierto) return;
+        // Nueva Entrega tiene MÁXIMA prioridad: nunca debe perder un escaneo
+        // por culpa del chequeo de foco/modal (eso causaba escaneos que no
+        // dejaban NINGÚN rastro — ni éxito ni error — porque el evento se
+        // ignoraba entero antes de llegar al buffer). Se revisa esto PRIMERO,
+        // antes de cualquier exclusión pensada para las pantallas de Stock/Etiquetas.
+        const entregaVis = document.getElementById("pantalla-entrega")?.style.display === "block";
+
+        if (!entregaVis) {
+            const activeId = document.activeElement?.id || "";
+            // Solo ignorar si el foco está en un input de otro módulo (modal, precio, etc.)
+            // Los campos de búsqueda de stock/etiquetas SÍ deben pasar
+            const inputsExcluidos = ["sn-multicod-input","sn-codigo-manual","sn-nombre","sn-precio","sn-precio-dama","sn-precio-caballero",
+                "sn-cantidad","sn-desc","sn-desc-tienda","sn-caract","inp-pass",
+                "np-nombre","np-desc","np-precio","np-codigo","np-qty","np-caract",
+                "ep-codigo","ep-nombre","ep-desc","ep-precio","ep-precio-dama","ep-precio-caballero","ep-caract","ep-existencia",
+                "lote-precio-global"];
+            if (inputsExcluidos.includes(activeId)) return;
+            // Ignorar si hay un modal visible con un textarea/input activo
+            const modalAbierto = document.querySelector(".modal-overlay.active input:focus, .modal-overlay[style*='flex'] input:focus");
+            if (modalAbierto) return;
+        }
 
         const now = Date.now();
         if (now - _scanT > 150) _scanBuf = "";
@@ -10070,13 +10079,15 @@ function toast(msg, bg) {
         if (e.key === "Enter") {
             const cod = _scanBuf.trim().toUpperCase();
             _scanBuf = "";
-            if (cod.length < 3) return;
-
-            const tabStock   = document.getElementById("tab-content-stock");
-            const tabEtiq    = document.getElementById("tab-content-etiquetas");
-            const stockVis   = tabStock && tabStock.style.display !== "none";
-            const etiqVis    = tabEtiq  && tabEtiq.style.display  !== "none";
-            const entregaVis = document.getElementById("pantalla-entrega")?.style.display === "block";
+            if (cod.length < 3) {
+                // Lectura demasiado corta/corrupta — antes se descartaba sin
+                // dejar rastro; en Nueva Entrega se registra igual para que
+                // el escaneo perdido no desaparezca en silencio.
+                if (entregaVis && cod.length > 0 && typeof _registrarEscaneoFallido === "function") {
+                    _registrarEscaneoFallido((cod || "(vacío)") + " (lectura muy corta/corrupta)");
+                }
+                return;
+            }
 
             if (entregaVis) {
                 // Nueva Entrega: el lector físico agrega directo al carrito/borrador,
@@ -10084,7 +10095,13 @@ function toast(msg, bg) {
                 const busEntrega = document.getElementById("bus-entrega");
                 if (busEntrega) busEntrega.value = "";
                 _onScanQREntrega(cod);
-            } else if (stockVis) {
+                return;
+            }
+            const tabStock = document.getElementById("tab-content-stock");
+            const tabEtiq  = document.getElementById("tab-content-etiquetas");
+            const stockVis = tabStock && tabStock.style.display !== "none";
+            const etiqVis  = tabEtiq  && tabEtiq.style.display  !== "none";
+            if (stockVis) {
                 buscarStockPorScanner(cod);
             } else if (etiqVis) {
                 buscarEtiquetasPorScanner(cod);
