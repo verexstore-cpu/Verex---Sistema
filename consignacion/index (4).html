@@ -4067,14 +4067,27 @@ async function guardarBorrador() {
     const btn = document.getElementById("btn-guardar-borrador");
     if (btn) { btn.disabled = true; btn.textContent = "⏳ Guardando..."; }
     try {
-        await apiPost({ accion: "REGISTRAR_ENTREGA", vendedor: vendedorActual.codigo, items, borrador: true });
-        items.forEach(item => consignacion.push({ ...item, vendedor: vendedorActual.codigo, vendido: 0, estado: "borrador" }));
-        carritoEntrega = {};
-        toast("📝 Avance guardado — aún no entregado ni publicado");
-        volverPerfil();
+        const res = await apiPost({ accion: "REGISTRAR_ENTREGA", vendedor: vendedorActual.codigo, items, borrador: true });
+        const guardados = new Set(res.guardados || (res.ok ? items.map(i => i.codigo) : []));
+        const fallidos  = res.fallidos || [];
+
+        // Solo quitar del carrito lo que SÍ se guardó — lo fallido se queda
+        // para poder reintentarlo, en vez de perderse en silencio.
+        items.filter(item => guardados.has(item.codigo)).forEach(item => {
+            consignacion.push({ ...item, vendedor: vendedorActual.codigo, vendido: 0, estado: "borrador" });
+            delete carritoEntrega[item.codigo];
+        });
+
+        if (fallidos.length > 0) {
+            toast("⚠️ " + guardados.size + " guardados, " + fallidos.length + " FALLARON: " + fallidos.map(f => f.codigo).join(", "));
+            actualizarCarritoEntrega();
+        } else {
+            toast("📝 " + guardados.size + " producto(s) guardados en borrador — aún no entregados ni publicados");
+            volverPerfil();
+        }
         renderPerfilStats();
     } catch(e) {
-        toast("⚠️ Error al guardar: " + e.message);
+        toast("⚠️ Error al guardar — nada se perdió, sigue en el carrito: " + e.message);
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = "📝 Borrador (guardar, no publicar)"; }
     }
@@ -4376,9 +4389,12 @@ async function confirmarEntrega(firmaImg, codigoFirma) {
     if (!items.length) return;
 
     // Registrar en el backend — si falla, continuar de todas formas para generar el PDF
+    // (el vendedor ya firmó físicamente), pero avisar si algún item no se guardó.
+    let fallidosEntrega = [];
     try {
-        await apiPost({ accion: "REGISTRAR_ENTREGA", vendedor: vendedorActual.codigo, items });
-    } catch(e) { console.warn("REGISTRAR_ENTREGA error:", e); }
+        const resEnt = await apiPost({ accion: "REGISTRAR_ENTREGA", vendedor: vendedorActual.codigo, items });
+        fallidosEntrega = resEnt.fallidos || [];
+    } catch(e) { console.warn("REGISTRAR_ENTREGA error:", e); fallidosEntrega = items.map(i => ({codigo: i.codigo})); }
 
     items.forEach(item => consignacion.push({ ...item, vendedor: vendedorActual.codigo, vendido: 0, estado: "activo" }));
 
@@ -4396,7 +4412,11 @@ async function confirmarEntrega(firmaImg, codigoFirma) {
     // Guardar copia del vendedor actual antes de volver al perfil
     const vendedorParaPDF = { ...vendedorActual };
 
-    toast("✅ Entrega registrada — generando recibo...");
+    if (fallidosEntrega.length > 0) {
+        toast("⚠️ OJO: " + fallidosEntrega.length + " producto(s) NO se guardaron en el sistema: " + fallidosEntrega.map(f => f.codigo).join(", "));
+    } else {
+        toast("✅ Entrega registrada — generando recibo...");
+    }
     volverPerfil();
     renderPerfilStats();
     renderInventario();

@@ -693,25 +693,36 @@ async function enviar(){
           // Borrador: se descuenta stock y queda respaldado en BD, pero invisible
           // en el link del vendedor y demás vistas hasta FINALIZAR_ENTREGA_VENDEDOR.
           const estadoInicial = d.borrador ? "borrador" : "activo";
+          // A prueba de fallos: un item con datos raros NO debe abortar el lote
+          // entero silenciosamente (causaba items "escaneados" que nunca se
+          // guardaban sin ningún aviso). Se procesan todos y se reporta cuáles
+          // fallaron para que el frontend pueda avisar exactamente qué faltó.
+          const guardados = [];
+          const fallidos = [];
           for (const item of items) {
-            const id = item.id || `CONS_${Date.now()}_${item.codigo}`;
-            await sb.set("consignacion", id, {
-              id, vendedor: d.vendedor, codigo: item.codigo,
-              nombre: item.nombre, codigoBase: item.codigoBase || item.codigo,
-              talla: item.talla || "", nombre_base: item.nombre_base || item.nombre,
-              categoria: item.categoria || "", precio: item.precio || 0,
-              cantidad: item.cantidad || 1, vendido: 0,
-              foto: item.foto || "", fecha: new Date().toISOString(), estado: estadoInicial
-            });
-            const s = await sb.get("stock", item.codigo);
-            if (s) {
-              await sb.update("stock", item.codigo, {
-                stock_bodega:       Math.max(0, (parseInt(s.stock_bodega)||0) - (item.cantidad||1)),
-                stock_consignacion: (parseInt(s.stock_consignacion)||0) + (item.cantidad||1)
+            try {
+              const id = item.id || `CONS_${Date.now()}_${item.codigo}`;
+              await sb.set("consignacion", id, {
+                id, vendedor: d.vendedor, codigo: item.codigo,
+                nombre: item.nombre, codigoBase: item.codigoBase || item.codigo,
+                talla: item.talla || "", nombre_base: item.nombre_base || item.nombre,
+                categoria: item.categoria || "", precio: item.precio || 0,
+                cantidad: item.cantidad || 1, vendido: 0,
+                foto: item.foto || "", fecha: new Date().toISOString(), estado: estadoInicial
               });
+              const s = await sb.get("stock", item.codigo);
+              if (s) {
+                await sb.update("stock", item.codigo, {
+                  stock_bodega:       Math.max(0, (parseInt(s.stock_bodega)||0) - (item.cantidad||1)),
+                  stock_consignacion: (parseInt(s.stock_consignacion)||0) + (item.cantidad||1)
+                });
+              }
+              guardados.push(item.codigo);
+            } catch (errItem) {
+              fallidos.push({ codigo: item.codigo, error: errItem.message || String(errItem) });
             }
           }
-          result = { ok: true };
+          result = { ok: fallidos.length === 0, guardados, fallidos };
           break;
         }
 
