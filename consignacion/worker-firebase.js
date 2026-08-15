@@ -2197,6 +2197,12 @@ async function enviar(){
           if (String(vend.tokenInventario) !== String(d.token)) {
             result = { ok: false, razon: "token_invalido" }; break;
           }
+          // Segunda capa: si el vendedor tiene PIN configurado, también se
+          // exige — así, aunque el link (con token) se comparta por error,
+          // no basta para entrar a ver ventas ni tocar el inventario.
+          if (vend.pin && String(vend.pin) !== String(d.pin || "")) {
+            result = { ok: false, razon: "pin_requerido", tienePin: true }; break;
+          }
           // Validar 30 días desde último corte
           if (vend.fechaCorte) {
             const diasDesdeCorte = (Date.now() - new Date(vend.fechaCorte).getTime()) / (1000 * 60 * 60 * 24);

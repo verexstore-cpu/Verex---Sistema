@@ -109,6 +109,17 @@
     <p>Este inventario ha sido cerrado o el link no es válido.</p>
 </div>
 
+<div id="pantalla-pin" style="display:none;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;">
+    <div style="font-size:40px;margin-bottom:10px;">🔒</div>
+    <div class="logo" style="margin-bottom:6px;">VEREX</div>
+    <p style="color:var(--plateado);font-size:13px;margin-bottom:18px;">Ingresa tu PIN de 4 dígitos para entrar a tu inventario</p>
+    <input type="text" id="pin-input" inputmode="numeric" maxlength="4" placeholder="••••"
+        style="width:160px;text-align:center;font-size:26px;letter-spacing:10px;padding:14px;"
+        oninput="this.value=this.value.replace(/\D/g,'')" onkeydown="if(event.key==='Enter')verificarPinInventario()">
+    <button class="btn btn-dorado" style="width:160px;margin-top:14px;" onclick="verificarPinInventario()">Entrar</button>
+    <p id="pin-error" style="color:#e74c3c;font-size:12px;margin-top:10px;display:none;">PIN incorrecto, intenta de nuevo.</p>
+</div>
+
 <div id="pantalla-inventario" style="display:none;">
     <div class="header">
         <div class="logo">VEREX</div>
@@ -207,8 +218,7 @@
 </div>
 
 <script>
-const API_URL    = "https://script.google.com/macros/s/AKfycbwQpYsRuojSCD3icpgPl91I4601tpvXgwP5q4JciaVrAQuRxJcvxVoJLOGl4IpAUuvtow/exec";
-const SECRET_KEY = "VEREX_2026_PRO";
+const API_URL    = "https://verex-api.verexstore.workers.dev/";
 
 let vendedorData = null;
 let invActivo    = [];
@@ -218,21 +228,30 @@ let ventaEliminarId = null;
 let entregasPendientes = [];
 let entregaConfirmando = null;
 let _firmaVendedorActiva = false;
+let _pinIngresado = "";
 
 async function init() {
     const params     = new URLSearchParams(window.location.search);
     const vendedorId = params.get("inv");
     const token      = params.get("token");
     if (!vendedorId || !token) { mostrarCerrado(); return; }
+    await intentarEntrar(vendedorId, token);
+}
+
+async function intentarEntrar(vendedorId, token) {
     try {
-        const res  = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"VERIFICAR_TOKEN", key:SECRET_KEY, vendedor:vendedorId, token }) });
+        const res  = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"VERIFICAR_TOKEN", vendedor:vendedorId, token, pin:_pinIngresado }) });
         const data = await res.json();
-        if (!data.ok) { mostrarCerrado(); return; }
+        if (!data.ok) {
+            if (data.razon === "pin_requerido") { mostrarPantallaPin(vendedorId, token); return; }
+            mostrarCerrado();
+            return;
+        }
         vendedorData = data.vendedor;
 
         const [res2, res3] = await Promise.all([
-            fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_CONSIGNACION", key:SECRET_KEY }) }),
-            fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_ENTREGAS_PENDIENTES", key:SECRET_KEY, vendedor:vendedorId }) })
+            fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_CONSIGNACION" }) }),
+            fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_ENTREGAS_PENDIENTES", vendedor:vendedorId }) })
         ]);
         const data2 = await res2.json();
         const data3 = await res3.json();
@@ -251,9 +270,42 @@ async function init() {
     } catch(e) { mostrarCerrado(); }
 }
 
+function mostrarPantallaPin(vendedorId, token) {
+    document.getElementById("pantalla-cargando").style.display = "none";
+    document.getElementById("pantalla-pin").style.display = "flex";
+    window._pinVendedorId = vendedorId;
+    window._pinToken = token;
+    setTimeout(() => document.getElementById("pin-input")?.focus(), 200);
+}
+
+async function verificarPinInventario() {
+    const val = document.getElementById("pin-input").value.trim();
+    if (val.length !== 4) { toast("⚠️ El PIN debe tener 4 dígitos"); return; }
+    _pinIngresado = val;
+    document.getElementById("pin-error").style.display = "none";
+    document.getElementById("pantalla-pin").style.display = "none";
+    document.getElementById("pantalla-cargando").style.display = "flex";
+    try {
+        const res  = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"VERIFICAR_TOKEN", vendedor:window._pinVendedorId, token:window._pinToken, pin:_pinIngresado }) });
+        const data = await res.json();
+        if (!data.ok) {
+            document.getElementById("pantalla-cargando").style.display = "none";
+            document.getElementById("pantalla-pin").style.display = "flex";
+            document.getElementById("pin-error").style.display = "block";
+            document.getElementById("pin-input").value = "";
+            document.getElementById("pin-input").focus();
+            return;
+        }
+        await intentarEntrar(window._pinVendedorId, window._pinToken);
+    } catch(e) {
+        document.getElementById("pantalla-cargando").style.display = "none";
+        mostrarCerrado();
+    }
+}
+
 async function cargarVentas(vendedorId) {
     try {
-        const res = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_VENTAS_VENDEDOR", key:SECRET_KEY, vendedor:vendedorId }) });
+        const res = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_VENTAS_VENDEDOR", vendedor:vendedorId }) });
         const data = await res.json();
         ventasData = data.ventas || [];
     } catch(e) { ventasData = []; }
@@ -315,7 +367,7 @@ async function verificarEntregasPendientes() {
     const btn = document.querySelector("#btn-check-entrega-wrap button");
     if (btn) btn.textContent = "⏳ Verificando...";
     try {
-        const res  = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_ENTREGAS_PENDIENTES", key:SECRET_KEY, vendedor:vendedorId }) });
+        const res  = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_ENTREGAS_PENDIENTES", vendedor:vendedorId }) });
         const data = await res.json();
         entregasPendientes = data.entregas || [];
         renderNotifEntregas();
@@ -466,7 +518,6 @@ async function confirmarRecepcionEntrega() {
             method:'POST',
             body:JSON.stringify({
                 accion: "CONFIRMAR_ENTREGA_RECIBO",
-                key: SECRET_KEY,
                 id: entregaConfirmando.id,
                 codigoRecibo: codigo,
                 firmaImg
@@ -559,7 +610,7 @@ async function confirmarVenta() {
     const btn = document.querySelector("#reg-paso2 .btn-verde");
     btn.textContent="⏳ Registrando..."; btn.disabled=true;
     try {
-        const res = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"REGISTRAR_VENTA_VENDEDOR", key:SECRET_KEY, id:prodSeleccionado.id, vendedor:vendedorData.codigo, codigo:prodSeleccionado.codigo, nombre:prodSeleccionado.nombre, precio:prodSeleccionado.precio, foto:prodSeleccionado.foto||"", cantidad }) });
+        const res = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"REGISTRAR_VENTA_VENDEDOR", id:prodSeleccionado.id, vendedor:vendedorData.codigo, codigo:prodSeleccionado.codigo, nombre:prodSeleccionado.nombre, precio:prodSeleccionado.precio, foto:prodSeleccionado.foto||"", cantidad }) });
         const data = await res.json();
         if (data.ok) {
             const item = invActivo.find(c=>String(c.id)===String(prodSeleccionado.id));
@@ -582,7 +633,7 @@ async function enviarSolicitud() {
     const btn = document.querySelector("#modal-eliminar .btn-dorado");
     btn.textContent="⏳ Enviando..."; btn.disabled=true;
     try {
-        await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"SOLICITAR_CORRECCION_VENTA", key:SECRET_KEY, ventaId:ventaEliminarId, vendedor:vendedorData.codigo, vendedorNombre:vendedorData.nombre, motivo }) });
+        await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"SOLICITAR_CORRECCION_VENTA", ventaId:ventaEliminarId, vendedor:vendedorData.codigo, vendedorNombre:vendedorData.nombre, motivo }) });
         toast("✅ Solicitud enviada al administrador");
         cerrarModal("modal-eliminar");
     } catch(e) { toast("⚠️ Error al enviar"); }
