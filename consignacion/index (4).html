@@ -1027,6 +1027,13 @@
                 <button class="btn btn-gris" onclick="abrirQR()">📷 QR</button>
                 <button class="btn" style="background:#1a3a1a;color:#4ade80;border:1px solid #166534;" onclick="abrirModalFotosCelular()">📱 Fotos</button>
             </div>
+            <div id="escaneos-fallidos-wrap" style="display:none;background:rgba(231,76,60,0.1);border:1px solid rgba(231,76,60,0.4);border-radius:8px;padding:10px 12px;margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="font-size:12px;color:#e74c3c;font-weight:700;">⚠️ <span id="escaneos-fallidos-count">0</span> escaneo(s) NO reconocido(s) — revisa esta lista:</div>
+                    <button onclick="document.getElementById('escaneos-fallidos-wrap').style.display='none';_scansFallidosSesion=[];" style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:14px;">✕</button>
+                </div>
+                <div id="escaneos-fallidos-lista" style="font-size:12px;color:#f5a0a0;margin-top:4px;line-height:1.6;"></div>
+            </div>
             <div class="productos-entrega" id="grid-entrega"></div>
         </div>
         <div class="carrito-entrega" id="carrito-entrega">
@@ -3732,6 +3739,9 @@ function abrirVentaAfiliado() {
 
 async function abrirEntrega() {
     carritoEntrega = {};
+    _scansFallidosSesion = [];
+    const wrapFallidos = document.getElementById("escaneos-fallidos-wrap");
+    if (wrapFallidos) wrapFallidos.style.display = "none";
     document.getElementById("pantalla-perfil").style.display = "none";
     document.getElementById("pantalla-entrega").style.display = "block";
     document.getElementById("bus-entrega").value = "";
@@ -5499,6 +5509,21 @@ function _normalizarCodigoScanner(s) {
     return String(s || "").trim().toUpperCase().replace(/O/g, "0");
 }
 
+// Registro persistente de escaneos que no se pudieron agregar — el toast
+// desaparece en segundos y al escanear rápido y seguido es fácil no verlo,
+// causando pérdidas silenciosas de piezas que el vendedor sí debía recibir.
+let _scansFallidosSesion = [];
+function _registrarEscaneoFallido(codigo) {
+    _scansFallidosSesion.push({ codigo, hora: new Date().toLocaleTimeString("es-SV", {hour:"2-digit",minute:"2-digit",second:"2-digit"}) });
+    const wrap  = document.getElementById("escaneos-fallidos-wrap");
+    const lista = document.getElementById("escaneos-fallidos-lista");
+    const count = document.getElementById("escaneos-fallidos-count");
+    if (!wrap || !lista || !count) return;
+    wrap.style.display = "block";
+    count.textContent = _scansFallidosSesion.length;
+    lista.innerHTML = _scansFallidosSesion.map(s => `${sanitizar(s.hora)} — <strong>${sanitizar(s.codigo)}</strong>`).join("<br>");
+}
+
 function _onScanQREntrega(codRaw) {
     const codigo = String(codRaw || "").trim().toUpperCase();
     if (!codigo) return;
@@ -5522,6 +5547,9 @@ function _onScanQREntrega(codRaw) {
     if (!key) {
         // Nueva Entrega solo asigna stock EXISTENTE a un vendedor — nunca debe
         // abrir el modal de registrar producto nuevo (eso es otro flujo, en Stock).
+        // Se registra en una lista PERSISTENTE (no solo el toast, que desaparece
+        // en segundos) para que nada se pierda si se escanea rápido y seguido.
+        _registrarEscaneoFallido(codigo);
         toast("⚠️ \"" + codigo + "\" no existe o no tiene stock en bodega");
         return;
     }
