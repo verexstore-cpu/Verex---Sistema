@@ -740,6 +740,35 @@ async function enviar(){
           break;
         }
 
+        case "BORRAR_BORRADORES_VENDEDOR": {
+          // Borra TODOS los borradores pendientes (sin publicar) de un vendedor
+          // y restaura el stock de cada pieza a bodega — para empezar de cero
+          // sin dejar stock "atrapado" en registros a medio armar.
+          if (!esAdmin) return forbidden();
+          if (!d.vendedor) return json({ ok: false, error: "vendedor requerido" });
+          const todaCons = await sb.getAll("consignacion");
+          const borradores = todaCons.filter(c => c.vendedor === d.vendedor && c.estado === "borrador");
+          let restaurados = 0;
+          for (const item of borradores) {
+            try {
+              const cantRestaurar = Math.max(0, (parseInt(item.cantidad)||0) - (parseInt(item.vendido)||0));
+              if (cantRestaurar > 0) {
+                const prodStock = await sb.get("stock", item.codigo);
+                if (prodStock) {
+                  await sb.update("stock", item.codigo, {
+                    stock_consignacion: Math.max(0, (parseInt(prodStock.stock_consignacion)||0) - cantRestaurar),
+                    stock_bodega: (parseInt(prodStock.stock_bodega)||0) + cantRestaurar
+                  });
+                }
+              }
+              await sb.delete("consignacion", item.id);
+              restaurados++;
+            } catch (errItem) { /* seguir con los demás aunque uno falle */ }
+          }
+          result = { ok: true, eliminados: restaurados };
+          break;
+        }
+
         case "GET_BORRADORES_VENDEDOR": {
           if (!esAdmin) return forbidden();
           if (!d.vendedor) return json({ ok: false, error: "vendedor requerido" });

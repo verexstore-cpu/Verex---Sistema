@@ -942,6 +942,7 @@
                     📝 <span id="banner-borradores-txt"></span> en lista — aún no entregados ni visibles en su link
                 </div>
                 <button class="btn" style="background:#4a6fa5;color:#fff;width:100%;padding:9px;font-size:13px;" onclick="finalizarBorradoresVendedor()">✅ Entregar todo ahora — firmar recibo</button>
+                <button class="btn" style="background:none;border:1px solid #e74c3c;color:#e74c3c;width:100%;padding:7px;font-size:12px;margin-top:6px;" onclick="borrarBorradoresVendedor()">🗑️ Borrar todo el borrador y empezar de cero</button>
             </div>
             <div class="stats-grid">
                 <div class="stat-box"><div class="stat-num" id="stat-stock">0</div><div class="stat-label">En Stock</div></div>
@@ -3470,6 +3471,20 @@ function renderBannerBorradores() {
 // los borradores (pasan a "activo" y aparecen en su link) y se genera un
 // único recibo PDF con la lista completa.
 let _borradoresParaFinalizar = [];
+
+async function borrarBorradoresVendedor() {
+    if (!vendedorActual) return;
+    const borradores = consignacion.filter(c => c.vendedor === vendedorActual.codigo && c.estado === "borrador");
+    if (!borradores.length) return;
+    if (!confirm("¿Borrar los " + borradores.length + " producto(s) del borrador de " + vendedorActual.nombre + "? El stock vuelve a bodega y podrás volver a escanear desde cero.")) return;
+    try {
+        const res = await apiPost({ accion: "BORRAR_BORRADORES_VENDEDOR", vendedor: vendedorActual.codigo });
+        consignacion = consignacion.filter(c => !(c.vendedor === vendedorActual.codigo && c.estado === "borrador"));
+        toast("🗑️ " + (res.eliminados||0) + " producto(s) borrados — stock devuelto a bodega");
+        renderPerfilStats();
+        renderInventario();
+    } catch(e) { toast("⚠️ Error al borrar: " + e.message); }
+}
 
 function finalizarBorradoresVendedor() {
     if (!vendedorActual) return;
