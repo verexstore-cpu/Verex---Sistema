@@ -3526,6 +3526,11 @@ function toggleVerificacionFisica() {
         document.getElementById("btn-verificar-fisico-txt").textContent = "🟢 Modo activo — escanea cada pieza física";
         document.getElementById("banner-borradores-detalle").style.display = "block";
         document.getElementById("btn-detalle-borradores-txt").textContent = "Ocultar lista";
+        // Crítico: si el botón se queda con el foco, el "Enter" que manda el
+        // lector físico al terminar cada escaneo es interpretado por el
+        // navegador como "volver a tocar este botón" — reactivando el modo
+        // y borrando el conteo a mitad de la verificación.
+        document.activeElement?.blur();
     } else {
         document.getElementById("btn-verificar-fisico-txt").textContent = "Verificar conteo — escanea cada pieza";
     }
@@ -10199,6 +10204,11 @@ function toast(msg, bg) {
         _scanT = now;
 
         if (e.key === "Enter") {
+            // Si el "Enter" del lector cae mientras un botón tiene el foco
+            // (ej. justo después de tocar "Verificar conteo"), el navegador
+            // lo trata como un click en ese botón. Bloquearlo evita que se
+            // reactive/reinicie el modo de verificación a mitad de escaneo.
+            if (verificandoBorrador || entregaVis) e.preventDefault();
             const cod = _scanBuf.trim().toUpperCase();
             _scanBuf = "";
             if (cod.length < 3) {
