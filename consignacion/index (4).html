@@ -5539,10 +5539,13 @@ function _onScanQREntrega(codRaw) {
         const codigoNorm = _normalizarCodigoScanner(codigo);
         key = Object.keys(mapaProductosCompleto).find(k => _normalizarCodigoScanner(k) === codigoNorm);
     }
-    // Fallback 2: el lector se comió el primer carácter del código
+    // Fallback 2: el lector se comió los primeros 1, 2 o 3 caracteres del
+    // código (la cantidad perdida varía de un escaneo a otro con este lector).
     if (!key) {
         const codigoNorm = _normalizarCodigoScanner(codigo);
-        key = Object.keys(mapaProductosCompleto).find(k => _normalizarCodigoScanner(k).slice(1) === codigoNorm);
+        for (let recorte = 1; recorte <= 3 && !key; recorte++) {
+            key = Object.keys(mapaProductosCompleto).find(k => _normalizarCodigoScanner(k).slice(recorte) === codigoNorm);
+        }
     }
 
     if (!key) {
