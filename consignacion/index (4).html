@@ -3749,10 +3749,24 @@ async function abrirEntrega() {
         // Si aún no hay stockData, usar productosDisponibles
         prodsFiltrados = productosDisponibles;
     }
+
+    // Mapa COMPLETO e inmutable durante esta sesión de entrega — usado por el
+    // escaneo (físico o QR). A diferencia de mapaProductos (que renderGridEntrega
+    // reconstruye SOLO con lo visible tras cada filtro de búsqueda, letra por
+    // letra mientras el scanner "escribe"), este nunca se reduce, así el
+    // producto recién escaneado siempre se encuentra aunque el buscador esté
+    // mostrando otra cosa en ese instante.
+    mapaProductosCompleto = {};
+    const extras = safeParseJSON(localStorage.getItem("vx_prod_extras"), []);
+    [...prodsFiltrados, ...extras].forEach(p => {
+        if (!mapaProductosCompleto[p.codigo]) mapaProductosCompleto[p.codigo] = p;
+    });
+
     renderGridEntrega(prodsFiltrados);
 }
 
 let mapaProductos = {};
+let mapaProductosCompleto = {};
 
 // ── HELPERS DE CÓDIGO (SOLUCIÓN CORRECTA) ────────────────────────────
 // El código COMPLETO es único por variante: "AN-021-T10", "AN-021-T12"
@@ -3902,9 +3916,13 @@ function renderGridEntrega(prods) {
 }
 
 function cambiarQtyEntrega(codigo, delta) {
-    // Corrección: clave = código único (estable, no cambia al filtrar ni reordenar)
-    const prod = mapaProductos[codigo];
+    // Corrección: clave = código único (estable, no cambia al filtrar ni reordenar).
+    // Si el buscador está filtrado (p.ej. a media escritura de un scanner), el
+    // producto puede no estar en mapaProductos (vista actual) pero sí en
+    // mapaProductosCompleto (inventario completo de esta sesión de entrega).
+    const prod = mapaProductos[codigo] || mapaProductosCompleto[codigo];
     if (!prod) return;
+    if (!mapaProductos[codigo]) mapaProductos[codigo] = prod;
     if (!carritoEntrega[codigo]) carritoEntrega[codigo] = { item: prod, qty: 0 };
     const maxStock = !isNaN(parseInt(prod.stock_bodega)) ? parseInt(prod.stock_bodega) : 0;
     const newQty   = carritoEntrega[codigo].qty + delta;
@@ -5400,10 +5418,11 @@ function abrirQR() {
 function _onScanQREntrega(codRaw) {
     const codigo = String(codRaw || "").trim().toUpperCase();
     if (!codigo) return;
-    // Buscar directo en mapaProductos — es la fuente construida en vivo para
-    // ESTA pantalla (Nueva Entrega), a diferencia de productosDisponibles que
-    // otras pestañas (Etiquetas, Stock) pueden sobrescribir con datos viejos.
-    const key = Object.keys(mapaProductos).find(k => String(k).toUpperCase() === codigo);
+    // Buscar en mapaProductosCompleto — el inventario COMPLETO de esta sesión
+    // de entrega, que nunca se reduce por el filtro de búsqueda (a diferencia
+    // de mapaProductos, que renderGridEntrega achica letra por letra mientras
+    // el lector físico "escribe" el código en el buscador).
+    const key = Object.keys(mapaProductosCompleto).find(k => String(k).toUpperCase() === codigo);
     if (!key) {
         toast("⚠️ Producto no encontrado o sin stock en bodega — agrégalo manualmente");
         document.getElementById("np-codigo").value = codigo;
@@ -5411,8 +5430,13 @@ function _onScanQREntrega(codRaw) {
         onCodigoNPInput();
         return;
     }
-    const prod = mapaProductos[key];
+    const prod = mapaProductosCompleto[key];
     cambiarQtyEntrega(key, 1);
+    // Restaurar la vista completa del grid tras el escaneo, para que la
+    // tarjeta recién agregada sea visible y el buscador no quede "atascado"
+    // en un filtro parcial de la última letra escaneada.
+    const busEntrega = document.getElementById("bus-entrega");
+    if (busEntrega) { busEntrega.value = ""; filtrarProductosEntrega(); }
     const yaEnBorrador = vendedorActual && consignacion.some(c =>
         getCodigoBase(c.codigo) === getCodigoBase(prod.codigo) && c.estado === "borrador" && c.vendedor === vendedorActual.codigo
     );
