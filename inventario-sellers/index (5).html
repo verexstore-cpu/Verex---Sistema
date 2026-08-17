@@ -250,7 +250,7 @@ async function intentarEntrar(vendedorId, token) {
         vendedorData = data.vendedor;
 
         const [res2, res3] = await Promise.all([
-            fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_CONSIGNACION" }) }),
+            fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_INVENTARIO_VENDEDOR", vendedor:vendedorId, token, pin:_pinIngresado }) }),
             fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_ENTREGAS_PENDIENTES", vendedor:vendedorId }) })
         ]);
         const data2 = await res2.json();

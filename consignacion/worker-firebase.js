@@ -661,6 +661,24 @@ async function enviar(){
           break;
         }
 
+        // Público (validado por token+PIN, igual que VERIFICAR_TOKEN) — el
+        // inventario del vendedor necesita ver SU propio consignacion sin
+        // tener contraseña de admin. Solo devuelve lo de ese vendedor, nunca
+        // el dataset completo de todos los vendedores.
+        case "GET_INVENTARIO_VENDEDOR": {
+          if (!d.vendedor || !d.token) return json({ ok: false, error: "vendedor y token requeridos" });
+          const vendInv = await sb.get("vendedores", d.vendedor);
+          if (!vendInv || String(vendInv.tokenInventario) !== String(d.token)) {
+            return json({ ok: false, error: "Token inválido" });
+          }
+          if (vendInv.pin && String(vendInv.pin) !== String(d.pin || "")) {
+            return json({ ok: false, error: "PIN incorrecto" });
+          }
+          const consV2 = await sb.query("consignacion", "vendedor", "==", d.vendedor);
+          result = { ok: true, consignacion: consV2 };
+          break;
+        }
+
         case "GET_CODIGOS_FISICOS": {
           // Retorna los códigos de productos activos en consignación para un vendedor híbrido
           if (!esAdmin) return forbidden();
