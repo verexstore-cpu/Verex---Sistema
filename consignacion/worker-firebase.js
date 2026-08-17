@@ -2520,13 +2520,17 @@ async function enviar(){
         case "REGISTRAR_ENTREGA_PENDIENTE": {
           if (!esAdmin) return forbidden();
           const entId = d.id || `ENT_${Date.now()}`;
+          // firmaImg se guarda para poder regenerar el mismo PDF del recibo
+          // después, desde el Historial — antes no quedaba ningún rastro
+          // permanente de la firma ni de los items una vez cerrado el modal.
           await sb.set("entregas", entId, {
             id: entId, vendedor: d.vendedor || "",
             fecha: new Date().toISOString(),
             items: JSON.stringify(d.items || []),
-            estado: "pendiente",
+            estado: d.estado || "pendiente",
             codigoRecibo: d.codigoRecibo || "",
-            fechaConfirmacion: ""
+            fechaConfirmacion: d.estado === "confirmado" ? new Date().toISOString() : "",
+            firmaImg: d.firmaImg || ""
           });
           result = { ok: true };
           break;

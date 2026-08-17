@@ -3657,7 +3657,23 @@ async function confirmarFinalizacionBorradores() {
         const itemsPDF = _borradoresParaFinalizar.filter(c => idsPublicados.has(c.id));
         renderPerfilStats();
         renderInventario();
+
+        // Guardar un registro permanente del recibo (items + firma) para
+        // poder volver a descargarlo después desde el Historial — antes el
+        // PDF solo se descargaba una vez al momento y no quedaba ningún
+        // rastro si el admin lo perdía o cerraba el navegador sin guardarlo.
         if (itemsPDF.length) {
+            try {
+                await apiPost({
+                    accion: "REGISTRAR_ENTREGA_PENDIENTE",
+                    vendedor: vendedorActual.codigo,
+                    items: itemsPDF,
+                    codigoRecibo: _firmaCodigoActual,
+                    firmaImg,
+                    estado: "confirmado"
+                });
+            } catch(e) { console.warn("No se pudo guardar el recibo en el historial:", e); }
+
             setTimeout(() => {
                 try { generarReciboPDF(vendedorParaPDF, itemsPDF, firmaImg, _firmaCodigoActual); }
                 catch(e) { console.error("Error generando recibo PDF:", e); toast("⚠️ Error al generar PDF: " + e.message); }
@@ -10455,6 +10471,23 @@ function abrirSolicitudes() {
     cargarSolicitudes(true);
 }
 
+let _entregasConfirmadasMap = {};
+
+// Regenera el mismo PDF de recibo a partir de lo guardado permanentemente
+// en "entregas" (items + firma) — así no se pierde si el admin cerró el
+// navegador sin guardar el PDF la primera vez que se generó.
+function redescargarReciboEntrega(entId) {
+    const registro = _entregasConfirmadasMap[entId];
+    if (!registro) { toast("⚠️ No se encontró el registro del recibo"); return; }
+    const { e, items, vend } = registro;
+    const vendedorPDF = vend || { nombre: e.vendedor, codigo: e.vendedor, telefono: "" };
+    try {
+        generarReciboPDF(vendedorPDF, items, e.firmaImg, e.codigoRecibo);
+    } catch(err) {
+        toast("⚠️ Error al generar PDF: " + err.message);
+    }
+}
+
 async function cargarSolicitudes(mostrar) {
     try {
         const [resSol, resConf] = await Promise.all([
@@ -10475,12 +10508,14 @@ async function cargarSolicitudes(mostrar) {
         const lista = document.getElementById("lista-solicitudes");
         if (!lista) return;
         let html = "";
+        _entregasConfirmadasMap = {};
         if (confirmadas.length) {
             confirmadas.forEach(e => {
                 const fecha = e.fechaConfirmacion ? new Date(e.fechaConfirmacion).toLocaleDateString("es-SV") : "—";
                 const vend = vendedores.find(v => v.codigo === e.vendedor);
                 let items = [];
                 try { items = typeof e.items === "string" ? JSON.parse(e.items) : (e.items || []); } catch(_) {}
+                _entregasConfirmadasMap[e.id] = { e, items, vend };
                 html += `<div style="background:rgba(45,122,79,0.15);border:1px solid #2d7a4f;border-radius:10px;padding:14px;margin-bottom:10px;">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                         <span style="font-size:18px;">✅</span>
@@ -10489,7 +10524,8 @@ async function cargarSolicitudes(mostrar) {
                             <div style="font-size:11px;color:var(--plateado);">${sanitizar(fecha)} · Código: <strong style="color:var(--dorado);">${sanitizar(e.codigoRecibo)}</strong></div>
                         </div>
                     </div>
-                    <div style="font-size:12px;color:var(--plateado);">${items.length} producto(s): ${items.slice(0,3).map(i=>sanitizar(i.nombre)).join(", ")}</div>
+                    <div style="font-size:12px;color:var(--plateado);margin-bottom:8px;">${items.length} producto(s): ${items.slice(0,3).map(i=>sanitizar(i.nombre)).join(", ")}</div>
+                    ${e.firmaImg ? `<button onclick="redescargarReciboEntrega('${sanitizar(e.id)}')" style="padding:6px 12px;border:none;border-radius:6px;background:#2d7a4f;color:#fff;font-size:11px;font-weight:600;cursor:pointer;">📄 Descargar recibo PDF</button>` : ''}
                 </div>`;
             });
         }
