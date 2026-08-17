@@ -1131,6 +1131,26 @@
             const stock = data.stock || [];
             const mapa = new Map(stock.map(s => [s.codigo, s]));
 
+            // Catálogos auto-generados por un vendedor desde su inventario
+            // (ver inventario-sellers → compartirMiCatalogo): la tabla "stock"
+            // global no baja stock_consignacion cuando el vendedor registra
+            // una venta (solo sube stock_vendido), así que el chequeo genérico
+            // de abajo nunca los marcaría agotados. Se cruza en cambio contra
+            // SU consignación real — es la fuente exacta de qué le queda.
+            let codigosVivosVendedor = null;
+            if (_afiliadoCodigo) {
+                try {
+                    const resV = await fetch(API_URL, {
+                        method: "POST", headers: {"Content-Type":"application/json"},
+                        body: JSON.stringify({ accion: "GET_CODIGOS_VENDEDOR", vendedor: _afiliadoCodigo })
+                    });
+                    const dataV = await resV.json();
+                    if (dataV.ok && dataV.productos) {
+                        codigosVivosVendedor = new Set(dataV.productos.map(p => (p.codigo||"").toUpperCase()));
+                    }
+                } catch(_) {}
+            }
+
             _prods.forEach((p,i) => {
                 if(!p.c) return;
                 const s = mapa.get(p.c);
@@ -1194,9 +1214,11 @@
                 // es lo mismo que se usa arriba para recalcular el precio del set.
                 const piezas = (p.par ? [...(p.cD||[]), ...(p.cC||[])] : []).filter(Boolean);
 
-                const agotado = piezas.length
-                    ? piezas.some(cod => sinUnidades(mapa.get(cod)))
-                    : sinUnidades(s);
+                const agotado = codigosVivosVendedor
+                    ? !codigosVivosVendedor.has(String(p.c||"").toUpperCase())
+                    : (piezas.length
+                        ? piezas.some(cod => sinUnidades(mapa.get(cod)))
+                        : sinUnidades(s));
                 if(!agotado) return;
                 p._agotado = true;
                 // Ocultar en vez de tachar — más limpio para el cliente, y evita
