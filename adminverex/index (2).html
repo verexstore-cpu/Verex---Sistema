@@ -4305,6 +4305,7 @@ function renderPanelLinks() {
                 <button onclick="navigator.clipboard.writeText('${esc(c.url)}');toast('📋 Link copiado')" style="flex:1;padding:7px 0;background:#111827;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;">📋 Copiar</button>
                 <a href="${esc(c.url)}" target="_blank" style="flex:1;text-align:center;padding:7px 0;background:#f3f4f6;color:#111827;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">👁️ Ver</a>
                 ${c.wa ? `<a href="https://wa.me/${esc(String(c.wa).replace(/\D/g, ""))}?text=${encodeURIComponent(c.url)}" target="_blank" style="flex:1;text-align:center;padding:7px 0;background:#25D366;color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">💬 WhatsApp</a>` : ""}
+                <button onclick="desactivarLinkPanel('${esc(c.id)}','${esc(c.nombre || "").replace(/'/g,"\\'")}')" style="flex:0 0 auto;padding:7px 10px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;" title="Desactivar este link">🔒</button>
                 ` : `
                 <button onclick="reactivarLinkPanel('${esc(c.id)}')" style="flex:1;padding:7px 0;background:#C9A84C;color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">🔄 Reactivar (nuevo link)</button>
                 `}
@@ -4319,6 +4320,23 @@ function renderPanelLinks() {
 // sesión (abriendo el tab Catálogo), regenera con productos que SÍ tienen
 // stock hoy. Si no, cae al clon simple del snapshot guardado (comportamiento
 // anterior — mismos productos que tenía en ese momento, sin filtrar stock).
+async function desactivarLinkPanel(id, nombre) {
+    if (!confirm(`¿Desactivar "${nombre || "este link"}"? Dejará de funcionar de inmediato y aparecerá como VENCIDO.`)) return;
+    try {
+        const res = await fetch("/deactivate-catalog", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id })
+        });
+        const out = await res.json();
+        if (!res.ok) throw new Error(out.error || "Error del servidor");
+        toast("🔒 Link desactivado", "#22c55e");
+        cargarPanelLinks();
+    } catch (err) {
+        toast("❌ No se pudo desactivar: " + err.message, "#ef4444");
+    }
+}
+
 async function reactivarLinkPanel(id) {
     const item = _todosLosLinks.find(c => c.id === id);
     const nombre = item?.nombre || "este catálogo";
