@@ -692,16 +692,35 @@ async function enviar(){
         }
 
         case "GET_CODIGOS_VENDEDOR": {
-          // Endpoint público: devuelve códigos base disponibles de un vendedor para el catálogo
+          // Endpoint público: devuelve los productos que un vendedor tiene
+          // en consignación activa, con TODOS los datos que el catálogo
+          // necesita para mostrarlos (foto, precio, nombre, etc.) — el
+          // catálogo del vendedor NO depende de la curación "enCatalogo"
+          // de la tienda general (esas son cosas distintas: lo que él
+          // tiene físicamente vs. lo que se destaca en verexstore.com).
           if (!d.vendedor) return json({ ok: false, error: "vendedor requerido" });
-          const todaCons = await sb.getAll("consignacion");
-          const codigos = [...new Set(
-            todaCons
-              .filter(c => c.vendedor === d.vendedor && c.estado === "activo" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0)
-              .map(c => (c.codigo || "").replace(/-\d+$/, "").toUpperCase())
-              .filter(Boolean)
-          )];
-          result = { ok: true, codigos };
+          const [todaCons, todoStock] = await Promise.all([
+            sb.getAll("consignacion"),
+            sb.getAll("stock"),
+          ]);
+          const stockPorCodigo = new Map(todoStock.map(s => [String(s.codigo || "").toUpperCase(), s]));
+          const itemsVendedor = todaCons.filter(c =>
+            c.vendedor === d.vendedor && c.estado === "activo" &&
+            (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0
+          );
+          const productos = itemsVendedor.map(c => {
+            const s = stockPorCodigo.get(String(c.codigo || "").toUpperCase()) || {};
+            return {
+              codigo: c.codigo, codigoBase: c.codigoBase || (c.codigo||"").replace(/-\d+$/, ""),
+              nombre: c.nombre || s.nombre || "", nombre_base: c.nombre_base || s.nombre_base || c.nombre || "",
+              precio: c.precio || s.precio || 0, foto: c.foto || s.foto || "",
+              categoria: c.categoria || s.categoria || "", talla: c.talla || s.talla || "",
+              descripcion: s.descripcion || "", material: s.material || "",
+              stock_bodega: Math.max(0, (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0)),
+            };
+          });
+          const codigos = [...new Set(productos.map(p => p.codigoBase.toUpperCase()).filter(Boolean))];
+          result = { ok: true, codigos, productos };
           break;
         }
 
