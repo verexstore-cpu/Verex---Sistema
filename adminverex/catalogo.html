@@ -1146,7 +1146,14 @@
                     });
                     const dataV = await resV.json();
                     if (dataV.ok && dataV.productos) {
-                        codigosVivosVendedor = new Set(dataV.productos.map(p => (p.codigo||"").toUpperCase()));
+                        // El catálogo guarda cada producto con su código BASE
+                        // (sin sufijo de talla, ej. "ANP089"), igual que
+                        // compartirMiCatalogo() lo arma — hay que comparar
+                        // contra el mismo formato o todo con talla (anillos)
+                        // se marca agotado por error aunque siga disponible.
+                        codigosVivosVendedor = new Set(dataV.productos.map(p =>
+                            (p.codigoBase || p.codigo || "").replace(/-\d+$/, "").toUpperCase()
+                        ));
                     }
                 } catch(_) {}
             }
