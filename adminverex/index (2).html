@@ -4289,6 +4289,7 @@ function renderPanelLinks() {
                 <div style="min-width:0;">
                     <div style="font-weight:700;color:#111827;font-size:14px;">${esc(c.nombre || "(Sin nombre)")}</div>
                     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">${badgeTipo}${badgeEstado}</div>
+                    ${c.nota ? `<div style="font-size:11px;color:#6b7280;margin-top:5px;font-style:italic;">📝 ${esc(c.nota)}</div>` : ""}
                 </div>
                 <div style="text-align:right;font-size:11px;color:#6b7280;flex-shrink:0;">
                     Generado: ${fechaGen}<br>Vence: ${fechaVence}
@@ -4321,7 +4322,8 @@ function renderPanelLinks() {
 async function reactivarLinkPanel(id) {
     const item = _todosLosLinks.find(c => c.id === id);
     const nombre = item?.nombre || "este catálogo";
-    const diasStr = prompt(`Reactivar "${nombre}" — ¿cuántos días de vigencia?`, "7");
+    const notaTxt = item?.nota ? `\nNota: ${item.nota}` : "";
+    const diasStr = prompt(`Reactivar "${nombre}"${notaTxt}\n\n¿Cuántos días de vigencia?`, "7");
     if (!diasStr) return;
     const dias = Math.max(1, Math.min(30, parseInt(diasStr) || 7));
     const nuevaExpiry = Date.now() + dias * 864e5;
@@ -4370,7 +4372,7 @@ async function reactivarLinkPanel(id) {
         const res = await fetch("/clone-catalog", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, dias, stripDescuento: teniaDescuento && !mantenerDescuento, stripPromos: teniaOtrasPromos && !mantenerOtras })
+            body: JSON.stringify({ id, dias, expiresAt: nuevaExpiry, stripDescuento: teniaDescuento && !mantenerDescuento, stripPromos: teniaOtrasPromos && !mantenerOtras })
         });
         const out = await res.json();
         if (!res.ok) throw new Error(out.error || "Error del servidor");
@@ -4414,7 +4416,7 @@ async function clonarCatalogo(id, nombre) {
         const res = await fetch("/clone-catalog", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, dias })
+            body: JSON.stringify({ id, dias, expiresAt: nuevaExpiry })
         });
         const out = await res.json();
         if (!res.ok) throw new Error(out.error || "Error del servidor");
@@ -6076,13 +6078,19 @@ async function generarPDFCatalogo() {
       </div>
     </details>
 
-    <!-- ══ MIS CATÁLOGOS ════════════════════════════════════════════ -->
-    <div style="margin-top:20px;">
+    <!-- ══ MIS CATÁLOGOS (oculto — la gestión de links ahora vive en la
+         pestaña 🔗 Links, que ya cubre lo mismo con mejor UX). El botón de
+         "Reconstruir stats" es una utilidad puntual, se conserva accesible
+         pero sin la lista redundante. ════════════════════════════════ -->
+    <div style="margin-top:20px;display:none;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
         <span style="font-size:13px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.5px;">Mis catálogos</span>
         <button onclick="reconstruirIndiceAfiliados()" id="btn-backfill" style="font-size:10px;background:none;border:1px solid #333;color:#666;border-radius:6px;padding:3px 8px;cursor:pointer;" title="Reconstruir índice de catálogos por afiliado — ejecutar una vez para incluir catálogos anteriores en las estadísticas">🔄 Reconstruir stats</button>
       </div>
       <div id="cat-log-lista"></div>
+    </div>
+    <div style="margin-top:20px;font-size:12px;color:#9ca3af;text-align:center;padding:10px;">
+      Los links generados se gestionan ahora en la pestaña <strong>🔗 Links</strong>.
     </div>
 
   </div>
