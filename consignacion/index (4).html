@@ -3638,18 +3638,31 @@ async function confirmarFinalizacionBorradores() {
 
     try {
         const res = await apiPost({ accion: "FINALIZAR_ENTREGA_VENDEDOR", vendedor: vendedorActual.codigo });
+        // Solo marcar como activos localmente los que REALMENTE se publicaron
+        // en el servidor — si algo falló a mitad del lote, se queda en
+        // borrador (visible en el banner) para reintentarlo, en vez de
+        // asumir que todo salió bien.
+        const idsPublicados = new Set(res.publicadosIds || []);
         consignacion.forEach(c => {
-            if (c.vendedor === vendedorActual.codigo && c.estado === "borrador") c.estado = "activo";
+            if (c.vendedor === vendedorActual.codigo && c.estado === "borrador" && idsPublicados.has(c.id)) c.estado = "activo";
         });
-        toast("✅ " + (res.publicados||0) + " producto(s) entregados y publicados en el link del vendedor");
+
+        const fallidos = res.fallidos || [];
+        if (fallidos.length > 0) {
+            toast("⚠️ " + (res.publicados||0) + " publicados, " + fallidos.length + " FALLARON — quedan en el banner para reintentar");
+        } else {
+            toast("✅ " + (res.publicados||0) + " producto(s) entregados y publicados en el link del vendedor");
+        }
         const vendedorParaPDF = { ...vendedorActual };
-        const itemsPDF = _borradoresParaFinalizar;
+        const itemsPDF = _borradoresParaFinalizar.filter(c => idsPublicados.has(c.id));
         renderPerfilStats();
         renderInventario();
-        setTimeout(() => {
-            try { generarReciboPDF(vendedorParaPDF, itemsPDF, firmaImg, _firmaCodigoActual); }
-            catch(e) { console.error("Error generando recibo PDF:", e); toast("⚠️ Error al generar PDF: " + e.message); }
-        }, 400);
+        if (itemsPDF.length) {
+            setTimeout(() => {
+                try { generarReciboPDF(vendedorParaPDF, itemsPDF, firmaImg, _firmaCodigoActual); }
+                catch(e) { console.error("Error generando recibo PDF:", e); toast("⚠️ Error al generar PDF: " + e.message); }
+            }, 400);
+        }
     } catch(e) {
         toast("⚠️ Error al finalizar: " + e.message);
     } finally {

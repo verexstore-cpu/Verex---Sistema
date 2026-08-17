@@ -770,10 +770,20 @@ async function enviar(){
           if (!d.vendedor) return json({ ok: false, error: "vendedor requerido" });
           const todaCons = await sb.getAll("consignacion");
           const borradores = todaCons.filter(c => c.vendedor === d.vendedor && c.estado === "borrador");
+          // A prueba de fallos: si un item falla a mitad del lote, los demás
+          // se siguen publicando en vez de quedar todos atascados en borrador
+          // (eso obligaba a firmar dos veces — una por cada intento parcial).
+          const publicadosIds = [];
+          const fallidosPub = [];
           for (const c of borradores) {
-            await sb.update("consignacion", c.id, { estado: "activo" });
+            try {
+              await sb.update("consignacion", c.id, { estado: "activo" });
+              publicadosIds.push(c.id);
+            } catch (errPub) {
+              fallidosPub.push({ id: c.id, codigo: c.codigo, error: errPub.message || String(errPub) });
+            }
           }
-          result = { ok: true, publicados: borradores.length };
+          result = { ok: fallidosPub.length === 0, publicados: publicadosIds.length, publicadosIds, fallidos: fallidosPub };
           break;
         }
 
