@@ -1,5 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════
 //  VEREX API — Cloudflare Worker con Supabase — v2026.06
+//  (CF_API_TOKEN/CF_ACCOUNT_ID renovados en GitHub Actions - 2026-08-17)
 //
 //  SECRETS en Cloudflare (Settings → Variables → Secrets):
 //    SUPABASE_URL         → URL del proyecto (ej: https://xxx.supabase.co)
