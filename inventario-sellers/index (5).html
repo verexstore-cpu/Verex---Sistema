@@ -229,6 +229,8 @@ let entregasPendientes = [];
 let entregaConfirmando = null;
 let _firmaVendedorActiva = false;
 let _pinIngresado = "";
+let _miVendedorId = "";
+let _miToken = "";
 
 async function init() {
     const params     = new URLSearchParams(window.location.search);
@@ -248,6 +250,8 @@ async function intentarEntrar(vendedorId, token) {
             return;
         }
         vendedorData = data.vendedor;
+        _miVendedorId = vendedorId;
+        _miToken = token;
 
         const [res2, res3] = await Promise.all([
             fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_INVENTARIO_VENDEDOR", vendedor:vendedorId, token, pin:_pinIngresado }) }),
@@ -418,12 +422,36 @@ function renderVentas() {
 // vencimiento, conteo de vistas y aparece en el tab 🔗 Links del admin,
 // en vez de ser una consulta en vivo aparte sin ningún seguimiento.
 async function compartirMiCatalogo() {
-    const activos = invActivo.filter(c => parseInt(c.cantidad||0) - parseInt(c.vendido||0) > 0);
-    if (!activos.length) { alert("No tienes productos disponibles en este momento."); return; }
-
     const btn = document.querySelector('button[onclick="compartirMiCatalogo()"]');
     const btnTextoOriginal = btn ? btn.textContent : "";
-    if (btn) { btn.textContent = "⏳ Generando catálogo..."; btn.disabled = true; }
+    if (btn) { btn.textContent = "⏳ Actualizando inventario..."; btn.disabled = true; }
+
+    // Refrescar SIEMPRE contra el servidor antes de generar — si la página
+    // lleva rato abierta (Jaime la deja abierta en el celular), invActivo
+    // puede quedar desactualizado y el catálogo saldría con menos piezas
+    // de las que realmente tiene activas en ese momento.
+    try {
+        const resFresco = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_INVENTARIO_VENDEDOR", vendedor:_miVendedorId, token:_miToken, pin:_pinIngresado }) });
+        const dataFresco = await resFresco.json();
+        if (dataFresco.ok) {
+            const fechaCorte = vendedorData.fechaCorte ? new Date(vendedorData.fechaCorte) : null;
+            invActivo = (dataFresco.consignacion || []).filter(c => {
+                if (c.vendedor !== _miVendedorId) return false;
+                if (c.estado !== "activo") return false;
+                if (!fechaCorte) return true;
+                return new Date(c.fecha) >= fechaCorte;
+            });
+        }
+    } catch(e) { /* si falla el refresco, se sigue con lo que ya había en memoria */ }
+
+    const activos = invActivo.filter(c => parseInt(c.cantidad||0) - parseInt(c.vendido||0) > 0);
+    if (!activos.length) {
+        if (btn) { btn.textContent = btnTextoOriginal; btn.disabled = false; }
+        alert("No tienes productos disponibles en este momento.");
+        return;
+    }
+
+    if (btn) btn.textContent = "⏳ Generando catálogo...";
 
     try {
         const prods = activos.map(c => ({
