@@ -5682,16 +5682,24 @@ function _onScanQREntrega(codRaw) {
     }
     const prod = mapaProductosCompleto[key];
 
-    // BLOQUEO — no dejar re-escanear un producto que ya tiene unidades en un
-    // borrador pendiente de este vendedor. Esto fue justo lo que causó
-    // duplicados/stock descontado dos veces al re-escanear todo el lote sin
-    // darse cuenta de que una parte ya estaba guardada.
-    const yaEnBorrador = vendedorActual && consignacion.some(c =>
-        getCodigoBase(c.codigo) === getCodigoBase(prod.codigo) && c.estado === "borrador" && c.vendedor === vendedorActual.codigo
+    // BLOQUEO — no dejar re-escanear un producto que este vendedor YA tiene
+    // asignado, sea en borrador sin publicar O ya activo/publicado. Antes
+    // solo se revisaba "borrador", así que reescanear algo ya entregado y
+    // publicado en una sesión de entrega distinta creaba un segundo registro
+    // duplicado (mismo producto, dos veces con el mismo vendedor) sin ningún
+    // aviso — eso pasó con PUP035 de Jaime.
+    const yaAsignado = vendedorActual && consignacion.some(c =>
+        getCodigoBase(c.codigo) === getCodigoBase(prod.codigo) &&
+        (c.estado === "borrador" || c.estado === "activo") &&
+        c.vendedor === vendedorActual.codigo
     );
-    if (yaEnBorrador) {
-        _registrarEscaneoFallido(codigo + " (YA ESTÁ en un borrador sin publicar — no se agregó de nuevo)");
-        toast("🚫 " + prod.nombre + " YA está en un borrador pendiente — no se agregó otra vez");
+    if (yaAsignado) {
+        const yaEnBorrador = consignacion.some(c =>
+            getCodigoBase(c.codigo) === getCodigoBase(prod.codigo) && c.estado === "borrador" && c.vendedor === vendedorActual.codigo
+        );
+        const detalle = yaEnBorrador ? "en un borrador sin publicar" : "ya publicado en su inventario";
+        _registrarEscaneoFallido(codigo + " (YA ESTÁ " + detalle + " — no se agregó de nuevo)");
+        toast("🚫 " + prod.nombre + " YA está " + detalle + " — no se agregó otra vez");
         return;
     }
 
