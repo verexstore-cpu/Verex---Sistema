@@ -413,31 +413,70 @@ function renderVentas() {
     }).join('');
 }
 
-function compartirMiCatalogo() {
+// Genera el catálogo del vendedor usando el MISMO sistema que los catálogos
+// de clientes del admin (save-catalog.js → /c/:id) — así queda con nota,
+// vencimiento, conteo de vistas y aparece en el tab 🔗 Links del admin,
+// en vez de ser una consulta en vivo aparte sin ningún seguimiento.
+async function compartirMiCatalogo() {
     const activos = invActivo.filter(c => parseInt(c.cantidad||0) - parseInt(c.vendido||0) > 0);
     if (!activos.length) { alert("No tienes productos disponibles en este momento."); return; }
-    const vendedorId = vendedorData.codigo || new URLSearchParams(window.location.search).get("v") || "";
-    const nom = encodeURIComponent(vendedorData.nombre || "");
-    const url = "https://verex-catalogo.pages.dev?vendedor=" + encodeURIComponent(vendedorId) + (nom ? "&nom=" + nom : "");
-    const nombre = vendedorData.nombre || "tu vendedora VEREX";
-    const msg = "✨ Hola! Te comparto el catálogo de productos disponibles con " + nombre + ":\n\n" + url + "\n\nPuedes ver fotos, precios y hacer tu pedido directo 💍";
 
-    // Mostrar menú de compartir
-    const menu = document.getElementById("menu-compartir-cat");
-    if (menu) { menu.remove(); }
-    const div = document.createElement("div");
-    div.id = "menu-compartir-cat";
-    div.style.cssText = "position:fixed;inset:0;z-index:999;display:flex;align-items:flex-end;background:rgba(0,0,0,0.6);";
-    div.innerHTML = `
-        <div style="width:100%;background:#1e1e1e;border-radius:16px 16px 0 0;padding:20px;display:flex;flex-direction:column;gap:10px;">
-            <div style="font-size:13px;color:#888;margin-bottom:4px;word-break:break-all;">${url}</div>
-            <button onclick="navigator.clipboard.writeText('${url}').then(()=>{ document.getElementById('menu-compartir-cat').remove(); _toast('✅ Link copiado'); })" style="padding:14px;border:none;border-radius:10px;background:#2a2a2a;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">📋 Copiar link</button>
-            <button onclick="window.open('https://wa.me/?text='+encodeURIComponent('${msg.replace(/'/g,"\\'")}'),'_blank');document.getElementById('menu-compartir-cat').remove();" style="padding:14px;border:none;border-radius:10px;background:#25d366;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">💬 WhatsApp</button>
-            ${navigator.share ? `<button onclick="navigator.share({title:'Catálogo VEREX',text:'${nombre}',url:'${url}'}).catch(()=>{});document.getElementById('menu-compartir-cat').remove();" style="padding:14px;border:none;border-radius:10px;background:linear-gradient(135deg,#7a5500,#C9A84C);color:#fff8e1;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">📤 Compartir en...</button>` : ""}
-            <button onclick="document.getElementById('menu-compartir-cat').remove();" style="padding:12px;border:none;border-radius:10px;background:#111;color:#888;font-size:13px;cursor:pointer;font-family:inherit;">Cancelar</button>
-        </div>`;
-    div.addEventListener("click", e => { if (e.target === div) div.remove(); });
-    document.body.appendChild(div);
+    const btn = document.querySelector('button[onclick="compartirMiCatalogo()"]');
+    const btnTextoOriginal = btn ? btn.textContent : "";
+    if (btn) { btn.textContent = "⏳ Generando catálogo..."; btn.disabled = true; }
+
+    try {
+        const prods = activos.map(c => ({
+            n: c.nombre_base || c.nombre || "",
+            p: parseFloat(c.precio || 0).toFixed(2),
+            i: c.foto || "",
+            m: c.material || "",
+            cat: c.categoria || "",
+            c: (c.codigoBase || c.codigo || "").replace(/-\d+$/, ""),
+            sizes: c.talla ? [String(c.talla)] : [],
+            sizesD: [], sizesH: [],
+            par: false, piezas: null, pD: null, pH: null, cD: null, cC: null,
+            avisoPieza: false
+        }));
+
+        const res = await fetch("https://admin-tienda.pages.dev/save-catalog", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                nombre: "Catálogo de " + (vendedorData.nombre || "vendedor VEREX"),
+                nota_interna: "Auto-generado por el vendedor " + (vendedorData.codigo || ""),
+                afiliadoCodigo: vendedorData.codigo || "",
+                dias: 30,
+                prods
+            })
+        });
+        const out = await res.json();
+        if (!res.ok || !out.url) throw new Error(out.error || "No se pudo generar el catálogo");
+
+        const url = "https://admin-tienda.pages.dev" + out.url;
+        const nombre = vendedorData.nombre || "tu vendedora VEREX";
+        const msg = "✨ Hola! Te comparto el catálogo de productos disponibles con " + nombre + ":\n\n" + url + "\n\nPuedes ver fotos, precios y hacer tu pedido directo 💍";
+
+        const menu = document.getElementById("menu-compartir-cat");
+        if (menu) menu.remove();
+        const div = document.createElement("div");
+        div.id = "menu-compartir-cat";
+        div.style.cssText = "position:fixed;inset:0;z-index:999;display:flex;align-items:flex-end;background:rgba(0,0,0,0.6);";
+        div.innerHTML = `
+            <div style="width:100%;background:#1e1e1e;border-radius:16px 16px 0 0;padding:20px;display:flex;flex-direction:column;gap:10px;">
+                <div style="font-size:13px;color:#888;margin-bottom:4px;word-break:break-all;">${url}</div>
+                <button onclick="navigator.clipboard.writeText('${url}').then(()=>{ document.getElementById('menu-compartir-cat').remove(); _toast('✅ Link copiado'); })" style="padding:14px;border:none;border-radius:10px;background:#2a2a2a;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">📋 Copiar link</button>
+                <button onclick="window.open('https://wa.me/?text='+encodeURIComponent('${msg.replace(/'/g,"\\'")}'),'_blank');document.getElementById('menu-compartir-cat').remove();" style="padding:14px;border:none;border-radius:10px;background:#25d366;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">💬 WhatsApp</button>
+                ${navigator.share ? `<button onclick="navigator.share({title:'Catálogo VEREX',text:'${nombre}',url:'${url}'}).catch(()=>{});document.getElementById('menu-compartir-cat').remove();" style="padding:14px;border:none;border-radius:10px;background:linear-gradient(135deg,#7a5500,#C9A84C);color:#fff8e1;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">📤 Compartir en...</button>` : ""}
+                <button onclick="document.getElementById('menu-compartir-cat').remove();" style="padding:12px;border:none;border-radius:10px;background:#111;color:#888;font-size:13px;cursor:pointer;font-family:inherit;">Cancelar</button>
+            </div>`;
+        div.addEventListener("click", e => { if (e.target === div) div.remove(); });
+        document.body.appendChild(div);
+    } catch(e) {
+        _toast("⚠️ Error al generar catálogo: " + e.message);
+    } finally {
+        if (btn) { btn.textContent = btnTextoOriginal; btn.disabled = false; }
+    }
 }
 
 function _toast(msg) {
