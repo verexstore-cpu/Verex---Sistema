@@ -700,7 +700,16 @@ async function enviarSolicitud() {
     const btn = document.querySelector("#modal-eliminar .btn-dorado");
     btn.textContent="⏳ Enviando..."; btn.disabled=true;
     try {
-        await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"SOLICITAR_CORRECCION_VENTA", ventaId:ventaEliminarId, vendedor:vendedorData.codigo, vendedorNombre:vendedorData.nombre, motivo }) });
+        // La cantidad de ESA venta específica es necesaria para que el admin
+        // pueda aprobarla y el sistema sepa exactamente cuánto devolver al
+        // inventario — sin esto, "Aprobar" solo marcaba la solicitud como
+        // aprobada pero nunca regresaba la pieza al vendedor.
+        const venta = ventasData.find(v => String(v.id) === String(ventaEliminarId));
+        await fetch(API_URL, { method:'POST', body:JSON.stringify({
+            accion:"SOLICITAR_CORRECCION_VENTA", ventaId:ventaEliminarId,
+            vendedor:vendedorData.codigo, vendedorNombre:vendedorData.nombre, motivo,
+            codigo: venta?.codigo || "", cantidad: venta?.cantidad || 1, nombre: venta?.nombre || ""
+        }) });
         toast("✅ Solicitud enviada al administrador");
         cerrarModal("modal-eliminar");
     } catch(e) { toast("⚠️ Error al enviar"); }

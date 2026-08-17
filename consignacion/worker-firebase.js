@@ -1351,8 +1351,9 @@ async function enviar(){
           const solId = `SOL_${Date.now()}`;
           await sb.set("solicitudes_correccion", solId, {
             id: solId, ventaId: d.ventaId || "",
-            vendedor: d.vendedor || "", motivo: d.motivo || "",
-            codigo: d.codigo || "", estado: "pendiente",
+            vendedor: d.vendedor || "", vendedorNombre: d.vendedorNombre || "", motivo: d.motivo || "",
+            codigo: d.codigo || "", nombre: d.nombre || "", cantidad: parseInt(d.cantidad)||1,
+            estado: "pendiente",
             fecha: new Date().toISOString()
           });
           result = { ok: true };
@@ -2562,6 +2563,27 @@ async function enviar(){
 
         case "APROBAR_CORRECCION_VENTA": {
           if (!esAdmin) return forbidden();
+          const sol = await sb.get("solicitudes_correccion", String(d.id));
+          if (!sol) return json({ ok: false, error: "Solicitud no encontrada" });
+          // Revertir la venta de verdad — antes solo se marcaba "aprobado" en
+          // la solicitud sin tocar el registro de consignación, así que la
+          // pieza nunca volvía a aparecer disponible en el inventario del
+          // vendedor ni en su catálogo compartido.
+          const cantRevertir = parseInt(sol.cantidad) || 1;
+          if (sol.ventaId) {
+            const consSol = await sb.get("consignacion", sol.ventaId);
+            if (consSol) {
+              await sb.update("consignacion", sol.ventaId, {
+                vendido: Math.max(0, (parseInt(consSol.vendido)||0) - cantRevertir)
+              });
+              const sSol = await sb.get("stock", consSol.codigo);
+              if (sSol) {
+                await sb.update("stock", consSol.codigo, {
+                  stock_vendido: Math.max(0, (parseInt(sSol.stock_vendido)||0) - cantRevertir)
+                });
+              }
+            }
+          }
           await sb.update("solicitudes_correccion", String(d.id), { estado: "aprobado" });
           result = { ok: true };
           break;
