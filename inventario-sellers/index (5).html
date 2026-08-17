@@ -418,7 +418,7 @@ function compartirMiCatalogo() {
     if (!activos.length) { alert("No tienes productos disponibles en este momento."); return; }
     const vendedorId = vendedorData.codigo || new URLSearchParams(window.location.search).get("v") || "";
     const nom = encodeURIComponent(vendedorData.nombre || "");
-    const url = "https://verex-store.pages.dev?vendedor=" + encodeURIComponent(vendedorId) + (nom ? "&nom=" + nom : "");
+    const url = "https://verex-catalogo.pages.dev?vendedor=" + encodeURIComponent(vendedorId) + (nom ? "&nom=" + nom : "");
     const nombre = vendedorData.nombre || "tu vendedora VEREX";
     const msg = "✨ Hola! Te comparto el catálogo de productos disponibles con " + nombre + ":\n\n" + url + "\n\nPuedes ver fotos, precios y hacer tu pedido directo 💍";
 
