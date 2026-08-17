@@ -1208,6 +1208,13 @@ function esc(str) {
         .replace(/'/g,"&#39;");
 }
 
+// Mensaje estándar al compartir un link de catálogo — usado tanto por el
+// botón "Copiar" (copia mensaje + link, no solo la URL) como por WhatsApp,
+// así se ve igual sin importar dónde se pegue.
+function mensajeCompartirCatalogo(url) {
+    return "Hola!✨ Preparamos una selección especial de VEREX para ti.\nRevisa el catálogo aquí...\n" + url;
+}
+
 // ═════════════════════════════════════════════
 //  CONFIG
 // ═════════════════════════════════════════════
@@ -4302,9 +4309,9 @@ function renderPanelLinks() {
             </div>
             <div style="display:flex;gap:6px;margin-top:10px;">
                 ${c.activo ? `
-                <button onclick="navigator.clipboard.writeText('${esc(c.url)}');toast('📋 Link copiado')" style="flex:1;padding:7px 0;background:#111827;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;">📋 Copiar</button>
+                <button onclick="navigator.clipboard.writeText(mensajeCompartirCatalogo('${esc(c.url)}'));toast('📋 Mensaje y link copiados')" style="flex:1;padding:7px 0;background:#111827;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;">📋 Copiar</button>
                 <a href="${esc(c.url)}" target="_blank" style="flex:1;text-align:center;padding:7px 0;background:#f3f4f6;color:#111827;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">👁️ Ver</a>
-                ${c.wa ? `<a href="https://wa.me/${esc(String(c.wa).replace(/\D/g, ""))}?text=${encodeURIComponent(c.url)}" target="_blank" style="flex:1;text-align:center;padding:7px 0;background:#25D366;color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">💬 WhatsApp</a>` : ""}
+                ${c.wa ? `<a href="https://wa.me/${esc(String(c.wa).replace(/\D/g, ""))}?text=${encodeURIComponent(mensajeCompartirCatalogo(c.url))}" target="_blank" style="flex:1;text-align:center;padding:7px 0;background:#25D366;color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">💬 WhatsApp</a>` : ""}
                 <button onclick="desactivarLinkPanel('${esc(c.id)}','${esc(c.nombre || "").replace(/'/g,"\\'")}')" style="flex:0 0 auto;padding:7px 10px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;" title="Desactivar este link">🔒</button>
                 ` : `
                 <button onclick="reactivarLinkPanel('${esc(c.id)}')" style="flex:1;padding:7px 0;background:#C9A84C;color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">🔄 Reactivar (nuevo link)</button>
@@ -6054,9 +6061,9 @@ async function generarPDFCatalogo() {
       <div style="font-size:11px;font-weight:700;color:#86efac;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">✅ Link generado</div>
       <div id="cat-link-out" style="font-size:13px;color:#4ade80;word-break:break-all;margin-bottom:10px;font-weight:600;"></div>
       <div style="display:flex;gap:8px;">
-        <button onclick="navigator.clipboard.writeText(document.getElementById('cat-link-out').textContent);toast('✅ Copiado','#22c55e')"
+        <button onclick="navigator.clipboard.writeText(mensajeCompartirCatalogo(document.getElementById('cat-link-out').textContent));toast('✅ Mensaje y link copiados','#22c55e')"
           style="flex:1;background:#166534;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📋 Copiar</button>
-        <button onclick="window.open('https://wa.me/?text='+encodeURIComponent('Hola, aquí está tu catálogo VEREX: '+document.getElementById('cat-link-out').textContent))"
+        <button onclick="window.open('https://wa.me/?text='+encodeURIComponent(mensajeCompartirCatalogo(document.getElementById('cat-link-out').textContent)))"
           style="flex:1;background:#25D366;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📱 WhatsApp</button>
         <button onclick="desactivarLinkCatalogo(document.getElementById('cat-link-out').textContent)"
           style="background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.3);padding:9px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">🚫 Desactivar</button>
