@@ -5941,12 +5941,20 @@ async function confirmarCorte() {
 
 async function verLinkInventario() {
     const cacheKey = "vx_token_" + vendedorActual.codigo;
-    let linkId = sessionStorage.getItem(cacheKey);
+    // El token real es el que está guardado en el vendedor (server) — NO
+    // sessionStorage, que se pierde al cambiar de navegador/dispositivo o
+    // borrar caché. Antes, si sessionStorage no tenía el token cacheado, se
+    // generaba uno NUEVO y se sobreescribía el del servidor, invalidando en
+    // silencio el link que ya se le había compartido al vendedor (aunque
+    // siguiera siendo válido) — causaba que un link "de ayer" apareciera
+    // cerrado hoy solo por abrir este modal desde otra sesión.
+    let linkId = vendedorActual.tokenInventario || sessionStorage.getItem(cacheKey);
     if (!linkId) {
         linkId = generarLinkId();
         await apiPost({ accion: "GUARDAR_TOKEN", vendedor: vendedorActual.codigo, token: linkId });
-        sessionStorage.setItem(cacheKey, linkId);
+        vendedorActual.tokenInventario = linkId;
     }
+    sessionStorage.setItem(cacheKey, linkId);
     const link = "https://verex-invetario-consign.pages.dev?inv=" + vendedorActual.codigo + "&token=" + linkId;
     document.getElementById("inp-link").value = link;
     abrirModal("modal-link");
