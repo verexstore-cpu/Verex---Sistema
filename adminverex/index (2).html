@@ -368,9 +368,8 @@
         <div class="tab" onclick="tab(6);cargarConsignacion()">👤 Vendedores</div>
         <div class="tab" onclick="abrirModalCatalogo('cliente')">📋 Catálogo Cliente</div>
         <div class="tab" onclick="abrirModalCatalogo('afiliado')">🤝 Catálogo Afiliado</div>
-        <div class="tab" onclick="tab(7);cargarVentasAdmin()">💰 Ventas</div>
+        <div class="tab" onclick="tab(7);cargarVentasAdmin();cargarCierresMensuales()">💰 Ventas</div>
         <div class="tab" onclick="tab(8);cargarPanelLinks()">🔗 Links</div>
-        <div class="tab" onclick="tab(9);cargarCierresMensuales()">📅 Cierres</div>
     </div>
 
     <!-- TAB 0: DASHBOARD -->
@@ -957,6 +956,22 @@
 </div>
 
 <div class="tab-content" id="tab-7">
+    <details class="card" style="margin-bottom:18px;" open>
+        <summary style="cursor:pointer;font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:700;color:#111;">📅 Cierres Mensuales</summary>
+        <div style="display:flex;justify-content:flex-end;margin:10px 0;">
+            <button onclick="generarCierreManual()"
+                style="padding:9px 14px;background:#C9A84C;color:#111;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">
+                🔄 Generar cierre del mes anterior
+            </button>
+        </div>
+        <p style="font-size:12px;color:#6b7280;margin:0 0 12px;">
+            El día 1 de cada mes el sistema genera solo el cierre del mes que acaba de terminar — junta Ecommerce,
+            Venta Directa, Consignación y Afiliados en un solo resumen. Este botón lo fuerza manualmente si necesitas
+            verlo antes (es seguro usarlo varias veces, no duplica).
+        </p>
+        <div id="cierres-lista"></div>
+    </details>
+
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">
         <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #059669;border-radius:10px;padding:14px;text-align:center;">
             <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Total Ventas</div>
@@ -1040,25 +1055,6 @@
             style="padding:9px 14px;background:#059669;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">&#x21BA; Actualizar</button>
     </div>
     <div id="lk-lista"></div>
-</div>
-
-<!-- TAB 9: CIERRES MENSUALES -->
-<div class="tab-content" id="tab-9">
-    <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-            <h2 style="margin:0;">📅 Cierres Mensuales</h2>
-            <button onclick="generarCierreManual()"
-                style="padding:9px 14px;background:#C9A84C;color:#111;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">
-                🔄 Generar cierre del mes anterior
-            </button>
-        </div>
-        <p style="font-size:12px;color:#6b7280;margin-top:8px;">
-            El día 1 de cada mes el sistema genera solo el cierre del mes que acaba de terminar — junta Ecommerce,
-            Venta Directa, Consignación y Afiliados en un solo resumen. Este botón lo fuerza manualmente si necesitas
-            verlo antes (es seguro usarlo varias veces, no duplica).
-        </p>
-    </div>
-    <div id="cierres-lista"></div>
 </div>
 
 <!-- MODAL VENTAS VENDEDOR -->
