@@ -370,6 +370,7 @@
         <div class="tab" onclick="abrirModalCatalogo('afiliado')">🤝 Catálogo Afiliado</div>
         <div class="tab" onclick="tab(7);cargarVentasAdmin()">💰 Ventas</div>
         <div class="tab" onclick="tab(8);cargarPanelLinks()">🔗 Links</div>
+        <div class="tab" onclick="tab(9);cargarCierresMensuales()">📅 Cierres</div>
     </div>
 
     <!-- TAB 0: DASHBOARD -->
@@ -1039,6 +1040,25 @@
             style="padding:9px 14px;background:#059669;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">&#x21BA; Actualizar</button>
     </div>
     <div id="lk-lista"></div>
+</div>
+
+<!-- TAB 9: CIERRES MENSUALES -->
+<div class="tab-content" id="tab-9">
+    <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+            <h2 style="margin:0;">📅 Cierres Mensuales</h2>
+            <button onclick="generarCierreManual()"
+                style="padding:9px 14px;background:#C9A84C;color:#111;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">
+                🔄 Generar cierre del mes anterior
+            </button>
+        </div>
+        <p style="font-size:12px;color:#6b7280;margin-top:8px;">
+            El día 1 de cada mes el sistema genera solo el cierre del mes que acaba de terminar — junta Ecommerce,
+            Venta Directa, Consignación y Afiliados en un solo resumen. Este botón lo fuerza manualmente si necesitas
+            verlo antes (es seguro usarlo varias veces, no duplica).
+        </p>
+    </div>
+    <div id="cierres-lista"></div>
 </div>
 
 <!-- MODAL VENTAS VENDEDOR -->
@@ -4243,6 +4263,88 @@ function _tiempoRelativo(ts) {
 // ═════════════════════════════════════════════
 let _todosLosLinks = [];
 
+let _cierresMensuales = [];
+async function cargarCierresMensuales() {
+    const cont = document.getElementById("cierres-lista");
+    cont.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:20px;">Cargando...</p>';
+    try {
+        const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_CIERRES_MENSUALES", _pass: ADMIN_PASS }) });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "Error");
+        _cierresMensuales = data.cierres || [];
+        renderCierresMensuales();
+    } catch (e) {
+        cont.innerHTML = `<p style="color:#ef4444;text-align:center;padding:20px;">⚠️ Error cargando cierres: ${esc(e.message)}</p>`;
+    }
+}
+
+const MESES_CIERRE = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+function renderCierresMensuales() {
+    const cont = document.getElementById("cierres-lista");
+    if (!_cierresMensuales.length) {
+        cont.innerHTML = '<div class="card"><p style="color:#6b7280;text-align:center;padding:20px;">Todavía no hay cierres generados. El primero saldrá automáticamente el día 1 del próximo mes, o genera uno ahora con el botón de arriba.</p></div>';
+        return;
+    }
+    cont.innerHTML = _cierresMensuales.map(c => {
+        const nombreMes = `${MESES_CIERRE[c.mes-1] || c.mes} ${c.anio}`;
+        const topVendedores = (c.porVendedor||[]).slice(0,5).map(v =>
+            `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12.5px;">
+                <span>${esc(v.nombre||v.vendedor)} ${v.esAfiliadoSinStock?'<span style="color:#7c3aed;font-size:10px;">(afiliado)</span>':''}</span>
+                <strong>$${v.total.toFixed(2)}</strong>
+            </div>`).join('') || '<p style="color:#9ca3af;font-size:12px;">Sin ventas de vendedores este mes.</p>';
+        return `
+        <div class="card" style="margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;">
+                <h2 style="margin:0;">${nombreMes}</h2>
+                <span style="font-size:11px;color:#9ca3af;">Generado: ${new Date(c.generadoEn).toLocaleString('es-SV')}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:14px 0;">
+                <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #0369a1;border-radius:10px;padding:12px;text-align:center;">
+                    <div style="font-size:10.5px;color:#6b7280;text-transform:uppercase;">Ecommerce</div>
+                    <div style="font-size:19px;font-weight:800;">$${c.ecommerce.total.toFixed(2)}</div>
+                    <div style="font-size:11px;color:#9ca3af;">${c.ecommerce.cantidad} pedido(s)</div>
+                </div>
+                <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #059669;border-radius:10px;padding:12px;text-align:center;">
+                    <div style="font-size:10.5px;color:#6b7280;text-transform:uppercase;">Venta Directa</div>
+                    <div style="font-size:19px;font-weight:800;">$${c.ventaDirecta.total.toFixed(2)}</div>
+                    <div style="font-size:11px;color:#9ca3af;">${c.ventaDirecta.cantidad} venta(s)</div>
+                </div>
+                <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #7c3aed;border-radius:10px;padding:12px;text-align:center;">
+                    <div style="font-size:10.5px;color:#6b7280;text-transform:uppercase;">Afiliados sin stock</div>
+                    <div style="font-size:19px;font-weight:800;">$${c.afiliadosSinStock.total.toFixed(2)}</div>
+                    <div style="font-size:11px;color:#9ca3af;">${c.afiliadosSinStock.cantidad} unidad(es)</div>
+                </div>
+                <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #C9A84C;border-radius:10px;padding:12px;text-align:center;">
+                    <div style="font-size:10.5px;color:#6b7280;text-transform:uppercase;">Consignación</div>
+                    <div style="font-size:19px;font-weight:800;">$${c.consignacion.total.toFixed(2)}</div>
+                    <div style="font-size:11px;color:#9ca3af;">${c.consignacion.cantidad} unidad(es)</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;padding:12px;background:#f9fafb;border-radius:10px;margin-bottom:14px;">
+                <div><div style="font-size:11px;color:#6b7280;">Ingreso real de VEREX (caja)</div><div style="font-size:20px;font-weight:800;color:#059669;">$${c.ingresoRealVerex.toFixed(2)}</div></div>
+                <div><div style="font-size:11px;color:#6b7280;">Total general (incl. consignación por liquidar)</div><div style="font-size:20px;font-weight:800;color:#1a1a1a;">$${c.totalGeneral.toFixed(2)}</div></div>
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#6b7280;margin-bottom:4px;text-transform:uppercase;">Top vendedores/afiliados del mes</div>
+            ${topVendedores}
+        </div>`;
+    }).join('');
+}
+
+async function generarCierreManual() {
+    if (!confirm("¿Generar/actualizar el cierre del mes anterior con los datos actuales? Es seguro correrlo varias veces, siempre recalcula con la info más reciente.")) return;
+    const btn = event.target;
+    const txtOriginal = btn.textContent;
+    btn.textContent = "⏳ Generando..."; btn.disabled = true;
+    try {
+        const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"CERRAR_MES", _pass: ADMIN_PASS }) });
+        const data = await res.json();
+        if (data.ok) { toast("✅ Cierre generado"); await cargarCierresMensuales(); }
+        else alert("⚠️ " + (data.error||"No se pudo generar el cierre"));
+    } catch(e) { alert("⚠️ Error de conexión"); }
+    btn.textContent = txtOriginal; btn.disabled = false;
+}
+
 async function cargarPanelLinks() {
     const cont = document.getElementById("lk-lista");
     cont.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:20px;">Cargando...</p>';
@@ -5258,8 +5360,10 @@ function filtrarParaCatalogo() {
     // Excluir productos marcados como Reservados en Consignación — no deben ofrecerse en ningún catálogo
     lista = lista.filter(p => !p.reservado);
 
-    // Excluir productos agotados (sin stock disponible en ninguna talla/ubicación)
-    lista = lista.filter(p => _stockTotalProd(p) > 0);
+    // Excluir productos sin stock disponible en BODEGA — una pieza ya entregada
+    // a un vendedor en consignación (o puesta en tienda) no debe volver a
+    // ofrecerse para armar un catálogo nuevo, aunque globalmente no esté agotada
+    lista = lista.filter(p => _stockBodegaProd(p) > 0);
 
     // Filtro por prefijo (C, D, U...) — solo aplica a AN
     const pfxTxt = (document.getElementById("cat-prefijo-txt")?.value||"").toUpperCase();
@@ -5391,6 +5495,25 @@ function generarIdAfiliado(nombre) {
         .replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
     const el = document.getElementById('cat-afiliado-id');
     if (el) el.value = id;
+}
+
+// Solo lo que hay físicamente en BODEGA — a diferencia de _stockTotalProd
+// (que suma bodega+tienda+consignación, correcto para saber si algo está
+// "agotado" en general), esto es lo que importa al armar un catálogo NUEVO:
+// una pieza ya entregada a un vendedor en consignación no está disponible
+// para ofrecerla a otro cliente, aunque globalmente no esté "agotada".
+function _stockBodegaProd(p) {
+    if (Array.isArray(p._codigos) && p._codigos.length > 1) {
+        return p._codigos.reduce((acc, cod) => {
+            const row = productos.find(x => x.codigo === cod);
+            return acc + (row ? _stockBodegaProd(row) : 0);
+        }, 0);
+    }
+    let s = {};
+    try { s = JSON.parse(p.caracteristicas || "{}"); } catch(_) {}
+    const totalJSON = Object.values(s).reduce((a, b) => a + (parseInt(b) || 0), 0);
+    if (totalJSON > 0) return totalJSON; // producto "Nuevo Producto" del admin — no maneja bodega/consig por separado
+    return parseInt(p.stock_bodega) || 0;
 }
 
 function _stockTotalProd(p) {

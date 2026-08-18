@@ -45,6 +45,26 @@ export default {
       await fetch(`https://api.callmebot.com/whatsapp.php?phone=${ADMIN_WA}&text=${msg}&apikey=${apikey}`).catch(()=>{});
     }
 
+    // ── CIERRE MENSUAL AUTOMÁTICO: el día 1 de cada mes, genera el cierre
+    // del mes que acaba de terminar (si todavía no existe) — cero pasos
+    // manuales, el admin solo lo revisa en Admin VEREX → 📅 Cierres. ──
+    if (new Date().getUTCDate() === 1) {
+      try {
+        const ahoraCierre = new Date();
+        let mesAnt = ahoraCierre.getUTCMonth() - 1, anioAnt = ahoraCierre.getUTCFullYear();
+        if (mesAnt < 0) { mesAnt = 11; anioAnt -= 1; }
+        const idCierreAnt = `${anioAnt}-${String(mesAnt + 1).padStart(2, "0")}`;
+        const cfgCierreCron = await sb.get("config", "cierres_mensuales");
+        const listaCierreCron = (cfgCierreCron && Array.isArray(cfgCierreCron.lista)) ? cfgCierreCron.lista : [];
+        if (!listaCierreCron.some(c => c.id === idCierreAnt)) {
+          const nuevoCierreCron = await generarCierreMes(sb, anioAnt, mesAnt);
+          listaCierreCron.push(nuevoCierreCron);
+          listaCierreCron.sort((a, b) => b.id.localeCompare(a.id));
+          await sb.set("config", "cierres_mensuales", { lista: listaCierreCron });
+        }
+      } catch (cierreErr) { console.error("Cierre mensual automático error:", cierreErr); }
+    }
+
     // ── RESPALDO SEMANAL: solo los lunes, adjunta un JSON con todas las
     // tablas al correo de VEREX — la única forma de recuperar algo si se
     // borra por error, ya que hoy no hay ningún respaldo automático. ──
@@ -1476,6 +1496,35 @@ async function enviar(){
         case "GET_VENTAS_VENDEDOR": {
           const vendGV = await sb.get("vendedores", d.vendedor);
           result = { ok: true, ventas: (vendGV && Array.isArray(vendGV.historialVentas)) ? vendGV.historialVentas : [] };
+          break;
+        }
+
+        case "CERRAR_MES": {
+          if (!esAdmin) return forbidden();
+          const ahoraCM = new Date();
+          // Por defecto cierra el MES ANTERIOR (el actual sigue corriendo) —
+          // d.anio/d.mes (mes 1-indexado) permiten forzar un mes específico.
+          let anioCM, mesCM0;
+          if (d.anio != null && d.mes != null) {
+            anioCM = parseInt(d.anio); mesCM0 = parseInt(d.mes) - 1;
+          } else {
+            mesCM0 = ahoraCM.getUTCMonth() - 1; anioCM = ahoraCM.getUTCFullYear();
+            if (mesCM0 < 0) { mesCM0 = 11; anioCM -= 1; }
+          }
+          const cierreCM = await generarCierreMes(sb, anioCM, mesCM0);
+          const cfgCM = await sb.get("config", "cierres_mensuales");
+          const listaCM = (cfgCM && Array.isArray(cfgCM.lista)) ? cfgCM.lista.filter(c => c.id !== cierreCM.id) : [];
+          listaCM.push(cierreCM);
+          listaCM.sort((a, b) => b.id.localeCompare(a.id));
+          await sb.set("config", "cierres_mensuales", { lista: listaCM });
+          result = { ok: true, cierre: cierreCM };
+          break;
+        }
+
+        case "GET_CIERRES_MENSUALES": {
+          if (!esAdmin) return forbidden();
+          const cfgGCM = await sb.get("config", "cierres_mensuales");
+          result = { ok: true, cierres: (cfgGCM && Array.isArray(cfgGCM.lista)) ? cfgGCM.lista : [] };
           break;
         }
 
@@ -3358,6 +3407,63 @@ class Supabase {
     if (!Array.isArray(rows)) return [];
     return rows.map(r => ({ id: r.id, ...r.data }));
   }
+}
+
+// ── CIERRE MENSUAL ────────────────────────────────────────────────
+// Junta los 4 canales de venta (ecommerce, venta directa, consignación,
+// afiliados sin stock) en un solo resumen del mes. Consignación y afiliados
+// se sacan de historialVentas de cada vendedor (fecha real de cada venta,
+// no la de entrega) — antes de la migración de historial, meses viejos
+// pueden salir en 0 en esos dos canales porque ese detalle no existía.
+async function generarCierreMes(sb, anio, mesIndex0) {
+  const inicio = Date.UTC(anio, mesIndex0, 1);
+  const fin    = Date.UTC(anio, mesIndex0 + 1, 1);
+  const enRango = f => { const t = new Date(f || 0).getTime(); return t >= inicio && t < fin; };
+
+  const [peds, vd, todosVendCierre] = await Promise.all([
+    sb.getAll("pedidos"), sb.getAll("ventas_directas"), sb.getAll("vendedores")
+  ]);
+
+  const ecommerceVentas = peds.filter(p => enRango(p.fecha));
+  const ecommerceTotal  = ecommerceVentas.reduce((s, p) => s + (parseFloat(p.total) || 0), 0);
+
+  const directaVentas = vd.filter(v => enRango(v.fecha));
+  const directaTotal  = directaVentas.reduce((s, v) => s + (parseFloat(v.total) || 0), 0);
+
+  let consignacionTotal = 0, consignacionCant = 0;
+  let afiliadoSinStockTotal = 0, afiliadoSinStockCant = 0;
+  const porVendedor = [];
+  for (const v of todosVendCierre) {
+    const hist = Array.isArray(v.historialVentas) ? v.historialVentas : [];
+    const delMes = hist.filter(h => enRango(h.fecha));
+    if (!delMes.length) continue;
+    const totalV = delMes.reduce((s, h) => s + (parseFloat(h.precio) || 0) * (parseInt(h.cantidad) || 1), 0);
+    const unidadesV = delMes.reduce((s, h) => s + (parseInt(h.cantidad) || 1), 0);
+    const esAfiliadoSinStock = v.tipo === "afiliado" && !v.recibeFisico;
+    if (esAfiliadoSinStock) { afiliadoSinStockTotal += totalV; afiliadoSinStockCant += unidadesV; }
+    else { consignacionTotal += totalV; consignacionCant += unidadesV; }
+    porVendedor.push({ vendedor: v.codigo, nombre: v.nombre, total: totalV, unidades: unidadesV, esAfiliadoSinStock });
+  }
+  porVendedor.sort((a, b) => b.total - a.total);
+
+  // Ingreso REAL de VEREX este mes: ecommerce + venta directa + comisión que
+  // cobra por afiliados sin stock (ese dinero ya entró a caja). Consignación
+  // tradicional NO cuenta aquí — el vendedor cobró él primero y liquida
+  // después, ese dinero no ha entrado a VEREX todavía.
+  const ingresoRealVerex = ecommerceTotal + directaTotal + afiliadoSinStockTotal;
+  const totalGeneral = ingresoRealVerex + consignacionTotal;
+
+  return {
+    id: `${anio}-${String(mesIndex0 + 1).padStart(2, "0")}`,
+    anio, mes: mesIndex0 + 1,
+    generadoEn: new Date().toISOString(),
+    ecommerce:        { total: ecommerceTotal,      cantidad: ecommerceVentas.length },
+    ventaDirecta:      { total: directaTotal,         cantidad: directaVentas.length },
+    afiliadosSinStock:{ total: afiliadoSinStockTotal, cantidad: afiliadoSinStockCant },
+    consignacion:      { total: consignacionTotal,    cantidad: consignacionCant },
+    ingresoRealVerex, totalGeneral,
+    porVendedor
+  };
 }
 
 // ── AUTENTICACIÓN ────────────────────────────────────────────────
