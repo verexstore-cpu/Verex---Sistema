@@ -676,7 +676,18 @@ async function enviar(){
             return json({ ok: false, error: "PIN incorrecto" });
           }
           const consV2 = await sb.query("consignacion", "vendedor", "==", d.vendedor);
-          result = { ok: true, consignacion: consV2 };
+          // Se enriquece cada item con si VEREX todavía tiene piezas en
+          // bodega — así el inventario del vendedor puede seguir ofreciendo
+          // (y vendiendo "bajo pedido") una pieza aunque él ya no tenga
+          // ninguna físicamente, en vez de perder la venta.
+          const todoStockInv = await sb.getAll("stock");
+          const stockMapInv = new Map(todoStockInv.map(s => [String(s.codigo||"").toUpperCase(), s]));
+          const consV2Enriquecido = consV2.map(c => {
+            const sInv = stockMapInv.get(String(c.codigo||"").toUpperCase()) || {};
+            const restanteInv = Math.max(0, (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0));
+            return { ...c, bajoPedido: restanteInv <= 0 && (parseInt(sInv.stock_bodega)||0) > 0 };
+          });
+          result = { ok: true, consignacion: consV2Enriquecido };
           break;
         }
 
@@ -705,19 +716,28 @@ async function enviar(){
             sb.getAll("stock"),
           ]);
           const stockPorCodigo = new Map(todoStock.map(s => [String(s.codigo || "").toUpperCase(), s]));
-          const itemsVendedor = todaCons.filter(c =>
-            c.vendedor === d.vendedor && c.estado === "activo" &&
-            (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0
-          );
+          // Se incluyen también los items en 0 con el vendedor SIEMPRE que
+          // VEREX todavía tenga piezas en bodega para reponerle — así el
+          // catálogo no oculta la pieza ni el vendedor pierde la venta, solo
+          // se marca "bajoPedido" para que el catálogo lo avise al cliente.
+          const itemsVendedor = todaCons.filter(c => {
+            if (c.vendedor !== d.vendedor || c.estado !== "activo") return false;
+            const restante = (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0);
+            if (restante > 0) return true;
+            const sBod = stockPorCodigo.get(String(c.codigo || "").toUpperCase());
+            return (parseInt(sBod?.stock_bodega)||0) > 0;
+          });
           const productos = itemsVendedor.map(c => {
             const s = stockPorCodigo.get(String(c.codigo || "").toUpperCase()) || {};
+            const restante = Math.max(0, (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0));
             return {
               codigo: c.codigo, codigoBase: c.codigoBase || (c.codigo||"").replace(/-\d+$/, ""),
               nombre: c.nombre || s.nombre || "", nombre_base: c.nombre_base || s.nombre_base || c.nombre || "",
               precio: c.precio || s.precio || 0, foto: c.foto || s.foto || "",
               categoria: c.categoria || s.categoria || "", talla: c.talla || s.talla || "",
               descripcion: s.descripcion || "", material: s.material || "",
-              stock_bodega: Math.max(0, (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0)),
+              stock_bodega: restante,
+              bajoPedido: restante <= 0,
             };
           });
           const codigos = [...new Set(productos.map(p => p.codigoBase.toUpperCase()).filter(Boolean))];
@@ -1281,7 +1301,48 @@ async function enviar(){
               stock_vendido: (parseInt(sV.stock_vendido)||0) + (parseInt(d.cantidad)||1)
             });
           }
+          // Si esa era la última pieza física que tenía el vendedor pero
+          // VEREX todavía tiene stock en bodega, se avisa al admin para que
+          // le reponga — el vendedor pudo vender "bajo pedido" sin perder
+          // el negocio, pero alguien tiene que acordarse de surtirlo.
+          const restanteV = (parseInt(consV.cantidad)||0) - nuevoVendidoV;
+          if (restanteV <= 0 && (parseInt(sV?.stock_bodega)||0) > 0 && d.vendedor) {
+            try {
+              const vendRep = await sb.get("vendedores", d.vendedor);
+              if (vendRep) {
+                const pendientesV = Array.isArray(vendRep.reposicionesPendientes) ? vendRep.reposicionesPendientes : [];
+                if (!pendientesV.some(r => r.codigo === consV.codigo)) {
+                  pendientesV.push({ codigo: consV.codigo, nombre: consV.nombre || "", fecha: new Date().toISOString() });
+                  await sb.update("vendedores", d.vendedor, { reposicionesPendientes: pendientesV });
+                }
+              }
+            } catch(_) {}
+          }
           result = { ok: true, ventaId: d.id };
+          break;
+        }
+
+        case "GET_REPOSICIONES_PENDIENTES": {
+          if (!esAdmin) return forbidden();
+          const todosVendRep = await sb.getAll("vendedores");
+          const reposiciones = [];
+          for (const v of todosVendRep) {
+            for (const r of (v.reposicionesPendientes || [])) {
+              reposiciones.push({ vendedor: v.codigo, vendedorNombre: v.nombre, codigo: r.codigo, nombre: r.nombre, fecha: r.fecha });
+            }
+          }
+          result = { ok: true, reposiciones };
+          break;
+        }
+
+        case "RESOLVER_REPOSICION": {
+          if (!esAdmin) return forbidden();
+          if (!d.vendedor || !d.codigo) { result = { ok: false, error: "vendedor y codigo requeridos" }; break; }
+          const vendRes = await sb.get("vendedores", d.vendedor);
+          if (!vendRes) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
+          const restantesRes = (vendRes.reposicionesPendientes || []).filter(r => r.codigo !== d.codigo);
+          await sb.update("vendedores", d.vendedor, { reposicionesPendientes: restantesRes });
+          result = { ok: true };
           break;
         }
 
