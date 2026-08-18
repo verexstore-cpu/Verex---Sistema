@@ -682,10 +682,31 @@ async function enviar(){
           // ninguna físicamente, en vez de perder la venta.
           const todoStockInv = await sb.getAll("stock");
           const stockMapInv = new Map(todoStockInv.map(s => [String(s.codigo||"").toUpperCase(), s]));
+          // Mismo agrupado por codigoBase que GET_CODIGOS_VENDEDOR — si la
+          // talla exacta se agotó pero hay otra talla del mismo modelo en
+          // bodega, se avisa cuál en vez de solo ocultar la pieza.
+          const stockPorBaseInv = new Map();
+          for (const s of todoStockInv) {
+            const base = String(s.codigoBase || s.codigo || "").toUpperCase();
+            if (!base) continue;
+            if (!stockPorBaseInv.has(base)) stockPorBaseInv.set(base, []);
+            stockPorBaseInv.get(base).push(s);
+          }
           const consV2Enriquecido = consV2.map(c => {
             const sInv = stockMapInv.get(String(c.codigo||"").toUpperCase()) || {};
             const restanteInv = Math.max(0, (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0));
-            return { ...c, bajoPedido: restanteInv <= 0 && (parseInt(sInv.stock_bodega)||0) > 0 };
+            const bajoPedidoInv = restanteInv <= 0 && (parseInt(sInv.stock_bodega)||0) > 0;
+            let tallasDisponiblesInv = [];
+            if (restanteInv <= 0 && !bajoPedidoInv) {
+              const baseC = String(c.codigoBase || (c.codigo||"").replace(/-\d+$/, "") || "").toUpperCase();
+              const codC = String(c.codigo||"").toUpperCase();
+              tallasDisponiblesInv = [...new Set(
+                (stockPorBaseInv.get(baseC) || [])
+                  .filter(sib => String(sib.codigo||"").toUpperCase() !== codC && (parseInt(sib.stock_bodega)||0) > 0)
+                  .map(sib => sib.talla).filter(Boolean)
+              )];
+            }
+            return { ...c, bajoPedido: bajoPedidoInv, tallasDisponibles: tallasDisponiblesInv };
           });
           result = { ok: true, consignacion: consV2Enriquecido };
           break;
@@ -716,20 +737,45 @@ async function enviar(){
             sb.getAll("stock"),
           ]);
           const stockPorCodigo = new Map(todoStock.map(s => [String(s.codigo || "").toUpperCase(), s]));
+          // Para avisar "disponible en otras tallas": agrupar TODO el stock
+          // por codigoBase (el mismo modelo, sin importar la talla) — así
+          // cuando la talla exacta que tenía el vendedor se agota, se puede
+          // saber qué otras tallas de ESE modelo sí hay en bodega, en vez de
+          // solo decir "bajo pedido" (que implica que llega la MISMA talla).
+          const stockPorBase = new Map();
+          for (const s of todoStock) {
+            const base = String(s.codigoBase || s.codigo || "").toUpperCase();
+            if (!base) continue;
+            if (!stockPorBase.has(base)) stockPorBase.set(base, []);
+            stockPorBase.get(base).push(s);
+          }
+          const tallasHermanasDisponibles = c => {
+            const baseC = String(c.codigoBase || (c.codigo||"").replace(/-\d+$/, "") || "").toUpperCase();
+            const codC = String(c.codigo||"").toUpperCase();
+            return [...new Set(
+              (stockPorBase.get(baseC) || [])
+                .filter(sib => String(sib.codigo||"").toUpperCase() !== codC && (parseInt(sib.stock_bodega)||0) > 0)
+                .map(sib => sib.talla).filter(Boolean)
+            )];
+          };
           // Se incluyen también los items en 0 con el vendedor SIEMPRE que
-          // VEREX todavía tenga piezas en bodega para reponerle — así el
-          // catálogo no oculta la pieza ni el vendedor pierde la venta, solo
-          // se marca "bajoPedido" para que el catálogo lo avise al cliente.
+          // VEREX todavía tenga piezas en bodega para reponerle (misma talla)
+          // o en otra talla del mismo modelo — así el catálogo no oculta la
+          // pieza ni el vendedor pierde la venta, solo se marca "bajoPedido"
+          // o "tallasDisponibles" para que el catálogo lo avise al cliente.
           const itemsVendedor = todaCons.filter(c => {
             if (c.vendedor !== d.vendedor || c.estado !== "activo") return false;
             const restante = (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0);
             if (restante > 0) return true;
             const sBod = stockPorCodigo.get(String(c.codigo || "").toUpperCase());
-            return (parseInt(sBod?.stock_bodega)||0) > 0;
+            if ((parseInt(sBod?.stock_bodega)||0) > 0) return true;
+            return tallasHermanasDisponibles(c).length > 0;
           });
           const productos = itemsVendedor.map(c => {
             const s = stockPorCodigo.get(String(c.codigo || "").toUpperCase()) || {};
             const restante = Math.max(0, (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0));
+            const bajoPedido = restante <= 0 && (parseInt(s.stock_bodega)||0) > 0;
+            const tallasDisponibles = (restante <= 0 && !bajoPedido) ? tallasHermanasDisponibles(c) : [];
             return {
               codigo: c.codigo, codigoBase: c.codigoBase || (c.codigo||"").replace(/-\d+$/, ""),
               nombre: c.nombre || s.nombre || "", nombre_base: c.nombre_base || s.nombre_base || c.nombre || "",
@@ -737,7 +783,8 @@ async function enviar(){
               categoria: c.categoria || s.categoria || "", talla: c.talla || s.talla || "",
               descripcion: s.descripcion || "", material: s.material || "",
               stock_bodega: restante,
-              bajoPedido: restante <= 0,
+              bajoPedido,
+              tallasDisponibles,
             };
           });
           const codigos = [...new Set(productos.map(p => p.codigoBase.toUpperCase()).filter(Boolean))];
