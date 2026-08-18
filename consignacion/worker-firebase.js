@@ -1293,32 +1293,45 @@ async function enviar(){
         case "REGISTRAR_VENTA_VENDEDOR": {
           const consV = await sb.get("consignacion", d.id);
           if (!consV) { result = { ok: false, error: "Item no encontrado" }; break; }
-          const nuevoVendidoV = (parseInt(consV.vendido)||0) + (parseInt(d.cantidad)||1);
+          const cantVentaV = parseInt(d.cantidad) || 1;
+          const nuevoVendidoV = (parseInt(consV.vendido)||0) + cantVentaV;
           await sb.update("consignacion", d.id, { vendido: nuevoVendidoV });
           const sV = await sb.get("stock", consV.codigo);
           if (sV) {
             await sb.update("stock", consV.codigo, {
-              stock_vendido: (parseInt(sV.stock_vendido)||0) + (parseInt(d.cantidad)||1)
+              stock_vendido: (parseInt(sV.stock_vendido)||0) + cantVentaV
             });
           }
+          // Se guarda un registro INDIVIDUAL de esta venta (con su fecha/hora
+          // real) dentro del vendedor, en vez de solo incrementar el contador
+          // "vendido" compartido — antes GET_VENTAS_VENDEDOR devolvía el
+          // registro de consignación completo (con la fecha de ENTREGA de la
+          // pieza, no la de la venta), así que el historial del vendedor
+          // mostraba fechas/horas equivocadas para cada venta.
+          const ventaIdV = `VV_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+          const vendV = await sb.get("vendedores", d.vendedor);
+          const historialV = vendV && Array.isArray(vendV.historialVentas) ? vendV.historialVentas : [];
+          historialV.push({
+            id: ventaIdV, consignacionId: d.id,
+            codigo: consV.codigo, nombre: d.nombre || consV.nombre || "",
+            precio: d.precio ?? consV.precio ?? 0, foto: d.foto || consV.foto || "",
+            cantidad: cantVentaV, fecha: new Date().toISOString()
+          });
+          if (vendV) await sb.update("vendedores", d.vendedor, { historialVentas: historialV });
+
           // Si esa era la última pieza física que tenía el vendedor pero
           // VEREX todavía tiene stock en bodega, se avisa al admin para que
           // le reponga — el vendedor pudo vender "bajo pedido" sin perder
           // el negocio, pero alguien tiene que acordarse de surtirlo.
           const restanteV = (parseInt(consV.cantidad)||0) - nuevoVendidoV;
-          if (restanteV <= 0 && (parseInt(sV?.stock_bodega)||0) > 0 && d.vendedor) {
-            try {
-              const vendRep = await sb.get("vendedores", d.vendedor);
-              if (vendRep) {
-                const pendientesV = Array.isArray(vendRep.reposicionesPendientes) ? vendRep.reposicionesPendientes : [];
-                if (!pendientesV.some(r => r.codigo === consV.codigo)) {
-                  pendientesV.push({ codigo: consV.codigo, nombre: consV.nombre || "", fecha: new Date().toISOString() });
-                  await sb.update("vendedores", d.vendedor, { reposicionesPendientes: pendientesV });
-                }
-              }
-            } catch(_) {}
+          if (restanteV <= 0 && (parseInt(sV?.stock_bodega)||0) > 0 && vendV) {
+            const pendientesV = Array.isArray(vendV.reposicionesPendientes) ? vendV.reposicionesPendientes : [];
+            if (!pendientesV.some(r => r.codigo === consV.codigo)) {
+              pendientesV.push({ codigo: consV.codigo, nombre: consV.nombre || "", fecha: new Date().toISOString() });
+              await sb.update("vendedores", d.vendedor, { reposicionesPendientes: pendientesV });
+            }
           }
-          result = { ok: true, ventaId: d.id };
+          result = { ok: true, ventaId: ventaIdV };
           break;
         }
 
@@ -1414,8 +1427,8 @@ async function enviar(){
         }
 
         case "GET_VENTAS_VENDEDOR": {
-          const ventasV = await sb.query("consignacion", "vendedor", "==", d.vendedor);
-          result = { ok: true, ventas: ventasV.filter(v => parseInt(v.vendido) > 0) };
+          const vendGV = await sb.get("vendedores", d.vendedor);
+          result = { ok: true, ventas: (vendGV && Array.isArray(vendGV.historialVentas)) ? vendGV.historialVentas : [] };
           break;
         }
 
@@ -2646,10 +2659,17 @@ async function enviar(){
           // pieza nunca volvía a aparecer disponible en el inventario del
           // vendedor ni en su catálogo compartido.
           const cantRevertir = parseInt(sol.cantidad) || 1;
-          if (sol.ventaId) {
-            const consSol = await sb.get("consignacion", sol.ventaId);
+          // sol.ventaId ahora es el id del registro INDIVIDUAL de venta
+          // (historialVentas del vendedor), no del registro de consignación
+          // — hay que buscarlo ahí para saber a qué consignación pertenece.
+          const vendSol = sol.vendedor ? await sb.get("vendedores", sol.vendedor) : null;
+          const historialSol = vendSol && Array.isArray(vendSol.historialVentas) ? vendSol.historialVentas : [];
+          const ventaSol = historialSol.find(v => v.id === sol.ventaId);
+          const consignacionIdRevertir = ventaSol?.consignacionId || sol.ventaId; // fallback a solicitudes viejas (pre-historial)
+          if (consignacionIdRevertir) {
+            const consSol = await sb.get("consignacion", consignacionIdRevertir);
             if (consSol) {
-              await sb.update("consignacion", sol.ventaId, {
+              await sb.update("consignacion", consignacionIdRevertir, {
                 vendido: Math.max(0, (parseInt(consSol.vendido)||0) - cantRevertir)
               });
               const sSol = await sb.get("stock", consSol.codigo);
@@ -2659,6 +2679,11 @@ async function enviar(){
                 });
               }
             }
+          }
+          if (vendSol && ventaSol) {
+            await sb.update("vendedores", sol.vendedor, {
+              historialVentas: historialSol.filter(v => v.id !== sol.ventaId)
+            });
           }
           await sb.update("solicitudes_correccion", String(d.id), { estado: "aprobado" });
           result = { ok: true };
