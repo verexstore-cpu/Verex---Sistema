@@ -1536,11 +1536,31 @@ async function cargarLeads() {
 // Vendedores (que es donde vive el registro de afiliados) — antes quedaban
 // silenciosas y solo se veían entrando ficha por ficha.
 const LEADS_SIN_COMPLETAR_DIAS_HUB = 2;
+// Se pagan comisiones a los 30 días de la última liquidación (fechaCorte) —
+// el aviso debe llegar 1 día antes de que se cumpla ese plazo, no cuando ya
+// esté vencido, para dar tiempo a prepararlo. (dias<=1 cubre "vence mañana"
+// y "vence hoy/vencido"; se calcula sobre fechaCorte, la misma fecha que ya
+// usa VERIFICAR_TOKEN para cerrar el link de inventario a los 30 días.)
+function _alertasCortePorVencer() {
+    const ahora = Date.now();
+    return vendedores
+        .filter(v => v.fechaCorte)
+        .map(v => {
+            const venc = new Date(v.fechaCorte);
+            venc.setDate(venc.getDate() + 30);
+            return { v, dias: Math.ceil((venc - ahora) / 86400000) };
+        })
+        .filter(({dias}) => dias <= 1)
+        .sort((a,b) => a.dias - b.dias);
+}
+
 function renderAlertasAfiliadosHub() {
     const cont = document.getElementById("alertas-afiliados-hub");
     if (!cont) return;
     const vendMap = new Map(vendedores.map(v => [v.codigo, v]));
     const ahora = Date.now();
+
+    const cortesPorVencer = _alertasCortePorVencer();
 
     const enCamino = leadsData
         .filter(l => l.estado === "en_camino")
@@ -1554,13 +1574,13 @@ function renderAlertasAfiliadosHub() {
         .sort((a,b) => b.dias - a.dias);
 
     const badge = document.getElementById("tab-vendedores-badge");
-    const totalPendientes = enCamino.length + sinCompletar.length;
+    const totalPendientes = enCamino.length + sinCompletar.length + cortesPorVencer.length;
     if (badge) {
         if (totalPendientes > 0) { badge.textContent = totalPendientes; badge.style.display = "block"; }
         else badge.style.display = "none";
     }
 
-    if (!enCamino.length && !sinCompletar.length && !_reposicionesPendientes.length) { cont.innerHTML = ""; return; }
+    if (!enCamino.length && !sinCompletar.length && !_reposicionesPendientes.length && !cortesPorVencer.length) { cont.innerHTML = ""; return; }
 
     const bloqueEnCamino = enCamino.length ? `
         <div class="card" style="border-color:#f97316;margin-bottom:14px;">
@@ -1652,9 +1672,26 @@ function renderAlertasAfiliadosHub() {
                 </div>`).join("")}
         </div>` : '';
 
-    cont.innerHTML = bloqueReposiciones + bloqueEnCamino + bloqueSinCompletar;
+    const bloqueCortes = cortesPorVencer.length ? `
+        <div class="card" style="border-color:#e74c3c;margin-bottom:14px;">
+            <h2 style="color:#e74c3c;">🧾 Cortes por vencer (${cortesPorVencer.length})</h2>
+            ${cortesPorVencer.map(({v, dias}) => {
+                const msg = dias < 0 ? `Vencido hace ${Math.abs(dias)} día${Math.abs(dias)===1?'':'s'}` : dias === 0 ? "Vence hoy" : "Vence mañana";
+                return `<div style="background:rgba(231,76,60,0.1);border:1px solid #e74c3c;border-radius:10px;padding:10px 12px;margin-top:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:700;font-size:13px;">${sanitizar(v.nombre)}</div>
+                            <div style="font-size:11px;font-weight:700;color:#e74c3c;margin-top:2px;">⚠️ ${sanitizar(msg)} — se paga comisión a los 30 días</div>
+                        </div>
+                        <button onclick="abrirPerfil('${sanitizar(v.codigo)}');abrirCorte();" style="padding:5px 10px;font-size:11px;background:#e74c3c;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">🧾 Hacer corte</button>
+                    </div>
+                </div>`;
+            }).join("")}
+        </div>` : '';
 
-    const totalBadge = enCamino.length + sinCompletar.length;
+    cont.innerHTML = bloqueCortes + bloqueReposiciones + bloqueEnCamino + bloqueSinCompletar;
+
+    const totalBadge = enCamino.length + sinCompletar.length + cortesPorVencer.length;
     document.title = document.title.replace(/^🔔\(\d+\)\s*/, "");
     if (totalBadge > 0) document.title = `🔔(${totalBadge}) ` + document.title;
 }
