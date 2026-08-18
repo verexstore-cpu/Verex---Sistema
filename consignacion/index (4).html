@@ -6948,6 +6948,7 @@ function renderStock(items) {
                         <button onclick="event.stopPropagation();compartirProducto(${jsArg(item.codigo)})" title="Compartir" style="width:26px;height:26px;padding:0;font-size:12px;background:#25D366;color:#fff;border:none;border-radius:6px;cursor:pointer;">🔗</button>
                         <button onclick="event.stopPropagation();toggleReservaStock(${jsArg(item.codigo)})" title="${item.reservado?"Liberar":"Reservar"}" style="width:26px;height:26px;padding:0;font-size:12px;background:${item.reservado?"#e74c3c":"#4a4a4e"};color:#fff;border:none;border-radius:6px;cursor:pointer;">${item.reservado?"🔓":"🔒"}</button>
                         <button onclick="event.stopPropagation();toggleMenuMover(${jsArg(item.codigo)},this)" title="Mover" style="width:26px;height:26px;padding:0;font-size:12px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;">⇄</button>
+                        <button onclick="event.stopPropagation();corregirCantidadExactaStock(${jsArg(item.codigo)})" title="Corregir cantidad exacta (bodega/tienda/consignación)" style="width:26px;height:26px;padding:0;font-size:12px;background:#e8b07a;color:#111;border:none;border-radius:6px;cursor:pointer;">⚖️</button>
                         <button onclick="event.stopPropagation();eliminarStockItem(${jsArg(item.codigo)})" title="Eliminar" style="width:26px;height:26px;padding:0;font-size:12px;background:#FF453A;color:#fff;border:none;border-radius:6px;cursor:pointer;">🗑️</button>
                         <button onclick="event.stopPropagation();imprimirEtiquetaStock(${jsArg(item.codigo)})" title="${estaEtiquetaImpresa(item.codigo)?'Etiqueta impresa — clic para desmarcar':'Imprimir etiqueta'}" style="width:26px;height:26px;padding:0;font-size:12px;background:${estaEtiquetaImpresa(item.codigo)?'#22c55e':'#4a4a4e'};color:#fff;border:none;border-radius:6px;cursor:pointer;">🖨️</button>
                         <div id="menu-mover-${sanitizar(item.codigo)}" style="display:none;position:absolute;top:30px;right:0;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
@@ -7533,6 +7534,42 @@ function abrirEditarStockItem(codigo) {
     document.getElementById("modal-prod-vista").style.display   = "block";
     document.getElementById("modal-prod-edicion").style.display = "none";
     abrirModal("modal-ver-producto");
+}
+
+// ── CORREGIR CANTIDAD EXACTA (bodega/tienda/consignación) ────────────
+// A diferencia de "+ Existencia" (que solo SUMA), esto fija el número
+// exacto de cada columna — para arreglar desajustes puntuales (ej. un
+// duplicado eliminado que dejó el contador de consignación mal calculado).
+async function corregirCantidadExactaStock(codigo) {
+    const item = stockData.find(p => p.codigo === codigo);
+    if (!item) return;
+    const bodegaActual = parseInt(item.stock_bodega) || 0;
+    const tiendaActual = parseInt(item.stock_tienda) || 0;
+    const consigActual = parseInt(item.stock_consignacion) || 0;
+
+    const nuevaBodega = prompt(`${codigo} — Bodega actual: ${bodegaActual}\n\nNueva cantidad exacta en BODEGA:`, bodegaActual);
+    if (nuevaBodega === null) return;
+    const nuevaTienda = prompt(`${codigo} — Tienda actual: ${tiendaActual}\n\nNueva cantidad exacta en TIENDA:`, tiendaActual);
+    if (nuevaTienda === null) return;
+    const nuevaConsig = prompt(`${codigo} — Consignación actual: ${consigActual}\n\nNueva cantidad exacta en CONSIGNACIÓN:`, consigActual);
+    if (nuevaConsig === null) return;
+
+    const b = Math.max(0, parseInt(nuevaBodega) || 0);
+    const t = Math.max(0, parseInt(nuevaTienda) || 0);
+    const c = Math.max(0, parseInt(nuevaConsig) || 0);
+
+    if (!confirm(`Confirmar corrección de ${codigo}:\nBodega: ${bodegaActual} → ${b}\nTienda: ${tiendaActual} → ${t}\nConsignación: ${consigActual} → ${c}`)) return;
+
+    try {
+        const res = await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo, stock_bodega: b, stock_tienda: t, stock_consignacion: c }] });
+        if (res && res.ok !== false) {
+            item.stock_bodega = b; item.stock_tienda = t; item.stock_consignacion = c;
+            renderStock(stockData);
+            toast("✅ Cantidades corregidas");
+        } else {
+            toast("⚠️ Error al corregir: " + (res?.error || "desconocido"));
+        }
+    } catch(e) { toast("⚠️ Error al corregir: " + e.message); }
 }
 
 // ── ELIMINAR PRODUCTO DESDE STOCK ────────────────────────────────────
