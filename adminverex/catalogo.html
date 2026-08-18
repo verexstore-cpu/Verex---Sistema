@@ -308,6 +308,7 @@
     const c = params.get("c");
 
     let _prods = [], _waNum = "", _szIdx = -1, _szD = "", _szH = "", _descPct = 0, _afiliadoCodigo = "", _szParMode = false, _szTel = "", _szNombreCliente = "", _szDireccion = "", _szNoTalla = false, _szModo = "wa";
+    let _esAutoGeneradoVendedor = false;
     // _promoCarrito: { tipo: '2x50'|'3x2'|'montoFijo'|'escalonado', montoFijo, escalones }
     let _promoCarrito = null, _promo2x50 = false; // _promo2x50 se mantiene solo por compatibilidad con links viejos
     let _envioGratisDesde = 0, _regaloSorpresa = null; // { monto, texto }
@@ -443,6 +444,12 @@
         _envioGratisDesde = parseFloat(data.envioGratisDesde) || 0;
         _regaloSorpresa = (data.regaloSorpresa && data.regaloSorpresa.monto > 0) ? data.regaloSorpresa : null;
         _afiliadoCodigo = data.afiliadoCodigo || "";
+        // Distingue un catálogo AUTO-generado por el vendedor desde su propio
+        // inventario (compartirMiCatalogo, cuyos productos SÍ son su
+        // consignación física real) de un catálogo armado a mano por el admin
+        // para un afiliado (que no necesariamente tiene nada en consignación
+        // — cruzar contra su consignación real lo dejaría vacío por error).
+        _esAutoGeneradoVendedor = /^Auto-generado por el vendedor/i.test(data.nota_interna || "");
 
         const exp    = new Date(data.expiry);
         const expStr = exp.toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"});
@@ -1138,7 +1145,7 @@
             // de abajo nunca los marcaría agotados. Se cruza en cambio contra
             // SU consignación real — es la fuente exacta de qué le queda.
             let codigosVivosVendedor = null;
-            if (_afiliadoCodigo) {
+            if (_afiliadoCodigo && _esAutoGeneradoVendedor) {
                 try {
                     const resV = await fetch(API_URL, {
                         method: "POST", headers: {"Content-Type":"application/json"},
