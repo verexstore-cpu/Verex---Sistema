@@ -6063,6 +6063,12 @@ function generarPDFCorte(vendedor, inv, valorVend, pct, ganancia) {
     doc.setTextColor(0,0,0); y += rowH;
     inv.filter(c => parseInt(c.vendido||0)>0).forEach(c => {
         doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setDrawColor(200,200,200);
+        // Sin setLineWidth() el borde hereda el grosor por defecto de jsPDF
+        // (~0.2in) — muchísimo más grueso que el alto de la fila (0.24in),
+        // así que el "borde" terminaba pintando casi toda la fila de gris
+        // sólido en vez de una línea fina. Es el mismo ancho fino (0.005in)
+        // que ya se usa más abajo en las filas de totales.
+        doc.setLineWidth(0.005);
         doc.rect(mL,y,tW,rowH,'S');
         const monto = parseInt(c.vendido||0)*parseFloat(c.precio||0);
         doc.text(String(c.codigo||""), cols[0].x+0.06, y+rowH/2+0.03);
