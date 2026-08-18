@@ -890,6 +890,18 @@
                 <div id="dash-alertas"></div>
             </div>
 
+            <!-- Migración historial de ventas (una sola vez) -->
+            <div class="card">
+                <h2>🔄 Migrar historial de ventas antiguas</h2>
+                <p style="font-size:12px;color:var(--plateado);margin-bottom:10px;">
+                    "Mis Ventas" ahora guarda cada venta individual con su fecha real. Las ventas registradas
+                    ANTES de este cambio no tienen ese detalle — solo el total acumulado. Este botón crea un
+                    registro aproximado por cada una (usando la fecha de entrega, marcado como "migrado") para
+                    que el vendedor las vuelva a ver en su historial. Se puede correr varias veces sin duplicar.
+                </p>
+                <button class="btn btn-gris" onclick="migrarHistorialVentas()">🔄 Migrar ahora</button>
+            </div>
+
             <!-- Ranking vendedores -->
             <div class="card">
                 <h2>🏆 Ranking de Vendedores</h2>
@@ -1694,6 +1706,20 @@ function renderAlertasAfiliadosHub() {
     const totalBadge = enCamino.length + sinCompletar.length + cortesPorVencer.length;
     document.title = document.title.replace(/^🔔\(\d+\)\s*/, "");
     if (totalBadge > 0) document.title = `🔔(${totalBadge}) ` + document.title;
+}
+
+async function migrarHistorialVentas() {
+    if (!confirm("¿Migrar el historial de ventas antiguas? Crea un registro aproximado (fecha de entrega, marcado como \"migrado\") por cada venta que aún no tenga historial individual. Es seguro correrlo más de una vez.")) return;
+    const btn = event.target;
+    const txtOriginal = btn.textContent;
+    btn.textContent = "⏳ Migrando..."; btn.disabled = true;
+    try {
+        const res  = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ accion:"MIGRAR_HISTORIAL_VENTAS_ANTIGUAS", _pass: _sessionPass }) });
+        const data = await res.json();
+        if (data.ok) toast(`✅ Migración completa — ${data.creados} registro(s) creado(s)`);
+        else toast("⚠️ " + (data.error||"No se pudo migrar"), "#c0392b");
+    } catch(e) { toast("⚠️ Error de conexión", "#c0392b"); }
+    btn.textContent = txtOriginal; btn.disabled = false;
 }
 
 // Piezas que un vendedor vendió "bajo pedido" (ya no las tenía en mano,

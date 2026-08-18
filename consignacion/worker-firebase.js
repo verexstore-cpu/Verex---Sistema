@@ -1479,6 +1479,46 @@ async function enviar(){
           break;
         }
 
+        // Migración de UNA SOLA VEZ: antes de que existiera historialVentas,
+        // una venta solo incrementaba consignacion.vendido sin dejar registro
+        // individual — así que "Mis Ventas" quedó vacío para todo lo vendido
+        // antes de esa fecha, aunque el vendedor sí lo vendió y VEREX ya lo
+        // sabe (está en el total de consignacion.vendido). Esto rellena un
+        // registro aproximado por cada item ya vendido que aún no tenga
+        // historial, usando la fecha de ENTREGA como mejor aproximación
+        // disponible (marcado "migrado" para dejarlo claro). Es idempotente:
+        // se puede correr varias veces sin duplicar, porque salta cualquier
+        // consignacionId que ya tenga un registro (migrado o real).
+        case "MIGRAR_HISTORIAL_VENTAS_ANTIGUAS": {
+          if (!esAdmin) return forbidden();
+          const [todosVendMig, todaConsMig] = await Promise.all([
+            sb.getAll("vendedores"),
+            sb.getAll("consignacion"),
+          ]);
+          let creados = 0;
+          for (const v of todosVendMig) {
+            const historialMig = Array.isArray(v.historialVentas) ? [...v.historialVentas] : [];
+            const yaTiene = new Set(historialMig.map(h => h.consignacionId).filter(Boolean));
+            const itemsVend = todaConsMig.filter(c => c.vendedor === v.codigo && (parseInt(c.vendido)||0) > 0);
+            let cambiado = false;
+            for (const c of itemsVend) {
+              if (yaTiene.has(c.id)) continue;
+              historialMig.push({
+                id: `MIG_${c.id}`, consignacionId: c.id,
+                codigo: c.codigo, nombre: c.nombre || "",
+                precio: c.precio || 0, foto: c.foto || "",
+                cantidad: parseInt(c.vendido)||1,
+                fecha: c.fecha || new Date().toISOString(),
+                migrado: true
+              });
+              cambiado = true; creados++;
+            }
+            if (cambiado) await sb.update("vendedores", v.codigo, { historialVentas: historialMig });
+          }
+          result = { ok: true, creados };
+          break;
+        }
+
         case "SOLICITAR_CORRECCION_VENTA": {
           const solId = `SOL_${Date.now()}`;
           await sb.set("solicitudes_correccion", solId, {
