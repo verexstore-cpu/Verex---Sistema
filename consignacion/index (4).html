@@ -995,6 +995,9 @@
                 <button class="menu-btn menu-btn-full" id="btn-menu-devolucion" data-color="#e74c3c" onclick="abrirDevolucion()">
                     <span class="menu-ico">↩️</span><span class="menu-txt">Registrar Devolución</span><span class="menu-arr">›</span>
                 </button>
+                <button class="menu-btn menu-btn-full" data-color="#7c3aed" onclick="registrarVentaHistoricaManual()" title="Para ventas que ya se vendieron y ya se liquidaron pero nunca quedaron con fecha real registrada (ej. quedaron mal cerradas por el bug del corte) — NO cobra comisión de nuevo, solo aparece en Ventas Generales/Cierres con su fecha real">
+                    <span class="menu-ico">🧾</span><span class="menu-txt">Registrar Venta Histórica (solo reporte)</span><span class="menu-arr">›</span>
+                </button>
                 <button class="menu-btn menu-btn-full" data-color="#0277bd" onclick="descargarContratoActual()">
                     <span class="menu-ico">📄</span><span class="menu-txt" id="btn-menu-contrato-txt">Descargar Contrato</span><span class="menu-arr">›</span>
                 </button>
@@ -5882,6 +5885,30 @@ async function eliminarItemInventario(id, nombre) {
 // diferencia de eliminarItemInventario(), esto NO mueve stock ni lo regresa
 // a bodega, porque la pieza no existe físicamente en VEREX, ya está con el
 // cliente que la compró.
+// Para ventas que ya ocurrieron y ya se liquidaron (ej. una pieza que se
+// cerró con "✅ Ya vendida" antes de que existiera el registro histórico
+// combinado, o cualquier venta antigua que se coló sin fecha real) — pide
+// los datos a mano y crea SOLO el registro de reporte, sin tocar stock ni
+// volver a cobrar comisión.
+async function registrarVentaHistoricaManual() {
+    const codigo = prompt("Código del producto (ej. SE28001PM):");
+    if (!codigo) return;
+    const nombre = prompt("Nombre del producto:", codigo);
+    if (nombre === null) return;
+    const precio = parseFloat(prompt("Precio de venta ($):", "0"));
+    if (!precio || precio <= 0) { toast("⚠️ Precio inválido"); return; }
+    const cantidad = parseInt(prompt("Cantidad:", "1")) || 1;
+    const fechaTxt = prompt("Fecha real en que se vendió (AAAA-MM-DD):", new Date().toISOString().slice(0,10));
+    if (!fechaTxt) return;
+    const fechaISO = new Date(fechaTxt + "T12:00:00").toISOString();
+    const res = await apiPost({
+        accion: "REGISTRAR_VENTA_HISTORICA", vendedor: vendedorActual.codigo,
+        codigo, nombre, precio, cantidad, fecha: fechaISO
+    });
+    if (res.ok) toast("✅ Registrada en Ventas Generales / Cierres");
+    else toast("⚠️ " + (res.error||"No se pudo registrar"), "#c0392b");
+}
+
 async function cerrarItemYaVendido(id, nombre) {
     if (!confirm("¿Confirmas que \"" + nombre + "\" YA se vendió (y probablemente ya se liquidó)? Se cerrará sin devolver stock a bodega — no la marques así si en realidad todavía no se ha vendido.")) return;
     const res = await apiPost({ accion: "MARCAR_CONSIGNACION_VENDIDA", id });
