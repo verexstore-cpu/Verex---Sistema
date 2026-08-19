@@ -997,6 +997,20 @@ async function enviar(){
           break;
         }
 
+        // Cierra un item que en realidad YA se vendió (típicamente uno que
+        // quedó mal cerrado por el bug de CERRAR_CORTE: vendido reseteado a
+        // 0 sin cerrar la pieza) — a diferencia de ELIMINAR_ITEM_CONSIGNACION,
+        // NO toca stock ni lo regresa a bodega, porque la pieza no existe
+        // físicamente en VEREX, ya está con el cliente que la compró.
+        case "MARCAR_CONSIGNACION_VENDIDA": {
+          if (!esAdmin) return forbidden();
+          const itemMV = await sb.get("consignacion", d.id);
+          if (!itemMV) { result = { ok: false, error: "Item no encontrado" }; break; }
+          await sb.update("consignacion", d.id, { estado: "vendido" });
+          result = { ok: true };
+          break;
+        }
+
         // ══ CORTES ════════════════════════════════════════════════
         case "CERRAR_CORTE": {
           if (!esAdmin) return forbidden();

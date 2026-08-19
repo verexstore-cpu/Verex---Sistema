@@ -3841,8 +3841,12 @@ function renderInventario() {
                 <div class="inv-item-nombre">${sanitizar(c.nombre)}</div>
                 <div class="inv-item-precio">$${parseFloat(c.precio||0).toFixed(2)} · ${disponible} disp. de ${parseInt(c.cantidad||0)}</div>
             </div>
-            <button class="btn btn-rojo" style="padding:5px 10px;font-size:12px;flex-shrink:0;"
-                onclick="eliminarItemInventario(${jsArg(c.id)},${jsArg(c.nombre)})">🗑️</button>
+            <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+                <button class="btn btn-verde" style="padding:5px 8px;font-size:11px;" title="Úsalo cuando la pieza YA se vendió y ya se liquidó (ej. quedó mal cerrada por el bug del corte) — cierra el item SIN devolver stock a bodega, a diferencia de 🗑️"
+                    onclick="cerrarItemYaVendido(${jsArg(c.id)},${jsArg(c.nombre)})">✅ Ya vendida</button>
+                <button class="btn btn-rojo" style="padding:5px 8px;font-size:11px;" title="La pieza vuelve físicamente a bodega de VEREX"
+                    onclick="eliminarItemInventario(${jsArg(c.id)},${jsArg(c.nombre)})">🗑️ Devolver</button>
+            </div>
         </div>`;
     }).join('');
 }
@@ -5864,13 +5868,29 @@ function _onScanQREntrega(codRaw) {
 }
 
 async function eliminarItemInventario(id, nombre) {
-    if (!confirm("¿Eliminar " + nombre + " del inventario?")) return;
+    if (!confirm("¿Eliminar " + nombre + " del inventario? La pieza vuelve a bodega de VEREX — úsalo solo si la pieza NO se vendió (se está devolviendo). Si ya se vendió, usa el botón '✅ Ya vendida' en su lugar.")) return;
     await apiPost({ accion: "ELIMINAR_ITEM_CONSIGNACION", id });
     const idx = consignacion.findIndex(c => String(c.id) === String(id));
     if (idx >= 0) consignacion.splice(idx, 1);
     renderPerfilStats();
     renderInventario();
     toast("🗑️ Producto eliminado del inventario");
+}
+
+// Cierra un item que en realidad YA se vendió (y normalmente ya se liquidó
+// en un corte) pero por algún motivo quedó marcado como disponible — a
+// diferencia de eliminarItemInventario(), esto NO mueve stock ni lo regresa
+// a bodega, porque la pieza no existe físicamente en VEREX, ya está con el
+// cliente que la compró.
+async function cerrarItemYaVendido(id, nombre) {
+    if (!confirm("¿Confirmas que \"" + nombre + "\" YA se vendió (y probablemente ya se liquidó)? Se cerrará sin devolver stock a bodega — no la marques así si en realidad todavía no se ha vendido.")) return;
+    const res = await apiPost({ accion: "MARCAR_CONSIGNACION_VENDIDA", id });
+    if (!res.ok) { toast("⚠️ " + (res.error||"No se pudo cerrar el item"), "#c0392b"); return; }
+    const item = consignacion.find(c => String(c.id) === String(id));
+    if (item) item.estado = "vendido";
+    renderPerfilStats();
+    renderInventario();
+    toast("✅ Pieza cerrada — ya no aparece como disponible");
 }
 
 function abrirRegistrarVenta() {
