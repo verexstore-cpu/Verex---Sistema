@@ -958,16 +958,18 @@
 <div class="tab-content" id="tab-7">
     <details class="card" style="margin-bottom:18px;" open>
         <summary style="cursor:pointer;font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:700;color:#111;">📅 Cierres Mensuales</summary>
-        <div style="display:flex;justify-content:flex-end;margin:10px 0;">
+        <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:10px 0;flex-wrap:wrap;">
+            <select id="cierre-mes-sel" style="padding:9px 10px;background:#fff;border:1px solid #d1d5db;border-radius:8px;color:#1a1a1a;font-size:13px;"></select>
+            <select id="cierre-anio-sel" style="padding:9px 10px;background:#fff;border:1px solid #d1d5db;border-radius:8px;color:#1a1a1a;font-size:13px;"></select>
             <button onclick="generarCierreManual()"
                 style="padding:9px 14px;background:#C9A84C;color:#111;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">
-                🔄 Generar cierre del mes anterior
+                🔄 Generar / actualizar cierre
             </button>
         </div>
         <p style="font-size:12px;color:#6b7280;margin:0 0 12px;">
             El día 1 de cada mes el sistema genera solo el cierre del mes que acaba de terminar — junta Ecommerce,
-            Venta Directa, Consignación y Afiliados en un solo resumen. Este botón lo fuerza manualmente si necesitas
-            verlo antes (es seguro usarlo varias veces, no duplica).
+            Venta Directa, Consignación y Afiliados en un solo resumen. Elige cualquier mes/año arriba y presiona el
+            botón para forzarlo o regenerarlo con los datos más recientes (es seguro usarlo varias veces, no duplica).
         </p>
         <div id="cierres-lista"></div>
     </details>
@@ -4260,7 +4262,34 @@ function _tiempoRelativo(ts) {
 let _todosLosLinks = [];
 
 let _cierresMensuales = [];
+const MESES_CIERRE = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+function _poblarSelectoresCierre() {
+    const selMes  = document.getElementById("cierre-mes-sel");
+    const selAnio = document.getElementById("cierre-anio-sel");
+    if (!selMes || !selAnio || selMes.options.length) return; // ya poblados
+    MESES_CIERRE.forEach((nombre, i) => {
+        const opt = document.createElement("option");
+        opt.value = i + 1; opt.textContent = nombre;
+        selMes.appendChild(opt);
+    });
+    const ahora = new Date();
+    const anioActual = ahora.getUTCFullYear();
+    for (let a = anioActual; a >= anioActual - 3; a--) {
+        const opt = document.createElement("option");
+        opt.value = a; opt.textContent = a;
+        selAnio.appendChild(opt);
+    }
+    // Default: mes anterior al actual (el mismo que el cierre automático)
+    let mesDef = ahora.getUTCMonth(); // getUTCMonth() ya es 0-indexado = mes anterior en 1-indexado
+    let anioDef = anioActual;
+    if (mesDef === 0) { mesDef = 12; anioDef -= 1; }
+    selMes.value = mesDef;
+    selAnio.value = anioDef;
+}
+
 async function cargarCierresMensuales() {
+    _poblarSelectoresCierre();
     const cont = document.getElementById("cierres-lista");
     cont.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:20px;">Cargando...</p>';
     try {
@@ -4273,8 +4302,6 @@ async function cargarCierresMensuales() {
         cont.innerHTML = `<p style="color:#ef4444;text-align:center;padding:20px;">⚠️ Error cargando cierres: ${esc(e.message)}</p>`;
     }
 }
-
-const MESES_CIERRE = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
 function renderCierresMensuales() {
     const cont = document.getElementById("cierres-lista");
@@ -4328,12 +4355,15 @@ function renderCierresMensuales() {
 }
 
 async function generarCierreManual() {
-    if (!confirm("¿Generar/actualizar el cierre del mes anterior con los datos actuales? Es seguro correrlo varias veces, siempre recalcula con la info más reciente.")) return;
+    const mesSel  = document.getElementById("cierre-mes-sel")?.value;
+    const anioSel = document.getElementById("cierre-anio-sel")?.value;
+    const nombreMesSel = MESES_CIERRE[parseInt(mesSel)-1] || mesSel;
+    if (!confirm(`¿Generar/actualizar el cierre de ${nombreMesSel} ${anioSel} con los datos actuales? Es seguro correrlo varias veces, siempre recalcula con la info más reciente.`)) return;
     const btn = event.target;
     const txtOriginal = btn.textContent;
     btn.textContent = "⏳ Generando..."; btn.disabled = true;
     try {
-        const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"CERRAR_MES", _pass: ADMIN_PASS }) });
+        const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"CERRAR_MES", _pass: ADMIN_PASS, mes: mesSel, anio: anioSel }) });
         const data = await res.json();
         if (data.ok) { toast("✅ Cierre generado"); await cargarCierresMensuales(); }
         else alert("⚠️ " + (data.error||"No se pudo generar el cierre"));
