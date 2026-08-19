@@ -1058,6 +1058,10 @@
                 <button onclick="vaciarCarritoEntrega()" style="background:none;border:none;color:#e74c3c;font-size:11px;cursor:pointer;padding:4px 8px;">🗑️ Vaciar</button>
             </div>
             <div class="carrito-preview" id="carrito-preview"></div>
+            <div style="display:none;align-items:center;gap:8px;margin-bottom:8px;" id="wrap-fecha-venta-afiliado">
+                <label for="fecha-venta-afiliado" style="font-size:12px;color:var(--plateado);">📅 Fecha real de la venta:</label>
+                <input type="date" id="fecha-venta-afiliado" style="padding:6px;font-size:12px;" title="Déjala en hoy salvo que estés registrando una venta atrasada — así entra al cierre del mes correcto">
+            </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;" id="carrito-entrega-acciones">
                 <button class="btn carrito-entrega-acciones-btn" style="flex:1;min-width:150px;background:#4a6fa5;color:#fff;" id="btn-guardar-borrador" onclick="guardarBorrador()" title="Guarda el avance en el sistema — NO se publica en el link del vendedor ni requiere firma todavía">📝 Borrador (guardar, no publicar)</button>
                 <button class="btn carrito-entrega-acciones-btn" style="flex:1;min-width:150px;background:#27ae60;color:#fff;display:none;" id="btn-venta-afiliado" onclick="confirmarVentaAfiliado()" title="Registra la entrega y la venta al mismo tiempo — el afiliado ya cerró la venta por su cuenta">💰 Registrar Venta</button>
@@ -4010,18 +4014,23 @@ async function abrirEntrega() {
     const btnMens  = document.getElementById("btn-entrega-mensajeria");
     const btnVenta = document.getElementById("btn-venta-afiliado");
     const btnBorr  = document.getElementById("btn-guardar-borrador");
+    const wrapFechaVA = document.getElementById("wrap-fecha-venta-afiliado");
+    const inpFechaVA  = document.getElementById("fecha-venta-afiliado");
     if (_esVentaDirectaAfiliado) {
         if (titulo) titulo.textContent = "💰 Registrar Venta de Afiliado";
         if (btnMano) btnMano.style.display = "none";
         if (btnMens) btnMens.style.display = "none";
         if (btnBorr) btnBorr.style.display = "none";
         if (btnVenta) btnVenta.style.display = "inline-flex";
+        if (wrapFechaVA) wrapFechaVA.style.display = "flex";
+        if (inpFechaVA) { inpFechaVA.max = new Date().toISOString().slice(0,10); inpFechaVA.value = inpFechaVA.max; }
     } else {
         if (titulo) titulo.textContent = "📦 Nueva Entrega";
         if (btnMano) btnMano.style.display = "";
         if (btnMens) btnMens.style.display = "";
         if (btnBorr) btnBorr.style.display = "";
         if (btnVenta) btnVenta.style.display = "none";
+        if (wrapFechaVA) wrapFechaVA.style.display = "none";
     }
 
     // Refrescar SIEMPRE el stock al abrir — otras pantallas (Etiquetas, Stock)
@@ -4737,12 +4746,15 @@ async function confirmarVentaAfiliado() {
     const btn = document.getElementById("btn-venta-afiliado");
     if (btn) { btn.disabled = true; btn.textContent = "⏳ Registrando..."; }
 
+    const fechaVA = document.getElementById("fecha-venta-afiliado")?.value;
+    const fechaVAiso = fechaVA ? new Date(fechaVA + "T12:00:00").toISOString() : undefined;
+
     try {
         // 1. Asigna las piezas al afiliado (mismo mecanismo que una entrega normal)
         await apiPost({ accion: "REGISTRAR_ENTREGA", vendedor: vendedorActual.codigo, items });
         // 2. Marca cada pieza como vendida de inmediato — el afiliado ya cerró la venta por su cuenta
         for (const item of items) {
-            await apiPost({ accion: "REGISTRAR_VENTA", id: item.id, cantidad: item.cantidad });
+            await apiPost({ accion: "REGISTRAR_VENTA", id: item.id, cantidad: item.cantidad, fecha: fechaVAiso });
         }
         items.forEach(item => consignacion.push({ ...item, vendedor: vendedorActual.codigo, vendido: item.cantidad, estado: "activo" }));
 
@@ -5873,19 +5885,22 @@ function abrirRegistrarVenta() {
         parseInt(c.cantidad||0) - parseInt(c.vendido||0) > 0
     );
     const lista = document.getElementById("lista-venta");
+    const hoyISO = new Date().toISOString().slice(0,10);
     if (!inv.length) { lista.innerHTML = '<p style="color:var(--plateado);font-size:13px;">No hay productos disponibles.</p>'; }
     else {
         lista.innerHTML = inv.map(c => {
             const disp = parseInt(c.cantidad||0) - parseInt(c.vendido||0);
-            return `<div class="inv-item" style="margin-bottom:8px;">
+            return `<div class="inv-item" style="margin-bottom:8px;flex-wrap:wrap;">
                 <img src="${sanitizar(ikFoto(c.foto,200)||'')}" onerror="this.style.display='none'">
                 <div class="inv-item-info">
                     <div class="inv-item-codigo">${sanitizar(c.codigo)}</div>
                     <div class="inv-item-nombre">${sanitizar(c.nombre)}</div>
                     <div class="inv-item-precio">$${parseFloat(c.precio||0).toFixed(2)} · ${disp} disponibles</div>
                 </div>
-                <div style="display:flex;align-items:center;gap:6px;">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                     <input type="number" min="1" max="${disp}" value="1" style="width:50px;margin:0;padding:6px;font-size:13px;" id="venta-qty-${sanitizar(c.id)}">
+                    <input type="date" value="${hoyISO}" max="${hoyISO}" title="Fecha real de la venta — déjala en hoy salvo que estés registrando algo atrasado"
+                        style="padding:6px;font-size:12px;margin:0;" id="venta-fecha-${sanitizar(c.id)}">
                     <button class="btn btn-dorado" style="padding:6px 10px;font-size:12px;" onclick="registrarVenta(${jsArg(c.id)},${disp})">✓</button>
                 </div>
             </div>`;
@@ -5897,7 +5912,9 @@ function abrirRegistrarVenta() {
 async function registrarVenta(id, maxDisp) {
     const qty = parseInt(document.getElementById("venta-qty-" + id)?.value) || 1;
     if (qty > maxDisp) { toast("⚠️ Cantidad mayor a disponible"); return; }
-    await apiPost({ accion: "REGISTRAR_VENTA", id, cantidad: qty });
+    const fechaInput = document.getElementById("venta-fecha-" + id)?.value;
+    const fecha = fechaInput ? new Date(fechaInput + "T12:00:00").toISOString() : undefined;
+    await apiPost({ accion: "REGISTRAR_VENTA", id, cantidad: qty, fecha });
     const item = consignacion.find(c => String(c.id) === String(id));
     if (item) item.vendido = parseInt(item.vendido||0) + qty;
     toast("✅ Venta registrada");

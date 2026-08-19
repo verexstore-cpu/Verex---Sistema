@@ -917,13 +917,31 @@ async function enviar(){
           if (!esAdmin) return forbidden();
           const cons = await sb.get("consignacion", d.id);
           if (!cons) { result = { ok: false, error: "Item no encontrado" }; break; }
-          const nuevoVendido = (parseInt(cons.vendido)||0) + (parseInt(d.cantidad)||1);
+          const cantVentaAdmin = parseInt(d.cantidad) || 1;
+          const nuevoVendido = (parseInt(cons.vendido)||0) + cantVentaAdmin;
           await sb.update("consignacion", d.id, { vendido: nuevoVendido });
           const s = await sb.get("stock", cons.codigo);
           if (s) {
             await sb.update("stock", cons.codigo, {
-              stock_vendido: (parseInt(s.stock_vendido)||0) + (parseInt(d.cantidad)||1)
+              stock_vendido: (parseInt(s.stock_vendido)||0) + cantVentaAdmin
             });
+          }
+          // Igual que REGISTRAR_VENTA_VENDEDOR: se guarda un registro individual
+          // de la venta con su fecha real — acepta d.fecha para ventas que se
+          // registran tarde (el admin se entera después de que ya pasaron) y
+          // así no queden fuera del cierre del mes en que de verdad ocurrieron.
+          const fechaVentaAdmin = d.fecha ? new Date(d.fecha).toISOString() : new Date().toISOString();
+          const vendVA = await sb.get("vendedores", cons.vendedor);
+          if (vendVA) {
+            const historialVA = Array.isArray(vendVA.historialVentas) ? vendVA.historialVentas : [];
+            historialVA.push({
+              id: `VV_${Date.now()}_${Math.random().toString(36).slice(2,7)}`, consignacionId: d.id,
+              codigo: cons.codigo, nombre: cons.nombre || "",
+              precio: cons.precio || 0, foto: cons.foto || "",
+              cantidad: cantVentaAdmin, fecha: fechaVentaAdmin,
+              registradaPorAdmin: true
+            });
+            await sb.update("vendedores", cons.vendedor, { historialVentas: historialVA });
           }
           result = { ok: true };
           break;
