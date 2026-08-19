@@ -5891,6 +5891,23 @@ async function cerrarItemYaVendido(id, nombre) {
     renderPerfilStats();
     renderInventario();
     toast("✅ Pieza cerrada — ya no aparece como disponible");
+
+    // Preguntar si quiere que también quede registrada en "Ventas generales"
+    // / Cierres Mensuales con su fecha real — es un registro SOLO para
+    // reportes, no vuelve a cobrar comisión (eso ya se liquidó).
+    if (item && confirm("¿Quieres que esta venta también quede registrada en Ventas Generales / Cierres Mensuales con su fecha real? (No afecta el próximo corte, es solo para el reporte)")) {
+        const fechaTxt = prompt("Fecha real en que se vendió (AAAA-MM-DD):", new Date().toISOString().slice(0,10));
+        if (fechaTxt) {
+            const fechaISO = new Date(fechaTxt + "T12:00:00").toISOString();
+            const resHist = await apiPost({
+                accion: "REGISTRAR_VENTA_HISTORICA", vendedor: vendedorActual.codigo,
+                codigo: item.codigo, nombre: item.nombre, precio: item.precio,
+                cantidad: item.vendido || item.cantidad || 1, fecha: fechaISO
+            });
+            if (resHist.ok) toast("✅ Registrada también en Ventas Generales");
+            else toast("⚠️ " + (resHist.error||"No se pudo registrar en Ventas Generales"), "#c0392b");
+        }
+    }
 }
 
 function abrirRegistrarVenta() {

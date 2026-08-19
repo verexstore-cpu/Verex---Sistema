@@ -1011,6 +1011,33 @@ async function enviar(){
           break;
         }
 
+        // Backfill de SOLO REGISTRO — para ventas que ya se cobraron y ya se
+        // liquidaron (ej. en un corte manual/antiguo) pero nunca dejaron un
+        // registro individual en historialVentas. A propósito NO toca
+        // consignacion.vendido ni stock_vendido: esos números YA están
+        // correctos (el corte ya los contó); esto solo hace que la venta
+        // aparezca en "Ventas generales" / Cierres Mensuales con su fecha
+        // real, sin arriesgar que se vuelva a cobrar comisión por ella en
+        // el próximo corte.
+        case "REGISTRAR_VENTA_HISTORICA": {
+          if (!esAdmin) return forbidden();
+          if (!d.vendedor || !d.codigo) { result = { ok: false, error: "vendedor y codigo requeridos" }; break; }
+          const vendRVH = await sb.get("vendedores", d.vendedor);
+          if (!vendRVH) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
+          const historialRVH = Array.isArray(vendRVH.historialVentas) ? vendRVH.historialVentas : [];
+          historialRVH.push({
+            id: `VV_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+            codigo: d.codigo, nombre: d.nombre || "",
+            precio: d.precio || 0, foto: d.foto || "",
+            cantidad: parseInt(d.cantidad)||1,
+            fecha: d.fecha ? new Date(d.fecha).toISOString() : new Date().toISOString(),
+            soloRegistro: true
+          });
+          await sb.update("vendedores", d.vendedor, { historialVentas: historialRVH });
+          result = { ok: true };
+          break;
+        }
+
         // ══ CORTES ════════════════════════════════════════════════
         case "CERRAR_CORTE": {
           if (!esAdmin) return forbidden();
