@@ -5996,6 +5996,14 @@ async function confirmarCorte() {
         vendedor: vendedorActual.codigo, totalVendido: _corteValorVend, comisionPct: _cortePct,
         gananciaVendedor: _corteGanancia, aPagarVerex: _corteValorVend - _corteGanancia });
     devueltos.forEach(id => { const item = consignacion.find(c => String(c.id) === String(id)); if (item) item.estado = "devuelto"; });
+    // Reflejar en memoria el mismo cierre que hace el worker: piezas totalmente
+    // vendidas se marcan "vendido" (no vuelven a verse disponibles), el resto
+    // arranca de cero — si no, la pantalla mostraba datos viejos hasta recargar.
+    consignacion.filter(c => c.vendedor === vendedorActual.codigo && c.estado === "activo").forEach(c => {
+        const cant = parseInt(c.cantidad)||0, vend = parseInt(c.vendido)||0;
+        if (cant > 0 && vend >= cant) c.estado = "vendido";
+        else c.vendido = 0;
+    });
     if (vendedorActual) vendedorActual.fechaCorte = new Date().toISOString();
     await apiPost({ accion: "GUARDAR_TOKEN", vendedor: vendedorActual.codigo, token: "" });
     sessionStorage.removeItem("vx_token_" + vendedorActual.codigo);

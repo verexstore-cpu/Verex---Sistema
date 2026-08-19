@@ -1005,7 +1005,16 @@ async function enviar(){
           }
           const allCons = await sb.query("consignacion", "vendedor", "==", d.vendedor);
           for (const c of allCons.filter(c => c.estado === "activo")) {
-            await sb.update("consignacion", c.id, { vendido: 0 });
+            const cantC = parseInt(c.cantidad) || 0, vendC = parseInt(c.vendido) || 0;
+            if (cantC > 0 && vendC >= cantC) {
+              // Pieza totalmente vendida: se cierra en vez de resetear vendido
+              // a 0 — antes esto dejaba cantidad intacta con vendido:0, así que
+              // la pieza (ya vendida y ya cobrada en este mismo corte) volvía
+              // a aparecer como "disponible" en el inventario del vendedor.
+              await sb.update("consignacion", c.id, { estado: "vendido" });
+            } else {
+              await sb.update("consignacion", c.id, { vendido: 0 });
+            }
           }
           await sb.update("vendedores", d.vendedor, {
             totalVendido: 0,
