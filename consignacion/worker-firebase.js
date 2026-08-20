@@ -20,7 +20,9 @@ const CORS = {
 const ADMIN_WA = "50371250725"; // WhatsApp VEREX
 
 export default {
-  // ── CRON DIARIO: alertas pedidos pendientes +2 días ──────────────
+  // ── CRON DIARIO: alertas pedidos pendientes +2 días, cortes por vencer
+  // y reposiciones pendientes — todo en un solo WhatsApp, para no depender
+  // de que el admin entre a NEXUS a verlas. ──
   async scheduled(event, env, ctx) {
     const sb    = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
     const todos = await sb.getAll("pedidos");
@@ -29,20 +31,55 @@ export default {
       (p.estado === "Pendiente" || p.estado === "En camino") &&
       new Date(p.fecha).getTime() < hace2dias
     );
-    if (!pendientes.length) return;
 
-    const lista = pendientes.map(p =>
-      `• ${p.numeroPedido} — ${p.cliente} ($${parseFloat(p.total||0).toFixed(2)}) — ${p.estado}`
-    ).join("\n");
+    const secciones = [];
 
-    const msg = encodeURIComponent(
-      `⚠️ VEREX — ${pendientes.length} pedido(s) llevan +2 días sin actualizar:\n\n${lista}\n\n📋 Actualiza el estado en: https://admin-tienda.pages.dev`
-    );
+    if (pendientes.length) {
+      const lista = pendientes.map(p =>
+        `• ${p.numeroPedido} — ${p.cliente} ($${parseFloat(p.total||0).toFixed(2)}) — ${p.estado}`
+      ).join("\n");
+      secciones.push(`⚠️ ${pendientes.length} pedido(s) llevan +2 días sin actualizar:\n${lista}`);
+    }
 
-    // Enviar via CallMeBot API (gratis, solo requiere registro inicial)
-    const apikey = env.CALLMEBOT_KEY || "";
-    if (apikey) {
-      await fetch(`https://api.callmebot.com/whatsapp.php?phone=${ADMIN_WA}&text=${msg}&apikey=${apikey}`).catch(()=>{});
+    // Mismo cálculo que usa NEXUS para "Cortes por vencer" (dias<=1 antes
+    // de cumplirse los 30 días desde fechaCorte, porque ahí se pagan
+    // comisiones) y "Piezas por reponer" (reposicionesPendientes por vendedor).
+    const todosVendCron = await sb.getAll("vendedores");
+    const cortesCron = todosVendCron
+      .filter(v => v.fechaCorte)
+      .map(v => {
+        const venc = new Date(v.fechaCorte);
+        venc.setDate(venc.getDate() + 30);
+        return { v, dias: Math.ceil((venc - Date.now()) / 86400000) };
+      })
+      .filter(({dias}) => dias <= 1);
+    if (cortesCron.length) {
+      const lista = cortesCron.map(({v, dias}) => {
+        const msgD = dias < 0 ? `vencido hace ${Math.abs(dias)}d` : dias === 0 ? "vence hoy" : "vence mañana";
+        return `• ${v.nombre} — ${msgD}`;
+      }).join("\n");
+      secciones.push(`🧾 Cortes por vencer:\n${lista}`);
+    }
+
+    const reposicionesCron = [];
+    for (const v of todosVendCron) {
+      for (const r of (v.reposicionesPendientes || [])) {
+        reposicionesCron.push(`• ${v.nombre} — ${r.codigo} (${r.nombre||""})`);
+      }
+    }
+    if (reposicionesCron.length) {
+      secciones.push(`📦 Reposiciones pendientes (venta bajo pedido):\n${reposicionesCron.join("\n")}`);
+    }
+
+    if (secciones.length) {
+      const msg = encodeURIComponent(
+        `VEREX — avisos del día:\n\n${secciones.join("\n\n")}\n\n📋 Revisa todo en: https://admin-tienda.pages.dev`
+      );
+      // Enviar via CallMeBot API (gratis, solo requiere registro inicial)
+      const apikey = env.CALLMEBOT_KEY || "";
+      if (apikey) {
+        await fetch(`https://api.callmebot.com/whatsapp.php?phone=${ADMIN_WA}&text=${msg}&apikey=${apikey}`).catch(()=>{});
+      }
     }
 
     // ── CIERRE MENSUAL AUTOMÁTICO: el día 1 de cada mes, genera el cierre
