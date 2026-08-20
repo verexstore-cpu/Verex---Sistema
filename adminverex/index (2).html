@@ -395,6 +395,16 @@
                 </div>
                 <div style="font-size:11px;color:var(--dorado);margin-top:6px;">⭐ Destacados siempre aparecen primero · El resto rota cada semana automáticamente</div>
             </div>
+            <!-- Frase de confianza (envíos / tiempos / pago contra entrega) -->
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid #333;">
+                <div style="font-size:13px;font-weight:600;margin-bottom:6px;">🚚 Franja de confianza en catálogos</div>
+                <textarea id="inp-frase-confianza" rows="2" placeholder="🚚 Envíos a todo el país  ·  ⏱️ 1–2 días tras despacho  ·  💵 Pagas al recibir"
+                    style="width:100%;padding:8px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;font-family:inherit;resize:vertical;"></textarea>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+                    <span style="font-size:11px;color:#888;">Aparece arriba de los productos en el catálogo público y en los links de clientes/afiliados.</span>
+                    <button onclick="guardarFraseConfianza()" style="padding:6px 12px;background:#C9A84C;color:#111;border:none;border-radius:7px;cursor:pointer;font-weight:700;font-size:12px;white-space:nowrap;">💾 Guardar</button>
+                </div>
+            </div>
             <!-- Varios -->
             <div style="margin-top:14px;padding-top:14px;border-top:1px solid #333;display:flex;justify-content:space-between;align-items:center;">
                 <div>
@@ -1249,9 +1259,11 @@ async function sha256(str) {
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
 }
 
+const FRASE_CONFIANZA_DEFAULT = "🚚 Envíos a todo el país  ·  ⏱️ 1–2 días tras despacho  ·  💵 Pagas al recibir";
 let cfg = {
     tiendaActiva: true,
-    reglasEnvio: [{ min:0, max:49.99, costo:2 }, { min:50, max:9999, costo:0 }]
+    reglasEnvio: [{ min:0, max:49.99, costo:2 }, { min:50, max:9999, costo:0 }],
+    fraseConfianza: FRASE_CONFIANZA_DEFAULT
 };
 let productos=[], pedidos=[], cupones=[];
 let _ventasUnificadas = null; // ecommerce + venta directa, cargado por cargarVentasUnificadas()
@@ -1574,8 +1586,11 @@ async function cargarDatos(silencioso=false) {
         if (data.config) {
             if (data.config.tiendaActiva !== undefined) cfg.tiendaActiva  = data.config.tiendaActiva;
             if (data.config.reglasEnvio  !== undefined) cfg.reglasEnvio   = data.config.reglasEnvio;
+            if (data.config.fraseConfianza !== undefined) cfg.fraseConfianza = data.config.fraseConfianza;
             localStorage.setItem("vx_cfg", JSON.stringify(cfg));
         }
+        const inpFraseC = document.getElementById("inp-frase-confianza");
+        if (inpFraseC) inpFraseC.value = cfg.fraseConfianza || "";
         renderAll(silencioso);
         cargarVentasUnificadas().then(() => renderStats());
     } catch(e) {
@@ -2979,6 +2994,13 @@ function guardarLimiteCatalogo() {
     cfg.limiteCatalogo = val;
     saveConfig();
     toast(val > 0 ? `✅ Catálogo limitado a ${val} productos` : "✅ Catálogo sin límite (todos los productos)", "#22c55e");
+}
+
+function guardarFraseConfianza() {
+    const val = document.getElementById("inp-frase-confianza").value.trim();
+    cfg.fraseConfianza = val || FRASE_CONFIANZA_DEFAULT;
+    saveConfig();
+    toast("✅ Franja de confianza actualizada", "#22c55e");
 }
 
 function exportarExcel() {

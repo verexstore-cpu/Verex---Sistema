@@ -2640,7 +2640,12 @@ async function enviar(){
         // ══ ALIAS ════════════════════════════════════════════════
         case "GET_STOCK": {
           const stock = await sb.getAll("stock");
-          result = { ok: true, stock: stock.filter(p => p.estado !== "inactivo") };
+          // Se incluye config (ej. fraseConfianza del catálogo) porque
+          // catalogo.html (los links /c/:id) ya llama GET_STOCK para el
+          // chequeo de disponibilidad en vivo — reutilizar esa llamada evita
+          // un fetch extra solo para leer la frase editable de envíos/pago.
+          const cfgStock = await sb.get("config", "settings");
+          result = { ok: true, stock: stock.filter(p => p.estado !== "inactivo"), config: cfgStock || {} };
           break;
         }
 
