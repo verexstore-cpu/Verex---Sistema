@@ -1475,12 +1475,15 @@ async function enviar(){
           });
           if (vendV) await sb.update("vendedores", d.vendedor, { historialVentas: historialV });
 
-          // Si esa era la última pieza física que tenía el vendedor pero
-          // VEREX todavía tiene stock en bodega, se avisa al admin para que
-          // le reponga — el vendedor pudo vender "bajo pedido" sin perder
-          // el negocio, pero alguien tiene que acordarse de surtirlo.
-          const restanteV = (parseInt(consV.cantidad)||0) - nuevoVendidoV;
-          if (restanteV <= 0 && (parseInt(sV?.stock_bodega)||0) > 0 && vendV) {
+          // El aviso de reposición NO debe salir solo porque el vendedor
+          // vendió su última pieza regular (eso no requiere reponer nada
+          // todavía) — debe salir únicamente cuando esta venta YA fue una
+          // venta "bajo pedido" de verdad: vendido superó la cantidad física
+          // que tenía, o sea, un cliente nuevo pidió la pieza estando ya
+          // agotada con él. Ahí sí hay que reponerle para poder cumplirla.
+          const cantidadFisicaV = parseInt(consV.cantidad) || 0;
+          const esVentaBajoPedido = nuevoVendidoV > cantidadFisicaV;
+          if (esVentaBajoPedido && (parseInt(sV?.stock_bodega)||0) > 0 && vendV) {
             const pendientesV = Array.isArray(vendV.reposicionesPendientes) ? vendV.reposicionesPendientes : [];
             if (!pendientesV.some(r => r.codigo === consV.codigo)) {
               pendientesV.push({ codigo: consV.codigo, nombre: consV.nombre || "", fecha: new Date().toISOString() });
