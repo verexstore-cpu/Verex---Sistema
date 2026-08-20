@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VEREX · Producto</title>
+    <style>
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body{font-family:'Segoe UI',sans-serif;background:#f0f2f5;min-height:100vh;}
+        header{background:#111;text-align:center;padding:10px 16px;}
+        header img.logo{width:220px;max-width:70vw;display:block;margin:0 auto;}
+
+        .wrap{max-width:380px;margin:24px auto;padding:0 16px;}
+        .wrap.multi{max-width:580px;}
+        .grid-multi{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}
+        .grid-multi .card-body{padding:10px;}
+        .grid-multi .card-name{font-size:12px;margin-bottom:5px;}
+        .grid-multi .card-price{font-size:16px;}
+        .grid-multi .card-ref{margin-bottom:8px;}
+
+        /* Mismo diseño que el catálogo de clientes/afiliados (catalogo.html) —
+           borde dorado discreto en la tarjeta, y el botón con degradado
+           dorado + borde plateado + brillo al tocar. */
+        .card{background:#fff;border:1.5px solid #d9c184;border-radius:16px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.1);}
+        .card-img{width:100%;aspect-ratio:1/1;object-fit:contain;background:#f7f7f7;display:block;cursor:zoom-in;}
+        .card-img-ph{width:100%;aspect-ratio:1/1;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:56px;color:#ccc;}
+        .card-body{padding:18px;text-align:center;}
+        .card-name{font-size:16px;font-weight:800;color:#1a1a1a;line-height:1.35;margin-bottom:8px;}
+        .card-material{
+            display:inline-block;font-size:11px;font-weight:800;letter-spacing:.02em;
+            padding:3px 10px;border-radius:20px;margin-bottom:10px;
+        }
+        .mat-plata{background:#e5e7eb;color:#374151;border:1px solid #cbd5e1;}
+        .mat-acero{background:#dbeafe;color:#1e3a8a;border:1px solid #93c5fd;}
+        .mat-oro{background:#fef3c7;color:#92400e;border:1px solid #fcd34d;}
+        .mat-otro{background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;}
+        .card-price{font-size:26px;font-weight:800;color:#111;margin-bottom:4px;}
+        .card-ref{font-size:11px;color:#9ca3af;font-weight:600;margin-bottom:16px;}
+        .card-ne{display:inline-block;font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:5px;padding:2px 7px;margin-bottom:8px;line-height:1.5;}
+
+        .wa-btn{
+            position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;
+            gap:2px;width:100%;background:linear-gradient(135deg,#B8933E,#D4AF5E);
+            color:#fff;text-decoration:none;text-shadow:0 1px 2px rgba(0,0,0,.25);
+            padding:11px 13px 10px;border-radius:10px;
+            border:2px solid #a3a3a3;box-shadow:0 2px 6px rgba(0,0,0,.15);cursor:pointer;
+            transition:background .15s ease,transform .1s ease;
+        }
+        .wa-btn:active{
+            background:linear-gradient(135deg,#a17f34,#bd9750);
+            transform:scale(.97);
+        }
+        .wa-btn .wa-main{ font-size:15px;font-weight:700;position:relative;z-index:2; }
+        .wa-btn .wa-sub{ font-size:10.5px;font-weight:500;opacity:.88;position:relative;z-index:2; }
+        .grid-multi .wa-btn .wa-main{font-size:12px;}
+        .grid-multi .wa-btn .wa-sub{font-size:9px;}
+        .wa-shine{
+            position:absolute;top:0;left:-60%;width:40%;height:100%;
+            background:linear-gradient(120deg,transparent,rgba(255,255,255,.85),transparent);
+            transform:skewX(-20deg);pointer-events:none;
+        }
+        .wa-btn.brillando .wa-shine{ animation:waShineSweep .6s ease; }
+        @keyframes waShineSweep{ from{left:-60%;} to{left:130%;} }
+        .grid-multi .wa-btn{padding:9px;font-size:12px;}
+
+        footer{text-align:center;padding:20px;color:#999;font-size:11px;}
+        .estado{text-align:center;padding:60px 20px;color:#888;}
+        .estado .icon{font-size:44px;margin-bottom:12px;}
+
+        /* Confirmación con nombre + teléfono antes de enviar — mismo criterio
+           que el catálogo: un link se puede compartir por varios canales a
+           varios clientes distintos, y sin estos datos no se sabe quién pidió. */
+        #confirm-overlay{
+            display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+            z-index:999;align-items:flex-end;justify-content:center;
+        }
+        #confirm-overlay.open{display:flex;}
+        #confirm-box{
+            background:#fff;border-radius:16px 16px 0 0;
+            padding:20px 16px 32px;width:100%;max-width:480px;
+        }
+        #confirm-box input{
+            width:100%;padding:12px;border:2px solid #e2e2e2;border-radius:10px;
+            font-size:15px;box-sizing:border-box;margin-bottom:10px;
+        }
+
+        /* Zoom de foto */
+        #foto-zoom-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:1200;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;}
+        #foto-zoom-overlay img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;}
+    </style>
+</head>
+<body>
+<header><img class="logo" src="/images/logo.webp" alt="VEREX"></header>
+<div class="wrap" id="app"><div class="estado"><div class="icon">⏳</div>Cargando…</div></div>
+<footer>VEREX · La expresión de tu mejor versión</footer>
+
+<div id="foto-zoom-overlay" onclick="cerrarFotoZoom()">
+    <img id="foto-zoom-img" src="">
+</div>
+
+<div id="confirm-overlay">
+    <div id="confirm-box">
+        <div style="font-weight:800;font-size:15px;color:#111;text-align:center;margin-bottom:4px;" id="confirm-title"></div>
+        <div style="font-size:12px;color:#888;text-align:center;margin-bottom:18px;">Confirma tu pedido</div>
+        <div style="font-size:12px;font-weight:700;color:#111;margin-bottom:6px;">Tu nombre</div>
+        <input type="text" id="conf-nombre" placeholder="Ej: María Pérez" oninput="actualizarBotonConfirm()">
+        <div style="font-size:12px;font-weight:700;color:#111;margin-bottom:6px;">Tu número de WhatsApp</div>
+        <input type="tel" id="conf-tel" placeholder="Ej: 7000-0000" inputmode="numeric" oninput="actualizarBotonConfirm()">
+        <div style="font-size:12px;font-weight:700;color:#111;margin-bottom:6px;">Dirección completa de envío <span style="color:#999;font-weight:500;">(departamento, municipio y dirección exacta)</span></div>
+        <textarea id="conf-direccion" placeholder="Ej: San Salvador, Mejicanos, Col. Las Flores, Calle Principal #12" oninput="actualizarBotonConfirm()" rows="2"
+            style="width:100%;padding:12px;border:2px solid #e2e2e2;border-radius:10px;font-size:15px;box-sizing:border-box;resize:vertical;font-family:inherit;margin-bottom:14px;"></textarea>
+        <button id="confirm-btn" onclick="confirmarPedido()"
+            style="width:100%;background:#25D366;color:#fff;border:none;padding:13px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;opacity:.5;"
+            disabled>💬 Enviar por WhatsApp</button>
+        <button onclick="cerrarConfirm()"
+            style="width:100%;background:#f0f2f5;color:#555;border:none;padding:11px;border-radius:10px;font-size:14px;cursor:pointer;">
+            Cancelar</button>
+    </div>
+</div>
+
+<script>
+(function(){
+    const params = new URLSearchParams(location.search);
+    const raw = window.__PRODUCTO_CODIGO__ || params.get("c") || "";
+    const codigos = raw.split(",").map(s => s.trim()).filter(Boolean);
+    const API_URL = "https://verex-api.verexstore.workers.dev/";
+    let encontrados = [];
+    let _idxActual = -1;
+
+    // Número de WhatsApp de destino — obligatoriamente el del afiliado si el
+    // link se generó a nombre de uno (?wa=), o el oficial de VEREX si no.
+    // Antes el botón "Hazlo tuyo" no fijaba ningún número y el cliente tenía
+    // que elegir a quién mandárselo desde sus propios contactos — eso podía
+    // terminar en cualquier lado, o en ningún lado.
+    const VEREX_WA_OFICIAL = "71250725";
+    function normalizarWA(numero){
+        const solo = String(numero||"").replace(/\D/g,"");
+        if (!solo) return "";
+        if (solo.length === 8) return "503" + solo;
+        if (solo.startsWith("503") && solo.length === 11) return solo;
+        return solo;
+    }
+    const _waParam = (params.get("wa") || "").trim();
+    const _waDestino = normalizarWA(_waParam || VEREX_WA_OFICIAL);
+
+    // Descuento opcional para promos de un solo producto (?desc=20 = 20% off)
+    // — mismo mecanismo que ya usa el catálogo de varios productos.
+    const _descPct = Math.min(90, Math.max(0, parseInt(params.get("desc")) || 0));
+    function precioFinal(precio){
+        const n = parseFloat(precio) || 0;
+        if (!_descPct) return n;
+        return Math.round(n * (1 - _descPct / 100) * 100) / 100;
+    }
+
+    function esc(s){ const d=document.createElement("div"); d.textContent=String(s||""); return d.innerHTML; }
+
+    function claseMaterial(m){
+        const s = String(m||"").toLowerCase();
+        if(s.includes("acero")) return "mat-acero";
+        if(s.includes("oro"))   return "mat-oro";
+        if(s.includes("plata")) return "mat-plata";
+        return "mat-otro";
+    }
+
+    function mostrarEstado(icon, titulo, texto){
+        document.getElementById("app").innerHTML = `<div class="estado"><div class="icon">${icon}</div><h3>${esc(titulo)}</h3><p style="margin-top:6px;font-size:13px;">${texto||""}</p></div>`;
+    }
+
+    // Mismos nombres de campo que revisa el admin (getNotaEspecial) — el
+    // worker/API puede devolver la característica especial con distintos
+    // nombres según de dónde venga el dato.
+    function notaEspecial(p){
+        const v = p.caracterEspecial || p.caractEspecial || p.caracter_especial || p.caracteristicaEspecial
+               || p.caracteristica_especial || p.notaEspecial || p.nota_especial
+               || p.caract || p.nota || p.etiqueta || "";
+        return String(v).trim();
+    }
+
+    function cardHtml(p, idx){
+        const totalStock = (parseInt(p.stock_bodega)||0) + (parseInt(p.stock_tienda)||0) + (parseInt(p.stock_consignacion)||0);
+        const agotado = p.reservado || totalStock <= 0;
+        const material = p.material || "";
+        const nombre = (p.nombre_base || p.nombre || "").trim();
+        const nota = notaEspecial(p);
+        return `<div class="card">
+            ${p.foto
+                ? `<img class="card-img" src="${esc(p.foto)}" alt="${esc(nombre)}" onclick="abrirFotoZoom('${esc(p.foto)}')" onerror="this.outerHTML='<div class=\\'card-img-ph\\'>💍</div>'">`
+                : `<div class="card-img-ph">💍</div>`}
+            <div class="card-body">
+                <div class="card-name">${esc(nombre)}</div>
+                ${material ? `<div><span class="card-material ${claseMaterial(material)}">${esc(material)}</span></div>` : ''}
+                ${p.categoria === "AN" && p.talla ? `<div><span class="card-material" style="background:#e8f4fd;color:#0277bd;border:1px solid #90caf9;">Talla ${esc(p.talla)}</span></div>` : ''}
+                ${nota ? `<div><span class="card-ne">♦ ${esc(nota)}</span></div>` : ''}
+                ${agotado
+                    ? `<div class="card-price" style="color:#C0392B;font-size:16px;">AGOTADO</div>`
+                    : _descPct
+                        ? `<div class="card-price"><span style="font-size:15px;font-weight:600;color:#9ca3af;text-decoration:line-through;margin-right:8px;">$${parseFloat(p.precio||0).toFixed(2)}</span>$${precioFinal(p.precio).toFixed(2)}</div>
+                           <div style="display:inline-block;font-size:11px;font-weight:800;color:#fff;background:#D85A30;border-radius:5px;padding:2px 8px;margin-bottom:6px;">-${_descPct}% OFF</div>`
+                        : `<div class="card-price">$${parseFloat(p.precio||0).toFixed(2)}</div>`}
+                <div class="card-ref">Ref: ${esc(p.codigo)}</div>
+                ${agotado ? '' : `<button class="wa-btn" onclick="abrirConfirm(${idx}, this)"><span class="wa-main">✦ ¡Hazlo tuyo!</span><span class="wa-sub">Presiona aquí para ordenar</span><span class="wa-shine"></span></button>`}
+            </div>
+        </div>`;
+    }
+
+    function abrirFotoZoom(url){
+        document.getElementById("foto-zoom-img").src = url;
+        document.getElementById("foto-zoom-overlay").style.display = "flex";
+    }
+    function cerrarFotoZoom(){
+        document.getElementById("foto-zoom-overlay").style.display = "none";
+    }
+
+    function abrirConfirm(idx, btnEl){
+        if(btnEl){
+            btnEl.classList.remove("brillando");
+            void btnEl.offsetWidth;
+            btnEl.classList.add("brillando");
+        }
+        _idxActual = idx;
+        const p = encontrados[idx];
+        document.getElementById("confirm-title").textContent = (p.nombre_base || p.nombre || "").trim();
+        document.getElementById("conf-nombre").value = "";
+        document.getElementById("conf-tel").value = "";
+        document.getElementById("conf-direccion").value = "";
+        actualizarBotonConfirm();
+        document.getElementById("confirm-overlay").classList.add("open");
+    }
+    function cerrarConfirm(){
+        document.getElementById("confirm-overlay").classList.remove("open");
+    }
+    function actualizarBotonConfirm(){
+        const nombreOk = document.getElementById("conf-nombre").value.trim().length >= 2;
+        const telOk = document.getElementById("conf-tel").value.trim().length >= 4;
+        const direccionOk = document.getElementById("conf-direccion").value.trim().length >= 8;
+        const btn = document.getElementById("confirm-btn");
+        const listo = nombreOk && telOk && direccionOk;
+        btn.disabled = !listo;
+        btn.style.opacity = listo ? "1" : ".5";
+    }
+
+    if(!codigos.length){ mostrarEstado("⚠️","Link inválido",""); return; }
+
+    const exp = parseInt(params.get("exp")) || 0;
+    if(exp && Date.now() > exp){
+        mostrarEstado("⏰","Este link ya venció","Pídele a VEREX que te comparta el producto de nuevo con el precio y stock actualizados.");
+        return;
+    }
+
+    fetch(API_URL, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ accion:"GET_STOCK" }) })
+        .then(r => r.json())
+        .then(data => {
+            const stock = data.stock || [];
+            encontrados = codigos.map(c => stock.find(s => s.codigo === c)).filter(Boolean);
+            if(!encontrados.length){ mostrarEstado("😕","Producto no encontrado","Es posible que ya no esté disponible."); return; }
+
+            const app = document.getElementById("app");
+            if(encontrados.length > 1){
+                app.classList.add("multi");
+                app.innerHTML = `<div class="grid-multi">${encontrados.map(cardHtml).join('')}</div>`;
+            } else {
+                app.innerHTML = cardHtml(encontrados[0], 0);
+            }
+
+            const afiliado = params.get("af") || "";
+
+            // Registro silencioso del interés del cliente — si el link se
+            // compartió a nombre de un afiliado, el Lead cae directo en su
+            // "Completar Pedidos", igual que si lo hubiera elegido desde su
+            // propio catálogo. No bloquea el WhatsApp aunque falle.
+            function registrarLead(p, telefono, nombreCliente, direccionCliente){
+                try{
+                    fetch(API_URL, {
+                        method:"POST", headers:{"Content-Type":"application/json"},
+                        body: JSON.stringify({
+                            accion:"REGISTRAR_LEAD", afiliado, codigo:p.codigo,
+                            nombre:(p.nombre_base||p.nombre||"").trim(),
+                            precio: precioFinal(p.precio), foto: p.foto||"",
+                            telefonoCliente: telefono || "", nombreCliente: nombreCliente || "",
+                            direccionCliente: direccionCliente || ""
+                        })
+                    }).catch(()=>{});
+                }catch(_){}
+            }
+
+            window.confirmarPedido = function(){
+                const p = encontrados[_idxActual];
+                if(!p) return;
+                const nombreCliente = document.getElementById("conf-nombre").value.trim();
+                const tel = document.getElementById("conf-tel").value.trim();
+                const direccionCliente = document.getElementById("conf-direccion").value.trim();
+                if(nombreCliente.length < 2 || tel.length < 4 || direccionCliente.length < 8) return;
+                const nombre = (p.nombre_base || p.nombre || "").trim();
+                registrarLead(p, tel, nombreCliente, direccionCliente);
+                cerrarConfirm();
+                const precioTxt = _descPct
+                    ? `$${precioFinal(p.precio).toFixed(2)} (-${_descPct}% de $${parseFloat(p.precio||0).toFixed(2)})`
+                    : `$${parseFloat(p.precio||0).toFixed(2)}`;
+                const msg = `Hola, soy ${nombreCliente}. Me interesa este producto de VEREX:\n\n${nombre}\nPrecio: ${precioTxt}\nRef: ${p.codigo}\n\nMi WhatsApp: ${tel}\nDirección de envío: ${direccionCliente}`;
+                window.open(`https://wa.me/${_waDestino}?text=${encodeURIComponent(msg)}`,"_blank");
+            };
+        })
+        .catch(() => mostrarEstado("⚠️","Error al cargar","Intenta de nuevo en un momento."));
+
+    window.abrirFotoZoom = abrirFotoZoom;
+    window.cerrarFotoZoom = cerrarFotoZoom;
+    window.abrirConfirm = abrirConfirm;
+    window.cerrarConfirm = cerrarConfirm;
+    window.actualizarBotonConfirm = actualizarBotonConfirm;
+})();
+</script>
+</body>
+</html>
