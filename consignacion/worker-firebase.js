@@ -2379,6 +2379,7 @@ async function enviar(){
           const esCambio = Boolean(d.esCambio);
           let consId = null;
           if (!esCambio) {
+            const fechaVentaLead = new Date().toISOString();
             consId = "CONS_" + Date.now() + "_" + codigoReal;
             await sb.set("consignacion", consId, {
               id: consId, vendedor: lead.afiliado, codigo: codigoReal,
@@ -2386,8 +2387,23 @@ async function enviar(){
               talla: s.talla || "", nombre_base: s.nombre_base || lead.nombre,
               categoria: s.categoria || "", precio: lead.precio || s.precio || 0,
               cantidad: 1, vendido: 1,
-              foto: lead.foto || s.foto || "", fecha: new Date().toISOString(), estado: "activo"
+              foto: lead.foto || s.foto || "", fecha: fechaVentaLead, estado: "activo"
             });
+            // Igual que REGISTRAR_VENTA_VENDEDOR/REGISTRAR_VENTA: se guarda un
+            // registro individual de la venta con su fecha real — sin esto, las
+            // ventas de leads de afiliado nunca aparecían en "Mis Ventas" ni en
+            // los Cierres Mensuales (el mismo hueco que le pasó a Jorge Bermúdez).
+            const vendLeadHist = await sb.get("vendedores", lead.afiliado);
+            if (vendLeadHist) {
+              const historialLeadV = Array.isArray(vendLeadHist.historialVentas) ? vendLeadHist.historialVentas : [];
+              historialLeadV.push({
+                id: `VV_${Date.now()}_${Math.random().toString(36).slice(2,7)}`, consignacionId: consId,
+                codigo: codigoReal, nombre: lead.nombre || "",
+                precio: lead.precio || s.precio || 0, foto: lead.foto || s.foto || "",
+                cantidad: 1, fecha: fechaVentaLead
+              });
+              await sb.update("vendedores", lead.afiliado, { historialVentas: historialLeadV });
+            }
           }
           // Un afiliado SIN piezas físicas nunca tuvo la pieza en sus manos — VEREX
           // la entrega y cobra directo, así que la pieza sale de una vez de reservado
