@@ -923,7 +923,8 @@ async function enviar(){
           const s = await sb.get("stock", cons.codigo);
           if (s) {
             await sb.update("stock", cons.codigo, {
-              stock_vendido: (parseInt(s.stock_vendido)||0) + cantVentaAdmin
+              stock_vendido:      (parseInt(s.stock_vendido)||0) + cantVentaAdmin,
+              stock_consignacion: Math.max(0, (parseInt(s.stock_consignacion)||0) - cantVentaAdmin)
             });
           }
           // Igual que REGISTRAR_VENTA_VENDEDOR: se guarda un registro individual
@@ -1434,7 +1435,12 @@ async function enviar(){
           const sV = await sb.get("stock", consV.codigo);
           if (sV) {
             await sb.update("stock", consV.codigo, {
-              stock_vendido: (parseInt(sV.stock_vendido)||0) + cantVentaV
+              stock_vendido:      (parseInt(sV.stock_vendido)||0) + cantVentaV,
+              // La pieza ya no está "en circulación" con el vendedor — sin
+              // esto, stock_consignacion quedaba inflado para siempre con
+              // cada venta (nunca bajaba), la causa de los 12 casos
+              // "fantasma" que encontró la auditoría para Jaime Solórzano.
+              stock_consignacion: Math.max(0, (parseInt(sV.stock_consignacion)||0) - cantVentaV)
             });
           }
           // Se guarda un registro INDIVIDUAL de esta venta (con su fecha/hora
@@ -2484,11 +2490,14 @@ async function enviar(){
           // la entrega y cobra directo, así que la pieza sale de una vez de reservado
           // hacia vendida, SIN pasar por el balde de "Consignación" (que es para
           // piezas físicamente asignadas a un vendedor).
-          const vendAf = await sb.get("vendedores", lead.afiliado);
-          const esAfiliadoSinStockAf = vendAf?.tipo === "afiliado" && !vendAf?.recibeFisico;
+          // NO sumar a stock_consignacion aquí (aunque sea un afiliado CON
+          // stock): el registro de consignación creado arriba ya nace con
+          // vendido:1 (cantidad===vendido) — la pieza nunca estuvo "disponible"
+          // en consignación, pasó directo de reservada a vendida. Sumarla y
+          // nunca restarla es justo lo que generaba los casos "fantasma" que
+          // encontró la auditoría de stock.
           await sb.update("stock", codigoReal, {
             stock_reservado:    Math.max(0, (parseInt(s.stock_reservado)||0) - 1),
-            stock_consignacion: esAfiliadoSinStockAf ? (parseInt(s.stock_consignacion)||0) : (parseInt(s.stock_consignacion)||0) + 1,
             stock_vendido:      (parseInt(s.stock_vendido)||0) + 1
           });
           const historial = [...(lead.historial || []), { estado: "vendido", fecha: new Date().toISOString(), codigoConfirmado: codigoReal, esCambio }];
