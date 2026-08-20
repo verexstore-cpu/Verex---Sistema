@@ -2954,6 +2954,15 @@ async function enviar(){
           break;
         }
 
+        // Descarta una notificación de entrega confirmada (ej. de una prueba) —
+        // solo borra el registro, no toca stock ni consignación.
+        case "DESCARTAR_ENTREGA_CONFIRMADA": {
+          if (!esAdmin) return forbidden();
+          await sb.delete("entregas", d.id);
+          result = { ok: true };
+          break;
+        }
+
         case "CONFIRMAR_ENTREGA_RECIBO": {
           const entDoc = await sb.get("entregas", d.id);
           if (!entDoc) { result = { ok: false, error: "Entrega no encontrada" }; break; }

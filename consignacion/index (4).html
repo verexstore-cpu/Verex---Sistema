@@ -10831,6 +10831,17 @@ function redescargarReciboEntrega(entId) {
     }
 }
 
+async function descartarEntregaConfirmada(id) {
+    if (!confirm("¿Descartar esta notificación de entrega confirmada? (ej. si fue una prueba) — solo borra el aviso, no toca stock ni consignación.")) return;
+    const res = await apiPost({ accion: "DESCARTAR_ENTREGA_CONFIRMADA", id });
+    if (res && res.ok !== false) {
+        toast("✕ Notificación descartada");
+        cargarSolicitudes(true);
+    } else {
+        toast("⚠️ " + (res?.error || "No se pudo descartar"), "#c0392b");
+    }
+}
+
 async function cargarSolicitudes(mostrar) {
     try {
         const [resSol, resConf] = await Promise.all([
@@ -10860,12 +10871,15 @@ async function cargarSolicitudes(mostrar) {
                 try { items = typeof e.items === "string" ? JSON.parse(e.items) : (e.items || []); } catch(_) {}
                 _entregasConfirmadasMap[e.id] = { e, items, vend };
                 html += `<div style="background:rgba(45,122,79,0.15);border:1px solid #2d7a4f;border-radius:10px;padding:14px;margin-bottom:10px;">
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                        <span style="font-size:18px;">✅</span>
-                        <div>
-                            <div style="font-size:13px;font-weight:600;color:#4caf82;">${sanitizar(vend?.nombre || e.vendedor)} confirmó recepción</div>
-                            <div style="font-size:11px;color:var(--plateado);">${sanitizar(fecha)} · Código: <strong style="color:var(--dorado);">${sanitizar(e.codigoRecibo)}</strong></div>
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:18px;">✅</span>
+                            <div>
+                                <div style="font-size:13px;font-weight:600;color:#4caf82;">${sanitizar(vend?.nombre || e.vendedor)} confirmó recepción</div>
+                                <div style="font-size:11px;color:var(--plateado);">${sanitizar(fecha)} · Código: <strong style="color:var(--dorado);">${sanitizar(e.codigoRecibo)}</strong></div>
+                            </div>
                         </div>
+                        <button onclick="descartarEntregaConfirmada('${sanitizar(e.id)}')" title="Descartar esta notificación" style="background:none;border:none;color:var(--plateado);font-size:16px;cursor:pointer;padding:2px 6px;">✕</button>
                     </div>
                     <div style="font-size:12px;color:var(--plateado);margin-bottom:8px;">${items.length} producto(s): ${items.slice(0,3).map(i=>sanitizar(i.nombre)).join(", ")}</div>
                     ${e.firmaImg ? `<button onclick="redescargarReciboEntrega('${sanitizar(e.id)}')" style="padding:6px 12px;border:none;border-radius:6px;background:#2d7a4f;color:#fff;font-size:11px;font-weight:600;cursor:pointer;">📄 Descargar recibo PDF</button>` : ''}
