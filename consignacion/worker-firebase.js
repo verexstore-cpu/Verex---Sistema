@@ -1012,6 +1012,21 @@ async function enviar(){
           break;
         }
 
+        // Borra un registro de consignación de raíz, SIN mover stock — para
+        // limpiar datos de prueba/basura (ej. registros huérfanos que ya no
+        // tienen vendedor, o duplicados de prueba) donde restaurar unidades a
+        // bodega inventaría stock que nunca existió físicamente. A diferencia
+        // de ELIMINAR_ITEM_CONSIGNACION (que asume que la pieza SÍ vuelve
+        // físicamente a VEREX), esto asume que la pieza nunca existió de verdad.
+        case "ELIMINAR_CONSIGNACION_SIN_RESTAURAR": {
+          if (!esAdmin) return forbidden();
+          const itemESR = await sb.get("consignacion", d.id);
+          if (!itemESR) { result = { ok: false, error: "Item no encontrado" }; break; }
+          await sb.delete("consignacion", d.id);
+          result = { ok: true };
+          break;
+        }
+
         // Backfill de SOLO REGISTRO — para ventas que ya se cobraron y ya se
         // liquidaron (ej. en un corte manual/antiguo) pero nunca dejaron un
         // registro individual en historialVentas. A propósito NO toca
@@ -1500,7 +1515,12 @@ async function enviar(){
             if (!consRealPorCodigo.has(cod)) consRealPorCodigo.set(cod, { total: 0, detalle: [] });
             const entry = consRealPorCodigo.get(cod);
             entry.total += restante;
-            entry.detalle.push({ vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor, cantidad: restante });
+            entry.detalle.push({
+              id: c.id, vendedor: c.vendedor,
+              vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor,
+              vendedorExiste: vendMapAud.has(c.vendedor),
+              cantidad: restante
+            });
           }
 
           const discrepanciasConsignacion = [];

@@ -7792,7 +7792,9 @@ async function ejecutarAuditoriaStock() {
                                     Registrado: <strong>${d.stock_consignacion_registrado}</strong> · Real (consignación activa): <strong>${d.consignacion_real}</strong>
                                     · Diferencia: <strong style="color:${d.diferencia>0?'#e74c3c':'#3b82f6'};">${d.diferencia>0?'+':''}${d.diferencia}</strong>
                                 </div>
-                                ${d.detalleVendedores.length ? `<div style="font-size:10.5px;color:#888;margin-top:2px;">Con: ${d.detalleVendedores.map(v=>sanitizar(v.vendedorNombre)+' ('+v.cantidad+')').join(', ')}</div>` : ''}
+                                ${d.detalleVendedores.length ? `<div style="font-size:10.5px;color:#888;margin-top:2px;display:flex;flex-direction:column;gap:3px;">
+                                    ${d.detalleVendedores.map(v => `<span>Con: ${sanitizar(v.vendedorNombre)} (${v.cantidad})${!v.vendedorExiste ? ` — <span style="color:#a78bfa;">vendedor ya no existe</span> <button onclick="event.stopPropagation();eliminarConsignacionHuerfana('${sanitizar(v.id)}','${sanitizar(d.codigo)}')" style="padding:2px 8px;font-size:10px;background:#3a2a5a;color:#c4b5fd;border:none;border-radius:5px;cursor:pointer;font-weight:700;">🗑️ Eliminar registro</button>` : ''}</span>`).join('')}
+                                </div>` : ''}
                             </div>
                             <button onclick="corregirCantidadExactaStock('${sanitizar(d.codigo)}')" style="padding:5px 10px;font-size:11px;background:#e8b07a;color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">⚖️ Corregir</button>
                         </div>
@@ -7815,14 +7817,30 @@ async function ejecutarAuditoriaStock() {
             html += `<div>
                 <div style="font-size:13px;font-weight:700;color:#a78bfa;margin-bottom:6px;">👻 Consignación activa con código que ya no existe en Stock (${consHuerfanas.length})</div>
                 ${consHuerfanas.map(h => `
-                    <div style="background:#181225;border:1px solid #3a2a5a;border-radius:8px;padding:8px 10px;margin-bottom:6px;">
-                        <strong style="font-size:12.5px;">${sanitizar(h.codigo)}</strong> — vendedor: ${sanitizar(h.vendedorNombre)} · cantidad: ${h.cantidad} · vendido: ${h.vendido||0}
+                    <div style="background:#181225;border:1px solid #3a2a5a;border-radius:8px;padding:8px 10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+                        <div><strong style="font-size:12.5px;">${sanitizar(h.codigo)}</strong> — vendedor: ${sanitizar(h.vendedorNombre)} · cantidad: ${h.cantidad} · vendido: ${h.vendido||0}</div>
+                        <button onclick="eliminarConsignacionHuerfana('${sanitizar(h.id)}','${sanitizar(h.codigo)}')" style="padding:5px 10px;font-size:11px;background:#3a2a5a;color:#c4b5fd;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">🗑️ Eliminar registro</button>
                     </div>`).join('')}
                 <div style="font-size:11px;color:var(--plateado);margin-top:4px;">Revisa manualmente estos casos en el perfil del vendedor — el producto pudo haberse eliminado de Stock por error.</div>
             </div>`;
         }
     }
     panel.innerHTML = html;
+}
+
+// Borra un registro de consignación de raíz (sin mover stock) — para casos
+// huérfanos/de prueba que el panel de auditoría encontró, típicamente con un
+// vendedor que ya no existe o un código que ya no existe en Stock, donde no
+// hay perfil al que entrar para borrarlo con el botón normal.
+async function eliminarConsignacionHuerfana(id, codigo) {
+    if (!confirm(`¿Eliminar el registro de consignación de "${codigo}"? Es para limpiar datos de prueba/huérfanos — NO restaura nada a bodega, porque se asume que esa pieza nunca existió realmente. Si tienes dudas, cancela y revisa primero.`)) return;
+    const res = await apiPost({ accion: "ELIMINAR_CONSIGNACION_SIN_RESTAURAR", id });
+    if (res && res.ok !== false) {
+        toast("🗑️ Registro eliminado");
+        ejecutarAuditoriaStock();
+    } else {
+        toast("⚠️ " + (res?.error || "No se pudo eliminar"), "#c0392b");
+    }
 }
 
 // A diferencia de "+ Existencia" (que solo SUMA), esto fija el número
