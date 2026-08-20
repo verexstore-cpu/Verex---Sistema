@@ -18,6 +18,13 @@
         }
         .info-bar strong{color:#111;}
 
+        /* Franja de confianza (envíos / tiempos / pago contra entrega) */
+        #franja-confianza{
+            display:flex;justify-content:center;gap:14px;flex-wrap:wrap;
+            background:#fff;border-bottom:1px solid #e2e2e2;
+            padding:9px 12px;font-size:10.5px;font-weight:700;color:#444;
+        }
+
         /* Filtro de talla — solo aparece si el catálogo tiene anillos */
         #filtro-talla-bar{
             background:#fff;border-bottom:1px solid #e2e2e2;
@@ -171,6 +178,25 @@
         .card.agotado .card-agotado-badge{display:block;}
         .card.agotado .wa-order{background:#9ca3af;cursor:not-allowed;}
         .card-img-wrap{position:relative;}
+
+        /* Bajo pedido: el vendedor ya no la tiene en mano pero VEREX sí —
+           se sigue vendiendo, solo se avisa que la entrega tarda un poco */
+        .card-bajopedido-badge{
+            display:none;position:absolute;top:8px;left:8px;
+            background:#f59e0b;color:#fff;font-size:10px;font-weight:800;
+            padding:3px 8px;border-radius:5px;letter-spacing:.3px;z-index:2;
+        }
+        .card.bajopedido .card-bajopedido-badge{display:block;}
+
+        /* Talla exacta agotada pero el modelo sí tiene otras tallas en
+           bodega — se avisa cuáles en vez de ocultar la pieza */
+        .card-otrastallas-badge{
+            display:none;position:absolute;top:8px;left:8px;right:8px;
+            background:#3b82f6;color:#fff;font-size:9.5px;font-weight:800;
+            padding:3px 8px;border-radius:5px;letter-spacing:.2px;z-index:2;
+            text-align:center;
+        }
+        .card.otrastallas .card-otrastallas-badge{display:block;}
 
         /* Vencido */
         .expired{
@@ -475,9 +501,11 @@
                 }
             }
             return `
-            <div class="card" data-idx="${i}" data-cod="${esc(p.c||'')}">
+            <div class="card${p.bajoPedido?' bajopedido':''}${(p.tallasDisponibles&&p.tallasDisponibles.length)?' otrastallas':''}" data-idx="${i}" data-cod="${esc(p.c||'')}">
                 <div class="card-img-wrap">
                     <span class="card-agotado-badge">AGOTADO</span>
+                    <span class="card-bajopedido-badge">📦 BAJO PEDIDO</span>
+                    <span class="card-otrastallas-badge" id="otrastallas-${i}">📏 Talla agotada — disponible: ${esc((p.tallasDisponibles||[]).join(", "))}</span>
                     ${p.i
                         ?`<img class="card-img" src="${esc(p.i)}" alt="${esc(p.n)}" loading="lazy" style="cursor:zoom-in;" onclick="abrirFotoZoom('${esc(p.i)}')" onerror="this.outerHTML='<div class=\'card-img-ph\'>💍</div>'">`
                         :`<div class="card-img-ph">💍</div>`}
@@ -561,6 +589,7 @@
 
         document.getElementById("app").innerHTML=`
             <header><img class="logo" src="/images/logo.webp" alt="VEREX"></header>
+            <div id="franja-confianza">🚚 Envíos a todo el país  ·  ⏱️ 1–2 días tras despacho  ·  💵 Pagas al recibir</div>
             ${bannerHTML}
             ${promo2x50HTML}
             ${envioGratisHTML}
@@ -1138,13 +1167,27 @@
             const stock = data.stock || [];
             const mapa = new Map(stock.map(s => [s.codigo, s]));
 
+            // Franja de confianza — editable desde Admin VEREX → Dashboard,
+            // se actualiza aquí para que también aplique a links ya generados
+            // (no queda "congelada" en el texto que había al crear el link).
+            if (data.config?.fraseConfianza) {
+                const franja = document.getElementById("franja-confianza");
+                if (franja) franja.textContent = data.config.fraseConfianza;
+            }
+
             // Catálogos auto-generados por un vendedor desde su inventario
             // (ver inventario-sellers → compartirMiCatalogo): la tabla "stock"
             // global no baja stock_consignacion cuando el vendedor registra
             // una venta (solo sube stock_vendido), así que el chequeo genérico
             // de abajo nunca los marcaría agotados. Se cruza en cambio contra
             // SU consignación real — es la fuente exacta de qué le queda.
-            let codigosVivosVendedor = null;
+            let vivosVendedorPorClave = null;
+            // Clave = codigoBase + talla — el codigoBase solo no alcanza
+            // porque un anillo con varias tallas genera UNA tarjeta por
+            // talla en el catálogo, todas con el mismo codigoBase; sin la
+            // talla en la clave no se puede saber CUÁL talla exacta sigue
+            // viva y cuál se agotó (podía marcar todas o ninguna agotada).
+            const claveVivo = (base, talla) => String(base||"").toUpperCase() + "|" + String(talla||"").trim();
             if (_afiliadoCodigo && _esAutoGeneradoVendedor) {
                 try {
                     const resV = await fetch(API_URL, {
@@ -1153,14 +1196,15 @@
                     });
                     const dataV = await resV.json();
                     if (dataV.ok && dataV.productos) {
-                        // El catálogo guarda cada producto con su código BASE
-                        // (sin sufijo de talla, ej. "ANP089"), igual que
-                        // compartirMiCatalogo() lo arma — hay que comparar
-                        // contra el mismo formato o todo con talla (anillos)
-                        // se marca agotado por error aunque siga disponible.
-                        codigosVivosVendedor = new Set(dataV.productos.map(p =>
-                            (p.codigoBase || p.codigo || "").replace(/-\d+$/, "").toUpperCase()
-                        ));
+                        // Incluye "bajo pedido" (misma talla, se repone) y
+                        // "tallasDisponibles" (esa talla se agotó pero el
+                        // modelo tiene otras tallas en bodega) — en ambos
+                        // casos la tarjeta se sigue mostrando, no se oculta.
+                        vivosVendedorPorClave = new Map();
+                        dataV.productos.forEach(p => {
+                            const base = (p.codigoBase || p.codigo || "").replace(/-\d+$/, "");
+                            vivosVendedorPorClave.set(claveVivo(base, p.talla), p);
+                        });
                     }
                 } catch(_) {}
             }
@@ -1205,19 +1249,17 @@
                     if(priceEl) priceEl.innerHTML = renderPrecioHtml(p);
                 }
 
-                // Si el código ya no existe en stock (eliminado) o quedó sin
-                // unidades disponibles o fue reservado, se marca agotado.
+                // Si el código ya no existe en stock (eliminado), fue reservado,
+                // o ya no queda en BODEGA, se marca agotado para este catálogo.
                 //
-                // NO usar stock_total: ese campo NO se mantiene — no se decrementa
-                // al vender, así que la condición <= 0 no se cumplía nunca y no se
-                // ocultaba nada (al revisar, 0 de 991 productos lo tenían en 0,
-                // mientras 13 estaban realmente sin unidades). Se usa la misma
-                // fórmula que el admin en _stockTotalProd(): las unidades reales
-                // repartidas entre bodega, tienda y consignación.
-                const sinUnidades = row => !row || row.reservado ||
-                    ((parseInt(row.stock_bodega)||0)
-                   + (parseInt(row.stock_tienda)||0)
-                   + (parseInt(row.stock_consignacion)||0)) <= 0;
+                // Antes se sumaba bodega+tienda+consignación (como
+                // _stockTotalProd del admin), pero eso significaba que una
+                // pieza ya entregada a OTRO vendedor en consignación seguía
+                // apareciendo disponible aquí — un catálogo de afiliado podía
+                // mostrar productos que en realidad estaban con otro vendedor.
+                // Solo bodega representa lo que VEREX puede entregar a un
+                // cliente nuevo de ESTE catálogo.
+                const sinUnidades = row => !row || row.reservado || (parseInt(row.stock_bodega)||0) <= 0;
 
                 // Pares y tríos: el set solo se puede armar si TODAS sus piezas
                 // tienen unidades. Antes se miraba solo el código principal, así
@@ -1228,11 +1270,23 @@
                 // es lo mismo que se usa arriba para recalcular el precio del set.
                 const piezas = (p.par ? [...(p.cD||[]), ...(p.cC||[])] : []).filter(Boolean);
 
-                const agotado = codigosVivosVendedor
-                    ? !codigosVivosVendedor.has(String(p.c||"").toUpperCase())
+                const claveCard = claveVivo(p.c, (p.sizes && p.sizes[0]) || "");
+                const vivoInfo = vivosVendedorPorClave ? vivosVendedorPorClave.get(claveCard) : undefined;
+                const agotado = vivosVendedorPorClave
+                    ? !vivoInfo
                     : (piezas.length
                         ? piezas.some(cod => sinUnidades(mapa.get(cod)))
                         : sinUnidades(s));
+
+                if (vivosVendedorPorClave && card) {
+                    p.bajoPedido = !!vivoInfo?.bajoPedido;
+                    p.tallasDisponibles = vivoInfo?.tallasDisponibles || [];
+                    card.classList.toggle("bajopedido", p.bajoPedido);
+                    card.classList.toggle("otrastallas", !p.bajoPedido && p.tallasDisponibles.length > 0);
+                    const badgeOT = document.getElementById(`otrastallas-${i}`);
+                    if (badgeOT && p.tallasDisponibles.length) badgeOT.textContent = `📏 Talla agotada — disponible: ${p.tallasDisponibles.join(", ")}`;
+                }
+
                 if(!agotado) return;
                 p._agotado = true;
                 // Ocultar en vez de tachar — más limpio para el cliente, y evita
