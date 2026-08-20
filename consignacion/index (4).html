@@ -624,7 +624,10 @@
                     <button class="btn" style="background:#4a6fa5;color:#fff;padding:8px 14px;font-size:13px;" onclick="abrirStockNuevoLote()">📦 Lote</button>
                     <button class="btn" style="background:#27ae60;color:#fff;padding:8px 14px;font-size:13px;" onclick="abrirImportarExcel()">📥 Importar</button>
                     <button class="btn" style="background:#1a3a1a;color:#4ade80;border:1px solid #166534;padding:8px 14px;font-size:13px;" onclick="abrirModalFotosCelular()">📱 Fotos</button>
+                    <button class="btn" style="background:#3b2a1a;color:#f0b96a;border:1px solid #8a5a1e;padding:8px 14px;font-size:13px;" onclick="ejecutarAuditoriaStock()">🔍 Auditoría</button>
                 </div>
+
+                <div id="auditoria-stock-panel" style="display:none;background:#141414;border:1px solid #3a3a3c;border-radius:10px;padding:14px;margin-bottom:16px;"></div>
 
                 <!-- Acciones con seleccionados -->
                 <div id="stock-acciones" style="display:none;background:#1c1c1e;border:1px solid var(--dorado);border-radius:10px;padding:12px;margin-bottom:12px;gap:8px;align-items:center;flex-wrap:wrap;position:sticky;top:0;z-index:20;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
@@ -7746,6 +7749,82 @@ function abrirEditarStockItem(codigo) {
 }
 
 // ── CORREGIR CANTIDAD EXACTA (bodega/tienda/consignación) ────────────
+// Auditoría de SOLO LECTURA — no cambia nada, solo compara stock_consignacion
+// (contador agregado, se ajusta manualmente en +20 lugares del código) contra
+// la fuente real de verdad (consignación activa por vendedor) y avisa el
+// drift, igual al que causó el caso Jaime/PUP035 — para detectarlo antes de
+// que alguien note algo raro, no solo después.
+async function ejecutarAuditoriaStock() {
+    const panel = document.getElementById("auditoria-stock-panel");
+    panel.style.display = "block";
+    panel.innerHTML = '<p style="color:var(--plateado);font-size:13px;">⏳ Auditando... (no se modifica nada)</p>';
+    let res;
+    try {
+        res = await apiPost({ accion: "AUDITORIA_STOCK" });
+    } catch(e) {
+        panel.innerHTML = '<p style="color:#e74c3c;font-size:13px;">⚠️ Error al auditar: ' + e.message + '</p>';
+        return;
+    }
+    if (!res || res.ok === false) {
+        panel.innerHTML = '<p style="color:#e74c3c;font-size:13px;">⚠️ ' + (res?.error||"No se pudo auditar") + '</p>';
+        return;
+    }
+    const { discrepanciasConsignacion, negativos, consHuerfanas, resumen, generadoEn } = res;
+    const sinProblemas = !discrepanciasConsignacion.length && !negativos.length && !consHuerfanas.length;
+
+    let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <h3 style="margin:0;color:var(--dorado);font-size:15px;">🔍 Auditoría de Stock</h3>
+        <span style="font-size:11px;color:var(--plateado);">${new Date(generadoEn).toLocaleString('es-SV')} · ${resumen.productosRevisados} productos revisados</span>
+    </div>`;
+
+    if (sinProblemas) {
+        html += '<p style="color:#2ecc71;font-size:13px;font-weight:700;">✅ Todo cuadra — sin discrepancias, sin negativos, sin huérfanas.</p>';
+    } else {
+        if (discrepanciasConsignacion.length) {
+            html += `<div style="margin-bottom:14px;">
+                <div style="font-size:13px;font-weight:700;color:#f0b96a;margin-bottom:6px;">⚖️ Contador de consignación desincronizado (${discrepanciasConsignacion.length})</div>
+                ${discrepanciasConsignacion.map(d => `
+                    <div style="background:#1f1a12;border:1px solid #5a4520;border-radius:8px;padding:8px 10px;margin-bottom:6px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+                            <div>
+                                <strong style="font-size:12.5px;">${sanitizar(d.codigo)}</strong> — ${sanitizar(d.nombre)}
+                                <div style="font-size:11px;color:var(--plateado);margin-top:2px;">
+                                    Registrado: <strong>${d.stock_consignacion_registrado}</strong> · Real (consignación activa): <strong>${d.consignacion_real}</strong>
+                                    · Diferencia: <strong style="color:${d.diferencia>0?'#e74c3c':'#3b82f6'};">${d.diferencia>0?'+':''}${d.diferencia}</strong>
+                                </div>
+                                ${d.detalleVendedores.length ? `<div style="font-size:10.5px;color:#888;margin-top:2px;">Con: ${d.detalleVendedores.map(v=>sanitizar(v.vendedorNombre)+' ('+v.cantidad+')').join(', ')}</div>` : ''}
+                            </div>
+                            <button onclick="corregirCantidadExactaStock('${sanitizar(d.codigo)}')" style="padding:5px 10px;font-size:11px;background:#e8b07a;color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">⚖️ Corregir</button>
+                        </div>
+                    </div>`).join('')}
+            </div>`;
+        }
+        if (negativos.length) {
+            html += `<div style="margin-bottom:14px;">
+                <div style="font-size:13px;font-weight:700;color:#e74c3c;margin-bottom:6px;">🚫 Cantidades negativas (${negativos.length}) — no deberían existir</div>
+                ${negativos.map(n => `
+                    <div style="background:#1f1212;border:1px solid #5a2020;border-radius:8px;padding:8px 10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+                        <div><strong style="font-size:12.5px;">${sanitizar(n.codigo)}</strong> — ${sanitizar(n.nombre)}
+                            <div style="font-size:11px;color:var(--plateado);">Bodega: ${n.stock_bodega} · Tienda: ${n.stock_tienda} · Consignación: ${n.stock_consignacion} · Reservado: ${n.stock_reservado}</div>
+                        </div>
+                        <button onclick="corregirCantidadExactaStock('${sanitizar(n.codigo)}')" style="padding:5px 10px;font-size:11px;background:#e8b07a;color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">⚖️ Corregir</button>
+                    </div>`).join('')}
+            </div>`;
+        }
+        if (consHuerfanas.length) {
+            html += `<div>
+                <div style="font-size:13px;font-weight:700;color:#a78bfa;margin-bottom:6px;">👻 Consignación activa con código que ya no existe en Stock (${consHuerfanas.length})</div>
+                ${consHuerfanas.map(h => `
+                    <div style="background:#181225;border:1px solid #3a2a5a;border-radius:8px;padding:8px 10px;margin-bottom:6px;">
+                        <strong style="font-size:12.5px;">${sanitizar(h.codigo)}</strong> — vendedor: ${sanitizar(h.vendedorNombre)} · cantidad: ${h.cantidad} · vendido: ${h.vendido||0}
+                    </div>`).join('')}
+                <div style="font-size:11px;color:var(--plateado);margin-top:4px;">Revisa manualmente estos casos en el perfil del vendedor — el producto pudo haberse eliminado de Stock por error.</div>
+            </div>`;
+        }
+    }
+    panel.innerHTML = html;
+}
+
 // A diferencia de "+ Existencia" (que solo SUMA), esto fija el número
 // exacto de cada columna — para arreglar desajustes puntuales (ej. un
 // duplicado eliminado que dejó el contador de consignación mal calculado).

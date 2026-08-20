@@ -1470,6 +1470,81 @@ async function enviar(){
           break;
         }
 
+        // Auditoría de solo lectura — NO escribe nada, solo compara. Detecta
+        // cuándo el contador agregado stock_consignacion (que se incrementa/
+        // decrementa manualmente en más de 20 lugares del código) se desvió
+        // de la fuente real de verdad: la suma de lo que cada consignación
+        // ACTIVA dice que el vendedor tiene en mano (cantidad - vendido).
+        // Ese drift fue exactamente la causa del caso Jaime/PUP035.
+        case "AUDITORIA_STOCK": {
+          if (!esAdmin) return forbidden();
+          const [stockAud, consAud, vendAud] = await Promise.all([
+            sb.getAll("stock"), sb.getAll("consignacion"), sb.getAll("vendedores")
+          ]);
+          const vendMapAud = new Map(vendAud.map(v => [v.codigo, v.nombre || v.codigo]));
+
+          // Consignación real por código: suma de (cantidad - vendido) de
+          // items activos, más el detalle de qué vendedor tiene cuánto.
+          const consRealPorCodigo = new Map();
+          for (const c of consAud) {
+            if (c.estado !== "activo") continue;
+            const restante = Math.max(0, (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0));
+            if (restante <= 0) continue;
+            const cod = String(c.codigo||"").toUpperCase();
+            if (!consRealPorCodigo.has(cod)) consRealPorCodigo.set(cod, { total: 0, detalle: [] });
+            const entry = consRealPorCodigo.get(cod);
+            entry.total += restante;
+            entry.detalle.push({ vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor, cantidad: restante });
+          }
+
+          const discrepanciasConsignacion = [];
+          for (const s of stockAud) {
+            const cod = String(s.codigo||"").toUpperCase();
+            const registrado = parseInt(s.stock_consignacion) || 0;
+            const real = consRealPorCodigo.get(cod)?.total || 0;
+            if (registrado !== real) {
+              discrepanciasConsignacion.push({
+                codigo: s.codigo, nombre: s.nombre || "",
+                stock_consignacion_registrado: registrado,
+                consignacion_real: real,
+                diferencia: registrado - real,
+                detalleVendedores: consRealPorCodigo.get(cod)?.detalle || []
+              });
+            }
+          }
+
+          // Chequeos de sanidad básicos: negativos no deberían existir nunca.
+          const negativos = stockAud.filter(s =>
+            (parseInt(s.stock_bodega)||0) < 0 || (parseInt(s.stock_tienda)||0) < 0 ||
+            (parseInt(s.stock_consignacion)||0) < 0 || (parseInt(s.stock_reservado)||0) < 0
+          ).map(s => ({
+            codigo: s.codigo, nombre: s.nombre || "",
+            stock_bodega: parseInt(s.stock_bodega)||0, stock_tienda: parseInt(s.stock_tienda)||0,
+            stock_consignacion: parseInt(s.stock_consignacion)||0, stock_reservado: parseInt(s.stock_reservado)||0
+          }));
+
+          // Consignación "activa" pero cuyo código ya no existe en stock —
+          // huérfanos que pueden confundir reportes futuros.
+          const codigosStock = new Set(stockAud.map(s => String(s.codigo||"").toUpperCase()));
+          const consHuerfanas = consAud.filter(c =>
+            c.estado === "activo" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0 &&
+            !codigosStock.has(String(c.codigo||"").toUpperCase())
+          ).map(c => ({ id: c.id, codigo: c.codigo, vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor, cantidad: c.cantidad, vendido: c.vendido }));
+
+          result = {
+            ok: true,
+            generadoEn: new Date().toISOString(),
+            discrepanciasConsignacion, negativos, consHuerfanas,
+            resumen: {
+              productosRevisados: stockAud.length,
+              discrepancias: discrepanciasConsignacion.length,
+              negativos: negativos.length,
+              huerfanas: consHuerfanas.length
+            }
+          };
+          break;
+        }
+
         case "GET_REPOSICIONES_PENDIENTES": {
           if (!esAdmin) return forbidden();
           const todosVendRep = await sb.getAll("vendedores");
