@@ -153,6 +153,10 @@
             <input type="text" id="bus-ventas" placeholder="Buscar venta..." oninput="filtrarVentas()">
             <button class="btn btn-gris" onclick="abrirModalRegistrar(null)">+ Registrar</button>
         </div>
+        <div id="resumen-ventas" style="display:none;background:var(--gris2);border-radius:10px;padding:10px 14px;margin-bottom:12px;text-align:center;">
+            <div style="font-size:11px;color:var(--plateado);text-transform:uppercase;letter-spacing:.5px;">Total vendido</div>
+            <div id="resumen-ventas-monto" style="font-size:22px;font-weight:800;color:var(--dorado);">$0.00</div>
+        </div>
         <div id="lista-ventas"></div>
     </div>
 </div>
@@ -381,35 +385,66 @@ async function verificarEntregasPendientes() {
     }
 }
 
+// "Bajo pedido": el vendedor ya no tiene la pieza en mano, pero VEREX
+// todavía tiene stock en bodega (flag bajoPedido que manda el worker) —
+// se sigue ofreciendo/vendiendo para no perder la venta; se le avisa al
+// admin por separado (reposicionesPendientes) para que la reponga.
+function _dispEfectivo(c) {
+    const d = parseInt(c.cantidad||0) - parseInt(c.vendido||0);
+    return d > 0 ? d : (c.bajoPedido ? 1 : 0);
+}
+
 function renderInventario() {
-    const grid    = document.getElementById("grid-inv");
-    const activos = invActivo.filter(c => parseInt(c.cantidad||0) - parseInt(c.vendido||0) > 0);
+    const grid = document.getElementById("grid-inv");
+    // Además de lo vendible (disponible o bajo pedido), se muestran también
+    // las piezas cuya talla exacta ya se agotó pero el modelo SÍ tiene otras
+    // tallas en bodega — informativo para que el vendedor sepa qué ofrecerle
+    // al cliente, aunque esa talla puntual no se pueda vender.
+    const activos = invActivo.filter(c => _dispEfectivo(c) > 0 || (c.tallasDisponibles && c.tallasDisponibles.length));
     if (!activos.length) {
         grid.innerHTML = '<p style="color:var(--plateado);font-size:13px;grid-column:1/-1;">No hay productos en inventario.</p>';
         return;
     }
     grid.innerHTML = activos.map(c => {
         const disp = parseInt(c.cantidad||0) - parseInt(c.vendido||0);
+        const sinTallaPeroOtras = disp <= 0 && !c.bajoPedido && c.tallasDisponibles && c.tallasDisponibles.length;
         const foto = c.foto ? '<img src="'+c.foto+'" alt="'+c.nombre+'">' : '<div class="item-no-foto">💍</div>';
-        return '<div class="item" onclick="seleccionarProducto(\''+c.id+'\')">'+foto
+        const dispTxt = disp > 0 ? disp+' disponibles'
+            : sinTallaPeroOtras ? '<span style="color:#3b82f6;">📏 Talla '+(c.talla||'')+' agotada — hay: '+c.tallasDisponibles.join(', ')+'</span>'
+            : '<span style="color:#f39c12;">📦 Bajo pedido</span>';
+        const click = sinTallaPeroOtras ? '' : ' onclick="seleccionarProducto(\''+c.id+'\')"';
+        return '<div class="item"'+click+(sinTallaPeroOtras?' style="cursor:default;"':'')+'>'+foto
             +'<div class="item-info"><div class="item-codigo">'+c.codigo+'</div>'
             +'<div class="item-nombre">'+c.nombre+'</div>'
             +'<div class="item-precio">$'+parseFloat(c.precio||0).toFixed(2)+'</div>'
-            +'<div class="item-disp">'+disp+' disponibles</div></div></div>';
+            +'<div class="item-disp">'+dispTxt+'</div></div></div>';
     }).join('');
 }
 
 function renderVentas() {
     const lista = document.getElementById("lista-ventas");
-    if (!ventasData.length) { lista.innerHTML = '<p style="color:var(--plateado);font-size:13px;">No hay ventas registradas aún.</p>'; return; }
+    const resumen = document.getElementById("resumen-ventas");
+    if (!ventasData.length) {
+        lista.innerHTML = '<p style="color:var(--plateado);font-size:13px;">No hay ventas registradas aún.</p>';
+        if (resumen) resumen.style.display = "none";
+        return;
+    }
+    if (resumen) {
+        const totalGeneral = ventasData.reduce((s,v) => s + parseFloat(v.precio||0) * parseInt(v.cantidad||1), 0);
+        document.getElementById("resumen-ventas-monto").textContent = "$" + totalGeneral.toFixed(2);
+        resumen.style.display = "block";
+    }
     lista.innerHTML = ventasData.slice().reverse().map(v => {
         const fecha = v.fecha ? new Date(v.fecha).toLocaleDateString("es-SV", {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : "—";
         const foto = v.foto ? '<img src="'+v.foto+'" onerror="this.style.display=\'none\'">' : '<div style="width:56px;height:56px;background:var(--gris2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;">💍</div>';
+        const cantidad = parseInt(v.cantidad||1);
+        const totalVenta = parseFloat(v.precio||0) * cantidad;
+        const detallePrecio = cantidad > 1 ? '$'+parseFloat(v.precio||0).toFixed(2)+' × '+cantidad+' = ' : '';
         return '<div class="venta-item">'+foto
             +'<div class="venta-info"><div class="venta-codigo">'+v.codigo+'</div>'
             +'<div class="venta-nombre">'+v.nombre+'</div>'
-            +'<div class="venta-precio">$'+parseFloat(v.precio||0).toFixed(2)+' · '+v.cantidad+' unidad(es)</div>'
-            +'<div class="venta-fecha">📅 '+fecha+'</div></div>'
+            +'<div class="venta-precio">'+detallePrecio+'<strong style="color:var(--dorado);">$'+totalVenta.toFixed(2)+'</strong></div>'
+            +'<div class="venta-fecha">📅 '+fecha+(v.migrado?' <span style="color:#f39c12;" title="Venta anterior a la mejora del historial — la fecha es aproximada (fecha de entrega, no de venta)">≈ aproximada</span>':'')+'</div></div>'
             +'<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">'
             +'<span class="venta-badge">✅ Registrada</span>'
             +'<button onclick="solicitarEliminar(\''+v.id+'\')" style="background:rgba(192,57,43,0.15);border:none;color:#e74c3c;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;">Solicitar corrección</button>'
@@ -444,7 +479,7 @@ async function compartirMiCatalogo() {
         }
     } catch(e) { /* si falla el refresco, se sigue con lo que ya había en memoria */ }
 
-    const activos = invActivo.filter(c => parseInt(c.cantidad||0) - parseInt(c.vendido||0) > 0);
+    const activos = invActivo.filter(c => _dispEfectivo(c) > 0 || (c.tallasDisponibles && c.tallasDisponibles.length));
     if (!activos.length) {
         if (btn) { btn.textContent = btnTextoOriginal; btn.disabled = false; }
         alert("No tienes productos disponibles en este momento.");
@@ -464,7 +499,13 @@ async function compartirMiCatalogo() {
             sizes: c.talla ? [String(c.talla)] : [],
             sizesD: [], sizesH: [],
             par: false, piezas: null, pD: null, pH: null, cD: null, cC: null,
-            avisoPieza: false
+            avisoPieza: false,
+            // Ya no tiene la pieza en mano, pero VEREX sí — se sigue
+            // ofreciendo "bajo pedido" en vez de desaparecer del catálogo.
+            bajoPedido: !!c.bajoPedido,
+            // Esta talla exacta se agotó, pero el mismo modelo sí tiene
+            // otras tallas en bodega — se avisan en vez de ocultar la pieza.
+            tallasDisponibles: c.tallasDisponibles || []
         }));
 
         const res = await fetch("https://admin-tienda.pages.dev/save-catalog", {
@@ -520,10 +561,23 @@ function filtrarVentas() {
     if (!busq) { renderVentas(); return; }
     const filtradas = ventasData.filter(v => (v.nombre||"").toLowerCase().includes(busq) || (v.codigo||"").toLowerCase().includes(busq));
     const lista = document.getElementById("lista-ventas");
-    if (!filtradas.length) { lista.innerHTML = '<p style="color:var(--plateado);font-size:13px;">No se encontraron ventas.</p>'; return; }
+    const resumen = document.getElementById("resumen-ventas");
+    if (!filtradas.length) {
+        lista.innerHTML = '<p style="color:var(--plateado);font-size:13px;">No se encontraron ventas.</p>';
+        if (resumen) resumen.style.display = "none";
+        return;
+    }
+    if (resumen) {
+        const totalFiltrado = filtradas.reduce((s,v) => s + parseFloat(v.precio||0) * parseInt(v.cantidad||1), 0);
+        document.getElementById("resumen-ventas-monto").textContent = "$" + totalFiltrado.toFixed(2);
+        resumen.style.display = "block";
+    }
     lista.innerHTML = filtradas.slice().reverse().map(v => {
         const fecha = v.fecha ? new Date(v.fecha).toLocaleDateString("es-SV") : "—";
-        return '<div class="venta-item"><div class="venta-info"><div class="venta-codigo">'+v.codigo+'</div><div class="venta-nombre">'+v.nombre+'</div><div class="venta-precio">$'+parseFloat(v.precio||0).toFixed(2)+' · '+v.cantidad+' unidad(es)</div><div class="venta-fecha">📅 '+fecha+'</div></div><span class="venta-badge">✅ Registrada</span></div>';
+        const cantidad = parseInt(v.cantidad||1);
+        const totalVenta = parseFloat(v.precio||0) * cantidad;
+        const detallePrecio = cantidad > 1 ? '$'+parseFloat(v.precio||0).toFixed(2)+' × '+cantidad+' = ' : '';
+        return '<div class="venta-item"><div class="venta-info"><div class="venta-codigo">'+v.codigo+'</div><div class="venta-nombre">'+v.nombre+'</div><div class="venta-precio">'+detallePrecio+'<strong style="color:var(--dorado);">$'+totalVenta.toFixed(2)+'</strong></div><div class="venta-fecha">📅 '+fecha+'</div></div><span class="venta-badge">✅ Registrada</span></div>';
     }).join('');
 }
 
@@ -619,24 +673,25 @@ function abrirModalRegistrar(prod) {
         document.getElementById("reg-paso1").style.display = "block";
         document.getElementById("reg-paso2").style.display = "none";
         document.getElementById("bus-prod-venta").value = "";
-        renderListaProdVenta(invActivo.filter(c => parseInt(c.cantidad||0)-parseInt(c.vendido||0)>0));
+        renderListaProdVenta(invActivo.filter(c => _dispEfectivo(c)>0));
     }
     abrirModal("modal-registrar");
 }
 
 function mostrarPaso2() {
     const p = prodSeleccionado; if (!p) return;
-    const disp = parseInt(p.cantidad||0)-parseInt(p.vendido||0);
+    const disp = _dispEfectivo(p);
     document.getElementById("reg-paso1").style.display = "none";
     document.getElementById("reg-paso2").style.display = "block";
     document.getElementById("venta-cantidad").value = "1";
     document.getElementById("venta-cantidad").max = disp;
+    const dispTxt = (parseInt(p.cantidad||0)-parseInt(p.vendido||0)) > 0 ? disp+' disponibles' : '📦 Bajo pedido';
     document.getElementById("prod-seleccionado-info").innerHTML =
         (p.foto?'<img src="'+p.foto+'" style="width:52px;height:52px;object-fit:cover;border-radius:6px;">'
         :'<div style="width:52px;height:52px;background:var(--gris2);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:20px;">💍</div>')
         +'<div><div style="font-size:10px;color:var(--dorado);font-weight:600;">'+p.codigo+'</div>'
         +'<div style="font-size:13px;font-weight:600;">'+p.nombre+'</div>'
-        +'<div style="font-size:12px;color:var(--plateado);">$'+parseFloat(p.precio||0).toFixed(2)+' · '+disp+' disponibles</div></div>';
+        +'<div style="font-size:12px;color:var(--plateado);">$'+parseFloat(p.precio||0).toFixed(2)+' · '+dispTxt+'</div></div>';
 }
 
 function volverPaso1() { document.getElementById("reg-paso1").style.display="block"; document.getElementById("reg-paso2").style.display="none"; prodSeleccionado=null; }
@@ -646,12 +701,13 @@ function renderListaProdVenta(prods) {
     if (!prods.length) { lista.innerHTML='<p style="color:var(--plateado);font-size:13px;">No hay productos disponibles.</p>'; return; }
     lista.innerHTML = prods.map(c => {
         const disp = parseInt(c.cantidad||0)-parseInt(c.vendido||0);
+        const dispTxt = disp > 0 ? disp+' disp.' : '📦 bajo pedido';
         return '<div onclick="seleccionarProdModal(\''+c.id+'\')" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--gris2);border-radius:8px;margin-bottom:8px;cursor:pointer;border:1px solid #333;" onmouseover="this.style.borderColor=\'var(--dorado)\'" onmouseout="this.style.borderColor=\'#333\'">'
             +(c.foto?'<img src="'+c.foto+'" style="width:44px;height:44px;object-fit:cover;border-radius:6px;">'
             :'<div style="width:44px;height:44px;background:var(--gris);border-radius:6px;display:flex;align-items:center;justify-content:center;">💍</div>')
             +'<div style="flex:1;min-width:0;"><div style="font-size:10px;color:var(--dorado);font-weight:600;">'+c.codigo+'</div>'
             +'<div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+c.nombre+'</div>'
-            +'<div style="font-size:11px;color:var(--plateado);">$'+parseFloat(c.precio||0).toFixed(2)+' · '+disp+' disp.</div></div></div>';
+            +'<div style="font-size:11px;color:var(--plateado);">$'+parseFloat(c.precio||0).toFixed(2)+' · '+dispTxt+'</div></div></div>';
     }).join('');
 }
 
@@ -659,20 +715,20 @@ function seleccionarProdModal(id) { const prod=invActivo.find(c=>String(c.id)===
 
 function filtrarProdVenta() {
     const busq = document.getElementById("bus-prod-venta").value.toLowerCase();
-    renderListaProdVenta(invActivo.filter(c => (parseInt(c.cantidad||0)-parseInt(c.vendido||0)>0) && ((c.nombre||"").toLowerCase().includes(busq)||(c.codigo||"").toLowerCase().includes(busq))));
+    renderListaProdVenta(invActivo.filter(c => _dispEfectivo(c)>0 && ((c.nombre||"").toLowerCase().includes(busq)||(c.codigo||"").toLowerCase().includes(busq))));
 }
 
 function abrirScanner() {
     const codigo = prompt("Ingresa el código del producto:");
     if (!codigo) return;
-    const prod = invActivo.find(c => String(c.codigo).toUpperCase()===codigo.toUpperCase() && parseInt(c.cantidad||0)-parseInt(c.vendido||0)>0);
+    const prod = invActivo.find(c => String(c.codigo).toUpperCase()===codigo.toUpperCase() && _dispEfectivo(c)>0);
     if (prod) { prodSeleccionado=prod; mostrarPaso2(); } else { toast("⚠️ Producto no encontrado o sin stock"); }
 }
 
 async function confirmarVenta() {
     if (!prodSeleccionado) return;
     const cantidad = parseInt(document.getElementById("venta-cantidad").value)||1;
-    const disp = parseInt(prodSeleccionado.cantidad||0)-parseInt(prodSeleccionado.vendido||0);
+    const disp = _dispEfectivo(prodSeleccionado);
     if (cantidad>disp) { toast("⚠️ Cantidad mayor a disponible"); return; }
     const btn = document.querySelector("#reg-paso2 .btn-verde");
     btn.textContent="⏳ Registrando..."; btn.disabled=true;
