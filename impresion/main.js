@@ -663,17 +663,21 @@ const url='file:///${pdfPath.replace(/\\/g,'/')}';
                   // proporción de forma impredecible en vez de respetar el diseño.
                   const noCrop = (formato === 'dk1204' || formato === 'mini') ? ' --no-crop' : ''
 
-                  // En papel TROQUELADO cada página del PDF es una etiqueta física
-                  // distinta. El PNG las trae apiladas (pdfjs las dibuja en un solo
-                  // canvas), así que hay que decirle a verex_print.py cuántas son
-                  // para que las separe. Sin esto, imprimir 3 etiquetas metía las
-                  // 2 páginas aplastadas dentro de una sola.
-                  // En rollo continuo NO aplica: ahí la tira larga es lo correcto.
-                  // También cuando el cliente lo pide con separar:true — lo usa la
-                  // nota de texto libre para imprimir varias copias: cada una tiene
-                  // que salir como etiqueta suelta, no como una tira pegada.
-                  const esTroquelado = ['29x90', '17x54'].includes(labelId)
-                  const argPages = ((esTroquelado || body.separar) && pages > 1) ? ` --pages ${pages}` : ''
+                  // Cada página del PDF es una etiqueta física distinta. El PNG las
+                  // trae apiladas (pdfjs las dibuja en un solo canvas), así que hay
+                  // que decirle a verex_print.py cuántas son para que las separe.
+                  // Sin esto, imprimir 3 etiquetas metía las 3 páginas aplastadas
+                  // dentro del espacio de UNA sola — salían diminutas.
+                  //
+                  // Esto aplica a CUALQUIER formato con alto fijo (px.h > 0):
+                  // Producto, DK-2214 Grande, Vertical, Tarjeta, troquelados, etc.
+                  // Se excluye cuando px.h === 0 (mini/recibo): ahí el PDF ya mide
+                  // su tamaño exacto y el alto se escala proporcional — es una tira
+                  // continua a propósito, no varias etiquetas apiladas que haya que
+                  // separar — salvo que el cliente lo pida explícito con
+                  // separar:true (notas de texto libre en formato Mini con varias
+                  // copias, donde sí deben salir como etiquetas sueltas).
+                  const argPages = (pages > 1 && (px.h > 0 || body.separar)) ? ` --pages ${pages}` : ''
                   const cmd = `python "${pyScript}" --png "${tmpPng}" --ip "${printerIp}" --label "${labelId}" --target-w ${px.w} --target-h ${px.h} --rotate ${rotateDeg}${noCrop}${argPages}`
                   exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
                     if (err) resolve({ ok: false, error: parsePrintError(stderr, err.message) })
