@@ -1127,7 +1127,13 @@ async function imprimirPdf() {
   try {
     // Usar el PNG original (sin rotar en JS) y dejar que verex_print.py rote 90°
     const png_base64 = pdfPages[selectedPage].dataUrl.split(',')[1];
-    const rollo = document.querySelector('.roll-btn.active')?.dataset?.rollo || 'mono';
+    // Antes leía un atributo data-rollo que ningún botón de rollo tiene —
+    // siempre caía en el 'mono' por defecto sin importar cuál estuviera
+    // seleccionado (📏 62mm / 💎 DK-2251 / 🏷️ DK-2214). Si el cassette físico
+    // real es el DK-2251 (rojo/negro), mandar '62' en vez de '62red' hace que
+    // la QL-810W rechace el trabajo con luz roja. currentRoll SÍ refleja la
+    // selección real (persistida en localStorage vía setRoll/updateRollUI).
+    const rollo = currentRoll === '62mm' ? 'mono' : 'rojo';
     const res = await fetch('http://127.0.0.1:7891/imprimir-png', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
