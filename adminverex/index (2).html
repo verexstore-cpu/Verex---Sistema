@@ -4505,7 +4505,11 @@ async function reactivarLinkPanel(id) {
 
     // El descuento/banner NO se reactiva en automático — se pregunta primero,
     // porque una promoción vieja puede ya no estar vigente para ofrecer.
-    const teniaDescuento = item?.banner && item.descPct > 0;
+    // Las promos son SOLO para catálogos de Cliente — nunca de Afiliado (igual
+    // que en la generación inicial) — así que si el link es de afiliado ni
+    // siquiera se pregunta, se descarta directo.
+    const esAfiliadoReactivar = item?.tipo === "afiliado";
+    const teniaDescuento = !esAfiliadoReactivar && item?.banner && item.descPct > 0;
     const mantenerDescuento = teniaDescuento
         ? confirm(`Este catálogo tenía un descuento del ${item.descPct}% ("${item.banner.txt || ""}"). ¿Sigue vigente y quieres mantenerlo en el nuevo link?\n\nAceptar = mantenerlo\nCancelar = generar sin descuento`)
         : false;
@@ -4513,7 +4517,7 @@ async function reactivarLinkPanel(id) {
     // Mismo criterio para la promo de carrito (2x50/3x2/monto fijo/escalonado)
     // y los incentivos de envío gratis / regalo sorpresa.
     const nombresPromo = { "2x50": "2do al 50%", "3x2": "3x2", montoFijo: "monto fijo", escalonado: "escalonado por cantidad" };
-    const teniaOtrasPromos = !!(item?.promoCarrito || item?.envioGratisDesde > 0 || item?.regaloSorpresa);
+    const teniaOtrasPromos = !esAfiliadoReactivar && !!(item?.promoCarrito || item?.envioGratisDesde > 0 || item?.regaloSorpresa);
     let mantenerOtras = false;
     if (teniaOtrasPromos) {
         const partes = [];
