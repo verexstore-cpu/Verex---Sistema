@@ -5417,6 +5417,18 @@ function filtrarParaCatalogo() {
     // ofrecerse para armar un catálogo nuevo, aunque globalmente no esté agotada
     lista = lista.filter(p => _stockBodegaProd(p) > 0);
 
+    // Filtro de material — aplica a TODAS las categorías, no solo Anillos
+    const materialFiltro = document.getElementById("cat-material")?.value || "";
+    if (materialFiltro) {
+        lista = lista.filter(p => {
+            const m = (p.material || detectarMaterial(p.nombre) || "").toLowerCase();
+            if (materialFiltro === "plata")  return m.includes("plata") && !m.includes("oro");
+            if (materialFiltro === "acero")  return m.includes("acero");
+            if (materialFiltro === "oro")    return m.includes("oro");
+            return true;
+        });
+    }
+
     // Filtro por prefijo (C, D, U...) — solo aplica a AN
     const pfxTxt = (document.getElementById("cat-prefijo-txt")?.value||"").toUpperCase();
     const pfxSel = pfxTxt.split(/[,\s]+/).map(s=>s.trim()).filter(Boolean);
@@ -5622,6 +5634,27 @@ async function cargarVariedadGlobal() {
         _variedadGlobalCache = data.codigos || {};
     } catch(_) { _variedadGlobalCache = {}; }
     return _variedadGlobalCache;
+}
+
+// A diferencia de autoSeleccionarVariado() (que arma una MEZCLA fija de
+// categorías sin importar los filtros de arriba), esto elige N al azar
+// SOLO de lo que ya quedó después de aplicar Categoría/Material/Talla —
+// para cuando el pedido es literal: "quiero 50 aretes de plata", no una
+// mezcla variada de todo tipo de joyería.
+function elegirAzarFiltrado() {
+    const chks = [...document.querySelectorAll(".cat-chk")];
+    if (!chks.length) { toast("⚠️ No hay productos con los filtros actuales", "#f97316"); return; }
+    const n = parseInt(document.getElementById("cat-var-size")?.value) || 36;
+
+    chks.forEach(c => c.checked = false);
+    // Fisher-Yates
+    const shuffled = [...chks];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    shuffled.slice(0, n).forEach(c => c.checked = true);
+    toast(`🎲 ${Math.min(n, chks.length)} producto(s) elegidos al azar`, "#22c55e");
 }
 
 async function autoSeleccionarVariado(evitarCodigos) {
@@ -6032,6 +6065,16 @@ async function generarPDFCatalogo() {
         <div id="cat-categoria-pills" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
       </div>
 
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px;color:#aaa;margin-bottom:4px;display:block;">Material <span style="color:#666;font-weight:400;">(aplica a todas las categorías)</span></label>
+        <select id="cat-material" onchange="filtrarParaCatalogo()" style="width:100%;box-sizing:border-box;">
+          <option value="">— Todos —</option>
+          <option value="plata">🔘 Plata 925</option>
+          <option value="acero">⛓️ Acero 316L</option>
+          <option value="oro">✨ Oro / Laminado</option>
+        </select>
+      </div>
+
       <!-- Filtros de Anillos -->
       <div id="cat-sec-talla" style="background:rgba(251,191,36,0.05);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:10px;">
         <div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:10px;">💍 Filtros de Anillos <span style="color:#888;font-weight:400;">(no afectan otras categorías)</span></div>
@@ -6103,7 +6146,8 @@ async function generarPDFCatalogo() {
           <button onclick="ajustarTamanoCatalogo(10)"  style="background:none;border:none;color:#aaa;font-size:16px;font-weight:800;cursor:pointer;padding:0 4px;line-height:1;">+</button>
           <span style="font-size:11px;color:#666;white-space:nowrap;">productos</span>
         </div>
-        <button class="btn ba" style="flex:2;min-width:160px;font-size:12px;" onclick="autoSeleccionarVariado()">🔀 Auto-seleccionar</button>
+        <button class="btn ba" style="flex:2;min-width:160px;font-size:12px;" onclick="autoSeleccionarVariado()" title="Arma una mezcla variada de anillos/aretes/cadenas/etc en las proporciones de siempre — ignora los filtros de Categoría/Material de arriba">🔀 Auto-seleccionar (mezcla variada)</button>
+        <button class="btn bg" style="flex:2;min-width:160px;font-size:12px;" onclick="elegirAzarFiltrado()" title="Elige esa cantidad al azar SOLO de lo que quedó después de filtrar por Categoría/Material/Talla arriba">🎲 Elegir al azar (de lo filtrado)</button>
       </div>
     </div>
 
