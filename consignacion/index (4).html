@@ -11314,7 +11314,7 @@ function renderHistorialVD() {
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
                     <div style="font-size:11px;color:var(--plateado);">Pagado $${pagado.toFixed(2)} · Pendiente <strong style="color:#ffb85c;">$${saldo.toFixed(2)}</strong></div>
                     ${saldo > 0 ? `<div style="display:flex;gap:6px;flex-shrink:0;">
-                        <button onclick="enviarWAEstadoCuenta('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:#25D366;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">💬 Recordar</button>
+                        <button onclick="enviarRecordatorioAbono('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:#25D366;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">💬 Recordar</button>
                         <button onclick="abrirModalAbono('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1);color:#e0f7ff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">💰 Abono</button>
                     </div>` : '<span style="font-size:11px;color:#52d68a;font-weight:700;">✅ Saldado</span>'}
                 </div>` : ""}
@@ -12828,6 +12828,23 @@ function enviarWAEstadoCuenta(ventaId) {
         + `💰 *Total:* $${total.toFixed(2)}\n`
         + `✅ *Pagado:* $${pagado.toFixed(2)}\n`
         + (saldo > 0 ? `⏳ *Saldo pendiente:* $${saldo.toFixed(2)}` : `✓ *¡Cuenta liquidada!*`);
+    window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg));
+}
+
+// A diferencia de enviarWAEstadoCuenta (el detalle completo de la compra),
+// esto es un recordatorio corto y directo — para cuando lo que quieres es
+// avisarle al cliente que le toca abonar, no mandarle un desglose de cuenta.
+function enviarRecordatorioAbono(ventaId) {
+    const venta = _historialVD.find(v => v.id === ventaId) || _creditosVD.find(v => v.id === ventaId);
+    if (!venta) return;
+    const tel = String(venta.telefono||"").replace(/\D/g,"");
+    if (!tel) { toast("⚠️ El cliente no tiene teléfono registrado"); return; }
+    const saldo = parseFloat(venta.saldoPendiente||0);
+    if (saldo <= 0) { toast("Esta venta ya está saldada"); return; }
+    const dias = Math.floor((Date.now() - new Date(venta.fecha).getTime()) / 86400000);
+    const msg = `Hola ${venta.cliente}! 👋 Te escribo de *VEREX* para recordarte que tienes un abono pendiente de *$${saldo.toFixed(2)}*`
+        + (dias > 0 ? ` (desde hace ${dias} día${dias===1?"":"s"})` : "")
+        + `. Cuando puedas completarlo avísame y coordinamos 💛`;
     window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg));
 }
 </script>
