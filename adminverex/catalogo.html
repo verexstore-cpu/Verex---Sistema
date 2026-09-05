@@ -338,6 +338,25 @@
     // _promoCarrito: { tipo: '2x50'|'3x2'|'montoFijo'|'escalonado', montoFijo, escalones }
     let _promoCarrito = null, _promo2x50 = false; // _promo2x50 se mantiene solo por compatibilidad con links viejos
     let _envioGratisDesde = 0, _regaloSorpresa = null; // { monto, texto }
+    // Reglas de envío GLOBALES (Admin → Dashboard → Reglas de Envío) — se
+    // cargan en actualizarDisponibilidad() (ya llama GET_STOCK, que trae
+    // config). Antes este catálogo nunca cobraba envío; la tienda pública
+    // sí lo hacía — quedaba inconsistente entre los dos canales.
+    let _reglasEnvioGlobal = [];
+    function calcularEnvioCatalogo(subtotal) {
+        // Este catálogo específico puede tener su PROPIO umbral de envío
+        // gratis (campo "Envío gratis desde $" al generarlo) — manda sobre
+        // la regla general, así se puede ofrecer gratis desde un monto más
+        // bajo (o casi cualquier monto) solo en este link, sin tocar la
+        // regla global que usa la tienda pública.
+        if (_envioGratisDesde > 0 && subtotal >= _envioGratisDesde) return 0;
+        if (_reglasEnvioGlobal.length) {
+            const sorted = [..._reglasEnvioGlobal].sort((a,b) => a.min - b.min);
+            const regla = sorted.find(r => subtotal >= r.min && subtotal <= r.max);
+            if (regla) return parseFloat(regla.costo) || 0;
+        }
+        return 0;
+    }
     let _carrito = [];
     try { _carrito = JSON.parse(sessionStorage.getItem("verex-carrito") || "[]"); } catch(_) {}
 
@@ -1129,13 +1148,16 @@
         );
         const subtotal = _carrito.reduce((s, it) => s + it.precioUnit * it.qty, 0);
         const promo = _calcularPromoCarrito();
-        const totalFinal = promo ? promo.total : subtotal;
-        const totalLinea = promo
-            ? `Subtotal: $${subtotal.toFixed(2)}\n${promo.etiqueta}: -$${promo.descuento.toFixed(2)}\nTotal: $${promo.total.toFixed(2)}`
-            : `Total: $${subtotal.toFixed(2)}`;
+        const totalProductos = promo ? promo.total : subtotal;
+        const costoEnvio = calcularEnvioCatalogo(totalProductos);
+        const totalFinal = totalProductos + costoEnvio;
+        const totalLinea = (promo
+            ? `Subtotal: $${subtotal.toFixed(2)}\n${promo.etiqueta}: -$${promo.descuento.toFixed(2)}\n`
+            : "")
+            + `Envío: ${costoEnvio > 0 ? "$" + costoEnvio.toFixed(2) : "GRATIS"}\n`
+            + `Total: $${totalFinal.toFixed(2)}`;
         const incentivosLinea = [
-            (_envioGratisDesde > 0 && totalFinal >= _envioGratisDesde) ? "🚚 Envío GRATIS aplicado" : "",
-            (_regaloSorpresa && totalFinal >= _regaloSorpresa.monto) ? `🎁 Incluye regalo sorpresa: ${_regaloSorpresa.texto}` : ""
+            (_regaloSorpresa && totalProductos >= _regaloSorpresa.monto) ? `🎁 Incluye regalo sorpresa: ${_regaloSorpresa.texto}` : ""
         ].filter(Boolean).join("\n");
         const msg = `Hola, soy ${nombreCliente}. Quiero pedir estos productos del catálogo VEREX:\n\n${lineas.join("\n")}\n\n${totalLinea}${incentivosLinea ? "\n" + incentivosLinea : ""}\n\nMi WhatsApp: ${tel}\nDirección de envío: ${direccionCliente}`;
 
@@ -1166,6 +1188,9 @@
             const data = await res.json();
             const stock = data.stock || [];
             const mapa = new Map(stock.map(s => [s.codigo, s]));
+
+            // Reglas de envío globales — mismo dato que usa la tienda pública.
+            if (data.config?.reglasEnvio) _reglasEnvioGlobal = data.config.reglasEnvio;
 
             // Franja de confianza — editable desde Admin VEREX → Dashboard,
             // se actualiza aquí para que también aplique a links ya generados
