@@ -11240,7 +11240,14 @@ async function cargarHistorialVD() {
 function renderHistorialVD() {
     const el     = document.getElementById("lista-historial-vd");
     const filtro = document.getElementById("filtro-historial-vd")?.value || "";
-    const lista  = filtro ? _historialVD.filter(v => v.estado === filtro) : _historialVD;
+    let lista  = filtro ? _historialVD.filter(v => v.estado === filtro) : _historialVD;
+
+    // Filtrando por Crédito: ordenar por deuda MÁS VIEJA primero — es la
+    // vista que se usa para decidir a quién recordarle el pago, así que el
+    // que lleva más tiempo debiendo aparece arriba, no el más reciente.
+    if (filtro === "credito") {
+        lista = [...lista].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+    }
 
     if (!lista.length) {
         el.innerHTML = '<p style="color:var(--plateado);font-size:13px;">No hay ventas registradas.</p>';
@@ -11271,6 +11278,10 @@ function renderHistorialVD() {
             const fecha    = new Date(v.fecha).toLocaleDateString("es-SV", { day:"2-digit", month:"short", year:"2-digit" });
             const hora     = new Date(v.fecha).toLocaleTimeString("es-SV", { hour:"2-digit", minute:"2-digit" });
             const esCredito = v.estado === "credito";
+            const diasDeuda = esCredito ? Math.floor((Date.now() - new Date(v.fecha).getTime()) / 86400000) : 0;
+            const diasTxt = esCredito
+                ? ` · <span style="color:${diasDeuda>=15?'#e85555':diasDeuda>=7?'#ffb85c':'var(--plateado)'};font-weight:${diasDeuda>=7?700:400};">hace ${diasDeuda} día${diasDeuda===1?"":"s"}</span>`
+                : "";
             const saldo    = parseFloat(v.saldoPendiente||0);
             const total    = parseFloat(v.total||0);
             const pagado   = total - saldo;
@@ -11282,7 +11293,7 @@ function renderHistorialVD() {
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
                     <div style="flex:1;min-width:0;">
                         <div style="font-size:14px;font-weight:700;color:#fff;">${sanitizar(v.cliente || "Sin nombre")}</div>
-                        <div style="font-size:11px;color:var(--plateado);">${fecha} ${hora} · ${sanitizar(v.telefono||"")}</div>
+                        <div style="font-size:11px;color:var(--plateado);">${fecha} ${hora} · ${sanitizar(v.telefono||"")}${diasTxt}</div>
                         ${v.nota ? `<div style="font-size:11px;color:#888;margin-top:2px;font-style:italic;">"${sanitizar(v.nota)}"</div>` : ""}
                     </div>
                     <div style="text-align:right;flex-shrink:0;margin-left:10px;">
@@ -11300,9 +11311,12 @@ function renderHistorialVD() {
                 <div style="background:#3a2a12;border-radius:5px;height:5px;margin-bottom:6px;overflow:hidden;">
                     <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#27ae60,#52d68a);border-radius:5px;"></div>
                 </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
                     <div style="font-size:11px;color:var(--plateado);">Pagado $${pagado.toFixed(2)} · Pendiente <strong style="color:#ffb85c;">$${saldo.toFixed(2)}</strong></div>
-                    ${saldo > 0 ? `<button onclick="abrirModalAbono('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1);color:#e0f7ff;font-size:11px;font-weight:700;cursor:pointer;">💰 Abono</button>` : '<span style="font-size:11px;color:#52d68a;font-weight:700;">✅ Saldado</span>'}
+                    ${saldo > 0 ? `<div style="display:flex;gap:6px;flex-shrink:0;">
+                        <button onclick="enviarWAEstadoCuenta('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:#25D366;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">💬 Recordar</button>
+                        <button onclick="abrirModalAbono('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1);color:#e0f7ff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">💰 Abono</button>
+                    </div>` : '<span style="font-size:11px;color:#52d68a;font-weight:700;">✅ Saldado</span>'}
                 </div>` : ""}
                 <div style="margin-top:8px;display:flex;justify-content:flex-end;gap:6px;position:relative;">
                     <div id="menu-mas-vd-${v.id}" style="display:none;position:absolute;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:170px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
