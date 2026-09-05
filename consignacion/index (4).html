@@ -11633,7 +11633,8 @@ function _generarHTMLReciboVD(v) {
     try { items = typeof v.items==="string" ? JSON.parse(v.items) : (v.items||[]); } catch(e){}
 
     const descuento   = parseFloat(v.descuento || 0);
-    const envioGratis = parseFloat(v.costoEnvio || 0) === 0 && !!v.departamentoEnvio;
+    const costoEnvioHTML = parseFloat(v.costoEnvio || 0);
+    const envioGratis = costoEnvioHTML === 0 && !!v.departamentoEnvio;
     const totalVenta  = parseFloat(v.total || 0);
     const saldo       = parseFloat(v.saldoPendiente || 0);
     const pagado      = totalVenta - saldo;
@@ -11669,7 +11670,9 @@ function _generarHTMLReciboVD(v) {
         totalesHTML += `<tr><td>Subtotal:</td><td style="text-align:right;">$${subtotal.toFixed(2)}</td></tr>
         <tr><td>${descLabel}</td><td style="text-align:right;">-$${descuento.toFixed(2)}</td></tr>`;
     }
-    if (envioGratis) {
+    if (costoEnvioHTML > 0) {
+        totalesHTML += `<tr><td>Envío:</td><td style="text-align:right;">$${costoEnvioHTML.toFixed(2)}</td></tr>`;
+    } else if (envioGratis) {
         totalesHTML += `<tr><td>Envío:</td><td style="text-align:right;font-weight:bold;">GRATIS</td></tr>`;
     }
     totalesHTML += `<tr><td style="font-size:10pt;padding-top:1.5mm;">TOTAL:</td>
@@ -11760,11 +11763,12 @@ function _generarPDFReciboVD(v) {
 
     const descuento = parseFloat(v.descuento || 0);
 
-    const envioGratis = parseFloat(v.costoEnvio || 0) === 0 && !!v.departamentoEnvio;
+    const costoEnvioRecibo = parseFloat(v.costoEnvio || 0);
+    const envioGratis = costoEnvioRecibo === 0 && !!v.departamentoEnvio;
 
     // Calcular alto dinámico
     const altoItems  = items.reduce((s, it) => s + 12 + (it.material ? 6 : 0) + ((it.codigo||it.ref) ? 6 : 0), 0);
-    const altoCuerpo = 46 + altoItems + (v.estado==="credito" ? 10 : 0) + (v.nota ? 6 : 0) + (descuento > 0 ? 5 : 0) + (envioGratis ? 5 : 0);
+    const altoCuerpo = 46 + altoItems + (v.estado==="credito" ? 10 : 0) + (v.nota ? 6 : 0) + (descuento > 0 ? 5 : 0) + (envioGratis || costoEnvioRecibo > 0 ? 5 : 0);
     const H = altoCuerpo + 34; // footer ~34mm
     const doc = new jsPDF({ unit:'mm', format:[W, H], orientation:'portrait' });
 
@@ -11857,7 +11861,10 @@ function _generarPDFReciboVD(v) {
         doc.text(descLabel, mX, y); doc.text("-$"+descuento.toFixed(2), W-mX, y, { align:"right" }); y += 4.5;
     }
 
-    if (envioGratis) {
+    if (costoEnvioRecibo > 0) {
+        doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(0,0,0);
+        doc.text("Envío:", mX, y); doc.text("$"+costoEnvioRecibo.toFixed(2), W-mX, y, { align:"right" }); y += 4.5;
+    } else if (envioGratis) {
         doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(0,0,0);
         doc.text("Envío:", mX, y); doc.text("GRATIS", W-mX, y, { align:"right" }); y += 4.5;
     }
