@@ -984,14 +984,6 @@
         <div id="cierres-lista"></div>
     </details>
 
-    <details class="card" style="margin-bottom:18px;">
-        <summary style="cursor:pointer;font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:700;color:#111;">💰 Saldos Pendientes</summary>
-        <p style="font-size:12px;color:#6b7280;margin:10px 0 12px;">
-            Todos los clientes de Venta Directa que aún deben algo, ordenados de mayor a menor — con recordatorio de WhatsApp listo en cada uno.
-        </p>
-        <div id="saldos-pendientes-lista"></div>
-    </details>
-
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">
         <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #059669;border-radius:10px;padding:14px;text-align:center;">
             <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Total Ventas</div>
@@ -1399,47 +1391,9 @@ async function cargarVentasAdmin() {
         _adminVentas = (res.ventas || []).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
         actualizarKPIsVentas();
         renderVentasAdmin();
-        renderSaldosPendientes();
     } catch(e) {
         lista.innerHTML = '<p style="color:#e74c3c;font-size:13px;text-align:center;padding:20px;">Error al cargar ventas.</p>';
     }
-}
-
-// Lista consolidada de TODOS los clientes con saldo pendiente (venta directa)
-// — antes había que buscarlos uno por uno en la lista general de ventas.
-function renderSaldosPendientes() {
-    const cont = document.getElementById("saldos-pendientes-lista");
-    if (!cont) return;
-    const pendientes = _adminVentas
-        .filter(v => v.tipo === "directa" && parseFloat(v.saldoPendiente || 0) > 0)
-        .sort((a, b) => parseFloat(b.saldoPendiente || 0) - parseFloat(a.saldoPendiente || 0));
-
-    if (!pendientes.length) {
-        cont.innerHTML = '<p style="color:#6b7280;font-size:13px;text-align:center;padding:16px;">✅ Nadie tiene saldo pendiente ahora mismo.</p>';
-        return;
-    }
-
-    const totalPendiente = pendientes.reduce((s, v) => s + parseFloat(v.saldoPendiente || 0), 0);
-    cont.innerHTML = `
-        <div style="text-align:center;margin-bottom:12px;">
-            <span style="font-size:12px;color:#6b7280;">Total por cobrar: </span>
-            <strong style="font-size:16px;color:#e74c3c;">$${totalPendiente.toFixed(2)}</strong>
-            <span style="font-size:12px;color:#6b7280;"> · ${pendientes.length} cliente(s)</span>
-        </div>
-        ${pendientes.map(v => {
-            const fecha = v.fecha ? new Date(v.fecha).toLocaleDateString("es-CO", { day:"2-digit", month:"short", year:"numeric" }) : "—";
-            const dias = v.fecha ? Math.floor((Date.now() - new Date(v.fecha).getTime()) / 86400000) : null;
-            return `<div style="background:#fff;border:1px solid #fecaca;border-left:4px solid #e74c3c;border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-                <div>
-                    <div style="font-size:13px;font-weight:700;color:#1a1a1a;">${esc(v.cliente || "—")}</div>
-                    <div style="font-size:11px;color:#6b7280;">${fecha}${dias !== null ? ` · hace ${dias} día${dias===1?"":"s"}` : ""} · Ref: ${esc(String(v.id||"").slice(-6))}</div>
-                </div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <strong style="font-size:15px;color:#e74c3c;">$${parseFloat(v.saldoPendiente).toFixed(2)}</strong>
-                    <button onclick="recordarSaldoPendiente('${esc(v.id)}')" style="padding:6px 12px;background:#25D366;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">💬 Recordar</button>
-                </div>
-            </div>`;
-        }).join("")}`;
 }
 
 function actualizarKPIsVentas() {
@@ -1505,37 +1459,12 @@ function renderVentasAdmin() {
                     ${parseFloat(v.saldoPendiente||0)>0 ? `<div style="font-size:11px;color:#e74c3c;font-weight:600;">Debe: $${parseFloat(v.saldoPendiente).toFixed(2)}</div>` : ""}
                 </div>
             </div>
-            ${v.tipo === "directa" ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+            ${v.tipo === "directa" ? `<div style="display:flex;gap:6px;margin-top:8px;">
                 <button onclick="event.stopPropagation();agregarProductoVentaDirecta('${esc(v.id)}')" style="flex:1;padding:6px 10px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">➕ Agregar pieza</button>
                 <button onclick="event.stopPropagation();cambiarProductoVentaDirecta('${esc(v.id)}')" style="flex:1;padding:6px 10px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">🔄 Cambiar producto</button>
-                ${parseFloat(v.saldoPendiente||0) > 0 ? `<button onclick="event.stopPropagation();recordarSaldoPendiente('${esc(v.id)}')" style="flex:1;min-width:100%;padding:6px 10px;background:#25D366;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">💬 Recordar saldo por WhatsApp</button>` : ""}
             </div>` : ""}
         </div>`;
     }).join("");
-}
-
-// Abre WhatsApp con un recordatorio de saldo pendiente ya redactado — el
-// admin revisa y presiona enviar, no se manda nada automático sin que lo vea.
-function recordarSaldoPendiente(ventaId) {
-    const venta = _adminVentas.find(v => v.id === ventaId);
-    if (!venta) return toast("⚠️ Venta no encontrada", "#ef4444");
-    const saldo = parseFloat(venta.saldoPendiente || 0);
-    if (saldo <= 0) return toast("Esta venta no tiene saldo pendiente", "#f97316");
-    const tel = String(venta.telefono || "").replace(/\D/g, "");
-    if (!tel) return toast("⚠️ Esta venta no tiene teléfono registrado", "#ef4444");
-
-    let itemsStr = "";
-    try {
-        const its = typeof venta.items === "string" ? JSON.parse(venta.items || "[]") : (venta.items || []);
-        itemsStr = its.map(i => i.nombre || i.producto || "").filter(Boolean).join(", ");
-    } catch(_) {}
-
-    const nombre = venta.cliente || "Hola";
-    const msg = `Hola ${nombre}! 👋 Te escribo de VEREX para recordarte que tienes un saldo pendiente de $${saldo.toFixed(2)}`
-        + (itemsStr ? ` por tu pedido de ${itemsStr}` : "")
-        + `. Cuando puedas completarlo, avísame y coordinamos 💛`;
-
-    window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, "_blank");
 }
 
 // Cambio de producto en una venta directa ya registrada (ej. devolución
