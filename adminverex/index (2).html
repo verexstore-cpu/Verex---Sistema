@@ -1459,12 +1459,37 @@ function renderVentasAdmin() {
                     ${parseFloat(v.saldoPendiente||0)>0 ? `<div style="font-size:11px;color:#e74c3c;font-weight:600;">Debe: $${parseFloat(v.saldoPendiente).toFixed(2)}</div>` : ""}
                 </div>
             </div>
-            ${v.tipo === "directa" ? `<div style="display:flex;gap:6px;margin-top:8px;">
+            ${v.tipo === "directa" ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
                 <button onclick="event.stopPropagation();agregarProductoVentaDirecta('${esc(v.id)}')" style="flex:1;padding:6px 10px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">➕ Agregar pieza</button>
                 <button onclick="event.stopPropagation();cambiarProductoVentaDirecta('${esc(v.id)}')" style="flex:1;padding:6px 10px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">🔄 Cambiar producto</button>
+                ${parseFloat(v.saldoPendiente||0) > 0 ? `<button onclick="event.stopPropagation();recordarSaldoPendiente('${esc(v.id)}')" style="flex:1;min-width:100%;padding:6px 10px;background:#25D366;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">💬 Recordar saldo por WhatsApp</button>` : ""}
             </div>` : ""}
         </div>`;
     }).join("");
+}
+
+// Abre WhatsApp con un recordatorio de saldo pendiente ya redactado — el
+// admin revisa y presiona enviar, no se manda nada automático sin que lo vea.
+function recordarSaldoPendiente(ventaId) {
+    const venta = _adminVentas.find(v => v.id === ventaId);
+    if (!venta) return toast("⚠️ Venta no encontrada", "#ef4444");
+    const saldo = parseFloat(venta.saldoPendiente || 0);
+    if (saldo <= 0) return toast("Esta venta no tiene saldo pendiente", "#f97316");
+    const tel = String(venta.telefono || "").replace(/\D/g, "");
+    if (!tel) return toast("⚠️ Esta venta no tiene teléfono registrado", "#ef4444");
+
+    let itemsStr = "";
+    try {
+        const its = typeof venta.items === "string" ? JSON.parse(venta.items || "[]") : (venta.items || []);
+        itemsStr = its.map(i => i.nombre || i.producto || "").filter(Boolean).join(", ");
+    } catch(_) {}
+
+    const nombre = venta.cliente || "Hola";
+    const msg = `Hola ${nombre}! 👋 Te escribo de VEREX para recordarte que tienes un saldo pendiente de $${saldo.toFixed(2)}`
+        + (itemsStr ? ` por tu pedido de ${itemsStr}` : "")
+        + `. Cuando puedas completarlo, avísame y coordinamos 💛`;
+
+    window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, "_blank");
 }
 
 // Cambio de producto en una venta directa ya registrada (ej. devolución
