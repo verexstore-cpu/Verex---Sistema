@@ -125,6 +125,7 @@
     const codigos = raw.split(",").map(s => s.trim()).filter(Boolean);
     const API_URL = "https://verex-api.verexstore.workers.dev/";
     let encontrados = [];
+    let _grupos = [];
     let _idxActual = -1;
 
     // Número de WhatsApp de destino — obligatoriamente el del afiliado si el
@@ -176,12 +177,62 @@
         return String(v).trim();
     }
 
-    function cardHtml(p, idx){
+    // Antes cada talla del MISMO anillo llegaba como su propia tarjeta suelta
+    // (ej. 7 tarjetas idénticas del mismo diseño, una por talla) — al
+    // compartir varios productos de Stock, el link se veía repetido y
+    // desordenado. Ahora se agrupan por codigoBase: una tarjeta por diseño,
+    // con chips para elegir la talla dentro de la misma tarjeta.
+    let _grupoSel = {}; // idx de grupo -> posición de talla seleccionada
+    function agruparEncontrados(lista){
+        const mapa = new Map();
+        const orden = [];
+        lista.forEach((p, flatIdx) => {
+            const base = p.codigoBase || p.codigo;
+            if (!mapa.has(base)) { mapa.set(base, []); orden.push(base); }
+            mapa.get(base).push(flatIdx);
+        });
+        return orden.map(base => {
+            const idxs = mapa.get(base);
+            idxs.sort((a, b) => (parseFloat(lista[a].talla) || 0) - (parseFloat(lista[b].talla) || 0));
+            return idxs;
+        });
+    }
+
+    function seleccionarTallaGrupo(gi, pos, ev){
+        if (ev) ev.stopPropagation();
+        _grupoSel[gi] = pos;
+        renderGrupos();
+    }
+
+    function renderGrupos(){
+        const app = document.getElementById("app");
+        if (_grupos.length > 1) {
+            app.classList.add("multi");
+            app.innerHTML = `<div class="grid-multi">${_grupos.map((idxs, gi) => cardHtml(idxs, gi)).join('')}</div>`;
+        } else {
+            app.innerHTML = cardHtml(_grupos[0], 0);
+        }
+    }
+
+    function cardHtml(idxs, gi){
+        const selPos  = _grupoSel[gi] || 0;
+        const flatIdx = idxs[selPos];
+        const p = encontrados[flatIdx];
         const totalStock = (parseInt(p.stock_bodega)||0) + (parseInt(p.stock_tienda)||0) + (parseInt(p.stock_consignacion)||0);
         const agotado = p.reservado || totalStock <= 0;
         const material = p.material || "";
         const nombre = (p.nombre_base || p.nombre || "").trim();
         const nota = notaEspecial(p);
+        // Chips de talla solo si hay más de una y todas traen talla — si no,
+        // se mantiene el badge simple de siempre.
+        const tieneTallas = idxs.length > 1 && idxs.every(i => encontrados[i].talla);
+        const tallaHtml = tieneTallas
+            ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin:5px 0;">${idxs.map((fi, pos) => {
+                const activa = pos === selPos;
+                return `<button type="button" onclick="seleccionarTallaGrupo(${gi},${pos},event)"
+                    style="padding:3px 9px;border-radius:14px;border:1.5px solid ${activa?'#0277bd':'#ccc'};background:${activa?'#0277bd':'#fff'};color:${activa?'#fff':'#333'};font-size:10.5px;font-weight:700;cursor:pointer;">T${esc(encontrados[fi].talla)}</button>`;
+              }).join('')}</div>`
+            : (p.categoria === "AN" && p.talla ? `<div><span class="card-material" style="background:#e8f4fd;color:#0277bd;border:1px solid #90caf9;">Talla ${esc(p.talla)}</span></div>` : '');
         return `<div class="card">
             ${p.foto
                 ? `<img class="card-img" src="${esc(p.foto)}" alt="${esc(nombre)}" onclick="abrirFotoZoom('${esc(p.foto)}')" onerror="this.outerHTML='<div class=\\'card-img-ph\\'>💍</div>'">`
@@ -189,7 +240,7 @@
             <div class="card-body">
                 <div class="card-name">${esc(nombre)}</div>
                 ${material ? `<div><span class="card-material ${claseMaterial(material)}">${esc(material)}</span></div>` : ''}
-                ${p.categoria === "AN" && p.talla ? `<div><span class="card-material" style="background:#e8f4fd;color:#0277bd;border:1px solid #90caf9;">Talla ${esc(p.talla)}</span></div>` : ''}
+                ${tallaHtml}
                 ${nota ? `<div><span class="card-ne">♦ ${esc(nota)}</span></div>` : ''}
                 ${agotado
                     ? `<div class="card-price" style="color:#C0392B;font-size:16px;">AGOTADO</div>`
@@ -198,7 +249,7 @@
                            <div style="display:inline-block;font-size:11px;font-weight:800;color:#fff;background:#D85A30;border-radius:5px;padding:2px 8px;margin-bottom:6px;">-${_descPct}% OFF</div>`
                         : `<div class="card-price">$${parseFloat(p.precio||0).toFixed(2)}</div>`}
                 <div class="card-ref">Ref: ${esc(p.codigo)}</div>
-                ${agotado ? '' : `<button class="wa-btn" onclick="abrirConfirm(${idx}, this)"><span class="wa-main">✦ ¡Hazlo tuyo!</span><span class="wa-sub">Presiona aquí para ordenar</span><span class="wa-shine"></span></button>`}
+                ${agotado ? '' : `<button class="wa-btn" onclick="abrirConfirm(${flatIdx}, this)"><span class="wa-main">✦ ¡Hazlo tuyo!</span><span class="wa-sub">Presiona aquí para ordenar</span><span class="wa-shine"></span></button>`}
             </div>
         </div>`;
     }
@@ -254,13 +305,8 @@
             encontrados = codigos.map(c => stock.find(s => s.codigo === c)).filter(Boolean);
             if(!encontrados.length){ mostrarEstado("😕","Producto no encontrado","Es posible que ya no esté disponible."); return; }
 
-            const app = document.getElementById("app");
-            if(encontrados.length > 1){
-                app.classList.add("multi");
-                app.innerHTML = `<div class="grid-multi">${encontrados.map(cardHtml).join('')}</div>`;
-            } else {
-                app.innerHTML = cardHtml(encontrados[0], 0);
-            }
+            _grupos = agruparEncontrados(encontrados);
+            renderGrupos();
 
             const afiliado = params.get("af") || "";
 
