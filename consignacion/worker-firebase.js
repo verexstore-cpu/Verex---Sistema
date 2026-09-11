@@ -2785,11 +2785,12 @@ async function enviar(){
 
         case "GUARDAR_GARANTIA": {
           if (!esAdmin) return forbidden();
-          const { intro, dias, cubre, no_cubre, promo, solicitud, evaluacion, destacado } = d;
+          const { intro, dias, cubre, no_cubre, promo, solicitud, cambios, evaluacion, destacado } = d;
           await sb.set("config", "garantia", {
             intro: intro || "", dias: parseInt(dias) || 30,
             cubre: cubre || "", no_cubre: no_cubre || "",
             promo: promo || "", solicitud: solicitud || "",
+            cambios: cambios || "",
             evaluacion: evaluacion || "", destacado: destacado || "",
             actualizado: new Date().toISOString()
           });

@@ -4765,6 +4765,7 @@ const GARANTIA_DEFAULTS = {
     no_cubre: "- Piedras desprendidas por golpes, caídas, jalones o manipulación inadecuada.\n- Cadenas, pulseras, aretes u otras joyas dañadas por enganches, tirones o uso brusco.\n- Rayones, deformaciones o desgaste normal ocasionado por el uso.\n- Oscurecimiento, oxidación o pérdida de brillo de la plata — es una reacción natural del material y puede variar según el pH de la piel, el sudor, perfumes, cremas, cloro, humedad y otros agentes externos. No afecta la calidad ni la autenticidad de la joya, y puede revertirse con una limpieza y mantenimiento adecuados.\n- Daños ocasionados por accidentes, mal uso, almacenamiento inadecuado o reparaciones realizadas por terceros.\n- Pérdida total o parcial de la joya o de cualquiera de sus componentes por causas ajenas a un defecto de fabricación.",
     promo: "Los productos adquiridos con promociones o descuentos no aplican para cambios, devoluciones o reembolsos por decisión del cliente. No obstante, conservan la Garantía Limitada por defectos de fabricación establecida en esta política.\n\nEn productos vendidos como liquidación, saldo, o con un defecto previamente informado y aceptado por el cliente, la garantía no cubrirá la condición específica que motivó el descuento.",
     solicitud: "Comunícate con VEREX dentro del período de garantía a través de nuestros canales oficiales de atención, proporcionando:\n- Número de pedido.\n- Fotografías o videos donde se observe el inconveniente.\n\nVEREX podrá solicitar información adicional cuando sea necesaria para evaluar el caso.",
+    cambios: "Para realizar el cambio, únicamente necesitamos que nos haga llegar el producto que desea cambiar.\n\nPuede enviarnos el paquete a la agencia que le quede más cercana.\n\nUna vez recibamos el producto, coordinaremos el envío del nuevo producto correspondiente al cambio. El costo del reenvío es de $5.00.\n\nCon gusto estaremos pendientes para ayudarle con todo el proceso.",
     evaluacion: "Toda solicitud será evaluada para determinar si el inconveniente corresponde a un defecto de fabricación o a una situación no cubierta por esta política. Si la garantía es aprobada, VEREX podrá, según corresponda:\n- Reparar la joya.\n- Sustituirla por una igual o de características similares.\n- Reemplazarla por otro producto de igual valor cuando la reparación o sustitución no sea posible.\n\nSi se determina que existe un defecto de fabricación, VEREX asumirá los costos de envío relacionados con la garantía. En caso contrario, cualquier costo de envío será responsabilidad del cliente.",
     destacado: "Válida solo en canales oficiales VEREX. Esta Garantía Limitada aplica únicamente a productos adquiridos directamente a través de los canales oficiales de VEREX, y podrá hacerse efectiva utilizando el número de pedido registrado en nuestro sistema. VEREX se reserva el derecho de rechazar solicitudes cuando no sea posible verificar el origen de la compra."
 };
@@ -4784,6 +4785,7 @@ async function abrirEditorGarantia() {
     document.getElementById("ge-no-cubre").value   = c.no_cubre;
     document.getElementById("ge-promo").value      = c.promo;
     document.getElementById("ge-solicitud").value  = c.solicitud;
+    document.getElementById("ge-cambios").value    = c.cambios;
     document.getElementById("ge-evaluacion").value = c.evaluacion;
     document.getElementById("ge-destacado").value  = c.destacado;
 }
@@ -4800,6 +4802,7 @@ async function guardarEditorGarantia() {
             no_cubre:   document.getElementById("ge-no-cubre").value,
             promo:      document.getElementById("ge-promo").value,
             solicitud:  document.getElementById("ge-solicitud").value,
+            cambios:    document.getElementById("ge-cambios").value,
             evaluacion: document.getElementById("ge-evaluacion").value,
             destacado:  document.getElementById("ge-destacado").value,
         })});
@@ -6412,6 +6415,9 @@ async function generarPDFCatalogo() {
 
         <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px;">Cómo solicitar la garantía</label>
         <textarea id="ge-solicitud" rows="5" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
+
+        <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px;">Proceso de cambio</label>
+        <textarea id="ge-cambios" rows="6" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
 
         <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px;">Evaluación y resolución</label>
         <textarea id="ge-evaluacion" rows="6" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
