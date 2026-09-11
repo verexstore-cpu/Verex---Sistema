@@ -343,6 +343,7 @@
             <a href="https://verexstore.com" target="_blank" class="btn-header" title="Abre la tienda pública en una pestaña nueva">👁️ Ver Tienda</a>
             <a href="https://verex-nexus.pages.dev" target="_blank" class="btn-header" title="Abre VEREX Nexus (vendedores, afiliados, stock físico, venta directa)">📦 Nexus</a>
             <button class="btn-header" onclick="abrirModalGarantia()" style="border-color:#0ea5e9;color:#0ea5e9;" title="Ver/copiar el link o QR de la página pública de Garantía Limitada, y editar su contenido">🛡️ Link/QR Garantía</button>
+            <button class="btn-header" onclick="abrirModalCambios()" style="border-color:#7c3aed;color:#7c3aed;" title="Ver/copiar el link o QR de la página pública de Política de Cambios, y editar su contenido">🔄 Link/QR Cambios</button>
             <button class="btn-header" onclick="abrirCambiarClave()" style="border-color:#f59e0b;color:#f59e0b;" title="Cambiar la contraseña de acceso a este Admin">🔑 Cambiar Clave</button>
             <button class="btn-header btn-logout" onclick="logout()" title="Cerrar sesión de este Admin en este dispositivo">Salir</button>
         </div>
@@ -4765,7 +4766,6 @@ const GARANTIA_DEFAULTS = {
     no_cubre: "- Piedras desprendidas por golpes, caídas, jalones o manipulación inadecuada.\n- Cadenas, pulseras, aretes u otras joyas dañadas por enganches, tirones o uso brusco.\n- Rayones, deformaciones o desgaste normal ocasionado por el uso.\n- Oscurecimiento, oxidación o pérdida de brillo de la plata — es una reacción natural del material y puede variar según el pH de la piel, el sudor, perfumes, cremas, cloro, humedad y otros agentes externos. No afecta la calidad ni la autenticidad de la joya, y puede revertirse con una limpieza y mantenimiento adecuados.\n- Daños ocasionados por accidentes, mal uso, almacenamiento inadecuado o reparaciones realizadas por terceros.\n- Pérdida total o parcial de la joya o de cualquiera de sus componentes por causas ajenas a un defecto de fabricación.",
     promo: "Los productos adquiridos con promociones o descuentos no aplican para cambios, devoluciones o reembolsos por decisión del cliente. No obstante, conservan la Garantía Limitada por defectos de fabricación establecida en esta política.\n\nEn productos vendidos como liquidación, saldo, o con un defecto previamente informado y aceptado por el cliente, la garantía no cubrirá la condición específica que motivó el descuento.",
     solicitud: "Comunícate con VEREX dentro del período de garantía a través de nuestros canales oficiales de atención, proporcionando:\n- Número de pedido.\n- Fotografías o videos donde se observe el inconveniente.\n\nVEREX podrá solicitar información adicional cuando sea necesaria para evaluar el caso.",
-    cambios: "Para realizar el cambio, únicamente necesitamos que nos haga llegar el producto que desea cambiar.\n\nPuede enviarnos el paquete a la agencia que le quede más cercana.\n\nUna vez recibamos el producto, coordinaremos el envío del nuevo producto correspondiente al cambio. El costo del reenvío es de $5.00.\n\nCon gusto estaremos pendientes para ayudarle con todo el proceso.",
     evaluacion: "Toda solicitud será evaluada para determinar si el inconveniente corresponde a un defecto de fabricación o a una situación no cubierta por esta política. Si la garantía es aprobada, VEREX podrá, según corresponda:\n- Reparar la joya.\n- Sustituirla por una igual o de características similares.\n- Reemplazarla por otro producto de igual valor cuando la reparación o sustitución no sea posible.\n\nSi se determina que existe un defecto de fabricación, VEREX asumirá los costos de envío relacionados con la garantía. En caso contrario, cualquier costo de envío será responsabilidad del cliente.",
     destacado: "Válida solo en canales oficiales VEREX. Esta Garantía Limitada aplica únicamente a productos adquiridos directamente a través de los canales oficiales de VEREX, y podrá hacerse efectiva utilizando el número de pedido registrado en nuestro sistema. VEREX se reserva el derecho de rechazar solicitudes cuando no sea posible verificar el origen de la compra."
 };
@@ -4785,7 +4785,6 @@ async function abrirEditorGarantia() {
     document.getElementById("ge-no-cubre").value   = c.no_cubre;
     document.getElementById("ge-promo").value      = c.promo;
     document.getElementById("ge-solicitud").value  = c.solicitud;
-    document.getElementById("ge-cambios").value    = c.cambios;
     document.getElementById("ge-evaluacion").value = c.evaluacion;
     document.getElementById("ge-destacado").value  = c.destacado;
 }
@@ -4802,12 +4801,57 @@ async function guardarEditorGarantia() {
             no_cubre:   document.getElementById("ge-no-cubre").value,
             promo:      document.getElementById("ge-promo").value,
             solicitud:  document.getElementById("ge-solicitud").value,
-            cambios:    document.getElementById("ge-cambios").value,
             evaluacion: document.getElementById("ge-evaluacion").value,
             destacado:  document.getElementById("ge-destacado").value,
         })});
         toast("✅ Página de Garantía actualizada","#22c55e");
         document.getElementById("modal-garantia-editor").style.display = "none";
+    } catch(e) {
+        toast("❌ Error al guardar: " + e.message, "#ef4444");
+    }
+    btn.textContent = "💾 Guardar y publicar"; btn.disabled = false;
+}
+
+// Link/QR de la Política de Cambios — página APARTE de Garantía (el cliente
+// no debe confundir "quiero cambiar de talla/diseño" con "tengo un defecto
+// de fabricación", son procesos y costos distintos).
+const CAMBIOS_URL = "https://admin-tienda.pages.dev/cambios.html";
+function abrirModalCambios() {
+    document.getElementById("cambios-link-out").textContent = CAMBIOS_URL;
+    document.getElementById("cambios-qr-img").src = "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=" + encodeURIComponent(CAMBIOS_URL);
+    document.getElementById("cambios-qr-download").href = "https://api.qrserver.com/v1/create-qr-code/?size=800x800&data=" + encodeURIComponent(CAMBIOS_URL);
+    document.getElementById("modal-cambios").style.display = "flex";
+}
+
+const CAMBIOS_DEFAULTS = {
+    texto: "Para realizar el cambio, únicamente necesitamos que nos haga llegar el producto que desea cambiar.\n\nPuede enviarnos el paquete a la agencia que le quede más cercana.\n\nUna vez recibamos el producto, coordinaremos el envío del nuevo producto correspondiente al cambio. El costo del reenvío es de $5.00.\n\nCon gusto estaremos pendientes para ayudarle con todo el proceso.",
+    costoReenvio: 5
+};
+
+async function abrirEditorCambios() {
+    document.getElementById("modal-cambios-editor").style.display = "flex";
+    let cm = null;
+    try {
+        const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GET_CAMBIOS", _pass: ADMIN_PASS }) });
+        const data = await res.json();
+        cm = data.cambios;
+    } catch(e) { toast("⚠️ No se pudo cargar el contenido actual, mostrando valores por defecto","#f97316"); }
+    const c = { ...CAMBIOS_DEFAULTS, ...(cm||{}) };
+    document.getElementById("ce-costo").value = c.costoReenvio;
+    document.getElementById("ce-texto").value = c.texto;
+}
+
+async function guardarEditorCambios() {
+    const btn = document.getElementById("btn-ce-guardar");
+    btn.textContent = "⏳ Guardando..."; btn.disabled = true;
+    try {
+        await fetch(API_URL, { method:'POST', body: JSON.stringify({
+            accion: "GUARDAR_CAMBIOS", _pass: ADMIN_PASS,
+            costoReenvio: document.getElementById("ce-costo").value,
+            texto:        document.getElementById("ce-texto").value,
+        })});
+        toast("✅ Página de Política de Cambios actualizada","#22c55e");
+        document.getElementById("modal-cambios-editor").style.display = "none";
     } catch(e) {
         toast("❌ Error al guardar: " + e.message, "#ef4444");
     }
@@ -6416,9 +6460,6 @@ async function generarPDFCatalogo() {
         <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px;">Cómo solicitar la garantía</label>
         <textarea id="ge-solicitud" rows="5" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
 
-        <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px;">Proceso de cambio</label>
-        <textarea id="ge-cambios" rows="6" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
-
         <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px;">Evaluación y resolución</label>
         <textarea id="ge-evaluacion" rows="6" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
 
@@ -6428,6 +6469,48 @@ async function generarPDFCatalogo() {
         <div style="display:flex;gap:8px;">
             <a href="https://admin-tienda.pages.dev/garantia.html" target="_blank" style="flex:1;text-align:center;background:#f0f2f5;color:#111;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;">👁️ Ver página en vivo</a>
             <button id="btn-ge-guardar" onclick="guardarEditorGarantia()" style="flex:1;background:#111;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">💾 Guardar y publicar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Link/QR Política de Cambios (aparte de Garantía) -->
+<div id="modal-cambios" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10000;justify-content:center;align-items:center;padding:20px;">
+    <div style="background:#fff;border-radius:16px;padding:28px;max-width:380px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.4);text-align:center;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;text-align:left;">
+            <h3 style="margin:0;font-size:16px;font-weight:700;">🔄 Política de Cambios — Link / QR</h3>
+            <button onclick="document.getElementById('modal-cambios').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;">✕</button>
+        </div>
+        <p style="font-size:12px;color:#666;text-align:left;margin-bottom:14px;">Página aparte de la Garantía — explica solo el proceso para cambiar una pieza (no defectos de fabricación).</p>
+        <img id="cambios-qr-img" src="" alt="QR Cambios" style="width:200px;height:200px;border:1px solid #e2e2e2;border-radius:8px;margin-bottom:14px;">
+        <div id="cambios-link-out" style="font-size:12px;color:#0277bd;word-break:break-all;margin-bottom:14px;font-weight:600;background:#f0f2f5;padding:8px 10px;border-radius:6px;"></div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <button onclick="navigator.clipboard.writeText(document.getElementById('cambios-link-out').textContent);toast('✅ Copiado','#22c55e')"
+                style="flex:1;background:#111;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📋 Copiar Link</button>
+            <a id="cambios-qr-download" download="VEREX_QR_Cambios.png"
+                style="flex:1;background:#7c3aed;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none;">⬇️ Descargar QR</a>
+        </div>
+        <button onclick="abrirEditorCambios()" style="width:100%;background:#fff;color:#111;border:1.5px solid #111;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">✏️ Editar contenido de la página</button>
+    </div>
+</div>
+
+<!-- Modal Editor de contenido — Política de Cambios -->
+<div id="modal-cambios-editor" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10001;justify-content:center;align-items:center;padding:20px;">
+    <div style="background:#fff;border-radius:16px;padding:24px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.4);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <h3 style="margin:0;font-size:16px;font-weight:700;">✏️ Editar Política de Cambios</h3>
+            <button onclick="document.getElementById('modal-cambios-editor').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;">✕</button>
+        </div>
+        <p style="font-size:11px;color:#888;margin-bottom:16px;">Los cambios se publican de inmediato en <strong>admin-tienda.pages.dev/cambios.html</strong>. Una línea en blanco separa párrafos.</p>
+
+        <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px;">Costo de reenvío ($)</label>
+        <input type="number" id="ce-costo" value="5" min="0" step="0.01" style="width:120px;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;margin-bottom:12px;">
+
+        <label style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:4px;">Texto del proceso</label>
+        <textarea id="ce-texto" rows="8" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:16px;"></textarea>
+
+        <div style="display:flex;gap:8px;">
+            <a href="https://admin-tienda.pages.dev/cambios.html" target="_blank" style="flex:1;text-align:center;background:#f0f2f5;color:#111;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;">👁️ Ver página en vivo</a>
+            <button id="btn-ce-guardar" onclick="guardarEditorCambios()" style="flex:1;background:#111;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">💾 Guardar y publicar</button>
         </div>
     </div>
 </div>

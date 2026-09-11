@@ -2785,13 +2785,32 @@ async function enviar(){
 
         case "GUARDAR_GARANTIA": {
           if (!esAdmin) return forbidden();
-          const { intro, dias, cubre, no_cubre, promo, solicitud, cambios, evaluacion, destacado } = d;
+          const { intro, dias, cubre, no_cubre, promo, solicitud, evaluacion, destacado } = d;
           await sb.set("config", "garantia", {
             intro: intro || "", dias: parseInt(dias) || 30,
             cubre: cubre || "", no_cubre: no_cubre || "",
             promo: promo || "", solicitud: solicitud || "",
-            cambios: cambios || "",
             evaluacion: evaluacion || "", destacado: destacado || "",
+            actualizado: new Date().toISOString()
+          });
+          result = { ok: true };
+          break;
+        }
+
+        // ══ POLÍTICA DE CAMBIOS (aparte de la Garantía) ═════════════
+        case "GET_CAMBIOS": {
+          // Pública — la lee cambios.html sin necesidad de login
+          const cm = await sb.get("config", "cambios");
+          result = { ok: true, cambios: cm || null };
+          break;
+        }
+
+        case "GUARDAR_CAMBIOS": {
+          if (!esAdmin) return forbidden();
+          const { texto, costoReenvio } = d;
+          await sb.set("config", "cambios", {
+            texto: texto || "",
+            costoReenvio: parseFloat(costoReenvio) || 0,
             actualizado: new Date().toISOString()
           });
           result = { ok: true };

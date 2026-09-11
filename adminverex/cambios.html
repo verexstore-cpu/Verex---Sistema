@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Política de Cambios VEREX</title>
+<style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Segoe UI',sans-serif;background:#f7f7f7;color:#1a1a1a;line-height:1.6;}
+    header{background:#111;text-align:center;padding:14px 16px;}
+    header img{width:220px;max-width:70vw;display:block;margin:0 auto;}
+    main{max-width:640px;margin:0 auto;padding:28px 20px 50px;}
+    h1{font-size:22px;font-weight:800;color:#111;margin-bottom:6px;}
+    .subt{font-size:13px;color:#0369a1;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:8px;padding:8px 12px;display:inline-block;font-weight:700;margin-bottom:20px;}
+    p{font-size:14px;color:#333;margin-bottom:10px;}
+    .box{background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:18px 20px;margin-bottom:14px;}
+    footer{text-align:center;padding:24px 20px;font-size:11px;color:#999;}
+    #loading{text-align:center;padding:80px 20px;color:#888;font-size:14px;}
+</style>
+</head>
+<body>
+    <header><img src="/images/logo.webp" alt="VEREX"></header>
+    <div id="app"><div id="loading">Cargando…</div></div>
+    <footer>VEREX · La expresión de tu mejor versión</footer>
+
+<script>
+    const API_URL = "https://verex-api.verexstore.workers.dev/";
+
+    // Valores por defecto — se usan si el Admin todavía no ha guardado nada
+    // desde el editor de Política de Cambios.
+    const DEFAULTS = {
+        texto: "Para realizar el cambio, únicamente necesitamos que nos haga llegar el producto que desea cambiar.\n\nPuede enviarnos el paquete a la agencia que le quede más cercana.\n\nUna vez recibamos el producto, coordinaremos el envío del nuevo producto correspondiente al cambio. El costo del reenvío es de $5.00.\n\nCon gusto estaremos pendientes para ayudarle con todo el proceso.",
+        costoReenvio: 5
+    };
+
+    function esc(s){ const d=document.createElement("div"); d.textContent=String(s||""); return d.innerHTML; }
+
+    // Párrafos separados por línea en blanco; una línea que empieza con "- " se convierte en viñeta.
+    function renderTexto(txt){
+        const bloques = String(txt||"").split(/\n\s*\n/);
+        return bloques.map(bloque => {
+            const lineas = bloque.split("\n").map(l=>l.trim()).filter(Boolean);
+            if (!lineas.length) return "";
+            if (lineas.every(l => l.startsWith("- "))) {
+                return `<ul style="margin:0 0 10px 20px;">${lineas.map(l=>`<li style="font-size:14px;color:#333;margin-bottom:6px;">${esc(l.slice(2))}</li>`).join("")}</ul>`;
+            }
+            return `<p>${esc(bloque.replace(/\n/g," "))}</p>`;
+        }).join("");
+    }
+
+    async function cargar(){
+        let cm = null;
+        try {
+            const res = await fetch(API_URL, { method:"POST", body: JSON.stringify({ accion:"GET_CAMBIOS" }) });
+            const data = await res.json();
+            cm = data.cambios;
+        } catch(_) {}
+        const c = { ...DEFAULTS, ...(cm||{}) };
+
+        document.getElementById("app").innerHTML = `
+            <main>
+                <h1>Política de Cambios</h1>
+                <span class="subt">🔄 Costo de reenvío: $${parseFloat(c.costoReenvio).toFixed(2)}</span>
+                <div class="box">${renderTexto(c.texto)}</div>
+            </main>`;
+    }
+    cargar();
+</script>
+</body>
+</html>
