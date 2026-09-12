@@ -9327,6 +9327,14 @@ async function enviarImpresionServidor() {
     const formatoImpresora = esMini2 ? 'dk1204' : _formatoImpresion;
     const pageCount = esMini2 ? Math.ceil(codigos.length / 2) : codigos.length;
 
+    // 'mini' (DK-2214, cinta continua) tiene alto variable (px.h=0 en el Hub),
+    // así que por defecto el Hub lo trata como tira continua sin cortes entre
+    // páginas — correcto para una nota larga, pero al imprimir VARIOS códigos
+    // de producto aplasta todos los QR en una sola etiqueta en vez de cortar
+    // una por producto. separar:true fuerza al Hub a partir el PNG apilado y
+    // cortar una etiqueta física por código, igual que ya hace la nota libre.
+    const separarMini = _formatoImpresion === 'mini' && codigos.length > 1;
+
     let pdfBase64 = null;
     try {
         pdfBase64 = await generarPDFParaServidor(codigos, _formatoImpresion);
@@ -9350,7 +9358,7 @@ async function enviarImpresionServidor() {
             const res = await fetch(PRINT_SERVER + '/imprimir', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ formato: formatoImpresora, rollo: _rolloImpresion, pdf_base64: pdfBase64, pageCount, printerIp: localStorage.getItem('verex_wifi_ip') || undefined })
+                body: JSON.stringify({ formato: formatoImpresora, rollo: _rolloImpresion, pdf_base64: pdfBase64, pageCount, separar: separarMini, printerIp: localStorage.getItem('verex_wifi_ip') || undefined })
             });
             const json = await res.json();
             if (json.ok) {
