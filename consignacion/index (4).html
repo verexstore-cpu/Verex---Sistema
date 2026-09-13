@@ -5118,6 +5118,38 @@ function generarCodigo(categoria, material, usadosEnSesion = []) {
     return prefijo + String(maxN + 1).padStart(3, '0');
 }
 
+// Actualiza SOLO stockData en memoria (a diferencia de cargarStock(), que
+// además redibuja toda la grilla y el spinner) — sirve para recalcular
+// generarCodigo() contra el stock real justo antes de reintentar un guardado.
+async function refrescarStockData() {
+    try {
+        const res = await apiPost({ accion: "STOCK_GET_ALL" });
+        if (res && res.stock) stockData = res.stock;
+    } catch (e) { /* si falla, se sigue con lo que ya había en memoria */ }
+}
+
+// Guarda un item con código auto-generado sin que una carrera con otro
+// dispositivo pueda colarse: generarCodigo() calcula rápido en base al stock
+// que YA está cargado en memoria, así que si alguien más registró algo con
+// el mismo prefijo justo antes, el número calculado puede estar tomado. El
+// servidor SIEMPRE valida contra el stock real al guardar y rechaza el
+// duplicado en vez de sobreescribirlo en silencio — acá, en vez de mostrarle
+// ese rechazo crudo al usuario, se refresca el stock real y se reintenta con
+// el siguiente número libre, hasta 5 veces.
+// `construirPayload(base)` arma el body de apiPost para un codigoBase dado.
+async function guardarConCodigoUnico(categoria, material, codigoBaseInicial, construirPayload, intentosMax = 5) {
+    let codigoBase = codigoBaseInicial;
+    const probados = [];
+    for (let intento = 1; intento <= intentosMax; intento++) {
+        const res = await apiPost(construirPayload(codigoBase));
+        if (res.ok || !/ya existe/i.test(res.error || "")) return { res, codigoBase };
+        probados.push(codigoBase);
+        await refrescarStockData();
+        codigoBase = generarCodigo(categoria, material, probados);
+    }
+    return { res: { ok: false, error: "No se pudo generar un código único después de varios intentos — probá de nuevo" }, codigoBase };
+}
+
 // ── PROCESAMIENTO DE FOTO COMPARTIDO ────────────────────────────────
 // Calcula coordenadas de recorte + devuelve preview canvas y original
 // El recorte real lo aplica ImageKit en su servidor (sin pérdida de calidad)
@@ -8607,57 +8639,49 @@ async function guardarStockNuevo() {
             const codigosEtiq = [];
             const precioDama = precioNum;
             const precioCab  = precioCaballeroSN || precioNum;
+            // La PRIMER variante que se guarda en cada base fija esa base para
+            // las demás (DT/CT comparten codigoBase; UT también). Si el código
+            // es auto-generado y choca con stock real recién agregado, se
+            // recalcula ahí — una sola vez por base — y el resto de la familia
+            // ya usa la base corregida. codigoBase2 (trío 2+1) se deriva de un
+            // codigoBase ya confirmado único, así que no necesita reintento.
+            let baseConfirmada = !!codigoManual;
+            async function registrarVarianteSet(sufijo, talla, qty, nombreConTalla, precio, baseUsar) {
+                const construir = (base) => ({
+                    accion: "STOCK_REGISTRAR",
+                    codigo: base + sufijo + talla, codigoBase: base, talla,
+                    nombre: nombreConTalla,
+                    nombre_base: nombreVal,
+                    categoria, precio,
+                    foto: fotoUrl, cantidad: qty,
+                    material: _snMaterial || "",
+                    descripcion: desc, descripcionTienda: descTienda,
+                    caracterEspecial: caractEspecial,
+                    set_config: setConfig || undefined
+                });
+                let res, baseFinal = baseUsar;
+                if (!baseConfirmada) {
+                    const r = await guardarConCodigoUnico(categoria, _snMaterial, baseUsar, construir);
+                    res = r.res; baseFinal = r.codigoBase;
+                    codigoBase = baseFinal;
+                    baseConfirmada = true;
+                } else {
+                    res = await apiPost(construir(baseUsar));
+                }
+                if (res.ok) { guardados++; codigosEtiq.push({ codigo: baseFinal + sufijo + talla, qty }); }
+            }
             if (esUnisexSN) {
                 // Unisex: una sola entrada por talla con sufijo UT
                 for (const [talla, qty] of Object.entries(_snTallasQtyDama)) {
-                    const codigo = codigoBase + "UT" + talla;
-                    const res = await apiPost({
-                        accion: "STOCK_REGISTRAR",
-                        codigo, codigoBase, talla,
-                        nombre: `${nombreVal} T${talla}`,
-                        nombre_base: nombreVal,
-                        categoria, precio: precioDama,
-                        foto: fotoUrl, cantidad: qty,
-                        material: _snMaterial || "",
-                        descripcion: desc, descripcionTienda: descTienda,
-                        caracterEspecial: caractEspecial,
-                        set_config: setConfig || undefined
-                    });
-                    if (res.ok) { guardados++; codigosEtiq.push({ codigo, qty }); }
+                    await registrarVarianteSet("UT", talla, qty, `${nombreVal} T${talla}`, precioDama, codigoBase);
                 }
             } else {
                 // Diferenciado: entrada DT para dama y CT para caballero
                 for (const [talla, qty] of Object.entries(_snTallasQtyDama)) {
-                    const codigo = codigoBase + "DT" + talla;
-                    const res = await apiPost({
-                        accion: "STOCK_REGISTRAR",
-                        codigo, codigoBase, talla,
-                        nombre: `${nombreVal} Dama T${talla}`,
-                        nombre_base: nombreVal,
-                        categoria, precio: precioDama,
-                        foto: fotoUrl, cantidad: qty,
-                        material: _snMaterial || "",
-                        descripcion: desc, descripcionTienda: descTienda,
-                        caracterEspecial: caractEspecial,
-                        set_config: setConfig || undefined
-                    });
-                    if (res.ok) { guardados++; codigosEtiq.push({ codigo, qty }); }
+                    await registrarVarianteSet("DT", talla, qty, `${nombreVal} Dama T${talla}`, precioDama, codigoBase);
                 }
                 for (const [talla, qty] of Object.entries(_snTallasQtyCaballero)) {
-                    const codigo = codigoBase + "CT" + talla;
-                    const res = await apiPost({
-                        accion: "STOCK_REGISTRAR",
-                        codigo, codigoBase, talla,
-                        nombre: `${nombreVal} Caballero T${talla}`,
-                        nombre_base: nombreVal,
-                        categoria, precio: precioCab,
-                        foto: fotoUrl, cantidad: qty,
-                        material: _snMaterial || "",
-                        descripcion: desc, descripcionTienda: descTienda,
-                        caracterEspecial: caractEspecial,
-                        set_config: setConfig || undefined
-                    });
-                    if (res.ok) { guardados++; codigosEtiq.push({ codigo, qty }); }
+                    await registrarVarianteSet("CT", talla, qty, `${nombreVal} Caballero T${talla}`, precioCab, codigoBase);
                 }
                 // Trío 2+1: segunda pieza de dama (ej. compromiso) — mismas tallas
                 // que la pieza 1, pero con codigoBase propio y su propio precio,
@@ -8667,20 +8691,7 @@ async function guardarStockNuevo() {
                     const precioDama2 = parseFloat(precioDama2Raw) || 0;
                     const codigoBase2 = codigoBase + "B";
                     for (const [talla, qty] of Object.entries(_snTallasQtyDama)) {
-                        const codigo = codigoBase2 + "DT" + talla;
-                        const res = await apiPost({
-                            accion: "STOCK_REGISTRAR",
-                            codigo, codigoBase: codigoBase2, talla,
-                            nombre: `${nombreVal} Dama T${talla}`,
-                            nombre_base: nombreVal,
-                            categoria, precio: precioDama2,
-                            foto: fotoUrl, cantidad: qty,
-                            material: _snMaterial || "",
-                            descripcion: desc, descripcionTienda: descTienda,
-                            caracterEspecial: caractEspecial,
-                            set_config: setConfig || undefined
-                        });
-                        if (res.ok) { guardados++; codigosEtiq.push({ codigo, qty }); }
+                        await registrarVarianteSet("DT", talla, qty, `${nombreVal} Dama T${talla}`, precioDama2, codigoBase2);
                     }
                 }
             }
@@ -8695,22 +8706,35 @@ async function guardarStockNuevo() {
             let guardados = 0;
             const codigosTallas = [];
             const fallidas = [];
-            for (const [talla, qty] of tallas) {
-                const codigo    = aplicarTalla(codigoBase, talla);
-                const tallaReal = codigo === codigoBase ? "" : talla;
-                const res = await apiPost({
-                    accion: "STOCK_REGISTRAR",
-                    codigo, codigoBase, talla: tallaReal,
-                    nombre:      aplicarTallaNombre(nombreVal, talla),
-                    nombre_base: nombreVal,
-                    categoria, precio: precioNum,
-                    foto: fotoUrl, cantidad: qty,
-                    material: _snMaterial || "",
-                    descripcion: desc, descripcionTienda: descTienda,
-                    caracterEspecial: caractEspecial,
-                    set_config: setConfig || undefined,
-                    precio_caballero: precioCaballeroSN
-                });
+            for (let i = 0; i < tallas.length; i++) {
+                const [talla, qty] = tallas[i];
+                const construir = (base) => {
+                    const codigo    = aplicarTalla(base, talla);
+                    const tallaReal = codigo === base ? "" : talla;
+                    return {
+                        accion: "STOCK_REGISTRAR",
+                        codigo, codigoBase: base, talla: tallaReal,
+                        nombre:      aplicarTallaNombre(nombreVal, talla),
+                        nombre_base: nombreVal,
+                        categoria, precio: precioNum,
+                        foto: fotoUrl, cantidad: qty,
+                        material: _snMaterial || "",
+                        descripcion: desc, descripcionTienda: descTienda,
+                        caracterEspecial: caractEspecial,
+                        set_config: setConfig || undefined,
+                        precio_caballero: precioCaballeroSN
+                    };
+                };
+                let res;
+                if (i === 0 && !codigoManual) {
+                    // La primera talla fija la base para el resto del anillo — si
+                    // choca con stock real recién agregado, se recalcula acá.
+                    const r = await guardarConCodigoUnico(categoria, _snMaterial, codigoBase, construir);
+                    res = r.res; codigoBase = r.codigoBase;
+                } else {
+                    res = await apiPost(construir(codigoBase));
+                }
+                const codigo = aplicarTalla(codigoBase, talla);
                 // Solo se pone en cola de etiquetas la talla que realmente se
                 // guardó — si se encola una que falló, luego al imprimir el
                 // sistema no la encuentra ("Producto no encontrado").
@@ -8725,13 +8749,13 @@ async function guardarStockNuevo() {
             ofrecerEtiquetaRapida(codigosTallas);
         } else {
             // Producto sin talla, o anillo con código físico ya impreso (SA18509JT7)
-            let m = codigoBase.match(/^(.+?)T(\d+(?:\.\d+)?)$/i);
-            let tallaExtraida = m ? m[2] : "";
-            let baseExtraida  = m ? m[1] : codigoBase;
-            let res = await apiPost({
+            const m = codigoBase.match(/^(.+?)T(\d+(?:\.\d+)?)$/i);
+            const tallaExtraida = m ? m[2] : "";
+            let baseExtraida = m ? m[1] : codigoBase;
+            const construir = (base) => ({
                 accion:      "STOCK_REGISTRAR",
-                codigo:      codigoBase,
-                codigoBase:  baseExtraida,
+                codigo:      tallaExtraida ? `${base}T${tallaExtraida}` : base,
+                codigoBase:  base,
                 talla:       tallaExtraida,
                 nombre:      tallaExtraida ? `${nombreVal} T${tallaExtraida}` : nombreVal,
                 nombre_base: nombreVal,
@@ -8742,38 +8766,24 @@ async function guardarStockNuevo() {
                 caracterEspecial: caractEspecial,
                 set_config: setConfig || undefined
             });
-            // El código lo generó el sistema (no lo escribió el usuario) y el
-            // servidor dice que ya está en uso — puede pasar si ese código
-            // pertenece a un producto renombrado/inactivo que el navegador no
-            // ve. En vez de obligar a reabrir el formulario, se recalcula el
-            // siguiente número libre (excluyendo el que acaba de fallar) y se
-            // reintenta una sola vez de forma transparente.
-            if (!res.ok && !codigoManual && /ya existe/i.test(res.error || "")) {
-                codigoBase = generarCodigo(categoria, _snMaterial, [codigoBase]);
-                m = codigoBase.match(/^(.+?)T(\d+(?:\.\d+)?)$/i);
-                tallaExtraida = m ? m[2] : "";
-                baseExtraida  = m ? m[1] : codigoBase;
-                res = await apiPost({
-                    accion:      "STOCK_REGISTRAR",
-                    codigo:      codigoBase,
-                    codigoBase:  baseExtraida,
-                    talla:       tallaExtraida,
-                    nombre:      tallaExtraida ? `${nombreVal} T${tallaExtraida}` : nombreVal,
-                    nombre_base: nombreVal,
-                    categoria, precio: precioNum,
-                    foto: fotoUrl, cantidad,
-                    material: _snMaterial || "",
-                    descripcion: desc, descripcionTienda: descTienda,
-                    caracterEspecial: caractEspecial,
-                    set_config: setConfig || undefined
-                });
+            let res;
+            if (codigoManual) {
+                res = await apiPost(construir(baseExtraida));
+            } else {
+                // Código auto-generado: si el servidor avisa que justo se ocupó
+                // (otro dispositivo registró algo con ese prefijo momentos antes),
+                // refresca el stock real y reintenta con el siguiente libre —
+                // hasta 5 veces — en vez de mostrar el error crudo al usuario.
+                const r = await guardarConCodigoUnico(categoria, _snMaterial, baseExtraida, construir);
+                res = r.res; baseExtraida = r.codigoBase;
             }
             if (!res.ok) { toast("⚠️ " + (res.error || "Error al guardar")); btn.textContent = "✅ Guardar en Stock"; btn.disabled = false; return; }
             toast("✅ Producto guardado en stock");
             cerrarModal("modal-stock-nuevo");
             btn.textContent = "✅ Guardar en Stock"; btn.disabled = false;
             await cargarStock();
-            ofrecerEtiquetaRapida([{ codigo: codigoBase, qty: cantidad }]);
+            const codigoFinal = tallaExtraida ? `${baseExtraida}T${tallaExtraida}` : baseExtraida;
+            ofrecerEtiquetaRapida([{ codigo: codigoFinal, qty: cantidad }]);
         }
         return;
     } catch(e) { toast("⚠️ Error de conexión"); }
