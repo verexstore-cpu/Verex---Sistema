@@ -2876,20 +2876,51 @@ async function enviar(){
 
         case "STOCK_ASIGNAR_VENDEDOR": {
           if (!esAdmin) return forbidden();
+          if (!d.vendedor) return json({ ok: false, error: "vendedor requerido" });
+          // Antes solo movía el contador stock_bodega -> stock_consignacion y
+          // marcaba estado:"consignacion", pero nunca creaba el registro en
+          // la colección "consignacion" que liga la pieza a d.vendedor — el
+          // campo vendedor que manda el frontend se ignoraba por completo.
+          // Resultado: la pieza quedaba en un contador sin dueño, invisible
+          // en el perfil de cualquier vendedor, en sus ventas o en su corte
+          // (caso real: PUP105 "asignado" a Jaime Solórzano nunca apareció
+          // en su inventario). Ahora crea el mismo tipo de registro que ya
+          // genera REGISTRAR_ENTREGA (Nueva Entrega), para que ambos caminos
+          // dejen la pieza igual de rastreable.
+          const asignados = [];
+          const sinStock = [];
           for (const codigo of (d.codigos || [])) {
-            const s = await sb.get("stock", codigo);
-            if (s) {
+            try {
+              const s = await sb.get("stock", codigo);
+              if (!s) { sinStock.push(codigo); continue; }
               const disponible = parseInt(s.stock_bodega) || 0;
               const cant = Math.min(d.cantidad || 1, disponible);
-              if (cant <= 0) continue;
+              if (cant <= 0) { sinStock.push(codigo); continue; }
+              const id = `CONS_${Date.now()}_${codigo}`;
+              await sb.set("consignacion", id, {
+                id, vendedor: d.vendedor, codigo,
+                codigoBase:  s.codigoBase || codigo,
+                talla:       s.talla || "",
+                nombre:      s.nombre || "",
+                nombre_base: s.nombre_base || s.nombre || "",
+                categoria:   s.categoria || "",
+                precio:      s.precio || 0,
+                cantidad:    cant, vendido: 0,
+                foto:        s.foto || "",
+                fecha:       new Date().toISOString(),
+                estado:      "activo"
+              });
               await sb.update("stock", codigo, {
                 stock_bodega:       disponible - cant,
                 stock_consignacion: (parseInt(s.stock_consignacion)||0) + cant,
                 estado:             "consignacion"
               });
+              asignados.push(codigo);
+            } catch (errAsig) {
+              sinStock.push(codigo);
             }
           }
-          result = { ok: true };
+          result = { ok: true, asignados, sinStock };
           break;
         }
 
