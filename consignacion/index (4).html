@@ -7423,11 +7423,19 @@ async function moverItemDirecto(codigo, destino) {
     stockSeleccionados = [];
 }
 
-async function moverItemDirectoVendedor(codigo) {
+function moverItemDirectoVendedor(codigo) {
     document.querySelectorAll('[id^="menu-mover-"]').forEach(m => m.style.display = "none");
+    // asignarAVendedor() solo ABRE el modal — no espera a que el usuario elija
+    // vendedor y confirme, así que un `await` seguido de vaciar
+    // stockSeleccionados se ejecutaba de inmediato, antes de que el usuario
+    // tocara nada. Cuando confirmarAsignarVendedor() finalmente se disparaba,
+    // stockSeleccionados ya estaba vacío: mandaba codigos:[] al servidor, que
+    // no hacía nada pero igual respondía ok, y el toast decía "✅ Asignados
+    // correctamente" aunque la asignación real nunca se ejecutó. Ahora queda
+    // seteado hasta que confirmarAsignarVendedor() lo limpie de verdad
+    // (via limpiarSeleccion(), al terminar con éxito).
     stockSeleccionados = [codigo];
-    await asignarAVendedor();
-    stockSeleccionados = [];
+    asignarAVendedor();
 }
 
 async function toggleReservaStock(codigo) {
