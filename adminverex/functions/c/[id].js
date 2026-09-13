@@ -1,3 +1,5 @@
+import { escapeHtml, escapeForScript } from "../_html-safe.js";
+
 export async function onRequest(context) {
     const id = context.params.id;
     if (!id) return new Response("Not Found", { status: 404 });
@@ -70,26 +72,35 @@ export async function onRequest(context) {
         if (cats.length && cats.length <= 3) partes.push(cats.join(", "));
         const tallas = (data.talla || "").split(",").filter(Boolean);
         if (tallas.length) partes.push("Talla " + tallas.join(", "));
-        if (data.nota_interna) partes.push(data.nota_interna);
+        // nota_interna es justamente eso — interna — nunca debe aparecer en
+        // la vista previa pública del link (og:description).
         if (partes.length) catalogDesc = partes.join(" · ");
     }
     const rawFinal = data ? JSON.stringify(data) : raw;
 
+    // catalogNombre/catalogDesc salen de datos guardados por el admin (nombre
+    // del catálogo, texto del banner...) y rawFinal puede traer cualquier
+    // string de un producto — sin escapar, una comilla rompe el atributo y
+    // un "</script>" literal cierra el tag e inyecta HTML/JS en el navegador
+    // de cualquier cliente que abra este link.
+    const catalogNombreSafe = escapeHtml(catalogNombre);
+    const catalogDescSafe   = escapeHtml(catalogDesc);
+
     const ogTags = `
 <meta property="og:type"        content="website">
-<meta property="og:title"       content="${catalogNombre}">
-<meta property="og:description" content="${catalogDesc}">
+<meta property="og:title"       content="${catalogNombreSafe}">
+<meta property="og:description" content="${catalogDescSafe}">
 <meta property="og:image"       content="${origin}/images/logo.jpg">
 <meta property="og:image:width" content="1500">
 <meta property="og:image:height" content="750">
 <meta name="twitter:card"       content="summary_large_image">
 <meta name="twitter:image"      content="${origin}/images/logo.jpg">
-<script>window.__CATALOG_DATA__ = ${rawFinal};</script>`;
+<script>window.__CATALOG_DATA__ = ${escapeForScript(rawFinal)};</script>`;
 
     html = html.replace("</head>", ogTags + "\n</head>");
 
     // Also update <title> with the catalog name
-    html = html.replace(/<title>[^<]*<\/title>/, `<title>${catalogNombre}</title>`);
+    html = html.replace(/<title>[^<]*<\/title>/, `<title>${catalogNombreSafe}</title>`);
 
     // Incrementar contador de vistas en background (no bloquea la respuesta)
     context.waitUntil((async () => {

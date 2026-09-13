@@ -1,3 +1,5 @@
+import { escapeHtml, escapeForScript } from "../_html-safe.js";
+
 export async function onRequest(context) {
     const codigo = context.params.codigo;
     if (!codigo) return new Response("Not Found", { status: 404 });
@@ -40,15 +42,24 @@ export async function onRequest(context) {
         }
     } catch (_) {}
 
+    // nombre viene del stock guardado por el admin y foto de ImageKit; codigo
+    // viene DIRECTO de la URL (context.params.codigo) — sin escapar, una
+    // comilla rompe el atributo y un "</script>" literal en cualquiera de
+    // los tres cierra el tag e inyecta HTML/JS en el navegador de quien abra
+    // el link (XSS reflejado vía URL manipulada, sin necesitar ningún
+    // permiso de escritura).
+    const nombreSafe = escapeHtml(nombre);
+    const fotoSafe    = escapeHtml(foto);
+
     const ogTags = `
 <meta property="og:type"        content="website">
-<meta property="og:title"       content="${nombre} · VEREX">
+<meta property="og:title"       content="${nombreSafe} · VEREX">
 <meta property="og:description" content="La expresión de tu mejor versión">
-<meta property="og:image"       content="${foto}">
-<script>window.__PRODUCTO_CODIGO__ = ${JSON.stringify(codigo)};</script>`;
+<meta property="og:image"       content="${fotoSafe}">
+<script>window.__PRODUCTO_CODIGO__ = ${escapeForScript(JSON.stringify(codigo))};</script>`;
 
     html = html.replace("</head>", ogTags + "\n</head>");
-    html = html.replace(/<title>[^<]*<\/title>/, `<title>${nombre} · VEREX</title>`);
+    html = html.replace(/<title>[^<]*<\/title>/, `<title>${nombreSafe} · VEREX</title>`);
 
     return new Response(html, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
 }
