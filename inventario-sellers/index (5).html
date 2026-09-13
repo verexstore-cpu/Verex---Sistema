@@ -259,7 +259,7 @@ async function intentarEntrar(vendedorId, token) {
 
         const [res2, res3] = await Promise.all([
             fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_INVENTARIO_VENDEDOR", vendedor:vendedorId, token, pin:_pinIngresado }) }),
-            fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_ENTREGAS_PENDIENTES", vendedor:vendedorId }) })
+            fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_ENTREGAS_PENDIENTES", vendedor:vendedorId, token, pin:_pinIngresado }) })
         ]);
         const data2 = await res2.json();
         const data3 = await res3.json();
@@ -313,7 +313,7 @@ async function verificarPinInventario() {
 
 async function cargarVentas(vendedorId) {
     try {
-        const res = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_VENTAS_VENDEDOR", vendedor:vendedorId }) });
+        const res = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_VENTAS_VENDEDOR", vendedor:vendedorId, token:_miToken, pin:_pinIngresado }) });
         const data = await res.json();
         ventasData = data.ventas || [];
     } catch(e) { ventasData = []; }
@@ -370,12 +370,11 @@ function renderNotifEntregas() {
 }
 
 async function verificarEntregasPendientes() {
-    const params     = new URLSearchParams(window.location.search);
-    const vendedorId = params.get("inv");
+    const vendedorId = _miVendedorId;
     const btn = document.querySelector("#btn-check-entrega-wrap button");
     if (btn) btn.textContent = "⏳ Verificando...";
     try {
-        const res  = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_ENTREGAS_PENDIENTES", vendedor:vendedorId }) });
+        const res  = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"GET_ENTREGAS_PENDIENTES", vendedor:vendedorId, token:_miToken, pin:_pinIngresado }) });
         const data = await res.json();
         entregasPendientes = data.entregas || [];
         renderNotifEntregas();
@@ -640,6 +639,9 @@ async function confirmarRecepcionEntrega() {
             body:JSON.stringify({
                 accion: "CONFIRMAR_ENTREGA_RECIBO",
                 id: entregaConfirmando.id,
+                vendedor: _miVendedorId,
+                token: _miToken,
+                pin: _pinIngresado,
                 codigoRecibo: codigo,
                 firmaImg
             })
@@ -733,7 +735,7 @@ async function confirmarVenta() {
     const btn = document.querySelector("#reg-paso2 .btn-verde");
     btn.textContent="⏳ Registrando..."; btn.disabled=true;
     try {
-        const res = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"REGISTRAR_VENTA_VENDEDOR", id:prodSeleccionado.id, vendedor:vendedorData.codigo, codigo:prodSeleccionado.codigo, nombre:prodSeleccionado.nombre, precio:prodSeleccionado.precio, foto:prodSeleccionado.foto||"", cantidad }) });
+        const res = await fetch(API_URL, { method:'POST', body:JSON.stringify({ accion:"REGISTRAR_VENTA_VENDEDOR", id:prodSeleccionado.id, vendedor:vendedorData.codigo, token:_miToken, pin:_pinIngresado, codigo:prodSeleccionado.codigo, nombre:prodSeleccionado.nombre, precio:prodSeleccionado.precio, foto:prodSeleccionado.foto||"", cantidad }) });
         const data = await res.json();
         if (data.ok) {
             const item = invActivo.find(c=>String(c.id)===String(prodSeleccionado.id));

@@ -1479,8 +1479,13 @@ async function enviar(){
         }
 
         case "REGISTRAR_VENTA_VENDEDOR": {
+          const chkRVV = await validarVendedorToken(sb, d.vendedor, d.token, d.pin);
+          if (!chkRVV.ok) { result = { ok: false, error: chkRVV.error }; break; }
           const consV = await sb.get("consignacion", d.id);
           if (!consV) { result = { ok: false, error: "Item no encontrado" }; break; }
+          if (String(consV.vendedor) !== String(d.vendedor)) {
+            result = { ok: false, error: "Esta pieza no pertenece a este vendedor" }; break;
+          }
           const cantVentaV = parseInt(d.cantidad) || 1;
           const nuevoVendidoV = (parseInt(consV.vendido)||0) + cantVentaV;
           await sb.update("consignacion", d.id, { vendido: nuevoVendidoV });
@@ -1502,7 +1507,7 @@ async function enviar(){
           // pieza, no la de la venta), así que el historial del vendedor
           // mostraba fechas/horas equivocadas para cada venta.
           const ventaIdV = `VV_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-          const vendV = await sb.get("vendedores", d.vendedor);
+          const vendV = chkRVV.vend;
           const historialV = vendV && Array.isArray(vendV.historialVentas) ? vendV.historialVentas : [];
           historialV.push({
             id: ventaIdV, consignacionId: d.id,
@@ -1703,6 +1708,10 @@ async function enviar(){
         }
 
         case "GET_VENTAS_VENDEDOR": {
+          if (!esAdmin) {
+            const chkGV = await validarVendedorToken(sb, d.vendedor, d.token, d.pin);
+            if (!chkGV.ok) { result = { ok: false, error: chkGV.error }; break; }
+          }
           const vendGV = await sb.get("vendedores", d.vendedor);
           result = { ok: true, ventas: (vendGV && Array.isArray(vendGV.historialVentas)) ? vendGV.historialVentas : [] };
           break;
@@ -1791,6 +1800,7 @@ async function enviar(){
         }
 
         case "GET_DEVOLUCIONES_VENDEDOR": {
+          if (!esAdmin) return forbidden();
           const devs = await sb.query("devoluciones", "vendedor", "==", d.vendedor);
           result = { ok: true, devoluciones: devs };
           break;
@@ -1963,6 +1973,7 @@ async function enviar(){
         }
 
         case "GUARDAR_CLIENTE": {
+          if (!esAdmin) return forbidden();
           await sb.set("clientes", d.codigo || `CLI_${Date.now()}`, d);
           result = { ok: true };
           break;
@@ -2445,6 +2456,19 @@ async function enviar(){
 
         // Portal del afiliado (protegido por token, igual que VERIFICAR_TOKEN)
         case "GET_LEADS_AFILIADO": {
+          // Devuelve teléfono/dirección/nombre de clientes de un afiliado —
+          // igual de sensible que GET_LEADS_PORTAL_AFILIADO, así que se valida
+          // con el mismo tokenPedidos+PIN (antes no pedía nada, solo el código
+          // del afiliado, que no es secreto).
+          if (!esAdmin) {
+            const vendGLA = await sb.get("vendedores", d.vendedor);
+            if (!vendGLA || !vendGLA.tokenPedidos || String(vendGLA.tokenPedidos) !== String(d.token)) {
+              result = { ok: false, error: "Link inválido" }; break;
+            }
+            if (vendGLA.pin && String(vendGLA.pin) !== String(d.pin || "")) {
+              result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
+            }
+          }
           const todos = await sb.getAll("leads");
           const propios = todos.filter(l => l.afiliado === d.vendedor);
           result = { ok: true, leads: propios };
@@ -3001,6 +3025,10 @@ async function enviar(){
         }
 
         case "GET_ENTREGAS_PENDIENTES": {
+          if (!esAdmin) {
+            const chkGEP = await validarVendedorToken(sb, d.vendedor, d.token, d.pin);
+            if (!chkGEP.ok) { result = { ok: false, error: chkGEP.error }; break; }
+          }
           const ents = await sb.query("entregas", "vendedor", "==", d.vendedor);
           result = { ok: true, entregas: ents.filter(e => e.estado === "pendiente") };
           break;
@@ -3026,6 +3054,13 @@ async function enviar(){
         case "CONFIRMAR_ENTREGA_RECIBO": {
           const entDoc = await sb.get("entregas", d.id);
           if (!entDoc) { result = { ok: false, error: "Entrega no encontrada" }; break; }
+          if (!esAdmin) {
+            const chkCER = await validarVendedorToken(sb, d.vendedor, d.token, d.pin);
+            if (!chkCER.ok) { result = { ok: false, error: chkCER.error }; break; }
+            if (String(entDoc.vendedor) !== String(d.vendedor)) {
+              result = { ok: false, error: "Esta entrega no pertenece a este vendedor" }; break;
+            }
+          }
           const esperado  = String(entDoc.codigoRecibo || "").toUpperCase();
           const ingresado = String(d.codigoRecibo || "").toUpperCase();
           if (esperado && esperado !== ingresado) {
@@ -3777,4 +3812,23 @@ function sanearConfigPublico(cfg) {
   if (!cfg || typeof cfg !== "object") return {};
   const { passHash, otp, otpExp, ssoTokens, ...publico } = cfg;
   return publico;
+}
+
+// Valida que quien llama sea REALMENTE el vendedor que dice ser — mismo
+// chequeo de tokenInventario+PIN que ya hace GET_INVENTARIO_VENDEDOR/
+// VERIFICAR_TOKEN. Varias acciones de Inventario de Vendedores (ver ventas,
+// entregas pendientes, registrar una venta) solo pedían el código del
+// vendedor (no es secreto — aparece en su propio link) y confiaban en él
+// sin volver a pedir el token — cualquiera podía leer o alterar el
+// inventario/ventas de un vendedor ajeno con solo saber su código.
+async function validarVendedorToken(sb, vendedor, token, pin) {
+  if (!vendedor || !token) return { ok: false, error: "vendedor y token requeridos" };
+  const vend = await sb.get("vendedores", vendedor);
+  if (!vend || String(vend.tokenInventario) !== String(token)) {
+    return { ok: false, error: "Token inválido" };
+  }
+  if (vend.pin && String(vend.pin) !== String(pin || "")) {
+    return { ok: false, error: "PIN incorrecto" };
+  }
+  return { ok: true, vend };
 }
