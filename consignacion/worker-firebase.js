@@ -246,7 +246,7 @@ async function enviar(){
         return json({
           productos: prods.filter(p => (p.enCatalogo === true || p.enCatalogo === "true" || p.enCatalogo === "TRUE") && p.estado !== "inactivo"),
           cupones:   cups.filter(c => c.activo !== false && c.activo !== "false"),
-          config:    cfgDoc || {}
+          config:    sanearConfigPublico(cfgDoc)
         });
       } catch(e) {
         return json({ ok: false, error: e.message }, 500);
@@ -1992,7 +1992,7 @@ async function enviar(){
         // ══ CONFIG ════════════════════════════════════════════════
         case "GET_CONFIG": {
           const cfg = await sb.get("config", "settings");
-          result = { ok: true, config: cfg || {} };
+          result = { ok: true, config: sanearConfigPublico(cfg) };
           break;
         }
 
@@ -2067,7 +2067,7 @@ async function enviar(){
             ok:        true,
             productos: final,
             cupones:   cups.filter(c => c.activo !== false && c.activo !== "false"),
-            config:    cfg2
+            config:    sanearConfigPublico(cfg2)
           };
           break;
         }
@@ -2717,7 +2717,7 @@ async function enviar(){
             pedidos:   peds,
             cupones:   cups,
             clientes:  clis,
-            config:    cfgDoc || {}
+            config:    sanearConfigPublico(cfgDoc)
           };
           break;
         }
@@ -2825,7 +2825,7 @@ async function enviar(){
           // chequeo de disponibilidad en vivo — reutilizar esa llamada evita
           // un fetch extra solo para leer la frase editable de envíos/pago.
           const cfgStock = await sb.get("config", "settings");
-          result = { ok: true, stock: stock.filter(p => p.estado !== "inactivo"), config: cfgStock || {} };
+          result = { ok: true, stock: stock.filter(p => p.estado !== "inactivo"), config: sanearConfigPublico(cfgStock) };
           break;
         }
 
@@ -3763,4 +3763,18 @@ function json(data, status = 200) {
 }
 function forbidden() {
   return json({ ok: false, error: "No autorizado" }, 403);
+}
+
+// El documento config/settings guarda, junto a ajustes públicos del catálogo
+// (fraseConfianza, limiteCatalogo, rotación), las credenciales del propio
+// login de admin: passHash, otp/otpExp (2FA por Telegram) y ssoTokens. Varias
+// acciones devuelven ese documento COMPLETO a quien las llame — GET_CONFIG,
+// GET_CATALOGO y GET_STOCK no piden contraseña, y la ruta pública "/" tampoco.
+// Sin este filtro, cualquiera obtenía passHash con una sola petición sin
+// autenticarse, y ese mismo hash es aceptado como contraseña válida en
+// verificarPassword() — bypaseaba contraseña + OTP + SSO por completo.
+function sanearConfigPublico(cfg) {
+  if (!cfg || typeof cfg !== "object") return {};
+  const { passHash, otp, otpExp, ssoTokens, ...publico } = cfg;
+  return publico;
 }
