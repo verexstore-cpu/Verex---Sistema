@@ -22,25 +22,24 @@ export async function onRequest(context) {
         if (!id) {
             return new Response(JSON.stringify({ error: "Falta el id del catálogo" }), { status: 400, headers });
         }
+        const dias = Math.min(Math.max(parseInt(body?.dias) || 1, 1), 30);
 
-        await context.env.CATALOGS.delete(id);
-
-        // Si se pide eliminar del historial también, borrar el registro permanente
-        if (body?.eliminarHistorial) {
-            await context.env.CATALOGS.delete("__hist__" + id);
-        } else {
-            // El tab Links calcula "activo" a partir de __hist__.expiresAt
-            // (list-catalogs.js), NO de si el link en sí sigue existiendo —
-            // sin esto, el link quedaba roto pero la lista lo seguía
-            // mostrando como ACTIVO hasta que la fecha real de vencimiento
-            // pasara sola.
-            const rawHist = await context.env.CATALOGS.get("__hist__" + id);
-            if (rawHist) {
-                const hist = JSON.parse(rawHist);
-                hist.expiresAt = Date.now() - 1000;
-                await context.env.CATALOGS.put("__hist__" + id, JSON.stringify(hist));
-            }
+        const raw = await context.env.CATALOGS.get(id);
+        if (!raw) {
+            return new Response(JSON.stringify({ error: "Ese link no existe o ya expiró" }), { status: 404, headers });
         }
+
+        // Actualiza tanto el campo interno "expiry" (lo que revisa el propio
+        // catalogo.html al abrirse) como el TTL real de la llave en KV (lo
+        // que hace que Cloudflare borre el registro solo) — si solo se
+        // tocara uno de los dos, podrían quedar desincronizados.
+        const data = JSON.parse(raw);
+        data.expiry = Date.now() + dias * 86400000;
+        data.dias = dias;
+
+        await context.env.CATALOGS.put(id, JSON.stringify(data), {
+            expirationTtl: 60 * 60 * 24 * dias,
+        });
 
         return new Response(JSON.stringify({ ok: true }), { headers });
     } catch (e) {

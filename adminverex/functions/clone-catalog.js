@@ -1,21 +1,23 @@
+import { esAdminValido, noAutorizado } from "./_auth.js";
+
 export async function onRequest(context) {
+    const cors = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+    };
     if (context.request.method === "OPTIONS") {
-        return new Response(null, {
-            headers: {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "POST, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type",
-            }
-        });
+        return new Response(null, { headers: cors });
     }
     if (context.request.method !== "POST") {
         return new Response("Method Not Allowed", { status: 405 });
     }
 
-    const headers = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" };
+    const headers = { "Content-Type": "application/json", ...cors };
 
     try {
-        const { id, dias: diasRaw, expiresAt: expiresAtRaw, stripDescuento, stripPromos } = await context.request.json();
+        const { id, dias: diasRaw, expiresAt: expiresAtRaw, stripDescuento, stripPromos, _pass } = await context.request.json();
+        if (!(await esAdminValido(_pass))) return noAutorizado(cors);
         if (!id) return new Response(JSON.stringify({ error: "id requerido" }), { status: 400, headers });
 
         const rawHist = await context.env.CATALOGS.get("__hist__" + id);

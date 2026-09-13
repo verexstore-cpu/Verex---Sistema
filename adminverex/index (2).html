@@ -3699,7 +3699,11 @@ async function cargarHistorialLinks() {
     const cont = document.getElementById("hist-links-list");
     cont.innerHTML = '<p style="color:#666;font-size:13px;">Cargando…</p>';
     try {
-        const res = await fetch("/list-catalogs");
+        const res = await fetch("/list-catalogs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ _pass: ADMIN_PASS })
+        });
         const json = await res.json();
         _histLinks = json.links || [];
         _renderHistLinks("todos");
@@ -3849,7 +3853,7 @@ async function agregarProductosAlLink() {
         const res = await fetch("/edit-catalog-products", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: _editandoLinkId, nuevosProductos })
+            body: JSON.stringify({ id: _editandoLinkId, nuevosProductos, _pass: ADMIN_PASS })
         });
         const json = await res.json();
         if (json.ok) {
@@ -3873,7 +3877,7 @@ async function eliminarLink(id) {
     try {
         const res  = await fetch("/deactivate-catalog", {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, eliminarHistorial: true })
+            body: JSON.stringify({ id, eliminarHistorial: true, _pass: ADMIN_PASS })
         });
         const json = await res.json();
         if (json.ok) {
@@ -3892,7 +3896,7 @@ async function reactivarLink(id) {
     try {
         const res  = await fetch("/reactivate-catalog", {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, dias })
+            body: JSON.stringify({ id, dias, _pass: ADMIN_PASS })
         });
         const json = await res.json();
         if (json.ok) {
@@ -4078,7 +4082,7 @@ async function generarLinkCatalogo() {
         const saveRes = await fetch("/save-catalog", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(data)
+            body: JSON.stringify({ ...data, _pass: ADMIN_PASS })
         });
 
         let finalUrl;
@@ -4202,7 +4206,11 @@ async function reconstruirIndiceAfiliados() {
     btn.textContent = "⏳ Reconstruyendo…";
     btn.disabled = true;
     try {
-        const res = await fetch("/backfill-affiliate-index", { method: "POST" });
+        const res = await fetch("/backfill-affiliate-index", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ _pass: ADMIN_PASS })
+        });
         const out = await res.json();
         if (out.ok) {
             toast(`✅ ${out.message}`, "#22c55e");
@@ -4223,7 +4231,7 @@ async function _cargarVistasCatalogos(ids) {
         const res = await fetch("/catalog-views", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ids })
+            body: JSON.stringify({ ids, _pass: ADMIN_PASS })
         });
         if (!res.ok) return;
         const { views } = await res.json();
@@ -4398,7 +4406,11 @@ async function cargarPanelLinks() {
     const cont = document.getElementById("lk-lista");
     cont.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:20px;">Cargando...</p>';
     try {
-        const res = await fetch("/list-catalogs", { method: "POST" });
+        const res = await fetch("/list-catalogs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ _pass: ADMIN_PASS })
+        });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || "Error");
         _todosLosLinks = data.catalogos || [];
@@ -4484,7 +4496,7 @@ async function desactivarLinkPanel(id, nombre) {
         const res = await fetch("/deactivate-catalog", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id })
+            body: JSON.stringify({ id, _pass: ADMIN_PASS })
         });
         const out = await res.json();
         if (!res.ok) throw new Error(out.error || "Error del servidor");
@@ -4552,7 +4564,7 @@ async function reactivarLinkPanel(id) {
         const res = await fetch("/clone-catalog", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, dias, expiresAt: nuevaExpiry, stripDescuento: teniaDescuento && !mantenerDescuento, stripPromos: teniaOtrasPromos && !mantenerOtras })
+            body: JSON.stringify({ id, dias, expiresAt: nuevaExpiry, stripDescuento: teniaDescuento && !mantenerDescuento, stripPromos: teniaOtrasPromos && !mantenerOtras, _pass: ADMIN_PASS })
         });
         const out = await res.json();
         if (!res.ok) throw new Error(out.error || "Error del servidor");
@@ -4596,7 +4608,7 @@ async function clonarCatalogo(id, nombre) {
         const res = await fetch("/clone-catalog", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, dias, expiresAt: nuevaExpiry })
+            body: JSON.stringify({ id, dias, expiresAt: nuevaExpiry, _pass: ADMIN_PASS })
         });
         const out = await res.json();
         if (!res.ok) throw new Error(out.error || "Error del servidor");
@@ -4721,7 +4733,7 @@ async function _clonarConStockActual(original, receta, dias, nuevaExpiry) {
     const saveRes = await fetch("/save-catalog", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data)
+        body: JSON.stringify({ ...data, _pass: ADMIN_PASS })
     });
     if (!saveRes.ok) throw new Error("Error al guardar catálogo");
     const { url } = await saveRes.json();
@@ -4871,7 +4883,7 @@ async function desactivarLinkCatalogo(linkOrId) {
         const res = await fetch("/deactivate-catalog", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id })
+            body: JSON.stringify({ id, _pass: ADMIN_PASS })
         });
         const out = await res.json();
         if (!res.ok) throw new Error(out.error || "No se pudo desactivar");
@@ -4898,7 +4910,7 @@ async function editarVigenciaCatalogo(linkOrId, dias) {
         const res = await fetch("/edit-catalog-expiry", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, dias: parseInt(dias) })
+            body: JSON.stringify({ id, dias: parseInt(dias), _pass: ADMIN_PASS })
         });
         const out = await res.json();
         if (!res.ok) throw new Error(out.error || "No se pudo actualizar");
@@ -5210,7 +5222,11 @@ function selBannerAfColor(btn, color) {
 }
 async function cargarBannerAfiliadoGlobal() {
     try {
-        const res = await fetch("/banner-afiliado");
+        const res = await fetch("/banner-afiliado", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ _pass: ADMIN_PASS, _leer: true }),
+        });
         const b = await res.json();
         document.getElementById("cat-banner-af-activo").checked = !!b.activo;
         document.getElementById("cat-banner-af-txt").value = b.txt || "";
@@ -5230,7 +5246,7 @@ async function guardarBannerAfiliadoGlobal() {
         const res = await fetch("/banner-afiliado", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ activo, txt, sub, color: _bannerAfColor }),
+            body: JSON.stringify({ activo, txt, sub, color: _bannerAfColor, _pass: ADMIN_PASS }),
         });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
