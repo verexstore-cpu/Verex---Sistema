@@ -4490,11 +4490,28 @@ function limpiarFirma() {
     document.getElementById("firma-placeholder").style.display = "block";
 }
 
+// El botón cerraba el modal de firma al instante y volvía a quedar
+// clickeable mientras confirmarEntrega() seguía en curso — un doble toque
+// (muy fácil en tablet) disparaba dos REGISTRAR_ENTREGA para el mismo
+// carrito. Cada uno suma su propia cantidad a stock_consignacion (delta, no
+// valor fijo), así que el contador terminaba duplicado aunque solo se haya
+// entregado una vez físicamente — el caso real que encontró esto fue
+// PUP105 con Jaime Solórzano: 1 pieza entregada, quedó registrada como 2.
+let _confirmandoEntrega = false;
 async function confirmarEntregaConFirma() {
+    if (_confirmandoEntrega) return;
     if (!_firmaActiva) { toast("⚠️ El vendedor debe firmar primero"); return; }
-    const firmaImg = document.getElementById("firma-canvas").toDataURL("image/png");
-    cerrarModal("modal-firma");
-    await confirmarEntrega(firmaImg, _firmaCodigoActual);
+    _confirmandoEntrega = true;
+    const btn = document.getElementById("btn-confirmar-firma");
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Confirmando..."; }
+    try {
+        const firmaImg = document.getElementById("firma-canvas").toDataURL("image/png");
+        cerrarModal("modal-firma");
+        await confirmarEntrega(firmaImg, _firmaCodigoActual);
+    } finally {
+        _confirmandoEntrega = false;
+        if (btn) { btn.disabled = false; btn.textContent = "✅ Confirmar y Generar Recibo"; }
+    }
 }
 
 // ── Firma digital del contrato de vendedor/afiliado ──────────────────

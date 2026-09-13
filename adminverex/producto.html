@@ -218,7 +218,11 @@
         const selPos  = _grupoSel[gi] || 0;
         const flatIdx = idxs[selPos];
         const p = encontrados[flatIdx];
-        const totalStock = (parseInt(p.stock_bodega)||0) + (parseInt(p.stock_tienda)||0) + (parseInt(p.stock_consignacion)||0);
+        // stock_consignacion son piezas que YA están en mano de un vendedor —
+        // no algo que VEREX pueda entregarle de inmediato a quien pida por
+        // este link. Contarlas como "disponible" mostraba el botón de pedido
+        // activo aunque la última unidad estuviera afuera con un vendedor.
+        const totalStock = (parseInt(p.stock_bodega)||0) + (parseInt(p.stock_tienda)||0);
         const agotado = p.reservado || totalStock <= 0;
         const material = p.material || "";
         const nombre = (p.nombre_base || p.nombre || "").trim();
