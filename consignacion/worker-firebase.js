@@ -956,7 +956,15 @@ async function enviar(){
           if (!cons) { result = { ok: false, error: "Item no encontrado" }; break; }
           const cantVentaAdmin = parseInt(d.cantidad) || 1;
           const nuevoVendido = (parseInt(cons.vendido)||0) + cantVentaAdmin;
-          await sb.update("consignacion", d.id, { vendido: nuevoVendido });
+          // estado:"activo" siempre — renderPerfilStats()/abrirCorte() calculan
+          // "Vendidos" y la comisión pendiente filtrando SOLO estado:"activo";
+          // el único lugar que debe pasar un item a estado:"vendido" es
+          // CERRAR_CORTE, al liquidarlo. Si este registro venía de recuperar
+          // una venta cerrada por error con "Ya vendida" (estado quedaba en
+          // "vendido"), sin esto la venta quedaba bien contada en el reporte
+          // pero invisible en el stock/comisión en vivo del vendedor hasta el
+          // próximo corte, sin ninguna forma de notarlo.
+          await sb.update("consignacion", d.id, { vendido: nuevoVendido, estado: "activo" });
           const s = await sb.get("stock", cons.codigo);
           if (s) {
             await sb.update("stock", cons.codigo, {
@@ -1045,6 +1053,25 @@ async function enviar(){
           const itemMV = await sb.get("consignacion", d.id);
           if (!itemMV) { result = { ok: false, error: "Item no encontrado" }; break; }
           await sb.update("consignacion", d.id, { estado: "vendido" });
+          result = { ok: true };
+          break;
+        }
+
+        // Contraparte de MARCAR_CONSIGNACION_VENDIDA / recuperación manual —
+        // vuelve un registro a estado:"activo" sin tocar cantidad ni vendido.
+        // Uso: un item quedó cerrado como "vendido" por error (ej. con "Ya
+        // vendida" antes de que existiera la pregunta NUEVA/LIQUIDADA) y su
+        // venta ya se contó (vendido == cantidad), pero el vendedor TODAVÍA
+        // no cobró esa comisión en ningún corte — sin reactivarlo, queda
+        // invisible en el stock/comisión en vivo hasta el próximo corte sin
+        // ninguna forma de notarlo. Úsalo solo si estás seguro de que esa
+        // venta NO se pagó ya en un corte anterior — si se pagó, reactivarla
+        // la haría contar de nuevo y pagar comisión dos veces.
+        case "REACTIVAR_CONSIGNACION": {
+          if (!esAdmin) return forbidden();
+          const itemRC = await sb.get("consignacion", d.id);
+          if (!itemRC) { result = { ok: false, error: "Item no encontrado" }; break; }
+          await sb.update("consignacion", d.id, { estado: "activo" });
           result = { ok: true };
           break;
         }
@@ -1488,7 +1515,11 @@ async function enviar(){
           }
           const cantVentaV = parseInt(d.cantidad) || 1;
           const nuevoVendidoV = (parseInt(consV.vendido)||0) + cantVentaV;
-          await sb.update("consignacion", d.id, { vendido: nuevoVendidoV });
+          // Mismo motivo que en REGISTRAR_VENTA: solo CERRAR_CORTE debe dejar
+          // un registro en estado:"vendido" — cualquier otro camino que
+          // cuenta una venta debe mantenerlo "activo" para que siga
+          // contando en el stock/comisión en vivo hasta el próximo corte.
+          await sb.update("consignacion", d.id, { vendido: nuevoVendidoV, estado: "activo" });
           const sV = await sb.get("stock", consV.codigo);
           if (sV) {
             await sb.update("stock", consV.codigo, {

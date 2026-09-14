@@ -1025,6 +1025,10 @@
         <div class="card">
             <h2>📋 Inventario Actual</h2>
             <div id="lista-inventario"></div>
+            <p style="margin-top:10px;">
+                <a href="#" onclick="event.preventDefault();toggleCerradasVendido()" style="font-size:11px;color:var(--plateado);text-decoration:underline;">🔒 Ver piezas cerradas ("vendido")</a>
+            </p>
+            <div id="lista-cerradas-vendido" style="display:none;margin-top:8px;"></div>
         </div>
         <div class="card">
             <h2>💰 Ventas Registradas</h2>
@@ -3855,6 +3859,51 @@ function renderInventario() {
             </div>
         </div>`;
     }).join('');
+}
+
+// Piezas cerradas ("vendido") de este vendedor — normalmente correcto (así
+// quedan tras un corte que las liquida), pero también es donde termina
+// escondida una venta cerrada por error con "Ya vendida" antes de que
+// existiera la pregunta NUEVA/LIQUIDADA: la venta ya cuenta en su historial,
+// pero el registro no vuelve a sumar en su stock/comisión en vivo hasta el
+// próximo corte. Oculto por defecto (no es información que se necesite ver
+// seguido) — "🔓 Reactivar" es una acción de admin que asume que sabés que
+// esa venta NO se pagó todavía en ningún corte; si ya se pagó, no la toques.
+let _cerradasVendidoVisible = false;
+function toggleCerradasVendido() {
+    _cerradasVendidoVisible = !_cerradasVendidoVisible;
+    const wrap = document.getElementById("lista-cerradas-vendido");
+    if (!wrap) return;
+    wrap.style.display = _cerradasVendidoVisible ? "block" : "none";
+    if (_cerradasVendidoVisible) renderCerradasVendido();
+}
+function renderCerradasVendido() {
+    const wrap = document.getElementById("lista-cerradas-vendido");
+    if (!wrap) return;
+    const cerradas = consignacion.filter(c => c.vendedor === vendedorActual.codigo && c.estado === "vendido");
+    if (!cerradas.length) {
+        wrap.innerHTML = '<p style="color:var(--plateado);font-size:12px;">No hay piezas cerradas.</p>';
+        return;
+    }
+    wrap.innerHTML = `<p style="font-size:11px;color:var(--plateado);margin-bottom:6px;">Reactivá solo si esa venta TODAVÍA no se pagó en ningún corte anterior — si ya se pagó, reactivarla la cuenta dos veces.</p>` +
+        cerradas.map(c => `
+            <div style="background:var(--gris2);border-radius:8px;padding:8px 10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+                <div style="font-size:12px;"><strong>${sanitizar(c.codigo)}</strong> — ${sanitizar(c.nombre)}
+                    <div style="font-size:10.5px;color:var(--plateado);">$${parseFloat(c.precio||0).toFixed(2)} · vendido ${c.vendido||0} de ${c.cantidad||0}</div>
+                </div>
+                <button onclick="reactivarConsignacion(${jsArg(c.id)})" style="padding:5px 10px;font-size:11px;background:#4a6fa5;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;">🔓 Reactivar</button>
+            </div>`).join('');
+}
+async function reactivarConsignacion(id) {
+    if (!confirm("¿Reactivar este registro? Solo hacelo si estás seguro de que esta venta NO se le pagó ya al vendedor en un corte anterior — si ya se pagó, la comisión se contaría dos veces.")) return;
+    const res = await apiPost({ accion: "REACTIVAR_CONSIGNACION", id });
+    if (!res.ok) { toast("⚠️ " + (res.error||"No se pudo reactivar"), "#c0392b"); return; }
+    const item = consignacion.find(c => String(c.id) === String(id));
+    if (item) item.estado = "activo";
+    renderPerfilStats();
+    renderInventario();
+    renderCerradasVendido();
+    toast("✅ Reactivado — ya vuelve a contar en su stock/comisión en vivo");
 }
 
 function renderVentasPerfil() {
