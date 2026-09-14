@@ -1602,15 +1602,34 @@ async function enviar(){
             !codigosStock.has(String(c.codigo||"").toUpperCase())
           ).map(c => ({ id: c.id, codigo: c.codigo, vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor, cantidad: c.cantidad, vendido: c.vendido }));
 
+          // Piezas cerradas con "Ya vendida" (MARCAR_CONSIGNACION_VENDIDA) que
+          // en realidad nunca llegaron a contarse como venta real — típico de
+          // confundir esa opción (pensada solo para piezas YA liquidadas
+          // antes) con una venta nueva. Quedan invisibles para siempre: ya no
+          // aparecen en el inventario activo del vendedor (por eso "no
+          // aparece"), pero el stock nunca se movió y la comisión nunca se
+          // contó, y sin este chequeo no hay ninguna pantalla en la app para
+          // volver a encontrarlas.
+          const cerradosSinContar = consAud.filter(c =>
+            c.estado === "vendido" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0
+          ).map(c => ({
+            id: c.id, codigo: c.codigo, nombre: c.nombre || "",
+            vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor,
+            precio: c.precio || 0,
+            cantidad: parseInt(c.cantidad)||0, vendido: parseInt(c.vendido)||0,
+            pendiente: (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0)
+          }));
+
           result = {
             ok: true,
             generadoEn: new Date().toISOString(),
-            discrepanciasConsignacion, negativos, consHuerfanas,
+            discrepanciasConsignacion, negativos, consHuerfanas, cerradosSinContar,
             resumen: {
               productosRevisados: stockAud.length,
               discrepancias: discrepanciasConsignacion.length,
               negativos: negativos.length,
-              huerfanas: consHuerfanas.length
+              huerfanas: consHuerfanas.length,
+              cerradosSinContar: cerradosSinContar.length
             }
           };
           break;

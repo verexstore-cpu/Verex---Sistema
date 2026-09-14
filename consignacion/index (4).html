@@ -5977,13 +5977,25 @@ async function cerrarItemYaVendido(id, nombre) {
     // no toca comisión ni historial), así que una venta nueva marcada "Ya
     // vendida" nunca generaba comisión ni aparecía en el registro de ventas
     // del vendedor a menos que además se completara un segundo paso opcional.
-    const esVentaNueva = confirm(
-        `¿"${nombre}" es una venta NUEVA que el vendedor todavía no cobró en ningún corte anterior?\n\n` +
-        `Aceptar = venta nueva → se registra normal: cuenta para su comisión y aparece en su historial de ventas.\n` +
-        `Cancelar = ya se había liquidado antes (ej. quedó mal cerrada por el bug del corte) → solo cierra el registro, sin volver a cobrar comisión.`
-    );
+    //
+    // Antes esto usaba confirm() con "Cancelar = ya se había liquidado" — un
+    // usuario que quería CANCELAR TODO (no sabía cuál opción era, se
+    // arrepintió, etc.) terminaba disparando la rama opuesta sin darse
+    // cuenta, porque en un confirm() "Cancelar" nunca significa "aborta y no
+    // hagas nada distinto a lo que ya hacías". Ahora las dos opciones se
+    // escriben como texto explícito y cualquier respuesta que no sea
+    // exactamente una de las dos aborta sin tocar nada.
+    const respuestaTipo = (prompt(
+        `¿"${nombre}" es una venta NUEVA o ya se había liquidado antes?\n\n` +
+        `Escribe NUEVA → se registra normal, cuenta para su comisión y aparece en su historial de ventas.\n` +
+        `Escribe LIQUIDADA → ya se había cobrado antes (ej. quedó mal cerrada por el bug del corte), solo cierra el registro sin volver a cobrar comisión.\n\n` +
+        `(Cancelar no hace nada)`,
+        "NUEVA"
+    ) || "").trim().toUpperCase();
 
-    if (esVentaNueva) {
+    if (respuestaTipo !== "NUEVA" && respuestaTipo !== "LIQUIDADA") return;
+
+    if (respuestaTipo === "NUEVA") {
         const disponible = Math.max(1, parseInt(item.cantidad||0) - parseInt(item.vendido||0));
         const fechaTxtNueva = prompt("Fecha real en que se vendió (AAAA-MM-DD):", new Date().toISOString().slice(0,10));
         if (!fechaTxtNueva) return;
@@ -7860,8 +7872,8 @@ async function ejecutarAuditoriaStock() {
         panel.innerHTML = '<p style="color:#e74c3c;font-size:13px;">⚠️ ' + (res?.error||"No se pudo auditar") + '</p>';
         return;
     }
-    const { discrepanciasConsignacion, negativos, consHuerfanas, resumen, generadoEn } = res;
-    const sinProblemas = !discrepanciasConsignacion.length && !negativos.length && !consHuerfanas.length;
+    const { discrepanciasConsignacion, negativos, consHuerfanas, cerradosSinContar, resumen, generadoEn } = res;
+    const sinProblemas = !discrepanciasConsignacion.length && !negativos.length && !consHuerfanas.length && !(cerradosSinContar||[]).length;
 
     let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
         <h3 style="margin:0;color:var(--dorado);font-size:15px;">🔍 Auditoría de Stock</h3>
@@ -7915,8 +7927,35 @@ async function ejecutarAuditoriaStock() {
                 <div style="font-size:11px;color:var(--plateado);margin-top:4px;">Revisa manualmente estos casos en el perfil del vendedor — el producto pudo haberse eliminado de Stock por error.</div>
             </div>`;
         }
+        if ((cerradosSinContar||[]).length) {
+            html += `<div style="margin-top:14px;">
+                <div style="font-size:13px;font-weight:700;color:#52d68a;margin-bottom:6px;">💰 Cerradas con "Ya vendida" pero la venta nunca se contó (${cerradosSinContar.length})</div>
+                <div style="font-size:11px;color:var(--plateado);margin-bottom:6px;">Se marcaron como ya liquidadas (sin tocar comisión ni stock) en vez de registrarse como venta nueva — no aparecen en el inventario del vendedor porque ya están cerradas.</div>
+                ${cerradosSinContar.map(c => `
+                    <div style="background:#0f1f16;border:1px solid #205a3a;border-radius:8px;padding:8px 10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+                        <div><strong style="font-size:12.5px;">${sanitizar(c.codigo)}</strong> — ${sanitizar(c.nombre)}
+                            <div style="font-size:11px;color:var(--plateado);">Vendedor: ${sanitizar(c.vendedorNombre)} · $${parseFloat(c.precio||0).toFixed(2)} · pendiente de contar: ${c.pendiente}</div>
+                        </div>
+                        <button onclick="registrarVentaCerradaSinContar('${sanitizar(c.id)}','${sanitizar(c.codigo)}',${c.pendiente})" style="padding:5px 10px;font-size:11px;background:#52d68a;color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">💰 Registrar venta real</button>
+                    </div>`).join('')}
+            </div>`;
+        }
     }
     panel.innerHTML = html;
+}
+
+// Recupera una pieza cerrada por error con "Ya vendida" (marcada solo como
+// liquidada, sin contar la venta) — la registra de verdad con REGISTRAR_VENTA
+// para que sí cuente comisión y aparezca en el historial del vendedor, igual
+// que si se hiciera desde su perfil.
+async function registrarVentaCerradaSinContar(id, codigo, pendiente) {
+    const fechaTxt = prompt(`Fecha real en que se vendió "${codigo}" (AAAA-MM-DD):`, new Date().toISOString().slice(0,10));
+    if (!fechaTxt) return;
+    const fechaISO = new Date(fechaTxt + "T12:00:00").toISOString();
+    const res = await apiPost({ accion: "REGISTRAR_VENTA", id, cantidad: pendiente, fecha: fechaISO });
+    if (!res.ok) { toast("⚠️ " + (res.error||"No se pudo registrar la venta"), "#c0392b"); return; }
+    toast("✅ Venta registrada — ya cuenta para su comisión y aparece en su historial");
+    ejecutarAuditoriaStock();
 }
 
 // Borra un registro de consignación de raíz (sin mover stock) — para casos
