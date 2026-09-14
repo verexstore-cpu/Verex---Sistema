@@ -5962,11 +5962,45 @@ async function registrarVentaHistoricaManual() {
 }
 
 async function cerrarItemYaVendido(id, nombre) {
-    if (!confirm("¿Confirmas que \"" + nombre + "\" YA se vendió (y probablemente ya se liquidó)? Se cerrará sin devolver stock a bodega — no la marques así si en realidad todavía no se ha vendido.")) return;
+    const item = consignacion.find(c => String(c.id) === String(id));
+    if (!item) return;
+
+    // Este botón mezclaba dos casos muy distintos bajo un solo click:
+    //  · Venta NUEVA (el vendedor recién la vendió a un cliente, sin
+    //    posibilidad de devolución) — debe contar para su comisión en el
+    //    próximo corte y aparecer en su historial de ventas, igual que
+    //    cualquier venta registrada por el flujo normal.
+    //  · Pieza que YA se liquidó antes (ej. quedó mal cerrada por el bug
+    //    del corte) — la comisión ya se cobró, así que NO debe volver a
+    //    contarse; solo hace falta cerrar el registro viejo.
+    // Antes SIEMPRE hacía el segundo caso (MARCAR_CONSIGNACION_VENDIDA, que
+    // no toca comisión ni historial), así que una venta nueva marcada "Ya
+    // vendida" nunca generaba comisión ni aparecía en el registro de ventas
+    // del vendedor a menos que además se completara un segundo paso opcional.
+    const esVentaNueva = confirm(
+        `¿"${nombre}" es una venta NUEVA que el vendedor todavía no cobró en ningún corte anterior?\n\n` +
+        `Aceptar = venta nueva → se registra normal: cuenta para su comisión y aparece en su historial de ventas.\n` +
+        `Cancelar = ya se había liquidado antes (ej. quedó mal cerrada por el bug del corte) → solo cierra el registro, sin volver a cobrar comisión.`
+    );
+
+    if (esVentaNueva) {
+        const disponible = Math.max(1, parseInt(item.cantidad||0) - parseInt(item.vendido||0));
+        const fechaTxtNueva = prompt("Fecha real en que se vendió (AAAA-MM-DD):", new Date().toISOString().slice(0,10));
+        if (!fechaTxtNueva) return;
+        const fechaISONueva = new Date(fechaTxtNueva + "T12:00:00").toISOString();
+        const resVenta = await apiPost({ accion: "REGISTRAR_VENTA", id, cantidad: disponible, fecha: fechaISONueva });
+        if (!resVenta.ok) { toast("⚠️ " + (resVenta.error||"No se pudo registrar la venta"), "#c0392b"); return; }
+        item.vendido = (parseInt(item.vendido)||0) + disponible;
+        renderPerfilStats();
+        renderInventario();
+        toast("✅ Venta registrada — cuenta para su comisión y ya aparece en su historial");
+        return;
+    }
+
+    if (!confirm("¿Confirmas que \"" + nombre + "\" ya se había liquidado antes? Se cerrará sin devolver stock a bodega ni volver a cobrar comisión.")) return;
     const res = await apiPost({ accion: "MARCAR_CONSIGNACION_VENDIDA", id });
     if (!res.ok) { toast("⚠️ " + (res.error||"No se pudo cerrar el item"), "#c0392b"); return; }
-    const item = consignacion.find(c => String(c.id) === String(id));
-    if (item) item.estado = "vendido";
+    item.estado = "vendido";
     renderPerfilStats();
     renderInventario();
     toast("✅ Pieza cerrada — ya no aparece como disponible");
