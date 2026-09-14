@@ -5216,6 +5216,108 @@ async function guardarConCodigoUnico(categoria, material, codigoBaseInicial, con
     return { res: { ok: false, error: "No se pudo generar un código único después de varios intentos — probá de nuevo" }, codigoBase };
 }
 
+// Recorta una región cuadrada {x,y,side} (coordenadas del original) hacia un
+// canvas de salida de "size"×"size", con sharpen 3×3 — reutilizado tanto por
+// la detección automática (procesarFotoJoya) como por el ajuste manual de
+// encuadre (arrastrar/zoom para reposicionar cuando la detección falla).
+function dibujarRecorte(img, crop, canvas, size) {
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = "#f0f0f0";
+    ctx.fillRect(0, 0, size, size);
+    ctx.drawImage(img, crop.x, crop.y, crop.side, crop.side, 0, 0, size, size);
+    // Kernel sharpen 3×3 (unsharp mask)
+    const src = ctx.getImageData(0, 0, size, size);
+    const dst = ctx.createImageData(size, size);
+    const s = src.data, d = dst.data;
+    const k = [0,-1,0,-1,5,-1,0,-1,0];
+    for (let y = 1; y < size-1; y++) {
+        for (let x = 1; x < size-1; x++) {
+            const i = (y*size+x)*4;
+            for (let c = 0; c < 3; c++) {
+                let v = 0;
+                for (let ky = -1; ky <= 1; ky++)
+                    for (let kx = -1; kx <= 1; kx++)
+                        v += s[((y+ky)*size+(x+kx))*4+c] * k[(ky+1)*3+(kx+1)];
+                d[i+c] = Math.max(0, Math.min(255, v));
+            }
+            d[i+3] = s[i+3];
+        }
+    }
+    ctx.putImageData(dst, 0, 0);
+}
+
+// Convierte un contenedor en un encuadre arrastrable: el usuario mueve la
+// foto con el mouse/dedo para recentrar el recorte cuadrado, y usa la rueda
+// del mouse para acercar/alejar — sin depender de que la detección
+// automática de bordes haya acertado (con joyas delgadas/brillantes como
+// cadenas finas, a veces no hay forma de acertar por contraste de brillo).
+// getCrop/setCrop leen y escriben el {x,y,side} (coords del original) que
+// use el llamador; onRedraw(canvas) se llama después de cada render para que
+// el llamador pueda sincronizar su propio preview (ej. para el análisis IA).
+function montarEncuadreArrastrable(contenedorId, imgObj, getCrop, setCrop, onRedraw) {
+    const cont = document.getElementById(contenedorId);
+    if (!cont || !imgObj) return;
+    cont.style.position = "relative";
+    cont.innerHTML = `
+        <canvas style="width:100%;height:100%;display:block;cursor:grab;touch-action:none;"></canvas>
+        <div style="position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:9px;color:#fff;text-shadow:0 1px 2px #000;pointer-events:none;">🖐️ Arrastrá para centrar · rueda para zoom</div>
+    `;
+    const canvas = cont.querySelector("canvas");
+    const RENDER_SIZE = 700;
+    const render = () => { dibujarRecorte(imgObj, getCrop(), canvas, RENDER_SIZE); if (onRedraw) onRedraw(canvas); };
+    render();
+
+    const clampCrop = (c) => {
+        c.side = Math.max(20, Math.min(c.side, Math.min(imgObj.width, imgObj.height)));
+        c.x = Math.max(0, Math.min(c.x, imgObj.width - c.side));
+        c.y = Math.max(0, Math.min(c.y, imgObj.height - c.side));
+        return c;
+    };
+    let dragging = false, lastX = 0, lastY = 0, rafPending = false;
+    const scheduleRender = () => {
+        if (rafPending) return;
+        rafPending = true;
+        requestAnimationFrame(() => { rafPending = false; render(); });
+    };
+    canvas.addEventListener("pointerdown", e => {
+        dragging = true; lastX = e.clientX; lastY = e.clientY;
+        canvas.style.cursor = "grabbing";
+        canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener("pointermove", e => {
+        if (!dragging) return;
+        const rect = canvas.getBoundingClientRect();
+        // El canvas se muestra a rect.width px representando crop.side px del
+        // original — esa razón da cuánto original se mueve por cada pixel
+        // arrastrado en pantalla.
+        const crop = getCrop();
+        const scale = crop.side / rect.width;
+        const dxScreen = e.clientX - lastX, dyScreen = e.clientY - lastY;
+        lastX = e.clientX; lastY = e.clientY;
+        crop.x -= dxScreen * scale;
+        crop.y -= dyScreen * scale;
+        setCrop(clampCrop(crop));
+        scheduleRender();
+    });
+    const endDrag = () => { dragging = false; canvas.style.cursor = "grab"; };
+    canvas.addEventListener("pointerup", endDrag);
+    canvas.addEventListener("pointercancel", endDrag);
+    canvas.addEventListener("pointerleave", endDrag);
+    canvas.addEventListener("wheel", e => {
+        e.preventDefault();
+        const crop = getCrop();
+        const cx = crop.x + crop.side / 2, cy = crop.y + crop.side / 2;
+        const factor = e.deltaY > 0 ? 1.08 : 0.92; // rueda abajo = alejar (recorte más grande)
+        crop.side *= factor;
+        crop.x = cx - crop.side / 2; crop.y = cy - crop.side / 2;
+        setCrop(clampCrop(crop));
+        scheduleRender();
+    }, { passive: false });
+}
+
 // ── PROCESAMIENTO DE FOTO COMPARTIDO ────────────────────────────────
 // Calcula coordenadas de recorte + devuelve preview canvas y original
 // El recorte real lo aplica ImageKit en su servidor (sin pérdida de calidad)
@@ -5316,38 +5418,8 @@ function procesarFotoJoya(file) {
                 // Preview 900×900 — alta calidad + sharpen por convolución
                 const PV = 900;
                 const out = document.createElement("canvas");
-                out.width = PV; out.height = PV;
-                const octx = out.getContext("2d");
-                octx.imageSmoothingEnabled = true;
-                octx.imageSmoothingQuality = 'high';
-                octx.fillStyle = "#f0f0f0";
-                octx.fillRect(0, 0, PV, PV);
-                if (crop) {
-                    octx.drawImage(img, crop.x, crop.y, crop.side, crop.side, 0, 0, PV, PV);
-                } else {
-                    octx.drawImage(img, 0, 0, w, h, 0, 0, PV, PV);
-                }
-                // Kernel sharpen 3×3 (unsharp mask)
-                (function(ctx, w2, h2) {
-                    const src = ctx.getImageData(0, 0, w2, h2);
-                    const dst = ctx.createImageData(w2, h2);
-                    const s = src.data, d = dst.data;
-                    const k = [0,-1,0,-1,5,-1,0,-1,0];
-                    for (let y = 1; y < h2-1; y++) {
-                        for (let x = 1; x < w2-1; x++) {
-                            const i = (y*w2+x)*4;
-                            for (let c = 0; c < 3; c++) {
-                                let v = 0;
-                                for (let ky = -1; ky <= 1; ky++)
-                                    for (let kx = -1; kx <= 1; kx++)
-                                        v += s[((y+ky)*w2+(x+kx))*4+c] * k[(ky+1)*3+(kx+1)];
-                                d[i+c] = Math.max(0, Math.min(255, v));
-                            }
-                            d[i+3] = s[i+3];
-                        }
-                    }
-                    ctx.putImageData(dst, 0, 0);
-                })(octx, PV, PV);
+                const cropFinal = crop || { x: 0, y: 0, side: Math.min(w, h) };
+                dibujarRecorte(img, cropFinal, out, PV);
                 const preview = out.toDataURL("image/jpeg", 0.93);
 
                 const uploadOriginal = original;
@@ -5839,17 +5911,8 @@ async function cargarFotoEnFormularioStockOEntrega(url, enStock) {
 
     if (enStock) {
         abrirStockNuevoProd();
-        setTimeout(() => {
-            _snFotoBase64        = r.preview;
-            _snFotoOriginalBase64 = r.original;
-            _snFotoOriginalFile  = r._file;
-            _snFotoCropCoords    = r.crop;
-            window._snFotoUrl    = null;
-            const prev = document.getElementById("sn-foto-preview");
-            if (prev) prev.innerHTML = `<img src="${r.preview}" style="width:100%;height:100%;object-fit:contain;">`;
-            const btnIA = document.getElementById("sn-btn-ia");
-            if (btnIA) btnIA.style.display = "flex";
-        }, 150);
+        window._snFotoUrl = null;
+        setTimeout(() => mostrarFotoStockConEncuadre(r), 150);
     } else {
         _fotoOriginalFile   = r._file;
         _fotoOriginalBase64 = r.original;
@@ -8592,16 +8655,39 @@ function onCodigoNPInput() {
 let _snFotoOriginalBase64 = "";
 let _snFotoOriginalFile = null;
 let _snFotoCropCoords = null;
+
+// Muestra la foto en el recuadro de "Agregar Pieza al Stock" con encuadre
+// arrastrable (mueve/zoomea sobre el original) — reutilizado tanto al elegir
+// un archivo como al recibir la foto desde el celular, para que el ajuste
+// manual funcione igual sin importar de dónde vino la imagen.
+function mostrarFotoStockConEncuadre(r) {
+    _snFotoOriginalBase64 = r.original;
+    if (r._file) _snFotoOriginalFile = r._file;
+    _snFotoCropCoords = r.crop;
+    _snFotoBase64 = r.preview;
+    document.getElementById("sn-btn-ia").style.display = "flex";
+    if (!r.crop) {
+        // Detección totalmente fallida (imagen corrupta) — sin recorte que ajustar
+        const prev = document.getElementById("sn-foto-preview");
+        if (prev) prev.innerHTML = `<img src="${_snFotoBase64}" style="width:100%;height:100%;object-fit:contain;">`;
+        return;
+    }
+    const imgObj = new Image();
+    imgObj.onload = () => {
+        montarEncuadreArrastrable("sn-foto-preview", imgObj,
+            () => _snFotoCropCoords,
+            (c) => { _snFotoCropCoords = c; },
+            (canvas) => { _snFotoBase64 = canvas.toDataURL("image/jpeg", 0.93); }
+        );
+    };
+    imgObj.src = _snFotoOriginalBase64;
+}
+
 async function cargarFotoStockNuevo(input) {
     const file = input.files[0]; if (!file) return;
     _snFotoOriginalFile = file;
     const r = await procesarFotoJoya(file);
-    _snFotoOriginalBase64 = r.original;
-    _snFotoCropCoords = r.crop;
-    _snFotoBase64 = r.preview;
-    const prev = document.getElementById("sn-foto-preview");
-    prev.innerHTML = `<img src="${_snFotoBase64}" style="width:100%;height:100%;object-fit:contain;">`;
-    document.getElementById("sn-btn-ia").style.display = "flex";
+    mostrarFotoStockConEncuadre(r);
 }
 
 async function analizarFotoStockNuevo() {
