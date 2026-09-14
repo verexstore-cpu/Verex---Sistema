@@ -7985,7 +7985,10 @@ async function ejecutarAuditoriaStock() {
                         <div><strong style="font-size:12.5px;">${sanitizar(c.codigo)}</strong> — ${sanitizar(c.nombre)}
                             <div style="font-size:11px;color:var(--plateado);">Vendedor: ${sanitizar(c.vendedorNombre)} · $${parseFloat(c.precio||0).toFixed(2)} · pendiente de contar: ${c.pendiente}</div>
                         </div>
-                        <button onclick="registrarVentaCerradaSinContar('${sanitizar(c.id)}','${sanitizar(c.codigo)}',${c.pendiente})" style="padding:5px 10px;font-size:11px;background:#52d68a;color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">💰 Registrar venta real</button>
+                        <div style="display:flex;gap:6px;">
+                            <button onclick="registrarVentaCerradaSinContar('${sanitizar(c.id)}','${sanitizar(c.codigo)}',${c.pendiente})" style="padding:5px 10px;font-size:11px;background:#52d68a;color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">💰 Registrar venta real</button>
+                            <button onclick="eliminarConsignacionHuerfana('${sanitizar(c.id)}','${sanitizar(c.codigo)}')" style="padding:5px 10px;font-size:11px;background:#3a2a5a;color:#c4b5fd;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">🗑️ Eliminar</button>
+                        </div>
                     </div>`).join('')}
             </div>`;
         }
