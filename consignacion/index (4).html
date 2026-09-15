@@ -5306,6 +5306,10 @@ function montarEncuadreArrastrable(contenedorId, imgObj, getCrop, setCrop, onRed
     canvas.addEventListener("pointerup", endDrag);
     canvas.addEventListener("pointercancel", endDrag);
     canvas.addEventListener("pointerleave", endDrag);
+    // El canvas vive dentro de un <label for="sn-foto-input">: sin esto, cada
+    // click que dispara el drag (al soltar el mouse) burbujea al label y
+    // reabre el selector de archivos (que en Windows suele caer en Descargas).
+    canvas.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); });
     canvas.addEventListener("wheel", e => {
         e.preventDefault();
         const crop = getCrop();
