@@ -3465,8 +3465,9 @@ async function enviar(){
 
             // ── Usar Groq (gratis) — llama-4-scout Y llama-4-maverick fueron
             // descontinuados por Groq (scout el 17-jun-2026, maverick antes),
-            // por eso el análisis se quedaba colgado sin terminar. El modelo
-            // de visión vigente en Groq es qwen3.6-27b.
+            // y despues qwen3.6-27b tambien dejo de existir (error 404
+            // model_not_found visto en producción el 15-sep-2026). El modelo
+            // de visión vigente en Groq es su sucesor, qwen3.8-27b.
             const groqKey = env.GROQ_KEY;
             if (!groqKey) { result = { ok: false, error: "GROQ_KEY no configurada en Cloudflare" }; break; }
 
@@ -3483,7 +3484,7 @@ async function enviar(){
                   "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                  model: "qwen/qwen3.6-27b",
+                  model: "qwen/qwen3.8-27b",
                   messages: [{
                     role: "user",
                     content: [
@@ -3491,7 +3492,7 @@ async function enviar(){
                       { type: "text", text: promptGemini }
                     ]
                   }],
-                  // qwen3.6-27b es un modelo de razonamiento — sin esto, gasta
+                  // qwen3.8-27b es un modelo de razonamiento — sin esto, gasta
                   // los tokens "pensando" en voz alta (bloque <think>...</think>)
                   // y nunca llega a escribir el JSON final. reasoning_effort:none
                   // lo pone en modo directo, sin ese paso.
