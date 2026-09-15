@@ -5764,14 +5764,12 @@ async function _cargarUrlFotoEnModal(url) {
         const r = await procesarFotoJoya(file);
         // Si la foto activa cambió mientras procesábamos, descartar resultado
         if (_fotoCelLastUrl !== urlActiva) return;
-        _snFotoOriginalFile   = file;
-        _snFotoBase64         = r.preview;
-        _snFotoOriginalBase64 = r.original;
-        _snFotoCropCoords     = r.crop;
-        window._snFotoUrl     = null;
-        if (prev) prev.innerHTML = `<img src="${r.preview}" style="width:100%;height:100%;object-fit:contain;">`;
-        const btnIA = document.getElementById("sn-btn-ia");
-        if (btnIA) btnIA.style.display = "flex";
+        _snFotoOriginalFile = file;
+        window._snFotoUrl   = null;
+        // Antes esto pisaba el preview con un <img> plano sin encuadre
+        // arrastrable — el ajuste manual solo existía para fotos elegidas
+        // desde archivo, no para las recibidas por celular.
+        mostrarFotoStockConEncuadre(r);
     } catch(e) {
         console.error("[fotoCel procesarJoya]", e);
     }
@@ -8715,8 +8713,13 @@ async function analizarFotoStockNuevo() {
                 mostrarTallaSN(data.resultado.categoria);
             }
             estado.textContent = "✅ IA completó el análisis";
+        } else {
+            // Antes, si el servidor respondía data.ok:false (Groq caído, key
+            // faltante, etc.) no pasaba nada visible — quedaba pegado en
+            // "Analizando..." sin decir por qué.
+            estado.textContent = "⚠️ " + (data.error || "Error al analizar");
         }
-    } catch(e) { estado.textContent = "⚠️ Error al analizar"; }
+    } catch(e) { estado.textContent = "⚠️ Error al analizar: " + e.message; }
 }
 
 async function guardarStockNuevo() {
