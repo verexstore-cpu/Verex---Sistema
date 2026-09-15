@@ -11589,6 +11589,7 @@ function renderHistorialVD() {
                         <button onclick="toggleMenuMasVD('${v.id}');cambiarProductoVentaDirectaVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#a78bfa;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🔄 Cambiar producto</button>
                         <button onclick="toggleMenuMasVD('${v.id}');editarDescuentoVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#ccc;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">✏️ Descuento</button>
                         <button onclick="toggleMenuMasVD('${v.id}');corregirSaldoVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#e85555;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🩹 Corregir saldo</button>
+                        <button onclick="toggleMenuMasVD('${v.id}');cambiarFormaPagoVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#5eb3f0;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🔄 Cambiar forma de pago</button>
                         <button onclick="toggleMenuMasVD('${v.id}');verEstadoCuenta('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#e8b07a;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">📄 Estado de cuenta (PDF)</button>
                         <button onclick="toggleMenuMasVD('${v.id}');enviarWAEstadoCuenta('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#25D366;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">💬 Enviar estado de cuenta</button>
                         <button onclick="toggleMenuMasVD('${v.id}');marcarFechaItemVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#C9A84C;border:none;cursor:pointer;text-align:left;font-weight:600;">📅 Marcar fecha de una pieza</button>
@@ -11838,6 +11839,46 @@ async function corregirSaldoVD(ventaId) {
         cargarHistorialVD();
     } catch(e) {
         toast("⚠️ " + e.message, "#c0392b");
+    }
+}
+
+// Corrige una venta registrada con la forma de pago equivocada (ej. se
+// marcó Contado pero en realidad el cliente solo dejó un enganche y debe
+// el resto, o viceversa). No usar "Corregir saldo" para esto: esa acción
+// asume que lo ya cobrado es (total - saldoPendiente) tal como está
+// guardado, así que si el registro dice "pagado" (saldoPendiente=0) va a
+// asumir que se cobró TODO y siempre va a recalcular un saldo de $0.
+async function cambiarFormaPagoVD(ventaId) {
+    const venta = _historialVD.find(v => v.id === ventaId);
+    if (!venta) return toast("⚠️ Venta no encontrada", "#c0392b");
+    const esCreditoActual = venta.estado === "credito";
+    const total = parseFloat(venta.total || 0);
+
+    if (esCreditoActual) {
+        if (!confirm(`Esta venta está marcada como Crédito (saldo pendiente $${parseFloat(venta.saldoPendiente||0).toFixed(2)}).\n\n¿Cambiarla a Contado (el saldo pendiente queda en $0)?`)) return;
+        try {
+            const data = await apiPost({ accion: "CAMBIAR_FORMA_PAGO_VD", id: ventaId, tipo: "contado" });
+            if (!data.ok) throw new Error(data.error || "Error del servidor");
+            toast("✅ Venta cambiada a Contado");
+            cargarHistorialVD();
+        } catch(e) { toast("⚠️ " + e.message, "#c0392b"); }
+    } else {
+        const montoStr = prompt(
+            `Esta venta ($${total.toFixed(2)}) está marcada como Contado.\n\n` +
+            `¿Cuánto pagó realmente el cliente (enganche)? El resto queda como saldo pendiente a crédito.`,
+            "0"
+        );
+        if (montoStr === null) return;
+        const montoPagado = Math.max(0, Math.min(total, parseFloat(montoStr) || 0));
+        const saldoNuevo = Math.max(0, total - montoPagado);
+        if (saldoNuevo <= 0) return toast("⚠️ Si pagó todo, ya es Contado — no hay nada que cambiar", "#c0392b");
+        if (!confirm(`Se cambiará a Crédito:\nEnganche: $${montoPagado.toFixed(2)}\nSaldo pendiente: $${saldoNuevo.toFixed(2)}\n\n¿Confirmar?`)) return;
+        try {
+            const data = await apiPost({ accion: "CAMBIAR_FORMA_PAGO_VD", id: ventaId, tipo: "credito", saldoPendiente: saldoNuevo });
+            if (!data.ok) throw new Error(data.error || "Error del servidor");
+            toast(`✅ Venta cambiada a Crédito — saldo pendiente $${saldoNuevo.toFixed(2)}`);
+            cargarHistorialVD();
+        } catch(e) { toast("⚠️ " + e.message, "#c0392b"); }
     }
 }
 

@@ -1482,6 +1482,29 @@ async function enviar(){
           break;
         }
 
+        case "CAMBIAR_FORMA_PAGO_VD": {
+          // Corrige una venta registrada con la forma de pago equivocada
+          // (Contado cuando en realidad quedó a crédito, o viceversa) — a
+          // diferencia de CORREGIR_SALDO_VD, esto NO toca subtotal/total/
+          // descuento, solo tipo/estado/enganche/saldoPendiente.
+          if (!esAdmin) return forbidden();
+          const vdForma = await sb.get("ventas_directas", d.id);
+          if (!vdForma) { result = { ok: false, error: "Venta no encontrada" }; break; }
+          const nuevoTipoForma = d.tipo === "credito" ? "credito" : "contado";
+          const nuevoSaldoForma = nuevoTipoForma === "credito" ? Math.max(0, parseFloat(d.saldoPendiente) || 0) : 0;
+          const totalActualForma = parseFloat(vdForma.total || 0);
+          const patchForma = {
+            tipo: nuevoTipoForma,
+            metodoPago: nuevoTipoForma === "credito" ? "credito" : (vdForma.metodoPago && vdForma.metodoPago !== "credito" ? vdForma.metodoPago : "efectivo"),
+            enganche: Math.max(0, totalActualForma - nuevoSaldoForma),
+            saldoPendiente: nuevoSaldoForma,
+            estado: nuevoSaldoForma > 0 ? "credito" : "pagado",
+          };
+          await sb.update("ventas_directas", d.id, patchForma);
+          result = { ok: true, patch: patchForma };
+          break;
+        }
+
         case "MARCAR_FECHA_ITEM_VD": {
           // Repara piezas agregadas/cambiadas ANTES de que existiera el
           // marcador de fecha en el recibo (AGREGAR/CAMBIAR_PRODUCTO_VENTA_
