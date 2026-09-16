@@ -5457,14 +5457,16 @@ function comprimirParaIA(base64) {
     });
 }
 
-// Agrega transformación ImageKit para mostrar cuadrada y centrada
+// Agrega transformación ImageKit para mostrar cuadrada y centrada, con
+// nitidez (e-sharpen) — las fotos se suben tal cual las manda el vendedor,
+// sin ningún realce, así que esto es lo único que las afina para mostrarlas.
 function ikFoto(url, size) {
     if (!url || !url.includes("imagekit.io")) return url;
     const s = size || 900;
     const base = url.split("?")[0];
     const tr   = url.includes("?tr=") ? url.split("?tr=")[1] : null;
     // Tamaño explícito en el mismo transform (no encadenado)
-    return tr ? `${base}?tr=${tr},w-${s}` : `${base}?tr=w-${s}`;
+    return tr ? `${base}?tr=${tr},w-${s},e-sharpen` : `${base}?tr=w-${s},e-sharpen`;
 }
 
 async function subirFotoImageKit(fileOrBase64, nombre, crop) {

@@ -368,6 +368,14 @@
         const d=document.createElement("div"); d.textContent=String(s||""); return d.innerHTML;
     }
 
+    // Las fotos se suben tal cual las manda el vendedor, sin ningún realce —
+    // esto le agrega nitidez (e-sharpen) de ImageKit solo al mostrarla, sin
+    // tocar la foto guardada.
+    function ikSharp(url){
+        if(!url || !url.includes("imagekit.io")) return url;
+        return url.includes("?tr=") ? url + ",e-sharpen" : url + "?tr=e-sharpen";
+    }
+
     // Clase de color del badge de material — para que el cliente note de
     // un vistazo si es plata, acero u oro laminado sin tener que leer el texto.
     function claseMaterial(m){
@@ -526,7 +534,7 @@
                     <span class="card-bajopedido-badge">📦 BAJO PEDIDO</span>
                     <span class="card-otrastallas-badge" id="otrastallas-${i}">📏 Talla agotada — disponible: ${esc((p.tallasDisponibles||[]).join(", "))}</span>
                     ${p.i
-                        ?`<img class="card-img" src="${esc(p.i)}" alt="${esc(p.n)}" loading="lazy" style="cursor:zoom-in;" onclick="abrirFotoZoom('${esc(p.i)}')" onerror="this.outerHTML='<div class=\'card-img-ph\'>💍</div>'">`
+                        ?`<img class="card-img" src="${esc(ikSharp(p.i))}" alt="${esc(p.n)}" loading="lazy" style="cursor:zoom-in;" onclick="abrirFotoZoom('${esc(ikSharp(p.i))}')" onerror="this.outerHTML='<div class=\'card-img-ph\'>💍</div>'">`
                         :`<div class="card-img-ph">💍</div>`}
                 </div>
                 <div class="card-body">
@@ -1244,7 +1252,7 @@
                 if(s?.foto && s.foto !== p.i){
                     p.i = s.foto;
                     const img = card?.querySelector(".card-img");
-                    if(img) img.src = s.foto;
+                    if(img) img.src = ikSharp(s.foto);
                 }
 
                 // Refrescar el precio si cambió en Stock — así un ajuste de precio

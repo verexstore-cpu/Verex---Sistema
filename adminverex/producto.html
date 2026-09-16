@@ -161,6 +161,14 @@
 
     function esc(s){ const d=document.createElement("div"); d.textContent=String(s||""); return d.innerHTML; }
 
+    // Las fotos se suben tal cual las manda el vendedor, sin ningún realce —
+    // esto le agrega nitidez (e-sharpen) de ImageKit solo al mostrarla, sin
+    // tocar la foto guardada.
+    function ikSharp(url){
+        if(!url || !url.includes("imagekit.io")) return url;
+        return url.includes("?tr=") ? url + ",e-sharpen" : url + "?tr=e-sharpen";
+    }
+
     function claseMaterial(m){
         const s = String(m||"").toLowerCase();
         if(s.includes("acero")) return "mat-acero";
@@ -245,7 +253,7 @@
             : (p.categoria === "AN" && p.talla ? `<div><span class="card-material" style="background:#e8f4fd;color:#0277bd;border:1px solid #90caf9;">Talla ${esc(p.talla)}</span></div>` : '');
         return `<div class="card">
             ${p.foto
-                ? `<img class="card-img" src="${esc(p.foto)}" alt="${esc(nombre)}" onclick="abrirFotoZoom('${esc(p.foto)}')" onerror="this.outerHTML='<div class=\\'card-img-ph\\'>💍</div>'">`
+                ? `<img class="card-img" src="${esc(ikSharp(p.foto))}" alt="${esc(nombre)}" onclick="abrirFotoZoom('${esc(ikSharp(p.foto))}')" onerror="this.outerHTML='<div class=\\'card-img-ph\\'>💍</div>'">`
                 : `<div class="card-img-ph">💍</div>`}
             <div class="card-body">
                 <div class="card-name">${esc(nombre)}</div>

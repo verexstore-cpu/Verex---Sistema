@@ -1,5 +1,13 @@
 import { escapeHtml, escapeForScript } from "./_html-safe.js";
 
+// Las fotos se suben tal cual las manda el vendedor, sin ningún realce —
+// esto le agrega nitidez (e-sharpen) de ImageKit solo al mostrarla en la
+// vista previa (OG), sin tocar la foto guardada.
+function ikSharp(url) {
+    if (!url || !url.includes("imagekit.io")) return url;
+    return url.includes("?tr=") ? url + ",e-sharpen" : url + "?tr=e-sharpen";
+}
+
 // Arma el HTML de un link de producto/selección — lo comparten p/[codigo].js
 // (codigo/exp/desc/af/wa vienen directo en la URL) y l/[id].js (los mismos
 // datos, pero resueltos desde un link corto guardado en KV). Consulta el
@@ -58,7 +66,7 @@ export async function renderPLink({ codigo, exp, desc, af, wa, origin }) {
     // comilla rompe el atributo y un "</script>" literal cierra el tag e
     // inyecta HTML/JS en el navegador de quien abra el link.
     const nombreSafe      = escapeHtml(nombre);
-    const fotoSafe        = escapeHtml(foto);
+    const fotoSafe        = escapeHtml(ikSharp(foto));
     const descripcionSafe = escapeHtml(descripcion);
 
     const ogTags = `

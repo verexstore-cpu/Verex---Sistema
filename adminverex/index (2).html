@@ -2621,7 +2621,7 @@ function renderProductos() {
         } catch(_){ stock="Sin tallas"; }
         const dest = p.destacado===true||p.destacado==="TRUE";
         return `<div class="pc">
-            <img src="${p.foto||p.img||''}" alt="" onerror="this.style.display='none'">
+            <img src="${ikSharp(p.foto||p.img||'')}" alt="" onerror="this.style.display='none'">
             <div class="pi">
                 <div class="pn">${p.nombre||"—"} ${dest?'<span class="badge bam2">⭐ Destacado</span>':''}</div>
                 <div class="pd">Ref: ${p.codigo||"—"} · $${parseFloat(p.precio||0).toFixed(2)} · ${stock}${getNotaEspecial(p)?` · <span style="color:#92400e;background:#fef3c7;border-radius:3px;padding:0 4px;font-size:10px;">♦ ${getNotaEspecial(p)}</span>`:''}</div>
@@ -3348,7 +3348,7 @@ function renderFilasVentas(items) {
         const cantidad = parseInt(c.cantidad)||0;
         const vendido  = parseInt(c.vendido)||0;
         const disp     = Math.max(0, cantidad - vendido);
-        const foto     = c.foto ? `<img src="${c.foto}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;">` : `<div style="width:36px;height:36px;background:#eee;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;">💍</div>`;
+        const foto     = c.foto ? `<img src="${ikSharp(c.foto)}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;">` : `<div style="width:36px;height:36px;background:#eee;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;">💍</div>`;
         return `<tr>
             <td>${foto}</td>
             <td style="font-weight:700;font-size:12px;color:var(--azul);">${c.codigo||""}</td>
@@ -5576,7 +5576,7 @@ function filtrarParaCatalogo() {
             }
         } catch(_) {}
 
-        const img  = p.foto || p.img || "";
+        const img  = ikSharp(p.foto || p.img || "");
         const mat  = p.material || detectarMaterial(p.nombre);
         const cod0 = p._codigos?.[0] || p.codigo;
         const sizesHtml = p._sizes?.length
@@ -5870,6 +5870,14 @@ async function autoSeleccionarVariado(evitarCodigos) {
         : `✅ ${count} productos seleccionados automáticamente (variado, prioriza mayor stock)`, "#22c55e");
 }
 
+// Las fotos se suben tal cual las manda el vendedor, sin ningún realce —
+// esto le agrega nitidez (e-sharpen) de ImageKit solo al mostrarla, sin
+// tocar la foto guardada.
+function ikSharp(url) {
+    if (!url || !url.includes("imagekit.io")) return url;
+    return url.includes("?tr=") ? url + ",e-sharpen" : url + "?tr=e-sharpen";
+}
+
 async function imgToBase64Cat(url) {
     if (!url) return null;
     return new Promise(resolve => {
@@ -5884,7 +5892,7 @@ async function imgToBase64Cat(url) {
             } catch(_) { resolve(null); }
         };
         img.onerror = () => resolve(null);
-        img.src = url;
+        img.src = ikSharp(url);
     });
 }
 
