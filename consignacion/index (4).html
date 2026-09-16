@@ -7160,22 +7160,42 @@ function _pedirAfiliadoLink() {
     return { codigo: match.codigo, telefono: match.telefono || "" };
 }
 
+// Arma el link largo de siempre (/p/COD,COD?exp=...) y, si se puede, lo
+// cambia por uno corto (/l/ID) pidiéndoselo a save-plink.js — con 10+ piezas
+// seleccionadas el link largo queda larguísimo y feo para publicar en un
+// Estado de WhatsApp. Si save-plink falla (sin red, endpoint caído), se
+// sigue compartiendo el link largo tal cual, para no bloquear el flujo.
+async function _armarLinkProducto(codigo, exp, desc, afiliado, telefono) {
+    const wa = telefono ? encodeURIComponent(String(telefono).replace(/\D/g,"")) : "";
+    // OJO: no usar encodeURIComponent() sobre la coma que separa códigos —
+    // la convertiría en %2C y la función de Cloudflare ya no podría separarlos.
+    const linkLargo = "https://admin-tienda.pages.dev/p/" + codigo + "?exp=" + exp
+        + (afiliado ? "&af=" + afiliado : "")
+        + (wa ? "&wa=" + wa : "")
+        + (desc > 0 ? "&desc=" + desc : "");
+    try {
+        const res = await fetch("https://admin-tienda.pages.dev/save-plink", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ _pass: _sessionPass, codigo, exp, desc, af: afiliado, wa })
+        });
+        const data = await res.json();
+        if (data.id) return "https://admin-tienda.pages.dev/l/" + data.id;
+    } catch (_) {}
+    return linkLargo;
+}
+
 async function compartirProducto(codigo) {
     const exp = _pedirVigenciaLink();
     if (exp === null) return;
     const desc = _pedirDescuentoLink();
     const { codigo: afiliado, telefono } = _pedirAfiliadoLink();
-    // OJO: no usar encodeURIComponent() sobre la coma que separa códigos —
-    // la convertiría en %2C y la función de Cloudflare ya no podría separarlos.
-    const link = "https://admin-tienda.pages.dev/p/" + codigo + "?exp=" + exp
-        + (afiliado ? "&af=" + afiliado : "")
-        + (telefono ? "&wa=" + encodeURIComponent(String(telefono).replace(/\D/g,"")) : "")
-        + (desc > 0 ? "&desc=" + desc : "");
+    const link = await _armarLinkProducto(codigo, exp, desc, afiliado, telefono);
     _copiarYMostrarLink(link, 1);
 }
 
 // Igual que compartirProducto() pero para varios productos seleccionados a la
-// vez — mismo link /p/, con los códigos separados por coma, para no tener que
+// vez — mismo link, con los códigos separados por coma, para no tener que
 // mandar un link distinto por cada pieza que le interese al cliente.
 async function compartirSeleccionados() {
     if (!stockSeleccionados.length) return;
@@ -7184,10 +7204,7 @@ async function compartirSeleccionados() {
     const desc = _pedirDescuentoLink();
     const { codigo: afiliado, telefono } = _pedirAfiliadoLink();
     const codigos = stockSeleccionados.join(",");
-    const link = "https://admin-tienda.pages.dev/p/" + codigos + "?exp=" + exp
-        + (afiliado ? "&af=" + afiliado : "")
-        + (telefono ? "&wa=" + encodeURIComponent(String(telefono).replace(/\D/g,"")) : "")
-        + (desc > 0 ? "&desc=" + desc : "");
+    const link = await _armarLinkProducto(codigos, exp, desc, afiliado, telefono);
     _copiarYMostrarLink(link, stockSeleccionados.length);
 }
 
