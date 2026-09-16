@@ -123,6 +123,12 @@
     const params = new URLSearchParams(location.search);
     const raw = window.__PRODUCTO_CODIGO__ || params.get("c") || "";
     const codigos = raw.split(",").map(s => s.trim()).filter(Boolean);
+    // Un link corto (/l/ID) no lleva exp/desc/af/wa en la URL visible — el
+    // servidor los resuelve desde KV y los inyecta como estos globales al
+    // renderizar. Un link largo (/p/COD,COD?exp=...) sigue trayéndolos en
+    // la URL como siempre. Se distingue con "typeof ... !== undefined" y no
+    // con truthiness porque 0/"" son valores válidos que sí vinieron inyectados.
+    const _inyectado = (v) => typeof v !== "undefined";
     const API_URL = "https://verex-api.verexstore.workers.dev/";
     let encontrados = [];
     let _grupos = [];
@@ -141,12 +147,12 @@
         if (solo.startsWith("503") && solo.length === 11) return solo;
         return solo;
     }
-    const _waParam = (params.get("wa") || "").trim();
+    const _waParam = (_inyectado(window.__PRODUCTO_WA__) ? window.__PRODUCTO_WA__ : (params.get("wa") || "")).trim();
     const _waDestino = normalizarWA(_waParam || VEREX_WA_OFICIAL);
 
     // Descuento opcional para promos de un solo producto (?desc=20 = 20% off)
     // — mismo mecanismo que ya usa el catálogo de varios productos.
-    const _descPct = Math.min(90, Math.max(0, parseInt(params.get("desc")) || 0));
+    const _descPct = Math.min(90, Math.max(0, parseInt(_inyectado(window.__PRODUCTO_DESC__) ? window.__PRODUCTO_DESC__ : params.get("desc")) || 0));
     function precioFinal(precio){
         const n = parseFloat(precio) || 0;
         if (!_descPct) return n;
@@ -296,7 +302,7 @@
 
     if(!codigos.length){ mostrarEstado("⚠️","Link inválido",""); return; }
 
-    const exp = parseInt(params.get("exp")) || 0;
+    const exp = parseInt(_inyectado(window.__PRODUCTO_EXP__) ? window.__PRODUCTO_EXP__ : params.get("exp")) || 0;
     if(exp && Date.now() > exp){
         mostrarEstado("⏰","Este link ya venció","Pídele a VEREX que te comparta el producto de nuevo con el precio y stock actualizados.");
         return;
@@ -312,7 +318,7 @@
             _grupos = agruparEncontrados(encontrados);
             renderGrupos();
 
-            const afiliado = params.get("af") || "";
+            const afiliado = _inyectado(window.__PRODUCTO_AF__) ? window.__PRODUCTO_AF__ : (params.get("af") || "");
 
             // Registro silencioso del interés del cliente — si el link se
             // compartió a nombre de un afiliado, el Lead cae directo en su
