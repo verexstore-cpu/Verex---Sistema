@@ -410,6 +410,14 @@
     .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
     .modal-close { background: none; border: none; color: var(--plateado); font-size: 22px; cursor: pointer; }
 
+    .mc-chip {
+        padding: 7px 13px; border-radius: 20px; border: 1px solid var(--borde);
+        background: transparent; color: var(--plateado); font-size: 12px; font-weight: 600;
+        cursor: pointer; transition: all 0.15s; font-family: 'DM Sans', sans-serif;
+    }
+    .mc-chip.activo { border-color: var(--dorado); background: rgba(201,168,76,0.15); color: var(--dorado); }
+    .mc-chip:hover { border-color: var(--dorado); }
+
     .foto-upload {
         border: 2px dashed var(--borde); border-radius: 10px; padding: 24px; text-align: center;
         cursor: pointer; transition: border-color 0.2s; margin-bottom: 12px; position: relative;
@@ -1290,6 +1298,57 @@
         <input type="number" id="np-qty"    placeholder="Cantidad" value="1" min="1" id="np-qty">
         <div id="estado-ia" style="font-size:12px;color:var(--dorado);margin-bottom:10px;display:none;"></div>
         <button class="btn btn-dorado btn-full" onclick="agregarProductoNuevo()">Agregar a Entrega</button>
+    </div>
+</div>
+
+<!-- Modal Promocionar — reemplaza la cadena de prompt() (vigencia, %
+     descuento, código de afiliado) por un formulario visual con preview en
+     vivo de cómo llega el mensaje a WhatsApp. -->
+<div class="modal-overlay" id="modal-compartir">
+    <div class="modal-box" style="max-width:440px;">
+        <div class="modal-header">
+            <h3 id="mc-titulo">Promocionar producto</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-compartir')">×</button>
+        </div>
+
+        <div id="mc-productos" style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;"></div>
+
+        <label style="font-size:12px;color:var(--plateado);display:block;margin-bottom:6px;">Vigencia del link</label>
+        <div id="mc-vigencia" style="display:flex;gap:8px;margin-bottom:14px;">
+            <button type="button" class="mc-chip" data-dias="1" onclick="_mcSetVigencia(1,this)">1 día</button>
+            <button type="button" class="mc-chip activo" data-dias="3" onclick="_mcSetVigencia(3,this)">3 días</button>
+            <button type="button" class="mc-chip" data-dias="7" onclick="_mcSetVigencia(7,this)">7 días</button>
+        </div>
+
+        <label style="font-size:12px;color:var(--plateado);display:block;margin-bottom:6px;">Descuento</label>
+        <div id="mc-descuento" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+            <button type="button" class="mc-chip activo" data-pct="0"  onclick="_mcSetDescuento(0,this)">Sin desc.</button>
+            <button type="button" class="mc-chip" data-pct="10" onclick="_mcSetDescuento(10,this)">10%</button>
+            <button type="button" class="mc-chip" data-pct="15" onclick="_mcSetDescuento(15,this)">15%</button>
+            <button type="button" class="mc-chip" data-pct="20" onclick="_mcSetDescuento(20,this)">20%</button>
+            <input type="number" id="mc-desc-custom" placeholder="Otro %" min="0" max="90" oninput="_mcDescuentoCustom(this)" style="width:70px;padding:6px 10px;font-size:12px;background:var(--gris);border:1px solid var(--borde);border-radius:20px;color:var(--blanco);">
+        </div>
+
+        <label style="font-size:12px;color:var(--plateado);display:block;margin-bottom:6px;">Afiliado (opcional)</label>
+        <select id="mc-afiliado" style="margin-bottom:16px;" onchange="_mcActualizarPreview()">
+            <option value="">Ninguno — venta directa</option>
+        </select>
+
+        <label style="font-size:12px;color:var(--plateado);display:block;margin-bottom:6px;">Así se ve en WhatsApp</label>
+        <div style="background:#0d1a12;border-radius:12px;padding:10px;margin-bottom:18px;">
+            <div style="background:#1f2c25;border-radius:10px;overflow:hidden;">
+                <img id="mc-preview-foto" style="width:100%;max-height:140px;object-fit:cover;display:none;">
+                <div style="padding:8px 10px;">
+                    <div id="mc-preview-nombre" style="font-size:12px;font-weight:600;color:#f2f2f2;"></div>
+                    <div id="mc-preview-desc" style="font-size:11px;color:#a8b0ab;margin-top:2px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex;gap:8px;">
+            <button type="button" class="btn btn-full" style="background:#25D366;color:#fff;" onclick="_mcCompartirWhatsApp(this)">📲 Compartir por WhatsApp</button>
+            <button type="button" class="btn" style="background:var(--gris2);color:var(--plateado);" title="Copiar link" onclick="_mcCopiarLink(this)">🔗</button>
+        </div>
     </div>
 </div>
 
@@ -7106,62 +7165,6 @@ async function cargarStock() {
     }
 }
 
-// Genera un link público de un solo producto (foto, nombre, material, precio,
-// código) para compartir con un cliente puntual, sin tener que armarle todo
-// un catálogo — vive en admin-tienda.pages.dev/p/CODIGO y consulta el stock
-// en vivo, así el precio/disponibilidad que ve el cliente siempre está al día.
-// Pregunta la vigencia del link (1 o 3 días) — pasado ese tiempo el link deja
-// de mostrar el producto, para no dejar circulando precios/stock viejos
-// indefinidamente. Devuelve null si el usuario cancela.
-function _pedirVigenciaLink() {
-    const r = prompt("¿Vigencia del link? Escribe 1 o 3 (días)", "3");
-    if (r === null) return null;
-    const dias = (r.trim() === "1") ? 1 : 3;
-    return Date.now() + dias * 86400000;
-}
-
-// Descuento opcional para armar una promo de una sola pieza (ej. para
-// mandar al Estado de WhatsApp) — el producto.html hace el cálculo y
-// muestra precio tachado + precio final. Vacío o 0 = sin descuento.
-function _pedirDescuentoLink() {
-    const r = prompt("¿Descuento para este link? Escribe el % (o déjalo vacío para precio normal)", "");
-    if (!r || !r.trim()) return 0;
-    const pct = Math.min(90, Math.max(0, parseInt(r) || 0));
-    return pct;
-}
-
-// Solo copia el link al portapapeles y lo muestra — no lo manda a WhatsApp
-// automático, para que el admin decida dónde compartirlo (WhatsApp, SMS,
-// Instagram, lo que sea).
-function _copiarYMostrarLink(link, cantidad) {
-    navigator.clipboard.writeText(link).catch(()=>{});
-    toast(`🔗 Link de ${cantidad} producto(s) copiado al portapapeles`);
-    // El prompt deja el link seleccionado y editable — sirve como respaldo
-    // visual/manual por si el navegador bloqueó el copiado automático.
-    prompt("Link copiado — pégalo donde lo necesites compartir:", link);
-}
-
-// Si el producto es para un cliente de un afiliado (te lo pidió y tú buscaste
-// la pieza en Stock), preguntamos a cuál — así cuando el cliente toque "Quiero
-// este" en el link, se registra el Lead a nombre de ESE afiliado y le cae
-// directo en su "Completar Pedidos", sin que el afiliado necesite ver tu
-// stock para nada. Devuelve "" si no aplica (venta directa tuya).
-// Devuelve {codigo, telefono} del afiliado elegido (o vacíos si no aplica) —
-// el teléfono va embebido en el link (?wa=) para que el botón "Hazlo tuyo"
-// del producto SIEMPRE llegue al número correcto: al del afiliado elegido, o
-// al de VEREX si no se elige ninguno. Antes el link no fijaba ningún número
-// y el cliente tenía que elegir el destinatario él mismo en WhatsApp.
-function _pedirAfiliadoLink() {
-    const afiliados = (vendedores || []).filter(v => v.tipo === "afiliado" || v.tipo === "hibrido");
-    if (!afiliados.length) return { codigo: "", telefono: "" };
-    const lista = afiliados.map(v => `${v.codigo} — ${v.nombre}`).join("\n");
-    const r = prompt(`¿Es para un cliente de un afiliado? Escribe su código (o deja vacío si no aplica):\n\n${lista}`, "");
-    if (!r || !r.trim()) return { codigo: "", telefono: "" };
-    const match = afiliados.find(v => v.codigo.toLowerCase() === r.trim().toLowerCase());
-    if (!match) { toast("⚠️ Código de afiliado no encontrado — se comparte sin afiliado"); return { codigo: "", telefono: "" }; }
-    return { codigo: match.codigo, telefono: match.telefono || "" };
-}
-
 // Arma el link largo de siempre (/p/COD,COD?exp=...) y, si se puede, lo
 // cambia por uno corto (/l/ID) pidiéndoselo a save-plink.js — con 10+ piezas
 // seleccionadas el link largo queda larguísimo y feo para publicar en un
@@ -7187,27 +7190,155 @@ async function _armarLinkProducto(codigo, exp, desc, afiliado, telefono) {
     return linkLargo;
 }
 
-async function compartirProducto(codigo) {
-    const exp = _pedirVigenciaLink();
-    if (exp === null) return;
-    const desc = _pedirDescuentoLink();
-    const { codigo: afiliado, telefono } = _pedirAfiliadoLink();
-    const link = await _armarLinkProducto(codigo, exp, desc, afiliado, telefono);
-    _copiarYMostrarLink(link, 1);
+function compartirProducto(codigo) {
+    stockSeleccionados = [codigo];
+    abrirModalCompartir();
 }
 
 // Igual que compartirProducto() pero para varios productos seleccionados a la
 // vez — mismo link, con los códigos separados por coma, para no tener que
 // mandar un link distinto por cada pieza que le interese al cliente.
-async function compartirSeleccionados() {
+function compartirSeleccionados() {
     if (!stockSeleccionados.length) return;
-    const exp = _pedirVigenciaLink();
-    if (exp === null) return;
-    const desc = _pedirDescuentoLink();
-    const { codigo: afiliado, telefono } = _pedirAfiliadoLink();
+    abrirModalCompartir();
+}
+
+// Estado del modal "Promocionar" — vigencia y % de descuento elegidos con
+// chips en vez de los prompt() de antes.
+let _mcVigenciaDias = 3;
+let _mcDescuentoPct = 0;
+
+function _mcSetVigencia(dias, btn) {
+    _mcVigenciaDias = dias;
+    btn.parentElement.querySelectorAll(".mc-chip").forEach(b => b.classList.remove("activo"));
+    btn.classList.add("activo");
+}
+
+function _mcSetDescuento(pct, btn) {
+    _mcDescuentoPct = pct;
+    document.getElementById("mc-desc-custom").value = "";
+    btn.parentElement.querySelectorAll(".mc-chip").forEach(b => b.classList.remove("activo"));
+    btn.classList.add("activo");
+    _mcActualizarPreview();
+}
+
+function _mcDescuentoCustom(input) {
+    const pct = Math.min(90, Math.max(0, parseInt(input.value) || 0));
+    _mcDescuentoPct = pct;
+    document.querySelectorAll("#mc-descuento .mc-chip").forEach(b => b.classList.remove("activo"));
+    _mcActualizarPreview();
+}
+
+// Arma nombre/descripción/foto del preview con la MISMA lógica que
+// adminverex/functions/_plink-render.js usa del lado servidor al abrir el
+// link — así lo que el admin ve acá es igual a lo que le va a llegar al
+// cliente en WhatsApp.
+function _mcActualizarPreview() {
+    const codigos = stockSeleccionados;
+    const primero = stockData.find(s => s.codigo === codigos[0]);
+    if (!primero) return;
+
+    const basesUnicas = new Set(codigos.map(c => {
+        const s = stockData.find(x => x.codigo === c);
+        return getCodigoBase(s ? s.codigo : c);
+    }));
+    const extra = basesUnicas.size - 1;
+
+    let nombre = (primero.nombre_base || primero.nombre || "Producto VEREX").trim();
+    if (extra > 0) nombre += ` + ${extra} producto${extra > 1 ? "s" : ""} más`;
+
+    let descripcion = "La expresión de tu mejor versión";
+    if (_mcDescuentoPct > 0) {
+        descripcion = extra > 0
+            ? `🔥 ${_mcDescuentoPct}% OFF en ${basesUnicas.size} diseños seleccionados · Oferta por tiempo limitado`
+            : (() => {
+                const antes = parseFloat(primero.precio || primero.precioNum) || 0;
+                const ahora = Math.round(antes * (1 - _mcDescuentoPct / 100) * 100) / 100;
+                return `🔥 ${_mcDescuentoPct}% OFF — antes $${antes.toFixed(2)} ahora $${ahora.toFixed(2)}`;
+              })();
+    }
+
+    document.getElementById("mc-preview-nombre").textContent = nombre + " · VEREX";
+    document.getElementById("mc-preview-desc").textContent = descripcion;
+    const foto = document.getElementById("mc-preview-foto");
+    if (primero.foto) { foto.src = ikFoto(primero.foto, 300); foto.style.display = "block"; }
+    else { foto.style.display = "none"; }
+}
+
+// Abre el modal "Promocionar" para los códigos ya puestos en
+// stockSeleccionados (uno solo, o varios elegidos en Stock).
+function abrirModalCompartir() {
+    if (!stockSeleccionados.length) return;
+    _mcVigenciaDias = 3;
+    _mcDescuentoPct = 0;
+
+    document.getElementById("mc-titulo").textContent =
+        stockSeleccionados.length === 1 ? "Promocionar producto" : `Promocionar ${stockSeleccionados.length} productos`;
+
+    const vistos = new Set();
+    const miniaturas = stockSeleccionados.map(cod => {
+        const item = stockData.find(s => s.codigo === cod);
+        if (!item) return "";
+        const base = getCodigoBase(item.codigo);
+        if (vistos.has(base)) return "";
+        vistos.add(base);
+        const foto = item.foto ? sanitizar(ikFoto(item.foto, 100)) : "";
+        return `<div style="width:44px;height:44px;border-radius:8px;overflow:hidden;background:var(--gris2);flex-shrink:0;">${foto ? `<img src="${foto}" style="width:100%;height:100%;object-fit:cover;">` : ""}</div>`;
+    }).join("");
+    document.getElementById("mc-productos").innerHTML = miniaturas;
+
+    const selAfiliado = document.getElementById("mc-afiliado");
+    const afiliados = (vendedores || []).filter(v => v.tipo === "afiliado" || v.tipo === "hibrido");
+    selAfiliado.innerHTML = '<option value="">Ninguno — venta directa</option>' +
+        afiliados.map(v => `<option value="${sanitizar(v.codigo)}" data-tel="${sanitizar(v.telefono || "")}">${sanitizar(v.nombre)}</option>`).join("");
+
+    document.querySelectorAll("#mc-vigencia .mc-chip").forEach(b => b.classList.toggle("activo", b.dataset.dias === "3"));
+    document.querySelectorAll("#mc-descuento .mc-chip").forEach(b => b.classList.toggle("activo", b.dataset.pct === "0"));
+    document.getElementById("mc-desc-custom").value = "";
+
+    _mcActualizarPreview();
+    abrirModal("modal-compartir");
+}
+
+// Arma el link (corto si save-plink responde, largo si no) con lo elegido en
+// el modal — mismo helper que usaba el flujo de prompt() de antes.
+async function _mcObtenerLink() {
+    const exp = Date.now() + _mcVigenciaDias * 86400000;
+    const selAfiliado = document.getElementById("mc-afiliado");
+    const opt = selAfiliado.selectedOptions[0];
+    const afiliado = selAfiliado.value;
+    const telefono = opt ? opt.dataset.tel : "";
     const codigos = stockSeleccionados.join(",");
-    const link = await _armarLinkProducto(codigos, exp, desc, afiliado, telefono);
-    _copiarYMostrarLink(link, stockSeleccionados.length);
+    return _armarLinkProducto(codigos, exp, _mcDescuentoPct, afiliado, telefono);
+}
+
+async function _mcCompartirWhatsApp(btn) {
+    const original = btn.textContent;
+    btn.textContent = "Generando…"; btn.disabled = true;
+    try {
+        const link = await _mcObtenerLink();
+        const nombre = document.getElementById("mc-preview-nombre").textContent.replace(" · VEREX", "");
+        const texto = `Mira ${stockSeleccionados.length > 1 ? "estas piezas" : "esta pieza"} de VEREX 😍\n${nombre}\n${link}`;
+        window.open("https://wa.me/?text=" + encodeURIComponent(texto), "_blank");
+        cerrarModal("modal-compartir");
+    } finally {
+        btn.textContent = original; btn.disabled = false;
+    }
+}
+
+async function _mcCopiarLink(btn) {
+    btn.disabled = true;
+    try {
+        const link = await _mcObtenerLink();
+        navigator.clipboard.writeText(link).then(() => {
+            toast("🔗 Link copiado al portapapeles");
+        }).catch(() => {
+            prompt("Link copiado — pégalo donde lo necesites compartir:", link);
+        });
+        cerrarModal("modal-compartir");
+    } finally {
+        btn.disabled = false;
+    }
 }
 
 function renderStock(items) {
