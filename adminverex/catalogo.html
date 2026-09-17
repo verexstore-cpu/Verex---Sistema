@@ -48,6 +48,34 @@
             gap:12px;padding:16px;max-width:580px;margin:0 auto;
         }
 
+        /* Carrusel — alternativa a la cuadrícula cuando el catálogo trae
+           pocas piezas (ver MAX_CAROUSEL): una tarjeta grande a la vez,
+           deslizable a mano (sin autoplay), con flechas y puntos de apoyo. */
+        /* Sin padding en #carousel a propósito: el ancho de cada tarjeta
+           (flex-basis 100%) tiene que calzar exacto con wrap.clientWidth
+           para que el índice activo (scrollLeft / clientWidth) no se
+           desfase — el "aire" alrededor va en el wrap, no en el scroller. */
+        .carousel-wrap{ position:relative; max-width:400px; margin:0 auto; padding:16px 16px 0; }
+        .carousel{
+            display:flex; overflow-x:auto; scroll-snap-type:x mandatory;
+            -webkit-overflow-scrolling:touch; scrollbar-width:none;
+        }
+        .carousel::-webkit-scrollbar{ display:none; }
+        .carousel .card{ scroll-snap-align:center; flex:0 0 100%; }
+        .carousel .card-footer{ display:none; }
+        .carousel-nav{
+            position:absolute; top:50%; transform:translateY(-50%);
+            width:30px; height:30px; border-radius:50%; background:rgba(255,255,255,.92);
+            border:1px solid #e2e2e2; display:flex; align-items:center; justify-content:center;
+            font-size:16px; color:#111; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.15); z-index:2;
+        }
+        .carousel-nav.prev{ left:6px; }
+        .carousel-nav.next{ right:6px; }
+        #carousel-dots{ display:flex; justify-content:center; gap:6px; padding:10px 0 4px; }
+        #carousel-dots .dot{ width:6px; height:6px; border-radius:50%; background:#d9d9d9; transition:background .15s; }
+        #carousel-dots .dot.activo{ background:#C9A84C; }
+        #carousel-cta{ max-width:340px; margin:0 auto; padding:6px 16px 16px; display:flex; flex-direction:column; gap:5px; }
+
         .card{background:#fff;border:1.5px solid #d9c184;border-radius:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);display:flex;flex-direction:column;}
         .card-img{width:100%;aspect-ratio:1/1;object-fit:contain;background:#f7f7f7;display:block;flex-shrink:0;}
         .card-img-ph{
@@ -334,6 +362,12 @@
     const c = params.get("c");
 
     let _prods = [], _waNum = "", _szIdx = -1, _szD = "", _szH = "", _descPct = 0, _afiliadoCodigo = "", _szParMode = false, _szTel = "", _szNombreCliente = "", _szDireccion = "", _szNoTalla = false, _szModo = "wa";
+    // Con pocas piezas el carrusel se ve mejor (una tarjeta grande a la
+    // vez); con muchas, la cuadrícula sigue siendo más práctica para
+    // comparar de un vistazo. _indiceActivo trackea qué tarjeta está
+    // visible para que el botón fijo de abajo siempre apunte a esa.
+    const MAX_CAROUSEL = 6;
+    let _indiceActivo = 0;
     let _esAutoGeneradoVendedor = false;
     // _promoCarrito: { tipo: '2x50'|'3x2'|'montoFijo'|'escalonado', montoFijo, escalones }
     let _promoCarrito = null, _promo2x50 = false; // _promo2x50 se mantiene solo por compatibilidad con links viejos
@@ -553,6 +587,19 @@
             </div>`;
         }).join("");
 
+        const _useCarrusel = _prods.length > 1 && _prods.length <= MAX_CAROUSEL;
+        const carruselHTML = `
+            <div class="carousel-wrap">
+                <div class="carousel" id="carousel">${cards}</div>
+                <button type="button" class="carousel-nav prev" onclick="_carruselIrA(_indiceActivo-1)" aria-label="Anterior">‹</button>
+                <button type="button" class="carousel-nav next" onclick="_carruselIrA(_indiceActivo+1)" aria-label="Siguiente">›</button>
+            </div>
+            <div id="carousel-dots">${_prods.map((_,i)=>`<span class="dot${i===0?' activo':''}"></span>`).join("")}</div>
+            <div id="carousel-cta">
+                <button type="button" class="wa-order" id="carousel-wa-btn"><span class="wa-main">✦ ¡Hazlo tuyo!</span><span class="wa-sub">Presiona aquí para ordenar</span><span class="wa-shine"></span></button>
+                <button type="button" class="cart-add" id="carousel-cart-btn" title="Agregar al carrito">🛒<span class="cart-label">2+ piezas</span></button>
+            </div>`;
+
         const b = data.banner;
         const bannerHTML = b?.txt ? `
             <div style="background:${esc(b.color||'#ef4444')};color:#fff;text-align:center;padding:14px 20px;">
@@ -630,8 +677,10 @@
                 <span>¿Quieres pedir <strong>2 o más piezas?</strong> Usa el carrito para juntarlas y hacer un solo pedido al final.</span>
             </div>
             ${filtroTallaHTML}
-            <div class="grid">${cards}</div>
+            ${_useCarrusel ? carruselHTML : `<div class="grid">${cards}</div>`}
             <footer>VEREX · La expresión de tu mejor versión</footer>`;
+
+        if(_useCarrusel) _initCarrusel();
 
         // Primer vistazo: la lluvia de confeti cae UNA vez, sin que el
         // cliente tenga que tocar nada, para que la promo se note de
@@ -644,6 +693,42 @@
                 if(icono) _abrirRegaloPromo(icono);
             }, 900);
         }
+    }
+
+    // Tarjeta grande deslizable a mano (sin autoplay) — solo tiene sentido
+    // con pocas piezas; con un catálogo grande la cuadrícula deja comparar
+    // de un vistazo, que es lo que importa ahí. El botón "¡Hazlo tuyo!" y
+    // el del carrito quedan fijos debajo del carrusel (no dentro de cada
+    // tarjeta) y actúan siempre sobre la pieza visible (_indiceActivo),
+    // reusando elegirTalla() tal cual — mismo flujo de tallas/pedido que ya
+    // usa la cuadrícula, sin duplicar esa lógica.
+    function _initCarrusel(){
+        _indiceActivo = 0;
+        const wrap = document.getElementById("carousel");
+        if(!wrap) return;
+        const waBtn   = document.getElementById("carousel-wa-btn");
+        const cartBtn = document.getElementById("carousel-cart-btn");
+        if(waBtn)   waBtn.onclick   = function(){ elegirTalla(_indiceActivo, "wa", this); };
+        if(cartBtn) cartBtn.onclick = function(){ elegirTalla(_indiceActivo, "carrito"); };
+
+        let _scrollTimer = null;
+        wrap.addEventListener("scroll", () => {
+            clearTimeout(_scrollTimer);
+            _scrollTimer = setTimeout(() => {
+                const idx = Math.round(wrap.scrollLeft / wrap.clientWidth);
+                if(idx !== _indiceActivo && idx >= 0 && idx < _prods.length){
+                    _indiceActivo = idx;
+                    document.querySelectorAll("#carousel-dots .dot").forEach((d,i)=>d.classList.toggle("activo", i===idx));
+                }
+            }, 80);
+        });
+    }
+
+    function _carruselIrA(idx){
+        const wrap = document.getElementById("carousel");
+        if(!wrap) return;
+        idx = Math.max(0, Math.min(wrap.children.length - 1, idx));
+        wrap.scrollTo({ left: idx * wrap.clientWidth, behavior: "smooth" });
     }
 
     /* ── Filtro de talla (anillos) ── */
@@ -1352,6 +1437,7 @@
     window.toggleFiltroTalla = toggleFiltroTalla;
     window.limpiarFiltroTalla = limpiarFiltroTalla;
     window._abrirRegaloPromo = _abrirRegaloPromo;
+    window._carruselIrA = _carruselIrA;
 
     /* ── Arranque ── */
 
