@@ -356,6 +356,28 @@ async function enviar(){
           break;
         }
 
+        // Solo lectura — "eliminar" en Stock nunca borra el registro, solo le
+        // pone estado:"inactivo" (ver ELIMINAR_PRODUCTO), así que sigue en
+        // Supabase pero STOCK_GET_ALL lo filtra. Esto existe para poder
+        // auditar/recuperar info de productos que se eliminaron sin querer,
+        // filtrando por código, código base, o nombre (coincidencia parcial).
+        case "STOCK_GET_INACTIVOS": {
+          if (!esAdmin) return forbidden();
+          const q = String(d.q || "").trim().toLowerCase();
+          const todos = await sb.getAll("stock");
+          const inactivos = todos.filter(p => p.estado === "inactivo");
+          result = {
+            ok: true,
+            stock: q ? inactivos.filter(p =>
+              (p.codigo || "").toLowerCase().includes(q) ||
+              (p.codigoBase || "").toLowerCase().includes(q) ||
+              (p.nombre || "").toLowerCase().includes(q) ||
+              (p.nombre_base || "").toLowerCase().includes(q)
+            ) : inactivos
+          };
+          break;
+        }
+
         case "STOCK_REGISTRAR": {
           if (!esAdmin) return forbidden();
           // Nunca guardar campos de control de la petición (contraseña, nombre de
