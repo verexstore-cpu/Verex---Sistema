@@ -3134,6 +3134,18 @@ async function enviar(){
           break;
         }
 
+        // Deshace ELIMINAR_PRODUCTO -- vuelve a poner el registro inactivo
+        // como activo, sin recrearlo ni tocar sus cantidades (quedan tal
+        // como estaban al momento de eliminarlo). d.estado opcional para
+        // elegir dónde reaparece (bodega/tienda/consignacion); por defecto
+        // bodega, que es donde vive la gran mayoria de los productos.
+        case "REACTIVAR_PRODUCTO": {
+          if (!esAdmin) return forbidden();
+          await sb.update("stock", d.codigo, { estado: d.estado || "bodega" });
+          result = { ok: true };
+          break;
+        }
+
         // ══ ENTREGAS PENDIENTES ════════════════════════════════════
         case "REGISTRAR_ENTREGA_PENDIENTE": {
           if (!esAdmin) return forbidden();
