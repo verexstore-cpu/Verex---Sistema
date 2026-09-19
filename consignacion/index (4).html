@@ -5629,6 +5629,26 @@ async function eliminarImagenInfo(id) {
     cargarImagenesInformativas();
 }
 
+// Compara dos nombres de producto ignorando mayúsculas/tildes/signos, y los
+// considera "parecidos" si comparten casi todas las palabras relevantes
+// (>2 letras) — detecta tanto el nombre idéntico como variaciones menores
+// de tipeo, sin marcar como duplicado a dos diseños que solo comparten
+// una palabra genérica ("Anillo", "Pulsera", etc.).
+function _nombresSimilares(a, b) {
+    const norm = s => String(s || "").toLowerCase()
+        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9\s]/g, "").trim();
+    const na = norm(a), nb = norm(b);
+    if (!na || !nb) return false;
+    if (na === nb) return true;
+    const wa = new Set(na.split(/\s+/).filter(w => w.length > 2));
+    const wb = new Set(nb.split(/\s+/).filter(w => w.length > 2));
+    if (!wa.size || !wb.size) return false;
+    let comunes = 0;
+    wa.forEach(w => { if (wb.has(w)) comunes++; });
+    return comunes / Math.min(wa.size, wb.size) >= 0.75;
+}
+
 async function agregarProductoNuevo() {
     const categoria = document.getElementById("np-categoria").value;
     const nombre    = document.getElementById("np-nombre").value.trim();
@@ -5673,6 +5693,27 @@ async function agregarProductoNuevo() {
         const existente = stockData.find(s => String(s.codigo).toUpperCase() === codigosDuplicados[0].toUpperCase());
         toast(`⚠️ Código ${codigosDuplicados[0]} ya existe — "${existente ? existente.nombre : ""}"`);
         return;
+    }
+
+    // ── Aviso de posible duplicado por NOMBRE (código distinto) ──────────
+    // El caso real que motivó esto: la misma pieza ("Anillo Blue Baguette")
+    // se registró dos veces con códigos base distintos (ANP032 y ANL002)
+    // porque no se recordaba que ya existía — el chequeo de arriba no lo
+    // detecta porque el código sí es nuevo. No bloquea (a veces dos diseños
+    // distintos comparten nombre a propósito), solo frena a confirmar.
+    const similar = (stockData || []).find(s =>
+        (s.codigoBase || s.codigo) !== codigoBase &&
+        s.estado !== "inactivo" &&
+        _nombresSimilares(s.nombre_base || s.nombre, nombre)
+    );
+    if (similar) {
+        const seguir = confirm(
+            `⚠️ Ya existe un producto con nombre parecido:\n\n` +
+            `${similar.codigoBase || similar.codigo} — ${similar.nombre_base || similar.nombre}\n\n` +
+            `Si es la MISMA pieza, cancela y usa "✏️ Editar → agregar talla" en ese producto en vez de crear uno nuevo — así no queda duplicado.\n\n` +
+            `¿Seguro que querés crear un producto nuevo de todas formas?`
+        );
+        if (!seguir) { btn.textContent = "Agregar a Entrega"; btn.disabled = false; return; }
     }
 
     // Subir foto una sola vez con el código base (siempre la original sin procesar)
