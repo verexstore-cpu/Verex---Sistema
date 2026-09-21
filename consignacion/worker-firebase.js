@@ -51,13 +51,9 @@ export default {
     // NEXUS, que lo consulta en vivo.
     const todosVendCron = await sb.getAll("vendedores");
     const cortesCron = todosVendCron
-      .filter(v => v.fechaCorte && v.tokenInventario)
-      .map(v => {
-        const venc = new Date(v.fechaCorte);
-        venc.setDate(venc.getDate() + 30);
-        return { v, dias: Math.ceil((venc - Date.now()) / 86400000) };
-      })
-      .filter(({dias}) => dias <= 1);
+      .filter(v => v.tokenInventario)
+      .map(v => ({ v, dias: diasParaCorteVend(v) }))
+      .filter(({dias}) => dias !== null && dias <= 1);
     if (cortesCron.length) {
       const lista = cortesCron.map(({v, dias}) => {
         const msgD = dias < 0 ? `vencido hace ${Math.abs(dias)}d` : dias === 0 ? "vence hoy" : "vence mañana";
@@ -1179,9 +1175,26 @@ async function enviar(){
           }
           await sb.update("vendedores", d.vendedor, {
             totalVendido: 0,
-            fechaCorte: new Date().toISOString()
+            fechaCorte: new Date().toISOString(),
+            proximoCorte: null
           });
           result = { ok: true };
+          break;
+        }
+
+        // Fijar a mano la fecha del próximo corte de un vendedor (ver
+        // diasParaCorteVend). fecha "AAAA-MM-DD"; vacía/null la quita y vuelve
+        // a valer "último corte + 30 días". Es un parche: no pisa el resto de la ficha.
+        case "FIJAR_PROXIMO_CORTE": {
+          if (!esAdmin) return forbidden();
+          const vendFP = await sb.get("vendedores", d.vendedor);
+          if (!vendFP) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
+          const fechaFP = d.fecha ? String(d.fecha).trim() : null;
+          if (fechaFP && (!RE_FECHA_CORTE.test(fechaFP) || isNaN(Date.parse(fechaFP)))) {
+            result = { ok: false, error: "Fecha inválida (usa AAAA-MM-DD)" }; break;
+          }
+          await sb.update("vendedores", d.vendedor, { proximoCorte: fechaFP });
+          result = { ok: true, proximoCorte: fechaFP };
           break;
         }
 
@@ -1932,10 +1945,7 @@ async function enviar(){
           // Catálogo no activado
           if (!vend.catalogoActivo) { result = { ok: false, razon: "no_activo" }; break; }
           // Validar 30 días desde último corte
-          if (vend.fechaCorte) {
-            const diasDesdeCorte = (Date.now() - new Date(vend.fechaCorte).getTime()) / (1000 * 60 * 60 * 24);
-            if (diasDesdeCorte > 30) { result = { ok: false, razon: "vencido" }; break; }
-          }
+          if (corteVencido(vend)) { result = { ok: false, razon: "vencido" }; break; }
           // Solo items activos con stock disponible
           const items = cons
             .filter(c => c.estado === "activo" && (parseInt(c.cantidad||0) - parseInt(c.vendido||0)) > 0)
@@ -2830,11 +2840,8 @@ async function enviar(){
             result = { ok: false, razon: "pin_requerido", tienePin: true }; break;
           }
           // Validar 30 días desde último corte
-          if (vend.fechaCorte) {
-            const diasDesdeCorte = (Date.now() - new Date(vend.fechaCorte).getTime()) / (1000 * 60 * 60 * 24);
-            if (diasDesdeCorte > 30) {
-              result = { ok: false, razon: "vencido" }; break;
-            }
+          if (corteVencido(vend)) {
+            result = { ok: false, razon: "vencido" }; break;
           }
           result = { ok: true, vendedor: vend };
           break;
@@ -3957,6 +3964,37 @@ function json(data, status = 200) {
 }
 function forbidden() {
   return json({ ok: false, error: "No autorizado" }, 403);
+}
+
+// ── CORTE DEL VENDEDOR: FECHA REAL ────────────────────────────────
+// El corte vence 30 días después del último corte (fechaCorte) — SALVO que el
+// admin haya fijado a mano la fecha del próximo corte (proximoCorte,
+// "AAAA-MM-DD"): esa manda. Sirve para vendedores que aún no han hecho ningún
+// corte y no tienen fechaCorte. NO se guarda como fechaCorte a propósito: la
+// página del vendedor usa fechaCorte para decidir qué piezas le muestra
+// (oculta lo entregado antes), así que falsearla le escondería inventario.
+// Se borra al cerrar un corte real (CERRAR_CORTE).
+const RE_FECHA_CORTE = /^\d{4}-\d{2}-\d{2}$/;
+// Días que faltan (null si no hay una fecha real). El Salvador es UTC-6, sin cambio de hora.
+function diasParaCorteVend(v) {
+  if (v.proximoCorte && RE_FECHA_CORTE.test(v.proximoCorte)) {
+    const hoySV = new Date(Date.now() - 6 * 3600 * 1000).toISOString().slice(0, 10);
+    return Math.round((Date.parse(v.proximoCorte) - Date.parse(hoySV)) / 86400000);
+  }
+  if (v.fechaCorte) {
+    const venc = new Date(v.fechaCorte);
+    venc.setDate(venc.getDate() + 30);
+    return Math.ceil((venc - Date.now()) / 86400000);
+  }
+  return null;
+}
+// ¿Ya pasó la fecha del corte? Con fecha fijada, el link sirve todo ese día.
+function corteVencido(v) {
+  if (v.proximoCorte && RE_FECHA_CORTE.test(v.proximoCorte)) {
+    return Date.now() > Date.parse(v.proximoCorte + "T23:59:59-06:00");
+  }
+  if (v.fechaCorte) return (Date.now() - new Date(v.fechaCorte).getTime()) / (1000 * 60 * 60 * 24) > 30;
+  return false;
 }
 
 // ── VENTAS DIRECTAS: PRECIO REALMENTE PAGADO POR PIEZA ────────────

@@ -356,10 +356,19 @@ function renderAvisoCorte() {
     const box  = document.getElementById("aviso-corte");
     if (!wrap || !box) return;
     wrap.style.display = "none";
-    if (!vendedorData?.fechaCorte) return;
-    const venc = new Date(vendedorData.fechaCorte);
-    if (isNaN(venc)) return;
-    venc.setDate(venc.getDate() + 30);
+    // Si el admin fijó a mano la fecha del corte (proximoCorte, "AAAA-MM-DD"),
+    // esa manda; si no, último corte + 30 días.
+    let venc;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(vendedorData?.proximoCorte || "")) {
+        const [y, m, d] = vendedorData.proximoCorte.split("-").map(Number);
+        venc = new Date(y, m - 1, d);
+    } else if (vendedorData?.fechaCorte) {
+        venc = new Date(vendedorData.fechaCorte);
+        if (isNaN(venc)) return;
+        venc.setDate(venc.getDate() + 30);
+    } else {
+        return;
+    }
     const soloDia = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const dias = Math.round((soloDia(venc) - soloDia(new Date())) / 86400000);
     if (dias > 7) return;

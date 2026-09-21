@@ -1251,6 +1251,24 @@
     </div>
 </div>
 
+<!-- Fijar a mano la fecha del próximo corte de un vendedor -->
+<div class="modal-overlay" id="modal-proximo-corte" style="z-index:10002;">
+    <div class="modal-box" style="max-width:380px;">
+        <div class="modal-header">
+            <h3>📅 Fecha del próximo corte</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-proximo-corte')">×</button>
+        </div>
+        <div id="pc-nombre" style="font-size:13px;color:var(--dorado);font-weight:600;margin-bottom:10px;"></div>
+        <input type="date" id="pc-fecha" oninput="pcActualizarAviso()" onchange="pcActualizarAviso()" style="margin-bottom:8px;">
+        <div id="pc-aviso" style="font-size:12px;line-height:1.5;margin-bottom:14px;min-height:34px;"></div>
+        <div style="display:flex;gap:8px;">
+            <button class="btn btn-gris" style="flex:1;" onclick="cerrarModal('modal-proximo-corte')">Cancelar</button>
+            <button class="btn btn-dorado" style="flex:1;" onclick="guardarProximoCorte()">Guardar</button>
+        </div>
+        <button id="pc-quitar" class="btn btn-gris" style="display:none;width:100%;margin-top:8px;font-size:12px;" onclick="quitarProximoCorte()">Quitar la fecha fijada</button>
+    </div>
+</div>
+
 <div class="modal-overlay" id="modal-prod-nuevo">
     <div class="modal-box">
         <div class="modal-header">
@@ -1692,12 +1710,8 @@ async function cargarLinksAfiliados() {
 function _alertasCortePorVencer() {
     const ahora = Date.now();
     return vendedores
-        .filter(v => v.fechaCorte && corteAplica(v))
-        .map(v => {
-            const venc = new Date(v.fechaCorte);
-            venc.setDate(venc.getDate() + 30);
-            return { v, dias: Math.ceil((venc - ahora) / 86400000) };
-        })
+        .filter(v => corteAplica(v) && corteRealDe(v))
+        .map(v => ({ v, dias: corteRealDe(v).dias }))
         .filter(({dias}) => dias <= 1)
         .sort((a,b) => a.dias - b.dias);
 }
@@ -2135,11 +2149,9 @@ function renderDashboard() {
     // Alertas de corte
     const alertas = [];
     vendedores.forEach(v => {
-        if (!v.fechaCorte || !corteAplica(v)) return;
-        const venc = new Date(v.fechaCorte);
-        venc.setDate(venc.getDate() + 30);
-        const dias = Math.ceil((venc - new Date()) / (1000*60*60*24));
-        if (dias <= 5) alertas.push({ v, dias });
+        const real = corteRealDe(v);
+        if (!real || !corteAplica(v)) return;
+        if (real.dias <= 5) alertas.push({ v, dias: real.dias });
     });
     const alertasCard = document.getElementById("dash-alertas-card");
     const alertasDiv  = document.getElementById("dash-alertas");
@@ -2211,8 +2223,31 @@ function renderDashboard() {
 // hecho ningún corte, se cuenta desde su registro SOLO para mostrarlo (marcado
 // como estimado): las alertas y el link de inventario siguen usando únicamente
 // fechaCorte, así que esto no bloquea ni avisa a nadie por su cuenta.
+// Fecha REAL del corte (o null): la fijada a mano (proximoCorte, "AAAA-MM-DD")
+// manda sobre "último corte + 30 días". Es lo que usan las alertas y el aviso.
+function corteRealDe(v) {
+    if (v?.proximoCorte && /^\d{4}-\d{2}-\d{2}$/.test(v.proximoCorte)) {
+        const [y, m, d] = v.proximoCorte.split("-").map(Number);
+        const fecha = new Date(y, m - 1, d);
+        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+        return { fecha, dias: Math.round((fecha - hoy) / 86400000), manual: true };
+    }
+    if (v?.fechaCorte) {
+        const fecha = new Date(v.fechaCorte);
+        if (isNaN(fecha)) return null;
+        fecha.setDate(fecha.getDate() + 30);
+        return { fecha, dias: Math.ceil((fecha - Date.now()) / 86400000), manual: false };
+    }
+    return null;
+}
+
 function infoProximoCorte(v) {
-    const base = v?.fechaCorte || v?.fechaRegistro;
+    const real = corteRealDe(v);
+    if (real) {
+        const color = real.dias <= 0 ? "#e74c3c" : real.dias <= 2 ? "#e67e22" : real.dias <= 5 ? "#C9A84C" : "var(--plateado)";
+        return { fecha: real.fecha, dias: real.dias, color, estimado: false, manual: real.manual };
+    }
+    const base = v?.fechaRegistro;
     if (!base) return null;
     const fecha = new Date(base);
     if (isNaN(fecha)) return null;
@@ -2245,14 +2280,85 @@ function renderProximoCortePerfil() {
         return;
     }
     const info = infoProximoCorte(vendedorActual);
-    if (!info) { el.innerHTML = "📅 Próximo corte: sin corte registrado"; el.style.color = "var(--plateado)"; return; }
+    const enlaceFijar = ` <span onclick="event.stopPropagation();fijarProximoCorte()" style="color:#0277bd;cursor:pointer;text-decoration:underline;font-weight:400;">✏️ fijar fecha</span>`;
+    if (!info) { el.innerHTML = "📅 Próximo corte: sin corte registrado" + enlaceFijar; el.style.color = "var(--plateado)"; return; }
     const fmt = f => f.toLocaleDateString("es-SV", { day: "numeric", month: "short", year: "numeric" });
     const cuando = info.dias > 1 ? `faltan ${info.dias} días` : info.dias === 1 ? "vence mañana" : info.dias === 0 ? "vence hoy" : `vencido hace ${Math.abs(info.dias)} días`;
-    const detalle = info.estimado
+    const detalle = info.manual
+        ? `<span style="font-weight:400;">fecha fijada a mano</span>`
+        : info.estimado
         ? `<span style="font-weight:400;">30 días desde su registro — aún no ha hecho ningún corte</span>`
         : `<span style="font-weight:400;">último corte: ${fmt(new Date(vendedorActual.fechaCorte))}</span>`;
     el.style.color = info.color;
-    el.innerHTML = `📅 Próximo corte: ${info.estimado ? "~ " : ""}${fmt(info.fecha)} · ${cuando} <span style="opacity:.8;">(${detalle})</span>`;
+    el.innerHTML = `📅 Próximo corte: ${info.estimado ? "~ " : ""}${fmt(info.fecha)} · ${cuando} <span style="opacity:.8;">(${detalle})</span>` + enlaceFijar;
+}
+
+// ── Fijar a mano la fecha del próximo corte ─────────────────────────────────
+// Para vendedores que aún no han hecho ningún corte (no tienen fechaCorte) o
+// cuando el corte se acordó para otro día. Se guarda en su propio campo
+// (proximoCorte) y NO como fechaCorte a propósito: la página del vendedor usa
+// fechaCorte para decidir qué piezas le muestra (oculta lo entregado antes),
+// así que falsearla le escondería inventario. Se borra al cerrar un corte real.
+let _pcEnviando = false;
+const _isoLocal = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+
+function fijarProximoCorte() {
+    if (!vendedorActual) return;
+    document.getElementById("pc-nombre").textContent = (vendedorActual.nombre || "") + " · " + vendedorActual.codigo;
+    const inp = document.getElementById("pc-fecha");
+    inp.min = _isoLocal(new Date());
+    inp.value = vendedorActual.proximoCorte || "";
+    document.getElementById("pc-quitar").style.display = vendedorActual.proximoCorte ? "block" : "none";
+    pcActualizarAviso();
+    abrirModal("modal-proximo-corte");
+}
+
+function pcActualizarAviso() {
+    const el = document.getElementById("pc-aviso");
+    const v = document.getElementById("pc-fecha").value;
+    if (!v) { el.textContent = ""; return; }
+    const [y, m, d] = v.split("-").map(Number);
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const dias = Math.round((new Date(y, m - 1, d) - hoy) / 86400000);
+    if (dias < 0) { el.style.color = "#e74c3c"; el.textContent = "⚠️ Esa fecha ya pasó: su link de inventario se cerraría de inmediato."; return; }
+    el.style.color = "var(--plateado)";
+    el.textContent = (dias === 0 ? "Es hoy." : dias === 1 ? "Es mañana." : `Faltan ${dias} días.`)
+        + " El vendedor verá el recordatorio desde 7 días antes, y su link de inventario se cierra después de ese día si no se hace el corte.";
+}
+
+async function guardarProximoCorte() {
+    const fecha = document.getElementById("pc-fecha").value;
+    if (!fecha) return toast("⚠️ Elige una fecha");
+    const [y, m, d] = fecha.split("-").map(Number);
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const dias = Math.round((new Date(y, m - 1, d) - hoy) / 86400000);
+    if (dias < 0) return toast("⚠️ Elige hoy o una fecha futura", "#c0392b");
+    if (dias > 30 && !confirm(`Esa fecha está a ${dias} días (más de los 30 habituales). ¿Guardarla igual?`)) return;
+    await _enviarProximoCorte(fecha);
+}
+
+async function quitarProximoCorte() {
+    if (!confirm("¿Quitar la fecha fijada? Volverá a contarse 30 días desde su último corte (o quedará sin fecha si nunca ha cortado).")) return;
+    await _enviarProximoCorte(null);
+}
+
+async function _enviarProximoCorte(fecha) {
+    if (_pcEnviando || !vendedorActual) return;
+    _pcEnviando = true;
+    try {
+        const data = await apiPost({ accion: "FIJAR_PROXIMO_CORTE", vendedor: vendedorActual.codigo, fecha });
+        if (!data.ok) throw new Error(data.error || "No se pudo guardar");
+        vendedorActual.proximoCorte = fecha;
+        cerrarModal("modal-proximo-corte");
+        toast(fecha ? "✅ Fecha del corte guardada" : "✅ Fecha del corte quitada");
+        abrirPerfil(vendedorActual.codigo); // refresca el aviso rojo y la línea del perfil
+        renderVendedores();
+        renderAlertasAfiliadosHub();
+    } catch (e) {
+        toast("⚠️ " + e.message, "#c0392b");
+    } finally {
+        _pcEnviando = false;
+    }
 }
 
 function renderVendedores() {
@@ -3627,14 +3733,17 @@ function abrirPerfil(codigo) {
     const btnVerCatalogo = document.getElementById("btn-menu-ver-catalogo");
     if (btnVerCatalogo) btnVerCatalogo.style.display = esAfil ? "" : "none";
 
-    const fechaCorte = (vendedorActual.fechaCorte && corteAplica(vendedorActual)) ? new Date(vendedorActual.fechaCorte) : null;
+    const corteReal = corteAplica(vendedorActual) ? corteRealDe(vendedorActual) : null;
     const recordatorio = document.getElementById("recordatorio-corte");
-    if (fechaCorte) {
-        const vencimiento = new Date(fechaCorte);
-        vencimiento.setDate(vencimiento.getDate() + 30);
-        const hoy  = new Date();
-        const dias = Math.ceil((vencimiento - hoy) / (1000 * 60 * 60 * 24));
-        if (dias <= 0) {
+    if (corteReal) {
+        const vencimiento = corteReal.fecha;
+        const dias = corteReal.dias;
+        if (corteReal.manual && dias === 0) {
+            recordatorio.style.display = "block";
+            recordatorio.style.background = "rgba(192,57,43,0.2)";
+            recordatorio.style.borderColor = "#c0392b";
+            recordatorio.textContent = "🔴 El corte es hoy!";
+        } else if (dias <= 0) {
             recordatorio.style.display = "block";
             recordatorio.style.background = "rgba(192,57,43,0.2)";
             recordatorio.style.borderColor = "#c0392b";
@@ -6502,7 +6611,7 @@ async function confirmarCorte() {
         if (cant > 0 && vend >= cant) c.estado = "vendido";
         else c.vendido = 0;
     });
-    if (vendedorActual) { vendedorActual.fechaCorte = new Date().toISOString(); vendedorActual.tokenInventario = ""; }
+    if (vendedorActual) { vendedorActual.fechaCorte = new Date().toISOString(); vendedorActual.tokenInventario = ""; vendedorActual.proximoCorte = null; }
     renderProximoCortePerfil();
     const recCorte = document.getElementById("recordatorio-corte");
     if (recCorte) recCorte.style.display = "none";
