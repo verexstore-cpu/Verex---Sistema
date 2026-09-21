@@ -12371,6 +12371,19 @@ function _generarHTMLReciboVD(v) {
 </body></html>`;
 }
 
+// Las fuentes del PDF (Helvetica / Courier) no tienen emoji ni flechas: si la
+// nota los trae, salen como basura ("Ø=Ý") y jsPDF además reparte TODA la
+// línea con las letras separadas. En pantalla y WhatsApp la nota se sigue
+// mostrando con emoji; esto es solo para lo que se imprime. Devuelve una
+// lista de líneas (cada cambio / pieza agregada se guardó en su propia línea).
+function notaLineasParaPDF(nota) {
+    return String(nota || "").split("\n")
+        .map(l => l.replace(/→/g, "por")
+                   .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}️]/gu, "")
+                   .replace(/[ \t]{2,}/g, " ").trim())
+        .filter(Boolean);
+}
+
 function _generarPDFReciboVD(v) {
     if (!window.jspdf?.jsPDF) { toast("⚠️ No se pudo cargar jsPDF"); return null; }
     const { jsPDF } = window.jspdf;
@@ -12389,9 +12402,25 @@ function _generarPDFReciboVD(v) {
     const costoEnvioRecibo = parseFloat(v.costoEnvio || 0);
     const envioGratis = costoEnvioRecibo === 0 && !!v.departamentoEnvio;
 
-    // Calcular alto dinámico
-    const altoItems  = items.reduce((s, it) => s + 12 + (it.material ? 6 : 0) + ((it.codigo||it.ref) ? 6 : 0), 0);
-    const altoCuerpo = 46 + altoItems + (v.estado==="credito" ? 10 : 0) + (v.nota ? 6 : 0) + (descuento > 0 ? 5 : 0) + (envioGratis || costoEnvioRecibo > 0 ? 5 : 0);
+    // El alto del ticket se fija ANTES de crear el PDF, así que el texto que se
+    // parte en varias líneas (nombres largos, nota) se mide acá con las mismas
+    // fuentes que después se imprimen.
+    const medir = new jsPDF({ unit:'mm', format:[W, 100] });
+    medir.setFont("helvetica","normal"); medir.setFontSize(7);
+    const altoItemsReal = items.reduce((s, it) =>
+        s + medir.splitTextToSize(it.nombre || it.codigo || "—", W - mX*2 - 24).length * lH
+          + (it.material ? lH - 0.5 : 0) + ((it.codigo||it.ref) ? lH - 0.5 : 0) + 2, 0);
+    let notaLines = [];
+    if (v.nota) {
+        medir.setFont("helvetica","italic"); medir.setFontSize(7);
+        notaLines = notaLineasParaPDF(v.nota).flatMap((l, i) => medir.splitTextToSize((i === 0 ? "Nota: " : "") + l, W - mX*2));
+    }
+
+    // Calcular alto dinámico — la reserva fija por producto (12mm) se queda corta
+    // cuando el nombre ocupa 3 líneas o más: se toma la que sea mayor. El +4 cubre
+    // que las constantes de abajo (46 + footer 34) ya quedaban ~2.5mm cortas.
+    const altoItems  = Math.max(altoItemsReal + 4, items.reduce((s, it) => s + 12 + (it.material ? 6 : 0) + ((it.codigo||it.ref) ? 6 : 0), 0));
+    const altoCuerpo = 46 + altoItems + (v.estado==="credito" ? 10 : 0) + (notaLines.length ? notaLines.length * (lH - 0.5) + 2 : 0) + (descuento > 0 ? 9 : 0) + (envioGratis || costoEnvioRecibo > 0 ? 5 : 0);
     const H = altoCuerpo + 34; // footer ~34mm
     const doc = new jsPDF({ unit:'mm', format:[W, H], orientation:'portrait' });
 
@@ -12421,9 +12450,8 @@ function _generarPDFReciboVD(v) {
         doc.text(String(val), mX+14, y);
         y += lH;
     });
-    if (v.nota) {
+    if (notaLines.length) {
         doc.setFont("helvetica","italic"); doc.setTextColor(0,0,0);
-        const notaLines = doc.splitTextToSize("Nota: " + v.nota, W - mX*2);
         notaLines.forEach(l => { doc.text(l, mX, y); y += lH - 0.5; });
         doc.setTextColor(0,0,0);
     }
@@ -13209,12 +13237,8 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
     // por "\n" al guardarse), así que se listan una por una en formato
     // compacto en vez de un párrafo largo — más ordenado y ocupa menos.
     if (venta.nota) {
-        // La fuente Courier del PDF no soporta emoji (🔄, ➕, etc.) — salen como
-        // caracteres corruptos. Se quitan acá antes de imprimir; en WhatsApp/
-        // pantalla la nota se sigue mostrando con emoji normal, esto es solo
-        // para este PDF.
-        const quitarEmoji = s => s.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}️]/gu, '').replace(/[ \t]{2,}/g, ' ').trim();
-        const notaItems = venta.nota.split('\n').map(quitarEmoji).filter(Boolean);
+        // La fuente Courier del PDF no soporta emoji (🔄, ➕, etc.) — ver notaLineasParaPDF.
+        const notaItems = notaLineasParaPDF(venta.nota);
         if (notaItems.length) {
             checkPage(9);
             doc.setFont('courier', 'bold');
