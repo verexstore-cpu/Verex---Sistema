@@ -12376,12 +12376,20 @@ function _generarHTMLReciboVD(v) {
 // línea con las letras separadas. En pantalla y WhatsApp la nota se sigue
 // mostrando con emoji; esto es solo para lo que se imprime. Devuelve una
 // lista de líneas (cada cambio / pieza agregada se guardó en su propia línea).
+// Los cambios de producto se condensan a "Cambio: CODIGO_VIEJO por CODIGO_NUEVO
+// — +$8.88" (sin nombres, fecha ni motivo); la nota completa queda en la venta.
 function notaLineasParaPDF(nota) {
     return String(nota || "").split("\n")
         .map(l => l.replace(/→/g, "por")
                    .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}️]/gu, "")
                    .replace(/[ \t]{2,}/g, " ").trim())
-        .filter(Boolean);
+        .filter(Boolean)
+        .map(l => {
+            const m = l.match(/^Cambio el .+?: ".*?" \(([^)]+)\) por ".*?" \(([^)]+)\)(?: — diferencia \$(-?[\d.]+))?/);
+            if (!m) return l;
+            const dif = parseFloat(m[3]) || 0;
+            return `Cambio: ${m[1]} por ${m[2]}` + (dif ? ` — ${dif > 0 ? "+" : "-"}$${Math.abs(dif).toFixed(2)}` : "");
+        });
 }
 
 function _generarPDFReciboVD(v) {
@@ -12413,7 +12421,7 @@ function _generarPDFReciboVD(v) {
     let notaLines = [];
     if (v.nota) {
         medir.setFont("helvetica","italic"); medir.setFontSize(7);
-        notaLines = notaLineasParaPDF(v.nota).flatMap((l, i) => medir.splitTextToSize((i === 0 ? "Nota: " : "") + l, W - mX*2));
+        notaLines = notaLineasParaPDF(v.nota).flatMap((l, i) => medir.splitTextToSize((i === 0 && !l.startsWith("Cambio:") ? "Nota: " : "") + l, W - mX*2));
     }
 
     // Calcular alto dinámico — la reserva fija por producto (12mm) se queda corta
