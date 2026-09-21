@@ -1297,26 +1297,32 @@ async function login() {
     if (res.ok) {
         _hashTemp = hash;
         // Enviar OTP por Telegram
-        await enviarOTP();
+        const enviado = await enviarOTP();
         document.getElementById("login-paso1").style.display = "none";
         document.getElementById("login-paso2").style.display = "block";
         document.getElementById("in-otp").focus();
+        if (!enviado) alert("⚠️ No se pudo enviar el código por Telegram.\n\nRevisa que el bot esté configurado en el servidor e intenta reenviarlo.");
     } else {
         document.getElementById("login-err").style.display = "block";
         document.getElementById("in-pass").value = "";
     }
 }
 
+// Devuelve true solo si el servidor confirmó que Telegram recibió el envío
+// (antes se ignoraba la respuesta y se seguía esperando un código que quizá
+// nunca salió).
 async function enviarOTP() {
-    await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"ENVIAR_OTP", _pass: _hashTemp }) }).catch(()=>{});
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"ENVIAR_OTP", _pass: _hashTemp }) })
+        .then(r => r.json()).catch(() => ({ ok: false }));
+    return res.ok === true;
 }
 
 async function reenviarOTP() {
     document.getElementById("otp-err").style.display = "none";
-    await enviarOTP();
+    const enviado = await enviarOTP();
     document.getElementById("in-otp").value = "";
     document.getElementById("in-otp").focus();
-    alert("Código reenviado a Telegram");
+    alert(enviado ? "Código reenviado a Telegram" : "⚠️ No se pudo enviar el código por Telegram.\n\nRevisa que el bot esté configurado en el servidor.");
 }
 
 async function verificarOTP() {

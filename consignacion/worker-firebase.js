@@ -286,15 +286,28 @@ async function enviar(){
         if (!ok) return json({ ok: false, error: "No autorizado" }, 403);
         const otp  = String(Math.floor(100000 + Math.random() * 900000));
         const exp  = Date.now() + 5 * 60 * 1000; // 5 minutos
+        // Token y chat de Telegram viven como secretos de Cloudflare
+        // (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID), nunca en el código: este
+        // archivo está en GitHub. Si falta alguno, se avisa en vez de fingir
+        // que el código salió.
+        if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
+          return json({ ok: false, error: "Telegram no está configurado en el servidor" }, 500);
+        }
         await sb.update("config", "settings", { otp, otpExp: exp });
-        const TELEGRAM_BOT = "8876219004:AAHZavenfX0SjTYZbzqGTEGBxD0P4VKvtLM";
-        const TELEGRAM_CHAT = "6788653579";
+        const TELEGRAM_BOT = env.TELEGRAM_BOT_TOKEN;
+        const TELEGRAM_CHAT = env.TELEGRAM_CHAT_ID;
         const msg = `🔐 *VEREX Admin*\n\nCódigo de acceso: *${otp}*\n\nVálido por 5 minutos.`;
-        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id: TELEGRAM_CHAT, text: msg, parse_mode: "Markdown" })
-        });
+        let tgRes;
+        try {
+          tgRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: TELEGRAM_CHAT, text: msg, parse_mode: "Markdown" })
+          });
+        } catch (_) { tgRes = null; }
+        // Antes se devolvía ok aunque Telegram rechazara el envío (ej. token
+        // revocado) y el admin se quedaba esperando un código que no llegaba.
+        if (!tgRes || !tgRes.ok) return json({ ok: false, error: "No se pudo enviar el código por Telegram" }, 502);
         return json({ ok: true });
       }
 
