@@ -109,7 +109,7 @@
     <p>Este inventario ha sido cerrado o el link no es válido.</p>
 </div>
 
-<div id="pantalla-pin" style="display:none;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;">
+<div id="pantalla-pin" style="display:none;min-height:100vh;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;">
     <div style="font-size:40px;margin-bottom:10px;">🔒</div>
     <div class="logo" style="margin-bottom:6px;">VEREX</div>
     <p style="color:var(--plateado);font-size:13px;margin-bottom:18px;">Ingresa tu PIN de 4 dígitos para entrar a tu inventario</p>
@@ -128,6 +128,10 @@
     <div class="tabs">
         <button class="tab-btn activo" id="tab-inv" onclick="cambiarTab('inventario')"><span>📦 Mi Inventario</span></button>
         <button class="tab-btn" id="tab-ventas" onclick="cambiarTab('ventas')"><span>💰 Mis Ventas</span></button>
+    </div>
+    <!-- Aviso del próximo corte: solo aparece cuando faltan 7 días o menos -->
+    <div id="aviso-corte-wrap" class="main" style="display:none;padding-bottom:0;padding-top:14px;">
+        <div id="aviso-corte" style="border-radius:10px;padding:11px 14px;font-size:13px;line-height:1.5;"></div>
     </div>
     <div id="content-inventario" class="main">
         <div style="background:rgba(192,57,43,0.12);border:1px solid rgba(192,57,43,0.4);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:11px;color:#f5a0a0;line-height:1.5;">
@@ -336,10 +340,41 @@ function mostrarInventario() {
     document.getElementById("pantalla-cargando").style.display   = "none";
     document.getElementById("pantalla-inventario").style.display = "block";
     document.getElementById("sub-vendedor").textContent = "Inventario de " + (vendedorData.nombre || "");
+    renderAvisoCorte();
     renderNotifEntregas();
     actualizarStats();
     renderInventario();
     renderVentas();
+}
+
+// Recordatorio del corte para el vendedor. El link se cierra a los 30 días del
+// último corte (el servidor lo valida en VERIFICAR_TOKEN), así que esa es la
+// fecha del corte. Solo se muestra cuando faltan 7 días o menos; sin corte
+// previo no hay fecha real, así que no se muestra nada.
+function renderAvisoCorte() {
+    const wrap = document.getElementById("aviso-corte-wrap");
+    const box  = document.getElementById("aviso-corte");
+    if (!wrap || !box) return;
+    wrap.style.display = "none";
+    if (!vendedorData?.fechaCorte) return;
+    const venc = new Date(vendedorData.fechaCorte);
+    if (isNaN(venc)) return;
+    venc.setDate(venc.getDate() + 30);
+    const soloDia = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const dias = Math.round((soloDia(venc) - soloDia(new Date())) / 86400000);
+    if (dias > 7) return;
+    const fecha  = venc.toLocaleDateString("es-SV", { day: "numeric", month: "long", year: "numeric" });
+    const cuando = dias <= 0 ? "hoy" : dias === 1 ? "mañana" : "en " + dias + " días";
+    if (dias <= 1) {
+        box.style.background = "rgba(192,57,43,0.15)"; box.style.border = "1px solid rgba(192,57,43,0.5)"; box.style.color = "#f5a0a0";
+    } else if (dias <= 3) {
+        box.style.background = "rgba(230,126,34,0.15)"; box.style.border = "1px solid rgba(230,126,34,0.5)"; box.style.color = "#f5c27a";
+    } else {
+        box.style.background = "rgba(201,168,76,0.12)"; box.style.border = "1px solid rgba(201,168,76,0.5)"; box.style.color = "#F5D78E";
+    }
+    box.innerHTML = "📅 <strong>Tu corte es " + cuando + "</strong> (" + fecha + ").<br>"
+        + "Ve preparando tus ventas y tus piezas. Después de esa fecha este link se cierra hasta que se haga el corte — coordínalo con VEREX.";
+    wrap.style.display = "block";
 }
 
 function actualizarStats() {
