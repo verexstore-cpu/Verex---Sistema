@@ -1584,6 +1584,7 @@ function iniciarAutoSync() {
             vendedores           = data.vendedores   || [];
             consignacion         = data.consignacion || [];
             productosDisponibles = data.productos    || [];
+            if (Date.now() - _linksAfiliadoTs > 300000) cargarLinksAfiliados();
             // Re-renderizar vista activa sin interrumpir al usuario
             const enPerfil = document.getElementById("pantalla-perfil")?.style.display !== "none";
             if (enPerfil && vendedorActual) {
@@ -1633,6 +1634,56 @@ async function cargarLeads() {
 // Vendedores (que es donde vive el registro de afiliados) — antes quedaban
 // silenciosas y solo se veían entrando ficha por ficha.
 const LEADS_SIN_COMPLETAR_DIAS_HUB = 2;
+// ── ¿ESTÁ ACTIVO ESTE VENDEDOR? Solo entonces corre el corte ────────────────
+// Un vendedor corre corte mientras tiene un link vigente: su Link Inventario
+// (tokenInventario — el sistema lo borra al cerrar el corte o al desactivarlo,
+// así que hasta que no se le genere uno nuevo NO hay corte pendiente) o, si es
+// afiliado/híbrido, un catálogo de afiliado vigente en Admin (se consulta en
+// vivo: ese dato vive en otro sistema). Sin ninguno está inactivo: no se calcula
+// ni se avisa nada de su corte.
+let _linksAfiliado = {};                 // codigo → true | false | "error"
+let _linksAfiliadoTs = 0, _linksAfiliadoCargando = false;
+
+// "activo" | "inactivo" | "verificando" (aún consultando) | "desconocido"
+// (la consulta falló: se comporta como antes para no callar una alerta real).
+function estadoLinkVendedor(v) {
+    if (v?.tokenInventario) return "activo";
+    if (v?.tipo === "afiliado" || v?.tipo === "hibrido") {
+        const s = _linksAfiliado[v.codigo];
+        if (s === true) return "activo";
+        if (s === false) return "inactivo";
+        if (s === "error") return "desconocido";
+        return "verificando";
+    }
+    return "inactivo";
+}
+function corteAplica(v) { const e = estadoLinkVendedor(v); return e === "activo" || e === "desconocido"; }
+
+async function cargarLinksAfiliados() {
+    if (_linksAfiliadoCargando || !_sessionPass) return;
+    const afiliados = vendedores.filter(v => (v.tipo === "afiliado" || v.tipo === "hibrido") && !v.tokenInventario);
+    if (!afiliados.length) { _linksAfiliadoTs = Date.now(); return; }
+    _linksAfiliadoCargando = true;
+    await Promise.all(afiliados.map(async v => {
+        try {
+            const res = await fetch(ADMIN_CAT_URL + "/affiliate-stats", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ afiliadoCodigo: v.codigo, _pass: _sessionPass })
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) throw new Error(data.error || res.status);
+            _linksAfiliado[v.codigo] = !!data.catalogoActivo;
+        } catch (_) { _linksAfiliado[v.codigo] = "error"; }
+    }));
+    _linksAfiliadoTs = Date.now();
+    _linksAfiliadoCargando = false;
+    // Con el dato ya resuelto, repintar lo que depende de él.
+    renderVendedores();
+    renderAlertasAfiliadosHub();
+    if (document.getElementById("tab-content-dashboard")?.style.display === "block") renderDashboard();
+    if (vendedorActual && document.getElementById("pantalla-perfil")?.style.display !== "none") renderProximoCortePerfil();
+}
+
 // Se pagan comisiones a los 30 días de la última liquidación (fechaCorte) —
 // el aviso debe llegar 1 día antes de que se cumpla ese plazo, no cuando ya
 // esté vencido, para dar tiempo a prepararlo. (dias<=1 cubre "vence mañana"
@@ -1641,7 +1692,7 @@ const LEADS_SIN_COMPLETAR_DIAS_HUB = 2;
 function _alertasCortePorVencer() {
     const ahora = Date.now();
     return vendedores
-        .filter(v => v.fechaCorte)
+        .filter(v => v.fechaCorte && corteAplica(v))
         .map(v => {
             const venc = new Date(v.fechaCorte);
             venc.setDate(venc.getDate() + 30);
@@ -1846,6 +1897,7 @@ async function cargarDatos() {
         renderVendedores();
         renderAlertasAfiliadosHub();
         cargarReposicionesPendientes();
+        cargarLinksAfiliados();
         cargarSolicitudes(); // Verificar solicitudes pendientes
     } catch(e) {
         toast("⚠️ Error conectando", "#c0392b");
@@ -2083,7 +2135,7 @@ function renderDashboard() {
     // Alertas de corte
     const alertas = [];
     vendedores.forEach(v => {
-        if (!v.fechaCorte) return;
+        if (!v.fechaCorte || !corteAplica(v)) return;
         const venc = new Date(v.fechaCorte);
         venc.setDate(venc.getDate() + 30);
         const dias = Math.ceil((venc - new Date()) / (1000*60*60*24));
@@ -2171,6 +2223,9 @@ function infoProximoCorte(v) {
 }
 
 function _proximoCorteCardHTML(v) {
+    const est = estadoLinkVendedor(v);
+    if (est === "verificando") return `<div style="font-size:10px;color:var(--plateado);margin-top:3px;">📅 Verificando link…</div>`;
+    if (est === "inactivo") return `<div style="font-size:10px;color:#777;margin-top:3px;" title="Sin link activo: no hay corte pendiente hasta que se le genere uno">📅 Sin link · sin corte pendiente</div>`;
     const info = infoProximoCorte(v);
     if (!info) return `<div style="font-size:10px;color:var(--plateado);margin-top:3px;">📅 Sin corte registrado</div>`;
     const corta = info.fecha.toLocaleDateString("es-SV", { day: "numeric", month: "short" });
@@ -2182,6 +2237,13 @@ function _proximoCorteCardHTML(v) {
 function renderProximoCortePerfil() {
     const el = document.getElementById("perfil-proximo-corte");
     if (!el || !vendedorActual) return;
+    const est = estadoLinkVendedor(vendedorActual);
+    if (est === "verificando") { el.style.color = "var(--plateado)"; el.innerHTML = "📅 Próximo corte: verificando el link del afiliado…"; return; }
+    if (est === "inactivo") {
+        el.style.color = "#888";
+        el.innerHTML = `📅 Sin link activo — no hay corte pendiente <span style="font-weight:400;">(el corte se cuenta mientras tenga un link vigente; se reactiva al generarle uno)</span>`;
+        return;
+    }
     const info = infoProximoCorte(vendedorActual);
     if (!info) { el.innerHTML = "📅 Próximo corte: sin corte registrado"; el.style.color = "var(--plateado)"; return; }
     const fmt = f => f.toLocaleDateString("es-SV", { day: "numeric", month: "short", year: "numeric" });
@@ -3565,7 +3627,7 @@ function abrirPerfil(codigo) {
     const btnVerCatalogo = document.getElementById("btn-menu-ver-catalogo");
     if (btnVerCatalogo) btnVerCatalogo.style.display = esAfil ? "" : "none";
 
-    const fechaCorte = vendedorActual.fechaCorte ? new Date(vendedorActual.fechaCorte) : null;
+    const fechaCorte = (vendedorActual.fechaCorte && corteAplica(vendedorActual)) ? new Date(vendedorActual.fechaCorte) : null;
     const recordatorio = document.getElementById("recordatorio-corte");
     if (fechaCorte) {
         const vencimiento = new Date(fechaCorte);
@@ -6440,7 +6502,7 @@ async function confirmarCorte() {
         if (cant > 0 && vend >= cant) c.estado = "vendido";
         else c.vendido = 0;
     });
-    if (vendedorActual) vendedorActual.fechaCorte = new Date().toISOString();
+    if (vendedorActual) { vendedorActual.fechaCorte = new Date().toISOString(); vendedorActual.tokenInventario = ""; }
     renderProximoCortePerfil();
     const recCorte = document.getElementById("recordatorio-corte");
     if (recCorte) recCorte.style.display = "none";
@@ -6480,6 +6542,7 @@ async function verLinkInventario() {
         linkId = generarLinkId();
         await apiPost({ accion: "GUARDAR_TOKEN", vendedor: vendedorActual.codigo, token: linkId });
         vendedorActual.tokenInventario = linkId;
+        renderProximoCortePerfil();
     }
     sessionStorage.setItem(cacheKey, linkId);
     const link = "https://verex-invetario-consign.pages.dev?inv=" + vendedorActual.codigo + "&token=" + linkId;
@@ -6489,6 +6552,8 @@ async function verLinkInventario() {
 
 async function desactivarLink() {
     await apiPost({ accion: "GUARDAR_TOKEN", vendedor: vendedorActual.codigo, token: "" });
+    vendedorActual.tokenInventario = "";
+    renderProximoCortePerfil();
     sessionStorage.removeItem("vx_token_" + vendedorActual.codigo);
     toast("🔒 Link desactivado");
     cerrarModal("modal-link");

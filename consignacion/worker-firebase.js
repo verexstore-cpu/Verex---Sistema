@@ -44,9 +44,14 @@ export default {
     // Mismo cálculo que usa NEXUS para "Cortes por vencer" (dias<=1 antes
     // de cumplirse los 30 días desde fechaCorte, porque ahí se pagan
     // comisiones) y "Piezas por reponer" (reposicionesPendientes por vendedor).
+    // Solo cuentan vendedores con Link Inventario vigente (tokenInventario, que
+    // se borra al cortar): sin link no está activo y no hay corte pendiente. Un
+    // afiliado sin piezas no tiene ese link — su catálogo vive en Admin y desde
+    // acá no se puede consultar — así que no entra en este aviso; sí aparece en
+    // NEXUS, que lo consulta en vivo.
     const todosVendCron = await sb.getAll("vendedores");
     const cortesCron = todosVendCron
-      .filter(v => v.fechaCorte)
+      .filter(v => v.fechaCorte && v.tokenInventario)
       .map(v => {
         const venc = new Date(v.fechaCorte);
         venc.setDate(venc.getDate() + 30);
