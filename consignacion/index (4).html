@@ -12428,7 +12428,7 @@ function _generarPDFReciboVD(v) {
     // cuando el nombre ocupa 3 líneas o más: se toma la que sea mayor. El +4 cubre
     // que las constantes de abajo (46 + footer 34) ya quedaban ~2.5mm cortas.
     const altoItems  = Math.max(altoItemsReal + 4, items.reduce((s, it) => s + 12 + (it.material ? 6 : 0) + ((it.codigo||it.ref) ? 6 : 0), 0));
-    const altoCuerpo = 46 + altoItems + (v.estado==="credito" ? 10 : 0) + (notaLines.length ? notaLines.length * (lH - 0.5) + 2 : 0) + (descuento > 0 ? 9 : 0) + (envioGratis || costoEnvioRecibo > 0 ? 5 : 0);
+    const altoCuerpo = 46 + altoItems + (v.estado==="credito" ? 10 : 0) + (notaLines.length ? notaLines.length * (lH - 0.5) + 5 : 0) + (descuento > 0 ? 9 : 0) + (envioGratis || costoEnvioRecibo > 0 ? 5 : 0);
     const H = altoCuerpo + 34; // footer ~34mm
     const doc = new jsPDF({ unit:'mm', format:[W, H], orientation:'portrait' });
 
@@ -12458,11 +12458,6 @@ function _generarPDFReciboVD(v) {
         doc.text(String(val), mX+14, y);
         y += lH;
     });
-    if (notaLines.length) {
-        doc.setFont("helvetica","italic"); doc.setTextColor(0,0,0);
-        notaLines.forEach(l => { doc.text(l, mX, y); y += lH - 0.5; });
-        doc.setTextColor(0,0,0);
-    }
     y += 2;
 
     // ── LÍNEA SEPARADORA ────────────────────────────────────────────────
@@ -12537,6 +12532,15 @@ function _generarPDFReciboVD(v) {
         doc.text("Pendiente:", mX, y); doc.text("$"+saldo.toFixed(2), W-mX, y, { align:"right" }); y += 4.5;
     }
     y += 3;
+
+    // ── NOTA (al pie, después de los totales) ───────────────────────────
+    if (notaLines.length) {
+        doc.setDrawColor(200,200,200); doc.setLineWidth(0.3);
+        doc.line(mX, y, W-mX, y); y += 3.5;
+        doc.setFont("helvetica","italic"); doc.setFontSize(7); doc.setTextColor(0,0,0);
+        notaLines.forEach(l => { doc.text(l, mX, y); y += lH - 0.5; });
+        y += 1.5;
+    }
 
     // ── FOOTER ──────────────────────────────────────────────────────────
     doc.setDrawColor(0,0,0); doc.setLineWidth(0.5);
