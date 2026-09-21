@@ -1703,6 +1703,7 @@ async function cargarDatos(silencioso=false) {
             if (data.config.tiendaActiva !== undefined) cfg.tiendaActiva  = data.config.tiendaActiva;
             if (data.config.reglasEnvio  !== undefined) cfg.reglasEnvio   = data.config.reglasEnvio;
             if (data.config.fraseConfianza !== undefined) cfg.fraseConfianza = data.config.fraseConfianza;
+            if (data.config.promoGeneral !== undefined) cfg.promoGeneral = data.config.promoGeneral;
             localStorage.setItem("vx_cfg", JSON.stringify(cfg));
         }
         const inpFraseC = document.getElementById("inp-frase-confianza");
@@ -3807,6 +3808,178 @@ function _leerPromoCarritoUI() {
     return { tipo }; // 2x50 / 3x2 no necesitan datos extra
 }
 
+// ── PROMO GENERAL DE CATÁLOGOS (solo Cliente) ───────────────────────────────
+// La promo de carrito / banner / envío gratis / regalo vivían solo dentro de
+// cada catálogo y el formulario los reiniciaba a vacío en cada catálogo nuevo,
+// así que había que volver a elegirlos siempre. Ahora hay UNA promo general
+// (cfg.promoGeneral, se guarda en el servidor y viaja a todos los dispositivos)
+// que se precarga sola en cada catálogo de cliente; el formulario de siempre
+// sigue siendo lo que se envía, así que se puede personalizar un catálogo suelto.
+// Nunca aplica a Afiliado (ellos ganan comisión por venta).
+const PROMO_GENERAL_DEFAULT = {
+    activa: true,
+    banner: { txt: "🎁 2do producto a mitad de precio", sub: "Envío gratis desde $30", color: "#7c3aed" },
+    promoCarrito: { tipo: "2x50" },
+    envioGratisDesde: 30,
+    regaloSorpresa: { monto: 0, texto: "🎁" } // monto 0 = sin regalo hasta que se ponga un monto
+};
+function getPromoGeneral() { return cfg.promoGeneral || PROMO_GENERAL_DEFAULT; }
+
+function _setVal(id, v) { const el = document.getElementById(id); if (el) el.value = v; }
+
+function _refrescarPreviewBanner() {
+    const prev = document.getElementById("banner-preview");
+    const txt = (document.getElementById("cat-banner-txt")?.value || "").trim();
+    if (!prev) return;
+    if (txt) { prev.style.display = "block"; prev.style.background = _bannerColor; prev.textContent = txt; }
+    else prev.style.display = "none";
+}
+
+function _limpiarPromosForm() {
+    ["cat-banner-txt", "cat-banner-sub", "cat-banner-desc-pct", "cat-promo-montofijo", "cat-promo-montofijo-minimo",
+     "cat-envio-gratis-desde", "cat-regalo-monto", "cat-regalo-texto"].forEach(id => _setVal(id, ""));
+    [1, 2, 3].forEach(n => { _setVal(`cat-esc-cant-${n}`, ""); _setVal(`cat-esc-pct-${n}`, ""); });
+    _setVal("cat-promo-tipo", ""); onCambioPromoTipo();
+    _refrescarPreviewBanner();
+}
+
+function _cargarPromoEnForm(pg) {
+    _limpiarPromosForm();
+    if (pg.banner?.txt) {
+        _setVal("cat-banner-txt", pg.banner.txt); _setVal("cat-banner-sub", pg.banner.sub || "");
+        const color = pg.banner.color || "#ef4444";
+        const btn = document.querySelector(`#banner-colors button[data-banner-color="${color}"]`);
+        if (btn) selBannerColor(btn, color); else _bannerColor = color;
+        _refrescarPreviewBanner();
+    }
+    const pc = pg.promoCarrito;
+    if (pc?.tipo) {
+        _setVal("cat-promo-tipo", pc.tipo); onCambioPromoTipo();
+        if (pc.tipo === "montoFijo") { _setVal("cat-promo-montofijo", pc.montoFijo || ""); _setVal("cat-promo-montofijo-minimo", pc.minimoCompra || ""); }
+        if (pc.tipo === "escalonado") (pc.escalones || []).slice(0, 3).forEach((e, i) => { _setVal(`cat-esc-cant-${i + 1}`, e.minCant); _setVal(`cat-esc-pct-${i + 1}`, e.pct); });
+    }
+    if (pg.envioGratisDesde > 0) _setVal("cat-envio-gratis-desde", pg.envioGratisDesde);
+    if (pg.regaloSorpresa) {
+        _setVal("cat-regalo-monto", pg.regaloSorpresa.monto > 0 ? pg.regaloSorpresa.monto : "");
+        _setVal("cat-regalo-texto", pg.regaloSorpresa.texto || "");
+    }
+}
+
+function _etiquetaPromoCarrito(pc) {
+    if (!pc) return "";
+    if (pc.tipo === "2x50") return "2do producto al 50%";
+    if (pc.tipo === "3x2") return "3x2 (la 3ra gratis)";
+    if (pc.tipo === "montoFijo") return `$${pc.montoFijo} de descuento` + (pc.minimoCompra ? ` desde $${pc.minimoCompra}` : "");
+    if (pc.tipo === "escalonado") return "Descuento escalonado por cantidad";
+    return pc.tipo;
+}
+
+// Resumen de lo que ESTE catálogo va a llevar — se calcula de los campos del
+// formulario (no de la config), así siempre dice la verdad aunque se personalice.
+function actualizarResumenPromoCatalogo() {
+    const el = document.getElementById("promo-gral-resumen");
+    if (!el) return;
+    const chips = [];
+    const pc = _leerPromoCarritoUI();
+    if (pc) chips.push("🎁 " + _etiquetaPromoCarrito(pc));
+    const env = parseFloat(document.getElementById("cat-envio-gratis-desde")?.value) || 0;
+    if (env > 0) chips.push(`🚚 Envío gratis desde $${env}`);
+    const rMonto = parseFloat(document.getElementById("cat-regalo-monto")?.value) || 0;
+    const rTexto = (document.getElementById("cat-regalo-texto")?.value || "").trim();
+    if (rMonto > 0 && rTexto) chips.push(`${rTexto} Regalo sorpresa desde $${rMonto}`);
+    const bTxt = (document.getElementById("cat-banner-txt")?.value || "").trim();
+    if (bTxt) chips.push(`🏷️ Banner: “${bTxt}”`);
+    el.innerHTML = chips.length
+        ? chips.map(c => `<span style="display:inline-block;background:#fff;border:1px solid #e2e2e2;border-radius:20px;padding:3px 10px;margin:0 6px 6px 0;font-size:11px;font-weight:600;color:#111;">${esc(c)}</span>`).join("")
+        : `<span style="color:#777;">Este catálogo saldrá sin promociones.</span>`;
+}
+
+// Sincroniza el interruptor general y la casilla "incluirla" con la config.
+function _sincronizarTarjetaPromo() {
+    const activa = !!getPromoGeneral().activa;
+    const sw = document.getElementById("promo-gral-activa");
+    const swTxt = document.getElementById("promo-gral-activa-txt");
+    if (sw) sw.checked = activa;
+    if (swTxt) { swTxt.textContent = activa ? "Activa" : "Apagada"; swTxt.style.color = activa ? "#15803d" : "#777"; }
+    const usar = document.getElementById("cat-usar-promo-gral");
+    if (usar) { usar.disabled = !activa; if (!activa) usar.checked = false; }
+    const lblUsar = document.getElementById("cat-usar-promo-gral-lbl");
+    if (lblUsar) lblUsar.style.opacity = activa ? "1" : "0.5";
+}
+
+// Se llama al abrir "Catálogo Cliente": deja el formulario limpio y, si la
+// promo general está activa, la precarga.
+function iniciarPromoGeneralEnModal() {
+    const pg = getPromoGeneral();
+    _limpiarPromosForm();
+    const usar = document.getElementById("cat-usar-promo-gral");
+    if (usar) usar.checked = !!pg.activa;
+    if (pg.activa) _cargarPromoEnForm(pg);
+    const det = document.getElementById("cat-promo-detalle");
+    if (det) det.style.display = "none";
+    const btn = document.getElementById("btn-promo-detalle");
+    if (btn) btn.textContent = "✏️ Personalizar este catálogo ▾";
+    _sincronizarTarjetaPromo();
+    actualizarResumenPromoCatalogo();
+}
+
+// Casilla "Incluirla en este catálogo": recarga la promo general o la quita
+// solo de este catálogo (no cambia la config).
+function usarPromoGeneralEnCatalogo(usar) {
+    if (usar) _cargarPromoEnForm(getPromoGeneral()); else _limpiarPromosForm();
+    actualizarResumenPromoCatalogo();
+}
+
+// Interruptor general: apaga/enciende la promo para TODOS los catálogos nuevos
+// (los valores guardados se conservan para volver a encenderla).
+function alternarPromoGeneral(activa) {
+    cfg.promoGeneral = { ...getPromoGeneral(), activa };
+    saveConfig();
+    _sincronizarTarjetaPromo();
+    const usar = document.getElementById("cat-usar-promo-gral");
+    if (usar) usar.checked = activa;
+    usarPromoGeneralEnCatalogo(activa);
+    toast(activa ? "✅ Promo general activa — se precarga en cada catálogo de cliente" : "Promo general apagada — los catálogos nuevos salen sin promociones", activa ? "#22c55e" : "#111");
+}
+
+function togglePromoDetalle() {
+    const det = document.getElementById("cat-promo-detalle");
+    const btn = document.getElementById("btn-promo-detalle");
+    if (!det) return;
+    const abrir = det.style.display === "none";
+    det.style.display = abrir ? "block" : "none";
+    if (btn) btn.textContent = abrir ? "✏️ Ocultar ajustes ▴" : "✏️ Personalizar este catálogo ▾";
+}
+
+// Toma lo que hay en el formulario y lo deja como la promo general nueva.
+function guardarFormComoPromoGeneral() {
+    const bTxt = (document.getElementById("cat-banner-txt")?.value || "").trim();
+    const pc = _leerPromoCarritoUI();
+    const env = parseFloat(document.getElementById("cat-envio-gratis-desde")?.value) || 0;
+    const rMonto = parseFloat(document.getElementById("cat-regalo-monto")?.value) || 0;
+    const rTexto = (document.getElementById("cat-regalo-texto")?.value || "").trim();
+    if (!bTxt && !pc && !(env > 0) && !(rMonto > 0)) return toast("⚠️ No hay ninguna promoción en el formulario para guardar", "#f97316");
+    if (!confirm("Estos ajustes pasarán a ser la PROMO GENERAL: se precargarán en todos los catálogos nuevos de cliente.\n\n¿Guardar?")) return;
+    cfg.promoGeneral = {
+        activa: true,
+        banner: bTxt ? { txt: bTxt, sub: (document.getElementById("cat-banner-sub")?.value || "").trim(), color: _bannerColor } : null,
+        promoCarrito: pc,
+        envioGratisDesde: env,
+        regaloSorpresa: (rMonto > 0 || rTexto) ? { monto: rMonto, texto: rTexto } : null
+    };
+    saveConfig();
+    const usar = document.getElementById("cat-usar-promo-gral");
+    if (usar) usar.checked = true;
+    _sincronizarTarjetaPromo();
+    actualizarResumenPromoCatalogo();
+    toast("✅ Promo general guardada", "#22c55e");
+}
+
+// El resumen se actualiza solo mientras se edita cualquier campo de ajustes.
+["input", "change"].forEach(ev => document.addEventListener(ev, e => {
+    if (e.target.closest?.("#cat-promo-detalle")) actualizarResumenPromoCatalogo();
+}));
+
 // ── HISTORIAL DE LINKS ──────────────────────────────────────────────────────
 let _histLinks = [];
 
@@ -5476,6 +5649,7 @@ function abrirModalCatalogo(tipo) {
     const afChk = document.getElementById("cat-es-afiliado");
     if (afChk) afChk.checked = esAfiliado;
     onToggleAfiliado(esAfiliado);
+    if (!esAfiliado) iniciarPromoGeneralEnModal();
     // El WhatsApp de catálogo Cliente SIEMPRE es el oficial de VEREX — nunca
     // se debe rellenar con "verex-wa" (eso guarda el ÚLTIMO número usado, que
     // puede ser el de un afiliado si el admin generó un catálogo de afiliado
@@ -6354,8 +6528,25 @@ async function generarPDFCatalogo() {
         </select>
       </div>
 
-      <!-- Banner cliente -->
-      <div id="cat-banner-wrap" style="background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:10px;">
+      <!-- Promo general (solo Cliente): tarjeta limpia + ajustes de este catálogo colapsados -->
+      <div id="cat-banner-wrap">
+        <div id="promo-gral-card" style="border:1.5px solid #C9A84C;background:#fffaf0;border-radius:10px;padding:12px;margin-bottom:10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+            <div style="font-size:13px;font-weight:800;color:#111;">🎁 Promoción general</div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;cursor:pointer;margin:0;text-transform:none;letter-spacing:0;color:#111;">
+              <input type="checkbox" id="promo-gral-activa" onchange="alternarPromoGeneral(this.checked)" style="width:auto;margin:0;">
+              <span id="promo-gral-activa-txt">Activa</span>
+            </label>
+          </div>
+          <div id="promo-gral-resumen" style="font-size:12px;line-height:1.4;margin-bottom:6px;"></div>
+          <label id="cat-usar-promo-gral-lbl" style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;cursor:pointer;margin:0 0 10px;text-transform:none;letter-spacing:0;color:#111;">
+            <input type="checkbox" id="cat-usar-promo-gral" onchange="usarPromoGeneralEnCatalogo(this.checked)" style="width:auto;margin:0;">
+            Incluirla en este catálogo
+          </label>
+          <button type="button" id="btn-promo-detalle" onclick="togglePromoDetalle()"
+            style="width:100%;background:#fff;color:#111;border:1.5px solid #ddd;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">✏️ Personalizar este catálogo ▾</button>
+        </div>
+      <div id="cat-promo-detalle" style="display:none;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:10px;">
         <div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:8px;">🏷️ Banner de oferta <span style="color:#666;font-weight:400;">(opcional)</span></div>
         <input type="text" id="cat-banner-txt" placeholder="Ej: 2x1 en aretes este fin de semana 🎉" style="width:100%;box-sizing:border-box;margin-bottom:6px;">
         <div class="emoji-quick-bar" data-target="cat-banner-txt"></div>
@@ -6422,6 +6613,12 @@ async function generarPDFCatalogo() {
             <input type="text" id="cat-regalo-texto" placeholder="Ej: dije de cortesía" style="flex:2;box-sizing:border-box;">
           </div>
         </div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px dashed rgba(251,191,36,0.25);">
+          <button type="button" onclick="guardarFormComoPromoGeneral()"
+            style="width:100%;background:#111;color:#fff;border:none;padding:9px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">💾 Guardar estos ajustes como promo general</button>
+          <div style="font-size:10px;color:#888;margin-top:4px;text-align:center;">Se precargarán en todos los catálogos nuevos de cliente.</div>
+        </div>
+      </div>
       </div>
 
       <!-- Banner global afiliado -->
