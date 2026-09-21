@@ -953,6 +953,7 @@
                     <p id="perfil-tel" onclick="editarTelefonoVendedor()" style="cursor:pointer;" title="Toca para editar el teléfono"></p>
                     <p id="perfil-dui" onclick="editarDui()" style="font-size:12px;color:var(--plateado);cursor:pointer;margin-top:2px;"></p>
                     <p id="perfil-fecha-reg" style="font-size:11px;color:var(--plateado);margin-top:2px;"></p>
+                    <p id="perfil-proximo-corte" style="font-size:12px;font-weight:600;margin-top:4px;line-height:1.4;"></p>
                 </div>
             </div>
             <div id="perfil-notas-wrap" style="display:none;background:var(--gris2);border:1px solid var(--borde);border-radius:8px;padding:10px 12px;margin-bottom:14px;cursor:pointer;" onclick="editarNotasVendedor()">
@@ -2152,6 +2153,46 @@ function renderDashboard() {
     }).join('') : '<p style="color:var(--plateado);font-size:13px;">No hay datos aún.</p>';
 }
 
+// ── PRÓXIMO CORTE (siempre visible) ─────────────────────────────────────────
+// Próximo corte = último corte (fechaCorte) + 30 días — la misma regla que usan
+// las alertas y el cierre del link de inventario. Si el vendedor aún no ha
+// hecho ningún corte, se cuenta desde su registro SOLO para mostrarlo (marcado
+// como estimado): las alertas y el link de inventario siguen usando únicamente
+// fechaCorte, así que esto no bloquea ni avisa a nadie por su cuenta.
+function infoProximoCorte(v) {
+    const base = v?.fechaCorte || v?.fechaRegistro;
+    if (!base) return null;
+    const fecha = new Date(base);
+    if (isNaN(fecha)) return null;
+    fecha.setDate(fecha.getDate() + 30);
+    const dias = Math.ceil((fecha - Date.now()) / 86400000);
+    const color = dias <= 0 ? "#e74c3c" : dias <= 2 ? "#e67e22" : dias <= 5 ? "#C9A84C" : "var(--plateado)";
+    return { fecha, dias, color, estimado: !v.fechaCorte };
+}
+
+function _proximoCorteCardHTML(v) {
+    const info = infoProximoCorte(v);
+    if (!info) return `<div style="font-size:10px;color:var(--plateado);margin-top:3px;">📅 Sin corte registrado</div>`;
+    const corta = info.fecha.toLocaleDateString("es-SV", { day: "numeric", month: "short" });
+    const cuando = info.dias > 1 ? `en ${info.dias} d` : info.dias === 1 ? "mañana" : info.dias === 0 ? "hoy" : `vencido hace ${Math.abs(info.dias)} d`;
+    const titulo = `Próximo corte: ${info.fecha.toLocaleDateString("es-SV", { day: "numeric", month: "long", year: "numeric" })}` + (info.estimado ? " (estimado desde su registro: aún no ha hecho ningún corte)" : "");
+    return `<div style="font-size:10px;font-weight:600;color:${info.color};margin-top:3px;" title="${sanitizar(titulo)}">📅 Corte ${info.estimado ? "~" : ""}${corta} · ${cuando}</div>`;
+}
+
+function renderProximoCortePerfil() {
+    const el = document.getElementById("perfil-proximo-corte");
+    if (!el || !vendedorActual) return;
+    const info = infoProximoCorte(vendedorActual);
+    if (!info) { el.innerHTML = "📅 Próximo corte: sin corte registrado"; el.style.color = "var(--plateado)"; return; }
+    const fmt = f => f.toLocaleDateString("es-SV", { day: "numeric", month: "short", year: "numeric" });
+    const cuando = info.dias > 1 ? `faltan ${info.dias} días` : info.dias === 1 ? "vence mañana" : info.dias === 0 ? "vence hoy" : `vencido hace ${Math.abs(info.dias)} días`;
+    const detalle = info.estimado
+        ? `<span style="font-weight:400;">30 días desde su registro — aún no ha hecho ningún corte</span>`
+        : `<span style="font-weight:400;">último corte: ${fmt(new Date(vendedorActual.fechaCorte))}</span>`;
+    el.style.color = info.color;
+    el.innerHTML = `📅 Próximo corte: ${info.estimado ? "~ " : ""}${fmt(info.fecha)} · ${cuando} <span style="opacity:.8;">(${detalle})</span>`;
+}
+
 function renderVendedores() {
     const grid = document.getElementById("grid-vendedores");
     grid.innerHTML = vendedores.map(v => {
@@ -2196,6 +2237,7 @@ function renderVendedores() {
                 ${v.comisionFija !== undefined && v.comisionFija !== null ? `<div style="display:inline-block;font-size:9px;font-weight:700;color:#0277bd;background:rgba(2,119,189,0.15);border:1px solid rgba(2,119,189,0.35);border-radius:5px;padding:1px 6px;">${v.comisionFija}% fija</div>` : ''}
             </div>
             <div class="vendedor-stock">${stock} piezas</div>
+            ${_proximoCorteCardHTML(v)}
             ${(v.tipo === "afiliado" || v.tipo === "hibrido") ? `<div style="font-size:11px;font-weight:700;color:#27ae60;margin-top:2px;" title="Comisión acumulada sin cortar">💰 $${comisionLive.toFixed(2)} <span style="color:var(--plateado);font-weight:400;">(${comisionPct}%)</span></div>` : ''}
         </div>`;
     }).join('') + `<button class="btn-nuevo-vendedor" onclick="abrirModalVendedor()">+ Nuevo Vendedor</button>`;
@@ -3546,6 +3588,7 @@ function abrirPerfil(codigo) {
     } else {
         recordatorio.style.display = "none";
     }
+    renderProximoCortePerfil();
     renderPerfilStats();
     renderInventario();
     renderVentasPerfil();
@@ -6398,6 +6441,9 @@ async function confirmarCorte() {
         else c.vendido = 0;
     });
     if (vendedorActual) vendedorActual.fechaCorte = new Date().toISOString();
+    renderProximoCortePerfil();
+    const recCorte = document.getElementById("recordatorio-corte");
+    if (recCorte) recCorte.style.display = "none";
     await apiPost({ accion: "GUARDAR_TOKEN", vendedor: vendedorActual.codigo, token: "" });
     sessionStorage.removeItem("vx_token_" + vendedorActual.codigo);
     toast("✅ Corte realizado correctamente");
