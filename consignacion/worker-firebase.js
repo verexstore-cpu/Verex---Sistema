@@ -753,7 +753,7 @@ async function enviar(){
         case "GET_INVENTARIO_VENDEDOR": {
           if (!d.vendedor || !d.token) return json({ ok: false, error: "vendedor y token requeridos" });
           const vendInv = await sb.get("vendedores", d.vendedor);
-          if (!vendInv || String(vendInv.tokenInventario) !== String(d.token)) {
+          if (!vendInv || !vendInv.tokenInventario || String(vendInv.tokenInventario) !== String(d.token)) {
             return json({ ok: false, error: "Token inválido" });
           }
           if (vendInv.pin && String(vendInv.pin) !== String(d.pin || "")) {
@@ -1556,13 +1556,8 @@ async function enviar(){
         }
 
         case "REGISTRAR_VENTA_VENDEDOR": {
-          // ⚠️ REVERTIDO TEMPORALMENTE (2026-09-14): exigía validarVendedorToken
-          // (token+PIN), pero inventario-sellers quedó con el deploy de
-          // Cloudflare Pages desconectado y el frontend en producción todavía
-          // no manda esos campos — el portal de vendedores quedó roto en vivo.
-          // Restaurar la validación en cuanto se reconecte el deploy y el
-          // frontend actualizado esté sirviendo de verdad. La verificación de
-          // dueño de la pieza (abajo) se mantiene igual.
+          const chkRVV = await validarVendedorToken(sb, d.vendedor, d.token, d.pin);
+          if (!chkRVV.ok) { result = { ok: false, error: chkRVV.error }; break; }
           const consV = await sb.get("consignacion", d.id);
           if (!consV) { result = { ok: false, error: "Item no encontrado" }; break; }
           if (String(consV.vendedor) !== String(d.vendedor)) {
@@ -1813,9 +1808,10 @@ async function enviar(){
         }
 
         case "GET_VENTAS_VENDEDOR": {
-          // ⚠️ REVERTIDO TEMPORALMENTE (2026-09-14) — ver nota en
-          // REGISTRAR_VENTA_VENDEDOR: inventario-sellers quedó con el deploy
-          // desconectado, el frontend en vivo no manda token/PIN todavía.
+          if (!esAdmin) {
+            const chkGV = await validarVendedorToken(sb, d.vendedor, d.token, d.pin);
+            if (!chkGV.ok) { result = { ok: false, error: chkGV.error }; break; }
+          }
           const vendGV = await sb.get("vendedores", d.vendedor);
           result = { ok: true, ventas: (vendGV && Array.isArray(vendGV.historialVentas)) ? vendGV.historialVentas : [] };
           break;
@@ -2809,7 +2805,9 @@ async function enviar(){
         case "VERIFICAR_TOKEN": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, razon: "no_encontrado" }; break; }
-          if (String(vend.tokenInventario) !== String(d.token)) {
+          // Sin token guardado (nunca tuvo link, o se cerró) nadie entra: antes,
+          // String(undefined) === "undefined" dejaba pasar a quien mandara ese texto.
+          if (!vend.tokenInventario || String(vend.tokenInventario) !== String(d.token)) {
             result = { ok: false, razon: "token_invalido" }; break;
           }
           // Segunda capa: si el vendedor tiene PIN configurado, también se
@@ -3172,8 +3170,10 @@ async function enviar(){
         }
 
         case "GET_ENTREGAS_PENDIENTES": {
-          // ⚠️ REVERTIDO TEMPORALMENTE (2026-09-14) — ver nota en
-          // REGISTRAR_VENTA_VENDEDOR.
+          if (!esAdmin) {
+            const chkGEP = await validarVendedorToken(sb, d.vendedor, d.token, d.pin);
+            if (!chkGEP.ok) { result = { ok: false, error: chkGEP.error }; break; }
+          }
           const ents = await sb.query("entregas", "vendedor", "==", d.vendedor);
           result = { ok: true, entregas: ents.filter(e => e.estado === "pendiente") };
           break;
@@ -3197,11 +3197,15 @@ async function enviar(){
         }
 
         case "CONFIRMAR_ENTREGA_RECIBO": {
-          // ⚠️ REVERTIDO TEMPORALMENTE (2026-09-14) — ver nota en
-          // REGISTRAR_VENTA_VENDEDOR. El frontend en vivo tampoco manda
-          // siquiera "vendedor" en esta acción todavía.
           const entDoc = await sb.get("entregas", d.id);
           if (!entDoc) { result = { ok: false, error: "Entrega no encontrada" }; break; }
+          if (!esAdmin) {
+            const chkCER = await validarVendedorToken(sb, d.vendedor, d.token, d.pin);
+            if (!chkCER.ok) { result = { ok: false, error: chkCER.error }; break; }
+            if (String(entDoc.vendedor) !== String(d.vendedor)) {
+              result = { ok: false, error: "Esta entrega no pertenece a este vendedor" }; break;
+            }
+          }
           const esperado  = String(entDoc.codigoRecibo || "").toUpperCase();
           const ingresado = String(d.codigoRecibo || "").toUpperCase();
           if (esperado && esperado !== ingresado) {
@@ -4111,7 +4115,7 @@ function sanearConfigPublico(cfg) {
 async function validarVendedorToken(sb, vendedor, token, pin) {
   if (!vendedor || !token) return { ok: false, error: "vendedor y token requeridos" };
   const vend = await sb.get("vendedores", vendedor);
-  if (!vend || String(vend.tokenInventario) !== String(token)) {
+  if (!vend || !vend.tokenInventario || String(vend.tokenInventario) !== String(token)) {
     return { ok: false, error: "Token inválido" };
   }
   if (vend.pin && String(vend.pin) !== String(pin || "")) {
