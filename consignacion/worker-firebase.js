@@ -1402,9 +1402,7 @@ async function enviar(){
             (l.diferencia !== 0 ? ` — diferencia $${l.diferencia.toFixed(2)}` : "") +
             (l.descuentoViejo > 0 && !l.aplicaDescuento ? " (sin descuento en la pieza nueva)" : "") +
             (d.motivo ? " — Motivo: " + d.motivo : "")
-          ).join("
-") + (planCam.aFavorCliente > 0 ? `
-⚠️ A favor del cliente: $${planCam.aFavorCliente.toFixed(2)}` : "");
+          ).join("\n") + (planCam.aFavorCliente > 0 ? `\n⚠️ A favor del cliente: $${planCam.aFavorCliente.toFixed(2)}` : "");
 
           const patchCam = {
             items: JSON.stringify(planCam.items),
@@ -1412,8 +1410,7 @@ async function enviar(){
             subtotal: planCam.subtotal,
             saldoPendiente: planCam.saldo,
             estado: planCam.saldo <= 0 ? "pagado" : "credito",
-            nota: (vdCam.nota ? vdCam.nota + "
-" : "") + notaCam
+            nota: (vdCam.nota ? vdCam.nota + "\n" : "") + notaCam
           };
           // El descuento cambió (una pieza con descuento se fue): un "10%"
           // guardado ya no describe la venta, así que queda como monto exacto.
