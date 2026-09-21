@@ -1468,47 +1468,162 @@ function renderVentasAdmin() {
     }).join("");
 }
 
-// Cambio de producto en una venta directa ya registrada (ej. devolución
-// para cambiar de pieza). Regresa la vieja a bodega, descuenta la nueva, y
-// ajusta total/saldoPendiente por la diferencia de precio — puede subir el
-// saldo (pieza nueva más cara) o bajarlo (más barata).
-async function cambiarProductoVentaDirecta(ventaId) {
+// Cambio de una o varias piezas de la misma venta directa a la vez. El
+// desglose que se muestra antes de confirmar lo calcula el worker
+// (soloCalcular) — es la misma cuenta que se guarda al confirmar, así lo que
+// ves es lo que queda. Las piezas viejas vuelven a bodega, las nuevas se
+// descuentan, y el saldo se ajusta según lo que el cliente PAGÓ por cada pieza
+// (con su parte del descuento) contra el precio de la nueva.
+let _cambioVDA = null; // { ventaId, items, tieneDescuento }
+let _cambioVDATimer = null, _cambioVDASeq = 0, _cambioVDAEnviando = false;
+
+async function _cambioVDAApi(datos) {
+    const res = await fetch(API_URL, {
+        method: "POST",
+        body: JSON.stringify({ accion: "CAMBIAR_PRODUCTO_VENTA_DIRECTA", _pass: ADMIN_PASS, ...datos })
+    });
+    return await res.json();
+}
+
+function cambiarProductoVentaDirecta(ventaId) {
     const venta = _adminVentas.find(v => v.id === ventaId);
     if (!venta) return toast("⚠️ Venta no encontrada", "#ef4444");
     let items = [];
     try { items = typeof venta.items === "string" ? JSON.parse(venta.items || "[]") : (venta.items || []); } catch(_) {}
     if (!items.length) return toast("⚠️ Esta venta no tiene productos registrados", "#ef4444");
 
-    let codigoViejo;
-    if (items.length === 1) {
-        codigoViejo = items[0].codigo;
-    } else {
-        const lista = items.map((it, i) => `${i+1}. ${it.codigo} — ${it.nombre || "—"} ($${parseFloat(it.precio||0).toFixed(2)})`).join("\n");
-        const eleccion = prompt(`¿Cuál producto se devuelve para cambio?\n\n${lista}\n\nEscribe el número:`, "1");
-        const idx = parseInt(eleccion) - 1;
-        if (isNaN(idx) || !items[idx]) return;
-        codigoViejo = items[idx].codigo;
-    }
+    _cambioVDA = { ventaId, items, tieneDescuento: (parseFloat(venta.descuento) || 0) > 0 };
+    document.getElementById("cambio-vda-body").innerHTML = `
+        <p style="font-size:12px;color:#666;margin:0 0 12px;line-height:1.5;">Marca las piezas que el cliente devuelve y escribe el código de la que se lleva en su lugar.</p>
+        ${items.map((it, i) => {
+            const precio = parseFloat(it.precio) || 0;
+            const pagado = it.precioPagado != null ? parseFloat(it.precioPagado) : precio;
+            const precioTxt = pagado < precio - 0.005
+                ? `Pagó $${pagado.toFixed(2)} <span style="color:#999;">(precio $${precio.toFixed(2)})</span>`
+                : `$${precio.toFixed(2)}`;
+            return `
+            <div style="border:1.5px solid #e2e2e2;border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+                <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin:0;text-transform:none;letter-spacing:0;font-weight:400;color:#111;">
+                    <input type="checkbox" id="cvda-on-${i}" onchange="cambioVDAToggle(${i})" style="margin:3px 0 0;flex-shrink:0;">
+                    <span style="flex:1;min-width:0;">
+                        <span style="display:block;font-size:10px;color:#7c3aed;font-weight:700;">${esc(it.codigo)}</span>
+                        <span style="display:block;font-size:13px;font-weight:600;color:#111;">${esc(it.nombre || "—")}${(parseInt(it.cantidad)||1) > 1 ? ` ×${parseInt(it.cantidad)}` : ""}</span>
+                        <span style="display:block;font-size:11px;color:#555;">${precioTxt}</span>
+                    </span>
+                </label>
+                <div id="cvda-det-${i}" style="display:none;margin-top:10px;padding-left:26px;">
+                    <input type="text" id="cvda-nuevo-${i}" placeholder="Código de la pieza nueva" autocapitalize="characters" autocomplete="off" oninput="cambioVDAPreview()" style="width:100%;box-sizing:border-box;padding:9px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;margin-bottom:8px;">
+                    ${_cambioVDA.tieneDescuento ? `
+                    <label style="display:flex;gap:8px;align-items:center;font-size:12px;color:#555;cursor:pointer;margin:0;text-transform:none;letter-spacing:0;font-weight:400;">
+                        <input type="checkbox" id="cvda-desc-${i}" onchange="cambioVDAPreview()" style="margin:0;">
+                        La pieza nueva lleva el descuento
+                    </label>` : ""}
+                </div>
+            </div>`;
+        }).join("")}
+        <input type="text" id="cvda-motivo" placeholder="Motivo del cambio (opcional)" style="width:100%;box-sizing:border-box;padding:9px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;margin:6px 0 12px;">
+        <div id="cvda-resumen" style="font-size:12px;color:#555;margin-bottom:14px;"></div>
+        <div style="display:flex;gap:8px;">
+            <button onclick="document.getElementById('modal-cambio-vda').style.display='none'" style="flex:1;background:#f0f2f5;color:#111;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Cancelar</button>
+            <button id="cvda-confirmar" disabled onclick="confirmarCambioVDA()" style="flex:1;background:#111;color:#fff;border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Confirmar cambio</button>
+        </div>`;
+    cambioVDAPreview();
+    document.getElementById("modal-cambio-vda").style.display = "flex";
+}
 
-    const codigoNuevo = prompt(`Código del producto NUEVO que se lleva el cliente (reemplaza a "${codigoViejo}"):`, "");
-    if (!codigoNuevo) return;
-    const motivo = prompt("Motivo del cambio (opcional):", "") || "";
+function cambioVDAToggle(i) {
+    const on = document.getElementById("cvda-on-" + i).checked;
+    document.getElementById("cvda-det-" + i).style.display = on ? "block" : "none";
+    if (on) document.getElementById("cvda-nuevo-" + i)?.focus();
+    cambioVDAPreview();
+}
 
-    if (!confirm(`¿Confirmar cambio?\n\n"${codigoViejo}" → "${codigoNuevo.trim()}"\n\nSi la pieza nueva vale más, el saldo pendiente del cliente sube. Si vale menos, baja.`)) return;
-
-    try {
-        const res = await fetch(API_URL, {
-            method: "POST",
-            body: JSON.stringify({ accion: "CAMBIAR_PRODUCTO_VENTA_DIRECTA", _pass: ADMIN_PASS, id: ventaId, codigoViejo, codigoNuevo: codigoNuevo.trim(), motivo })
+// Piezas marcadas → lista de cambios para el worker. `incompleto` = hay una
+// marcada a la que todavía le falta el código nuevo.
+function cambioVDASeleccion() {
+    const cambios = []; let incompleto = false;
+    (_cambioVDA?.items || []).forEach((it, i) => {
+        if (!document.getElementById("cvda-on-" + i)?.checked) return;
+        const nuevo = (document.getElementById("cvda-nuevo-" + i)?.value || "").trim().toUpperCase();
+        if (!nuevo) { incompleto = true; return; }
+        cambios.push({
+            codigoViejo: it.codigo, codigoNuevo: nuevo,
+            aplicaDescuento: !!document.getElementById("cvda-desc-" + i)?.checked
         });
-        const data = await res.json();
+    });
+    return { cambios, incompleto };
+}
+
+function cambioVDAPreview() {
+    clearTimeout(_cambioVDATimer);
+    const ventaId = _cambioVDA?.ventaId;
+    const btn = document.getElementById("cvda-confirmar");
+    const res = document.getElementById("cvda-resumen");
+    if (!ventaId || !btn || !res) return;
+    btn.disabled = true; btn.style.opacity = "0.35"; btn.style.cursor = "not-allowed";
+    const { cambios, incompleto } = cambioVDASeleccion();
+    _cambioVDASeq++;
+    if (!cambios.length || incompleto) {
+        res.textContent = incompleto
+            ? "Escribe el código de la pieza nueva en cada pieza marcada."
+            : "Marca al menos una pieza para cambiar.";
+        return;
+    }
+    res.textContent = "Calculando…";
+    const seq = _cambioVDASeq;
+    _cambioVDATimer = setTimeout(async () => {
+        let data;
+        try { data = await _cambioVDAApi({ id: ventaId, cambios, soloCalcular: true }); }
+        catch (e) { data = { ok: false, error: "No se pudo conectar con el servidor" }; }
+        if (seq !== _cambioVDASeq) return; // ya cambió la selección mientras se calculaba
+        if (!data.ok) {
+            res.innerHTML = `<span style="color:#dc2626;">⚠️ ${esc(data.error || "No se pudo calcular el cambio")}</span>`;
+            return;
+        }
+        const m = n => "$" + Math.abs(parseFloat(n) || 0).toFixed(2);
+        const filas = (data.lineas || []).map(l => {
+            const dif = parseFloat(l.diferencia) || 0;
+            const nota = l.descuentoViejo > 0
+                ? (l.aplicaDescuento ? " · con descuento" : ` · pierde descuento de ${m(l.descuentoViejo)}`)
+                : "";
+            return `<div style="padding:8px 0;border-bottom:1px solid #e2e2e2;">
+                <div style="color:#111;">${esc(l.codigoViejo)} → <strong>${esc(l.nombreNuevo)}</strong> <span style="color:#7c3aed;font-size:10px;font-weight:700;">${esc(l.codigoNuevo)}</span></div>
+                <div>Pagó ${m(l.precioViejo)} · nueva ${m(l.precioNuevo)}${nota}
+                    → <strong style="color:${dif > 0 ? '#c2410c' : dif < 0 ? '#15803d' : '#555'};">${dif > 0 ? "+" : dif < 0 ? "−" : ""}${m(dif)}</strong></div>
+            </div>`;
+        }).join("");
+        const dif = parseFloat(data.diferencia) || 0;
+        const titulo = dif > 0 ? `El cliente debe ${m(dif)} más`
+            : dif < 0 ? `Baja ${m(dif)} respecto a lo que pagó`
+            : "Sin diferencia de monto";
+        res.innerHTML = `${filas}
+            <div style="margin-top:10px;color:#111;font-size:13px;font-weight:700;">${titulo}</div>
+            <div>Nuevo total ${m(data.nuevoTotal)} · Saldo pendiente ${m(data.nuevoSaldo)}</div>
+            ${data.aFavorCliente > 0 ? `<div style="margin-top:6px;color:#c2410c;font-weight:600;">⚠️ Le sobran ${m(data.aFavorCliente)} al cliente: hay que devolvérselos.</div>` : ""}`;
+        btn.disabled = false; btn.style.opacity = "1"; btn.style.cursor = "pointer";
+    }, 350);
+}
+
+async function confirmarCambioVDA() {
+    if (_cambioVDAEnviando || !_cambioVDA) return;
+    const { cambios, incompleto } = cambioVDASeleccion();
+    if (!cambios.length || incompleto) return;
+    const btn = document.getElementById("cvda-confirmar");
+    _cambioVDAEnviando = true; if (btn) { btn.disabled = true; btn.style.opacity = "0.35"; }
+    try {
+        const motivo = (document.getElementById("cvda-motivo")?.value || "").trim();
+        const data = await _cambioVDAApi({ id: _cambioVDA.ventaId, cambios, motivo });
         if (!data.ok) throw new Error(data.error || "Error del servidor");
         const diff = parseFloat(data.diferencia) || 0;
         const msgDiff = diff > 0 ? `El saldo del cliente subió $${diff.toFixed(2)}` : diff < 0 ? `El saldo del cliente bajó $${Math.abs(diff).toFixed(2)}` : "Sin cambio en el monto";
-        toast(`✅ Producto cambiado. ${msgDiff}`, "#22c55e");
+        document.getElementById("modal-cambio-vda").style.display = "none";
+        toast(`✅ ${cambios.length > 1 ? cambios.length + " productos cambiados" : "Producto cambiado"}. ${msgDiff}`, "#22c55e");
         cargarVentasAdmin();
     } catch (e) {
         toast("❌ " + e.message, "#ef4444");
+        if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
+    } finally {
+        _cambioVDAEnviando = false;
     }
 }
 
@@ -6514,6 +6629,17 @@ async function generarPDFCatalogo() {
                 style="flex:1;background:#7c3aed;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none;">⬇️ Descargar QR</a>
         </div>
         <button onclick="abrirEditorCambios()" style="width:100%;background:#fff;color:#111;border:1.5px solid #111;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">✏️ Editar contenido de la página</button>
+    </div>
+</div>
+
+<!-- Modal Cambiar producto — una o varias piezas de una venta directa -->
+<div id="modal-cambio-vda" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10000;justify-content:center;align-items:center;padding:20px;">
+    <div style="background:#fff;border-radius:16px;padding:24px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.4);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <h3 style="margin:0;font-size:16px;font-weight:700;">🔄 Cambiar producto</h3>
+            <button onclick="document.getElementById('modal-cambio-vda').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;">✕</button>
+        </div>
+        <div id="cambio-vda-body"></div>
     </div>
 </div>
 

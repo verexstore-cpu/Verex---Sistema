@@ -1217,7 +1217,7 @@ async function enviar(){
           await sb.set("ventas_directas", vdId, {
             id: vdId, fecha: d.fecha || new Date().toISOString(),
             cliente: d.cliente || "", telefono: d.telefono || "",
-            items: JSON.stringify(d.items || []),
+            items: JSON.stringify(completarPrecioPagadoVD(d.items || [], d.descuento)),
             subtotal: d.subtotal || d.total || 0,
             descuento: d.descuento || 0,
             descuentoTipo:  d.descuentoTipo  || "monto",
@@ -1328,7 +1328,14 @@ async function enviar(){
           // enganche=0 (crédito sin inicial), "0 || totalNuevo" da totalNuevo en JS
           // (0 es falsy), dejando el saldo en $0 aunque no se hubiera pagado nada.
           const pagadoHastaAhora = Math.max(0, (parseFloat(vd.total)||0) - (parseFloat(vd.saldoPendiente)||0));
+          // El descuento cambió: lo que se pagó por cada pieza hay que repartirlo de nuevo.
+          let itemsDescNuevos;
+          try {
+            itemsDescNuevos = completarPrecioPagadoVD(
+              JSON.parse(vd.items || "[]").map(({ precioPagado, ...it }) => it), descNuevo);
+          } catch (_) {}
           await sb.update("ventas_directas", d.id, {
+            ...(itemsDescNuevos ? { items: JSON.stringify(itemsDescNuevos) } : {}),
             subtotal:       subtotalNuevo,
             total:          totalNuevo,
             descuento:      descNuevo,
@@ -1360,71 +1367,63 @@ async function enviar(){
         }
 
         case "CAMBIAR_PRODUCTO_VENTA_DIRECTA": {
-          // Cambio de pieza en una venta directa ya registrada (ej. devolución
-          // por cambio). Regresa la pieza vieja a bodega, descuenta la nueva,
-          // y ajusta total/saldoPendiente por la diferencia de precio — puede
-          // subir el saldo (pieza nueva más cara) o bajarlo (más barata).
+          // Cambio de una o varias piezas en una venta directa ya registrada
+          // (ej. devolución por cambio). Regresa las piezas viejas a bodega,
+          // descuenta las nuevas, y ajusta total/saldoPendiente según lo que
+          // el cliente PAGÓ por cada pieza vieja (con su parte del descuento)
+          // contra el precio de la nueva — la nueva no hereda el descuento
+          // salvo que el cambio traiga aplicaDescuento:true. Puede subir el
+          // saldo (pieza nueva más cara / descuento perdido) o bajarlo.
+          // Acepta `cambios: [{codigoViejo, codigoNuevo, aplicaDescuento}]`, o
+          // el formato viejo de una sola pieza (codigoViejo/codigoNuevo).
+          // soloCalcular:true devuelve el desglose sin guardar nada.
           if (!esAdmin) return forbidden();
           const vdCam = await sb.get("ventas_directas", d.id);
           if (!vdCam) { result = { ok: false, error: "Venta no encontrada" }; break; }
-          const itemsCam = JSON.parse(vdCam.items || "[]");
-          const idxCam = itemsCam.findIndex(it => it.codigo === d.codigoViejo);
-          if (idxCam === -1) { result = { ok: false, error: "Ese producto no está en esta venta" }; break; }
-          const itemViejo = itemsCam[idxCam];
-          const cantCam = parseInt(itemViejo.cantidad) || 1;
+          const cambiosCam = Array.isArray(d.cambios) && d.cambios.length
+            ? d.cambios
+            : [{ codigoViejo: d.codigoViejo, codigoNuevo: d.codigoNuevo, aplicaDescuento: d.aplicaDescuento }];
+          const planCam = await planearCambioVD(sb, vdCam, cambiosCam);
+          if (planCam.error) { result = { ok: false, error: planCam.error }; break; }
 
-          const codigoNuevoCam = String(d.codigoNuevo || "").trim();
-          if (!codigoNuevoCam) { result = { ok: false, error: "Falta el código del producto nuevo" }; break; }
-          const sNuevoCam = await sb.get("stock", codigoNuevoCam);
-          if (!sNuevoCam) { result = { ok: false, error: "El producto nuevo (" + codigoNuevoCam + ") no existe en stock" }; break; }
-          const dispNuevoCam = (parseInt(sNuevoCam.stock_bodega)||0) + (parseInt(sNuevoCam.stock_tienda)||0);
-          if (dispNuevoCam < cantCam) { result = { ok: false, error: "Sin stock suficiente del producto nuevo" }; break; }
-
-          // Devolver la pieza vieja a bodega
-          const sViejoCam = await sb.get("stock", d.codigoViejo);
-          if (sViejoCam) {
-            await sb.update("stock", d.codigoViejo, {
-              stock_bodega: (parseInt(sViejoCam.stock_bodega)||0) + cantCam,
-              stock_vendido: Math.max(0, (parseInt(sViejoCam.stock_vendido)||0) - cantCam)
-            });
-          }
-          // Descontar la pieza nueva (bodega primero, luego tienda)
-          const bodNuevoCam = parseInt(sNuevoCam.stock_bodega)||0, tieNuevoCam = parseInt(sNuevoCam.stock_tienda)||0;
-          const restaBodCam = Math.min(cantCam, bodNuevoCam);
-          await sb.update("stock", codigoNuevoCam, {
-            stock_bodega: Math.max(0, bodNuevoCam - restaBodCam),
-            stock_tienda: Math.max(0, tieNuevoCam - (cantCam - restaBodCam)),
-            stock_vendido: (parseInt(sNuevoCam.stock_vendido)||0) + cantCam
-          });
-
-          // Reemplazar el item y ajustar montos por la diferencia de precio
-          const precioViejoCam = parseFloat(itemViejo.precio) || 0;
-          const precioNuevoCam = parseFloat(sNuevoCam.precio) || 0;
-          const diffCam = (precioNuevoCam - precioViejoCam) * cantCam;
-          itemsCam[idxCam] = {
-            ...itemViejo,
-            codigo: codigoNuevoCam,
-            nombre: sNuevoCam.nombre_base || sNuevoCam.nombre || codigoNuevoCam,
-            precio: precioNuevoCam,
-            cambiadoDe: d.codigoViejo,
-            fechaCambio: new Date().toISOString() // para que el recibo marque que esta pieza no es de la fecha original
+          const resumenCam = {
+            lineas: planCam.lineas, diferencia: planCam.diferencia,
+            nuevoTotal: planCam.total, nuevoSaldo: planCam.saldo,
+            aFavorCliente: planCam.aFavorCliente
           };
+          if (d.soloCalcular) { result = { ok: true, preview: true, ...resumenCam }; break; }
 
-          const totalCam = Math.max(0, (parseFloat(vdCam.total)||0) + diffCam);
-          const subtotalCam = Math.max(0, (parseFloat(vdCam.subtotal)||0) + diffCam);
-          const saldoCam = Math.max(0, (parseFloat(vdCam.saldoPendiente)||0) + diffCam);
+          for (const [codigo, campos] of Object.entries(planCam.stockUpdates)) {
+            await sb.update("stock", codigo, campos);
+          }
           const fechaCam = new Date().toLocaleDateString("es-SV", { day: "numeric", month: "short", year: "numeric" });
-          const notaCam = `🔄 Cambio el ${fechaCam}: "${itemViejo.nombre||d.codigoViejo}" (${d.codigoViejo}) → "${itemsCam[idxCam].nombre}" (${codigoNuevoCam})${diffCam !== 0 ? ` — diferencia $${diffCam.toFixed(2)}` : ""}${d.motivo ? " — Motivo: " + d.motivo : ""}`;
+          const notaCam = planCam.lineas.map(l =>
+            `🔄 Cambio el ${fechaCam}: "${l.nombreViejo}" (${l.codigoViejo}) → "${l.nombreNuevo}" (${l.codigoNuevo})` +
+            (l.diferencia !== 0 ? ` — diferencia $${l.diferencia.toFixed(2)}` : "") +
+            (l.descuentoViejo > 0 && !l.aplicaDescuento ? " (sin descuento en la pieza nueva)" : "") +
+            (d.motivo ? " — Motivo: " + d.motivo : "")
+          ).join("
+") + (planCam.aFavorCliente > 0 ? `
+⚠️ A favor del cliente: $${planCam.aFavorCliente.toFixed(2)}` : "");
 
-          await sb.update("ventas_directas", d.id, {
-            items: JSON.stringify(itemsCam),
-            total: totalCam,
-            subtotal: subtotalCam,
-            saldoPendiente: saldoCam,
-            estado: saldoCam <= 0 ? "pagado" : "credito",
-            nota: (vdCam.nota ? vdCam.nota + "\n" : "") + notaCam
-          });
-          result = { ok: true, diferencia: diffCam, nuevoTotal: totalCam, nuevoSaldo: saldoCam };
+          const patchCam = {
+            items: JSON.stringify(planCam.items),
+            total: planCam.total,
+            subtotal: planCam.subtotal,
+            saldoPendiente: planCam.saldo,
+            estado: planCam.saldo <= 0 ? "pagado" : "credito",
+            nota: (vdCam.nota ? vdCam.nota + "
+" : "") + notaCam
+          };
+          // El descuento cambió (una pieza con descuento se fue): un "10%"
+          // guardado ya no describe la venta, así que queda como monto exacto.
+          if (planCam.descuento !== r2VD(vdCam.descuento)) {
+            patchCam.descuento = planCam.descuento;
+            patchCam.descuentoTipo = "monto";
+            patchCam.descuentoValor = planCam.descuento;
+          }
+          await sb.update("ventas_directas", d.id, patchCam);
+          result = { ok: true, ...resumenCam };
           break;
         }
 
@@ -1453,12 +1452,16 @@ async function enviar(){
             stock_vendido: (parseInt(sAdd.stock_vendido)||0) + cantAdd
           });
 
-          const itemsAdd = JSON.parse(vdAdd.items || "[]");
+          // Antes de sumar la pieza nueva (sin descuento), fijar lo que pagó el
+          // cliente por las que ya tenía — si no, al repartir el descuento de la
+          // venta después, la pieza nueva le quitaría parte a las viejas.
+          const itemsAdd = completarPrecioPagadoVD(JSON.parse(vdAdd.items || "[]"), vdAdd.descuento);
           const precioAdd = parseFloat(sAdd.precio) || 0;
           itemsAdd.push({
             codigo: codigoAdd,
             nombre: sAdd.nombre_base || sAdd.nombre || codigoAdd,
             precio: precioAdd,
+            precioPagado: precioAdd,
             cantidad: cantAdd,
             fechaAgregado: new Date().toISOString() // para que el recibo marque que no es de la compra original
           });
@@ -3935,6 +3938,151 @@ function json(data, status = 200) {
 }
 function forbidden() {
   return json({ ok: false, error: "No autorizado" }, 403);
+}
+
+// ── VENTAS DIRECTAS: PRECIO REALMENTE PAGADO POR PIEZA ────────────
+// El descuento de una venta directa vive a nivel de venta (subtotal /
+// descuento / total), no por pieza. Para poder cambiar una pieza sabiendo
+// cuánto pagó el cliente POR ELLA, cada item guarda `precioPagado`: su precio
+// unitario ya con su parte del descuento, repartido proporcional al precio de
+// lista. Las ventas anteriores a esto no lo tienen — se les calcula igual al
+// momento de necesitarlo.
+const r2VD = n => Math.round((parseFloat(n) || 0) * 100) / 100;
+const r4VD = n => Math.round((parseFloat(n) || 0) * 10000) / 10000;
+
+// Rellena `precioPagado` SOLO en los items que no lo tienen; los que ya lo
+// tienen (ej. una pieza agregada o cambiada sin descuento) no se tocan.
+function completarPrecioPagadoVD(items, descuento) {
+  let base = 0, yaDescontado = 0;
+  for (const it of items) {
+    const linea = (parseFloat(it.precio) || 0) * (parseInt(it.cantidad) || 1);
+    if (it.precioPagado == null) base += linea;
+    else yaDescontado += linea - (parseFloat(it.precioPagado) || 0) * (parseInt(it.cantidad) || 1);
+  }
+  const ratio = base > 0
+    ? Math.min(1, Math.max(0, ((parseFloat(descuento) || 0) - yaDescontado) / base))
+    : 0;
+  return items.map(it => it.precioPagado != null
+    ? it
+    : { ...it, precioPagado: r4VD((parseFloat(it.precio) || 0) * (1 - ratio)) });
+}
+
+// Calcula un cambio de piezas (una o varias) sobre una venta directa SIN
+// escribir nada: valida, y devuelve los items nuevos, los movimientos de
+// stock y los montos. Sirve tanto para mostrar el desglose antes de
+// confirmar (soloCalcular) como para aplicarlo — así lo que se ve es
+// exactamente lo que se guarda, y si alguna pieza falla no queda un cambio a
+// medias. Cada cambio: { codigoViejo, codigoNuevo, aplicaDescuento }.
+async function planearCambioVD(sb, vd, cambios) {
+  let itemsOrig = [];
+  try { itemsOrig = JSON.parse(vd.items || "[]"); } catch (_) {}
+  const items = completarPrecioPagadoVD(itemsOrig, vd.descuento);
+  if (!cambios.length) return { error: "No hay piezas para cambiar" };
+
+  const stocks = {}; // código → fila de stock, leída una sola vez
+  const getStock = async c => (c in stocks) ? stocks[c] : (stocks[c] = await sb.get("stock", c));
+  const vistos = new Set(), lineas = [], devuelve = {}, necesita = {};
+  const itemsNuevos = [...items];
+  let difTotal = 0, difSubtotal = 0, difDescuento = 0;
+
+  for (const c of cambios) {
+    const codigoViejo = String(c.codigoViejo || "").trim();
+    const codigoNuevo = String(c.codigoNuevo || "").trim();
+    if (!codigoViejo) return { error: "Falta el producto que se devuelve" };
+    if (!codigoNuevo) return { error: "Falta el código del producto nuevo para " + codigoViejo };
+    if (codigoViejo === codigoNuevo) return { error: codigoViejo + ": el producto nuevo es igual al que se devuelve" };
+    if (vistos.has(codigoViejo)) return { error: codigoViejo + " está repetido en el cambio" };
+    vistos.add(codigoViejo);
+
+    const idx = items.findIndex(it => it.codigo === codigoViejo);
+    if (idx === -1) return { error: "Ese producto no está en esta venta (" + codigoViejo + ")" };
+    const itemViejo = items[idx];
+    const cant = parseInt(itemViejo.cantidad) || 1;
+
+    const sNuevo = await getStock(codigoNuevo);
+    if (!sNuevo) return { error: "El producto nuevo (" + codigoNuevo + ") no existe en stock" };
+    await getStock(codigoViejo);
+
+    devuelve[codigoViejo] = (devuelve[codigoViejo] || 0) + cant;
+    necesita[codigoNuevo] = (necesita[codigoNuevo] || 0) + cant;
+
+    // Lo que el cliente pagó por la pieza vieja vs. lo que cuesta la nueva.
+    // La nueva NO hereda el descuento salvo que se pida (aplicaDescuento).
+    const listaViejo = (parseFloat(itemViejo.precio) || 0) * cant;
+    const pagadoViejo = (parseFloat(itemViejo.precioPagado) || 0) * cant;
+    const descViejo = listaViejo - pagadoViejo;
+    const precioNuevo = parseFloat(sNuevo.precio) || 0;
+    const listaNuevo = precioNuevo * cant;
+    const descNuevo = c.aplicaDescuento === true && listaViejo > 0 ? listaNuevo * (descViejo / listaViejo) : 0;
+    const pagadoNuevo = listaNuevo - descNuevo;
+
+    difTotal += pagadoNuevo - pagadoViejo;
+    difSubtotal += listaNuevo - listaViejo;
+    difDescuento += descNuevo - descViejo;
+
+    itemsNuevos[idx] = {
+      ...itemViejo,
+      codigo: codigoNuevo,
+      nombre: sNuevo.nombre_base || sNuevo.nombre || codigoNuevo,
+      precio: precioNuevo,
+      precioPagado: r4VD(pagadoNuevo / cant),
+      cambiadoDe: codigoViejo,
+      fechaCambio: new Date().toISOString() // para que el recibo marque que esta pieza no es de la fecha original
+    };
+    lineas.push({
+      codigoViejo, nombreViejo: itemViejo.nombre || codigoViejo, cantidad: cant,
+      precioViejo: r2VD(pagadoViejo / cant), descuentoViejo: r2VD(descViejo),
+      codigoNuevo, nombreNuevo: itemsNuevos[idx].nombre,
+      precioNuevo: r2VD(precioNuevo), descuentoNuevo: r2VD(descNuevo),
+      aplicaDescuento: c.aplicaDescuento === true,
+      diferencia: r2VD(pagadoNuevo - pagadoViejo)
+    });
+  }
+
+  // Stock: cada código se toca UNA vez (si dos cambios comparten código, sumar
+  // en vez de pisarse). Lo devuelto vuelve a bodega; lo nuevo sale de bodega
+  // primero y luego de tienda. Una pieza que se devuelve en este mismo cambio
+  // cuenta como disponible para otra.
+  const fila = c => ({
+    bodega: parseInt(stocks[c].stock_bodega) || 0,
+    tienda: parseInt(stocks[c].stock_tienda) || 0,
+    vendido: parseInt(stocks[c].stock_vendido) || 0
+  });
+  const cur = {};
+  for (const c of new Set([...Object.keys(devuelve), ...Object.keys(necesita)])) {
+    if (stocks[c]) cur[c] = fila(c);
+  }
+  for (const [c, n] of Object.entries(devuelve)) {
+    if (!cur[c]) continue;
+    cur[c].bodega += n;
+    cur[c].vendido = Math.max(0, cur[c].vendido - n);
+  }
+  for (const [c, n] of Object.entries(necesita)) {
+    if (cur[c].bodega + cur[c].tienda < n) {
+      return { error: `Sin stock suficiente de ${c} (hay ${cur[c].bodega + cur[c].tienda}, se necesitan ${n})` };
+    }
+    const deBodega = Math.min(n, cur[c].bodega);
+    cur[c].bodega -= deBodega;
+    cur[c].tienda = Math.max(0, cur[c].tienda - (n - deBodega));
+    cur[c].vendido += n;
+  }
+  const stockUpdates = {};
+  for (const [c, f] of Object.entries(cur)) {
+    stockUpdates[c] = { stock_bodega: f.bodega, stock_tienda: f.tienda, stock_vendido: f.vendido };
+  }
+
+  const diferencia = r2VD(difTotal);
+  const saldoCrudo = (parseFloat(vd.saldoPendiente) || 0) + diferencia;
+  return {
+    items: itemsNuevos, lineas, stockUpdates, diferencia,
+    total: Math.max(0, r2VD((parseFloat(vd.total) || 0) + diferencia)),
+    subtotal: Math.max(0, r2VD((parseFloat(vd.subtotal) || 0) + difSubtotal)),
+    descuento: Math.max(0, r2VD((parseFloat(vd.descuento) || 0) + difDescuento)),
+    saldo: Math.max(0, r2VD(saldoCrudo)),
+    // Si la pieza nueva vale menos de lo que el cliente ya tenía pagado, el
+    // saldo no baja de 0 pero le sobra plata: se avisa en vez de perderse.
+    aFavorCliente: saldoCrudo < 0 ? r2VD(-saldoCrudo) : 0
+  };
 }
 
 // El documento config/settings guarda, junto a ajustes públicos del catálogo
