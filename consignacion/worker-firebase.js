@@ -3216,9 +3216,37 @@ async function enviar(){
           break;
         }
 
+        // Marca una entrega PENDIENTE como duplicada (ej. doble toque al confirmar
+        // la entrega: dos avisos de recepción para una sola entrega física).
+        // NO borra nada: el registro queda con estado "duplicada" y el vendedor deja
+        // de verla (GET_ENTREGAS_PENDIENTES solo devuelve las "pendiente"). No toca
+        // stock ni consignación. restaurar:true la devuelve a "pendiente".
+        case "MARCAR_ENTREGA_DUPLICADA": {
+          if (!esAdmin) return forbidden();
+          const entDup = await sb.get("entregas", d.id);
+          if (!entDup) { result = { ok: false, error: "Entrega no encontrada" }; break; }
+          if (d.restaurar) {
+            if (entDup.estado !== "duplicada") { result = { ok: false, error: "Esa entrega no está marcada como duplicada" }; break; }
+            await sb.update("entregas", d.id, { estado: "pendiente", fechaDuplicada: null, duplicadaDe: null });
+            result = { ok: true, estado: "pendiente" };
+            break;
+          }
+          if (entDup.estado !== "pendiente") { result = { ok: false, error: "Solo se pueden marcar entregas pendientes de confirmar" }; break; }
+          await sb.update("entregas", d.id, {
+            estado: "duplicada",
+            fechaDuplicada: new Date().toISOString(),
+            duplicadaDe: d.duplicadaDe ? String(d.duplicadaDe) : null
+          });
+          result = { ok: true, estado: "duplicada" };
+          break;
+        }
+
         case "CONFIRMAR_ENTREGA_RECIBO": {
           const entDoc = await sb.get("entregas", d.id);
           if (!entDoc) { result = { ok: false, error: "Entrega no encontrada" }; break; }
+          // Una entrega marcada como duplicada no se puede confirmar (una página
+          // abierta desde antes podría intentarlo y la "revivía" como confirmada).
+          if (entDoc.estado === "duplicada") { result = { ok: false, error: "Esta entrega fue marcada como duplicada" }; break; }
           if (!esAdmin) {
             const chkCER = await validarVendedorToken(sb, d.vendedor, d.token, d.pin);
             if (!chkCER.ok) { result = { ok: false, error: chkCER.error }; break; }

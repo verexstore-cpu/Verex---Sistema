@@ -961,6 +961,7 @@
                 <div id="perfil-notas-txt" style="font-size:13px;"></div>
             </div>
             <div id="recordatorio-corte" style="display:none;padding:10px 14px;border-radius:8px;border:1px solid;font-size:13px;font-weight:600;margin-bottom:14px;"></div>
+            <div id="entregas-pendientes-box" style="display:none;padding:12px 14px;border-radius:8px;border:1px solid #4a6fa5;background:rgba(74,111,165,0.12);margin-bottom:14px;"></div>
             <div id="banner-borradores" style="display:none;padding:12px 14px;border-radius:8px;border:1px solid #4a6fa5;background:rgba(74,111,165,0.12);margin-bottom:14px;">
                 <div style="font-size:13px;color:#8ab4f0;font-weight:600;margin-bottom:6px;">
                     📝 <span id="banner-borradores-txt"></span> en lista — aún no entregados ni visibles en su link
@@ -2358,6 +2359,65 @@ async function _enviarProximoCorte(fecha) {
         toast("⚠️ " + e.message, "#c0392b");
     } finally {
         _pcEnviando = false;
+    }
+}
+
+// ── Entregas pendientes de confirmar (por vendedor) ─────────────────────────
+// Un doble toque al confirmar una entrega creaba DOS avisos de recepción para
+// una sola entrega física (caso real: Jaime Solórzano, PUP105, 13-sep). Antes
+// esos avisos no se veían en ninguna parte del panel hasta que el vendedor los
+// confirmaba. Acá se listan, se señala la que parece duplicada, y se puede
+// marcar como duplicada: NO se borra, el vendedor deja de verla y no cambia
+// stock ni inventario.
+async function cargarEntregasPendientesPerfil() {
+    const box = document.getElementById("entregas-pendientes-box");
+    if (!box || !vendedorActual) return;
+    const cod = vendedorActual.codigo;
+    box.style.display = "none";
+    let ents;
+    try { ents = (await apiPost({ accion: "GET_ENTREGAS_PENDIENTES", vendedor: cod })).entregas || []; }
+    catch (_) { return; }
+    if (!vendedorActual || vendedorActual.codigo !== cod || !ents.length) return; // cambió de perfil mientras cargaba
+
+    const filas = ents.map(e => {
+        let items = [];
+        try { items = typeof e.items === "string" ? JSON.parse(e.items) : (e.items || []); } catch (_) {}
+        return { e, items, t: new Date(e.fecha).getTime() || 0,
+                 firma: items.map(i => (i.codigo || "") + "x" + (i.cantidad || 1)).sort().join("|") };
+    }).sort((a, b) => a.t - b.t);
+    // Posible duplicada: mismos productos que otra pendiente creada antes, con menos de 2 minutos de diferencia
+    filas.forEach((f, i) => {
+        const orig = filas.slice(0, i).find(o => o.firma === f.firma && (f.t - o.t) < 120000);
+        if (orig) { f.dupDe = orig.e.id; f.seg = Math.round((f.t - orig.t) / 1000); }
+    });
+
+    box.innerHTML = `<div style="font-size:13px;color:#8ab4f0;font-weight:600;margin-bottom:6px;">
+            ⏳ ${filas.length} entrega${filas.length > 1 ? "s" : ""} pendiente${filas.length > 1 ? "s" : ""} de confirmar por el vendedor</div>`
+        + filas.map(f => {
+            const cuando = f.e.fecha ? new Date(f.e.fecha).toLocaleString("es-SV", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+            const nombres = f.items.slice(0, 3).map(i => sanitizar(i.nombre || i.codigo)).join(", ");
+            return `<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid rgba(74,111,165,0.3);">
+                <div style="min-width:0;font-size:12px;">
+                    <div>${sanitizar(cuando)} · ${f.items.length} producto(s): ${nombres}</div>
+                    <div style="color:var(--plateado);font-size:11px;">Código de recibo: <strong style="color:var(--dorado);">${sanitizar(f.e.codigoRecibo || "—")}</strong>
+                    ${f.dupDe ? `<span style="color:#e8a44a;font-weight:700;"> · ⚠️ posible duplicada: mismos productos, ${f.seg} s después de otra</span>` : ""}</div>
+                </div>
+                <button onclick="marcarEntregaDuplicada(${jsArg(f.e.id)}, ${jsArg(f.dupDe || "")})"
+                    style="flex-shrink:0;padding:6px 10px;border:1px solid ${f.dupDe ? "#e8a44a" : "var(--borde)"};border-radius:6px;background:${f.dupDe ? "rgba(232,164,74,0.15)" : "transparent"};color:${f.dupDe ? "#e8a44a" : "var(--plateado)"};font-size:11px;font-weight:600;cursor:pointer;">Marcar duplicada</button>
+            </div>`;
+        }).join("");
+    box.style.display = "block";
+}
+
+async function marcarEntregaDuplicada(id, duplicadaDe) {
+    if (!confirm("¿Marcar esta entrega como DUPLICADA?\n\nEl vendedor dejará de verla para confirmar. El registro se conserva (no se borra) y no cambia el stock ni el inventario.")) return;
+    try {
+        const res = await apiPost({ accion: "MARCAR_ENTREGA_DUPLICADA", id, duplicadaDe: duplicadaDe || undefined });
+        if (!res.ok) throw new Error(res.error || "No se pudo marcar");
+        toast("✅ Entrega marcada como duplicada");
+        cargarEntregasPendientesPerfil();
+    } catch (e) {
+        toast("⚠️ " + e.message, "#c0392b");
     }
 }
 
@@ -3760,6 +3820,7 @@ function abrirPerfil(codigo) {
         recordatorio.style.display = "none";
     }
     renderProximoCortePerfil();
+    cargarEntregasPendientesPerfil();
     renderPerfilStats();
     renderInventario();
     renderVentasPerfil();
