@@ -3916,6 +3916,14 @@ function _sincronizarTarjetaPromo() {
 // Se llama al abrir "Catálogo Cliente": deja el formulario limpio y, si la
 // promo general está activa, la precarga.
 function iniciarPromoGeneralEnModal() {
+    // Antes, mientras cfg.promoGeneral fuera undefined, esta pantalla solo
+    // MOSTRABA el default (PROMO_GENERAL_DEFAULT) como vista previa — se veía
+    // "Activa" pero nunca se guardaba en el servidor hasta que alguien tocara
+    // el interruptor o el botón de guardar. Cualquier otro lector del dato
+    // guardado (ej. el botón de promo general en Venta Directa) encontraba la
+    // config vacía. Ahora, la primera vez que se abre esta pantalla sin nada
+    // guardado, se persiste el default de una vez — deja de ser solo una vista previa.
+    if (!cfg.promoGeneral) { cfg.promoGeneral = { ...PROMO_GENERAL_DEFAULT }; saveConfig(); }
     const pg = getPromoGeneral();
     _limpiarPromosForm();
     const usar = document.getElementById("cat-usar-promo-gral");
