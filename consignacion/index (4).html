@@ -11831,7 +11831,24 @@ function _calcularPromoGeneralVD() {
     return { error: "Tipo de promo desconocido." };
 }
 
-function aplicarPromoGeneralVD() {
+let _promoGeneralVDCargando = false;
+async function aplicarPromoGeneralVD() {
+    if (_promoGeneralVDCargando) return;
+    // No usar la promo que ya estaba en memoria (llega hasta 10s tarde por la
+    // sincronización de fondo) — se pide la más reciente justo al tocar el
+    // botón, con GET_CONFIG (liviano: solo la config, no todo el inventario).
+    const btn = document.querySelector("#vd-promo-general-wrap button");
+    const txtOriginal = btn?.textContent;
+    _promoGeneralVDCargando = true;
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Verificando promo…"; }
+    try {
+        const fresco = await apiPost({ accion: "GET_CONFIG" });
+        if (fresco?.ok) promoGeneral = fresco.config?.promoGeneral || null;
+    } catch (_) { /* si falla la consulta, se sigue con lo que ya había en memoria */ }
+    _renderBotonPromoGeneralVD(); // por si justo ahora se apagó/cambió, oculta el botón si ya no aplica
+    _promoGeneralVDCargando = false;
+    if (btn) { btn.disabled = false; btn.textContent = txtOriginal; }
+
     const r = _calcularPromoGeneralVD();
     if (r.error) { toast("⚠️ " + r.error, "#f97316"); return; }
     setModoDescuento("monto");
