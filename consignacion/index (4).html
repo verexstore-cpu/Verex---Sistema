@@ -1614,6 +1614,7 @@ function iniciarAutoSync() {
             consignacion         = data.consignacion || [];
             productosDisponibles = data.productos    || [];
             promoGeneral         = data.config?.promoGeneral || null;
+            _renderBotonPromoGeneralVD(); // por si Venta Directa está abierta con productos ya en el carrito
             if (Date.now() - _linksAfiliadoTs > 300000) cargarLinksAfiliados();
             // Re-renderizar vista activa sin interrumpir al usuario
             const enPerfil = document.getElementById("pantalla-perfil")?.style.display !== "none";
