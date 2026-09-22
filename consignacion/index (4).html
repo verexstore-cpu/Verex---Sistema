@@ -710,6 +710,13 @@
             <div class="card" id="card-carrito-vd" style="display:none;">
                 <h2>🛒 Productos seleccionados</h2>
                 <div id="lista-carrito-vd"></div>
+                <!-- Promo general (Admin → Catálogo Cliente) — calcula sola el descuento -->
+                <div id="vd-promo-general-wrap" style="display:none;margin-top:12px;">
+                    <button type="button" onclick="aplicarPromoGeneralVD()"
+                        style="width:100%;padding:11px;border:1.5px solid var(--dorado);border-radius:10px;background:rgba(201,168,76,0.1);color:var(--dorado);font-size:13px;font-weight:700;cursor:pointer;">
+                        🎁 Aplicar promo general
+                    </button>
+                </div>
                 <!-- Descuento -->
                 <div style="background:#111;border:1px solid #333;border-radius:10px;padding:12px;margin-top:12px;">
                     <div style="font-size:12px;color:var(--plateado);margin-bottom:8px;font-weight:600;">🏷️ Descuento</div>
@@ -1551,6 +1558,9 @@ let vendedores   = [];
 let consignacion = [];
 let vendedorActual = null;
 let productosDisponibles = [];
+// Promo general definida en Admin (Catálogo Cliente) — se ofrece también acá
+// para no tener que calcular a mano el mismo descuento en Venta Directa.
+let promoGeneral = null;
 let carritoEntrega = {};
 let fotoBase64 = "";
 
@@ -1603,6 +1613,7 @@ function iniciarAutoSync() {
             vendedores           = data.vendedores   || [];
             consignacion         = data.consignacion || [];
             productosDisponibles = data.productos    || [];
+            promoGeneral         = data.config?.promoGeneral || null;
             if (Date.now() - _linksAfiliadoTs > 300000) cargarLinksAfiliados();
             // Re-renderizar vista activa sin interrumpir al usuario
             const enPerfil = document.getElementById("pantalla-perfil")?.style.display !== "none";
@@ -1908,6 +1919,7 @@ async function cargarDatos() {
         vendedores           = data.vendedores   || [];
         consignacion         = data.consignacion || [];
         productosDisponibles = data.productos    || [];
+        promoGeneral         = data.config?.promoGeneral || null;
         await cargarLeads();
         renderVendedores();
         renderAlertasAfiliadosHub();
@@ -11768,6 +11780,74 @@ function limpiarDescuentoVD() {
     renderCarritoVD();
 }
 
+// ── Promo general en Venta Directa ──────────────────────────────────────────
+// Aplica sobre el carrito de Venta Directa (_vdCarrito) la misma promo de
+// carrito (2x50 / 3x2 / montoFijo / escalonado) y las mismas fórmulas que usa
+// el catálogo público — así el mostrador cobra igual que lo que vería el
+// cliente si comprara por el link. Es un botón, no algo automático: al
+// tocarlo se calcula y se deja escrito en el campo de descuento de siempre,
+// así se puede ajustar o quitar como cualquier descuento manual.
+function _calcularPromoGeneralVD() {
+    const pc = promoGeneral?.promoCarrito;
+    if (!promoGeneral?.activa || !pc?.tipo) return { error: "No hay una promo general activa ahora mismo." };
+    const unidades = [];
+    Object.values(_vdCarrito).forEach(({ prod, qty }) => { for (let i = 0; i < qty; i++) unidades.push(parseFloat(prod.precio) || 0); });
+    if (!unidades.length) return { error: "Agrega productos al carrito primero." };
+    unidades.sort((a, b) => b - a);
+    const subtotal = unidades.reduce((s, p) => s + p, 0);
+
+    if (pc.tipo === "2x50") {
+        if (unidades.length < 2) return { error: "La promo 2do al 50% necesita al menos 2 piezas en el carrito." };
+        let descuento = 0;
+        unidades.forEach((p, idx) => { if (idx % 2 === 1) descuento += p * 0.5; });
+        return { descuento, etiqueta: "2do producto al 50%" };
+    }
+    if (pc.tipo === "3x2") {
+        if (unidades.length < 3) return { error: "La promo 3x2 necesita al menos 3 piezas en el carrito." };
+        let descuento = 0;
+        unidades.forEach((p, idx) => { if (idx % 3 === 2) descuento += p; });
+        return { descuento, etiqueta: "3x2 (la pieza más barata de cada trío, gratis)" };
+    }
+    if (pc.tipo === "montoFijo") {
+        const base = parseFloat(pc.montoFijo) || 0;
+        const minimo = parseFloat(pc.minimoCompra) || 0;
+        if (minimo > 0) {
+            const tramos = Math.floor(subtotal / minimo);
+            if (tramos < 1) return { error: `Esta promo aplica a partir de $${minimo.toFixed(2)} de compra (llevas $${subtotal.toFixed(2)}).` };
+            const monto = Math.min(base * tramos, subtotal);
+            return { descuento: monto, etiqueta: `$${base.toFixed(2)} de descuento (${tramos}× por cada $${minimo.toFixed(2)})` };
+        }
+        return { descuento: Math.min(base, subtotal), etiqueta: `$${base.toFixed(2)} de descuento fijo` };
+    }
+    if (pc.tipo === "escalonado") {
+        const escalones = [...(pc.escalones || [])].sort((a, b) => b.minCant - a.minCant);
+        const tier = escalones.find(e => unidades.length >= e.minCant);
+        if (!tier) {
+            const minReq = Math.min(...(pc.escalones || []).map(e => e.minCant));
+            return { error: `Esta promo necesita al menos ${minReq} piezas (llevas ${unidades.length}).` };
+        }
+        return { descuento: subtotal * (tier.pct / 100), etiqueta: `${tier.pct}% por llevar ${unidades.length} piezas` };
+    }
+    return { error: "Tipo de promo desconocido." };
+}
+
+function aplicarPromoGeneralVD() {
+    const r = _calcularPromoGeneralVD();
+    if (r.error) { toast("⚠️ " + r.error, "#f97316"); return; }
+    setModoDescuento("monto");
+    document.getElementById("vd-descuento-val").value = r.descuento.toFixed(2);
+    aplicarDescuentoVD();
+    toast(`🎁 Promo general aplicada: ${r.etiqueta} (−$${r.descuento.toFixed(2)})`, "#22c55e");
+}
+
+// Solo se muestra si hay una promo general activa configurada; el botón igual
+// avisa con un toast si el carrito todavía no cumple sus condiciones.
+function _renderBotonPromoGeneralVD() {
+    const wrap = document.getElementById("vd-promo-general-wrap");
+    if (!wrap) return;
+    wrap.style.display = (promoGeneral?.activa && promoGeneral?.promoCarrito?.tipo) ? "block" : "none";
+}
+
 function _calcularDescuento(subtotal) {
     const val = parseFloat(document.getElementById("vd-descuento-val")?.value || 0) || 0;
     if (val <= 0) return 0;
@@ -13008,6 +13088,7 @@ function quitarDeVD(codigo) {
 }
 
 function renderCarritoVD() {
+    _renderBotonPromoGeneralVD();
     const items = Object.values(_vdCarrito);
     const cardC = document.getElementById("card-carrito-vd");
     const cardCl = document.getElementById("card-cliente-vd");

@@ -746,12 +746,16 @@ async function enviar(){
         // ══ CONSIGNACION ══════════════════════════════════════════
         case "GET_CONSIGNACION": {
           if (!esAdmin) return forbidden();
-          const [cons, vends, stock] = await Promise.all([
+          const [cons, vends, stock, cfgCons] = await Promise.all([
             sb.getAll("consignacion"),
             sb.getAll("vendedores"),
             sb.getAll("stock"),
+            sb.get("config", "settings"),
           ]);
-          result = { ok: true, consignacion: cons, vendedores: vends, stock, productos: stock };
+          // sanearConfigPublico quita passHash/otp/ssoTokens — Consignación solo
+          // necesita leer cfg.promoGeneral (para ofrecerla en Venta Directa), nunca
+          // credenciales del login de Admin.
+          result = { ok: true, consignacion: cons, vendedores: vends, stock, productos: stock, config: sanearConfigPublico(cfgCons) };
           break;
         }
 
