@@ -1612,7 +1612,7 @@
                 body: JSON.stringify({
                     accion: "ENVIAR_PEDIDO_USA",
                     nombreCliente, telefono: tel, correo, direccionCompleta: direccionCliente,
-                    items: _carrito.map(it => ({ nombre: it.nombre, qty: it.qty, precio: it.precioUnit })),
+                    items: _carrito.map(it => ({ nombre: it.nombre, qty: it.qty, precio: it.precioUnit, foto: ikSharp(_prods.find(p => p.c === it.codigo)?.i || "") })),
                     envio: costoEnvio, total: totalFinal, pagoLink: linkPago, lang: _lang
                 })
             }).catch(()=>{});

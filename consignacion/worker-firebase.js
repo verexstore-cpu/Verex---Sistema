@@ -2643,9 +2643,17 @@ async function enviar(){
           try {
             const RESEND_KEY = env.RESEND_KEY;
             if (RESEND_KEY) {
-              const filas = d.items.map(it =>
-                `<tr><td style="padding:6px 0;color:#111;">${it.nombre || "—"}${it.qty > 1 ? ` ×${it.qty}` : ""}</td><td style="padding:6px 0;color:#111;text-align:right;">$${((parseFloat(it.precio)||0)*(parseInt(it.qty)||1)).toFixed(2)}</td></tr>`
-              ).join("");
+              // Fila con miniatura — valida que la foto sea una URL https
+              // real antes de insertarla como <img src> (endpoint público,
+              // sin auth de admin, así que no se confía en el string tal cual).
+              const filaProducto = it => {
+                const fotoOk = /^https:\/\/[^\s"'<>]+$/.test(it.foto || "");
+                const img = fotoOk
+                  ? `<img src="${it.foto}" width="40" height="40" style="border-radius:6px;object-fit:cover;vertical-align:middle;margin-right:8px;" alt="">`
+                  : "";
+                return `<tr><td style="padding:6px 0;color:#111;">${img}${it.nombre || "—"}${it.qty > 1 ? ` ×${it.qty}` : ""}</td><td style="padding:6px 0;color:#111;text-align:right;">$${((parseFloat(it.precio)||0)*(parseInt(it.qty)||1)).toFixed(2)}</td></tr>`;
+              };
+              const filas = d.items.map(filaProducto).join("");
               const envio = parseFloat(d.envio) || 0;
               const total = d.total != null ? parseFloat(d.total) : null;
               // Validar formato antes de insertarlo como link clicable en el
@@ -2700,9 +2708,7 @@ async function enviar(){
               // catálogo, apenas termina el checkout.
               if (correoValido) {
                 const en = d.lang === "en";
-                const filasCliente = d.items.map(it =>
-                  `<tr><td style="padding:6px 0;color:#111;">${it.nombre || "—"}${it.qty > 1 ? ` ×${it.qty}` : ""}</td><td style="padding:6px 0;color:#111;text-align:right;">$${((parseFloat(it.precio)||0)*(parseInt(it.qty)||1)).toFixed(2)}</td></tr>`
-                ).join("");
+                const filasCliente = d.items.map(filaProducto).join("");
                 const txt = en ? {
                   preheader: "New order from the USA catalog",
                   hola: `Hi ${d.nombreCliente || ""},`,
