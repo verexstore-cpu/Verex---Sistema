@@ -59,9 +59,12 @@
         .carousel{
             display:flex; overflow-x:auto; scroll-snap-type:x mandatory;
             -webkit-overflow-scrolling:touch; scrollbar-width:none;
+            cursor:grab; user-select:none;
         }
+        .carousel.dragging{ cursor:grabbing; scroll-snap-type:none; }
         .carousel::-webkit-scrollbar{ display:none; }
         .carousel .card{ scroll-snap-align:center; flex:0 0 100%; }
+        .carousel img{ -webkit-user-drag:none; user-drag:none; }
         .carousel .card-footer{ display:none; }
         .carousel-nav{
             position:absolute; top:50%; transform:translateY(-50%);
@@ -722,7 +725,45 @@
                 }
             }, 80);
         });
+
+        // Deslizar con el mouse (touch ya funciona solo — el navegador scrollea
+        // overflow-x:auto de forma nativa con gestos táctiles/trackpad, pero un
+        // clic-y-arrastre con mouse no dispara ningún scroll por su cuenta).
+        // scroll-snap-type se apaga durante el arrastre: con el snap activo,
+        // asignar wrap.scrollLeft directo no se movía (el navegador lo
+        // reasentaba al punto de snap más cercano en cada frame) — se
+        // reactiva al soltar y _carruselIrA() aterriza prolijo en la tarjeta
+        // más cercana al punto donde se soltó.
+        let _dragCarrusel = null;
+        wrap.addEventListener("mousedown", (e) => {
+            _dragCarrusel = { startX: e.pageX, startScroll: wrap.scrollLeft, moved: false };
+            wrap.classList.add("dragging");
+        });
+        window.addEventListener("mousemove", (e) => {
+            if(!_dragCarrusel) return;
+            const dx = e.pageX - _dragCarrusel.startX;
+            if(Math.abs(dx) > 4) _dragCarrusel.moved = true;
+            if(_dragCarrusel.moved){
+                e.preventDefault();
+                wrap.scrollLeft = _dragCarrusel.startScroll - dx;
+            }
+        });
+        window.addEventListener("mouseup", () => {
+            if(!_dragCarrusel) return;
+            wrap.classList.remove("dragging");
+            if(_dragCarrusel.moved){
+                // Sin esto, soltar el mouse sobre una foto abriría el zoom de
+                // inmediato después de arrastrar — el navegador dispara un
+                // click normal al soltar aunque haya sido un arrastre.
+                wrap.addEventListener("click", _suprimirClickTrasArrastre, { capture:true, once:true });
+                _carruselIrA(Math.round(wrap.scrollLeft / wrap.clientWidth));
+            }
+            _dragCarrusel = null;
+        });
+        wrap.addEventListener("dragstart", e => e.preventDefault()); // no arrastrar la <img> como archivo
     }
+
+    function _suprimirClickTrasArrastre(e){ e.stopPropagation(); e.preventDefault(); }
 
     function _carruselIrA(idx){
         const wrap = document.getElementById("carousel");
