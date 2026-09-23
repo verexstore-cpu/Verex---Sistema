@@ -1205,6 +1205,11 @@ async function enviar(){
         case "GUARDAR_CORTE_HISTORIAL": {
           if (!esAdmin) return forbidden();
           const corteId = String(d.id);
+          // cobrado: si al confirmar el corte el admin NO marcó "ya recibí el
+          // pago", queda en false — aparece en "💰 Cobros pendientes" hasta
+          // que alguien lo marque cobrado. Nada obliga a haber cobrado antes
+          // de cerrar el corte; esto es solo el recordatorio de lo que falta.
+          const cobradoInicial = !!d.cobrado;
           await sb.set("cortes_historial", corteId, {
             id: corteId,
             vendedor:          d.vendedor,
@@ -1216,8 +1221,35 @@ async function enviar(){
             gananciaVendedor:  d.gananciaVendedor,
             aPagarVerex:       d.aPagarVerex,
             items:             JSON.stringify(d.items || []),
+            cobrado:           cobradoInicial,
+            fechaCobro:        cobradoInicial ? new Date().toISOString() : null,
           });
           result = { ok: true };
+          break;
+        }
+
+        // Marca un corte ya cerrado como cobrado (el dinero que VEREX debía
+        // recibir de ese corte ya llegó). No toca inventario ni comisiones —
+        // es solo el estado de cobro de ese registro del historial.
+        case "MARCAR_CORTE_COBRADO": {
+          if (!esAdmin) return forbidden();
+          const corteCob = await sb.get("cortes_historial", d.id);
+          if (!corteCob) { result = { ok: false, error: "Corte no encontrado" }; break; }
+          await sb.update("cortes_historial", d.id, { cobrado: true, fechaCobro: new Date().toISOString() });
+          result = { ok: true };
+          break;
+        }
+
+        // Cortes cerrados sin marcar "ya recibí el pago" — para el aviso en
+        // Dashboard/Hub. Los cortes de ANTES de este campo no tienen
+        // `cobrado` guardado (undefined): se tratan como ya resueltos (no
+        // pendientes) para no inundar con avisos retroactivos de algo que ya
+        // se manejó por fuera del sistema; solo cuentan los que quedaron
+        // explícitamente en cobrado:false.
+        case "GET_CORTES_PENDIENTES_COBRO": {
+          if (!esAdmin) return forbidden();
+          const todosCortes = await sb.getAll("cortes_historial");
+          result = { ok: true, cortes: todosCortes.filter(c => c.cobrado === false) };
           break;
         }
 

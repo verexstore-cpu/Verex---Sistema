@@ -902,6 +902,12 @@
                 </div>
             </div>
 
+            <!-- Cobros pendientes: cortes cerrados sin marcar "ya recibí el pago" -->
+            <div class="card" id="dash-cobros-card" style="display:none;border-color:#e67e22;">
+                <h2 style="color:#e67e22;">💰 Cobros pendientes</h2>
+                <div id="dash-cobros"></div>
+            </div>
+
             <!-- Alertas de corte -->
             <div class="card" id="dash-alertas-card" style="display:none;">
                 <h2>⚠️ Cortes próximos a vencer</h2>
@@ -1462,6 +1468,12 @@
         <h4 style="font-size:14px;margin-bottom:10px;color:var(--plateado);">Productos sin vender:</h4>
         <div id="lista-corte"></div>
         <div id="totales-corte" style="margin:16px 0;padding:14px;background:var(--gris2);border-radius:10px;"></div>
+        <label style="display:flex;gap:10px;align-items:flex-start;padding:12px;background:rgba(201,168,76,0.08);border:1px solid var(--dorado);border-radius:10px;margin-bottom:14px;cursor:pointer;">
+            <input type="checkbox" id="chk-cobrado-corte" style="width:auto;margin-top:2px;flex-shrink:0;">
+            <span style="font-size:13px;">💰 <strong>Ya recibí el pago de este corte</strong>
+                <span style="display:block;font-size:11px;color:var(--plateado);font-weight:400;margin-top:2px;">Si no la marcas, este corte se puede cerrar igual, pero queda como pendiente de cobro en Dashboard hasta que lo marques.</span>
+            </span>
+        </label>
         <button class="btn btn-dorado btn-full" onclick="confirmarCorte()">✅ Confirmar Corte</button>
     </div>
 </div>
@@ -1755,7 +1767,7 @@ function renderAlertasAfiliadosHub() {
         else badge.style.display = "none";
     }
 
-    if (!enCamino.length && !sinCompletar.length && !_reposicionesPendientes.length && !cortesPorVencer.length) { cont.innerHTML = ""; return; }
+    if (!enCamino.length && !sinCompletar.length && !_reposicionesPendientes.length && !cortesPorVencer.length && !_cortesPendientesCobro.length) { cont.innerHTML = ""; return; }
 
     const bloqueEnCamino = enCamino.length ? `
         <div class="card" style="border-color:#f97316;margin-bottom:14px;">
@@ -1864,7 +1876,24 @@ function renderAlertasAfiliadosHub() {
             }).join("")}
         </div>` : '';
 
-    cont.innerHTML = bloqueCortes + bloqueReposiciones + bloqueEnCamino + bloqueSinCompletar;
+    const bloqueCobrosPendientes = _cortesPendientesCobro.length ? `
+        <div class="card" style="border-color:#e67e22;margin-bottom:14px;">
+            <h2 style="color:#e67e22;">💰 Cobros pendientes (${_cortesPendientesCobro.length})</h2>
+            ${_cortesPendientesCobro.map(c => {
+                const fecha = c.fecha ? new Date(c.fecha).toLocaleDateString("es-SV", { day: "numeric", month: "short" }) : "—";
+                return `<div style="background:rgba(230,126,34,0.1);border:1px solid #e67e22;border-radius:10px;padding:10px 12px;margin-top:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:700;font-size:13px;">${sanitizar(c.vendedorNombre || c.vendedor)}</div>
+                            <div style="font-size:11px;font-weight:700;color:#e67e22;margin-top:2px;">⚠️ Corte del ${sanitizar(fecha)} — $${parseFloat(c.aPagarVerex||0).toFixed(2)} sin cobrar</div>
+                        </div>
+                        <button onclick="marcarCorteCobrado('${sanitizar(c.id)}')" style="padding:5px 10px;font-size:11px;background:#e67e22;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">💰 Ya cobré</button>
+                    </div>
+                </div>`;
+            }).join("")}
+        </div>` : '';
+
+    cont.innerHTML = bloqueCobrosPendientes + bloqueCortes + bloqueReposiciones + bloqueEnCamino + bloqueSinCompletar;
 
     const totalBadge = enCamino.length + sinCompletar.length + cortesPorVencer.length;
     document.title = document.title.replace(/^🔔\(\d+\)\s*/, "");
@@ -1911,6 +1940,32 @@ async function resolverReposicion(vendedor, codigo) {
     } catch(e) { toast("⚠️ Error de conexión", "#c0392b"); }
 }
 
+// Cortes ya cerrados donde, al confirmar, no se marcó "ya recibí el pago" —
+// nada obliga a cobrar/devolver antes de cerrar un corte, esto es solo el
+// recordatorio de lo que quedó pendiente. Se muestra en el Hub y en Dashboard.
+let _cortesPendientesCobro = [];
+async function cargarCortesPendientesCobro() {
+    try {
+        const res  = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ accion:"GET_CORTES_PENDIENTES_COBRO", _pass: _sessionPass }) });
+        const data = await res.json();
+        _cortesPendientesCobro = (data.cortes || []).sort((a,b) => new Date(a.fecha||0) - new Date(b.fecha||0));
+    } catch(e) { _cortesPendientesCobro = []; }
+    renderAlertasAfiliadosHub();
+    if (document.getElementById("tab-content-dashboard")?.style.display === "block") renderDashboard();
+}
+
+async function marcarCorteCobrado(id) {
+    if (!confirm("¿Confirmas que ya recibiste el pago de este corte?")) return;
+    try {
+        const res  = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ accion:"MARCAR_CORTE_COBRADO", id, _pass: _sessionPass }) });
+        const data = await res.json();
+        if (data.ok) {
+            toast("✅ Marcado como cobrado");
+            await cargarCortesPendientesCobro();
+        } else toast("⚠️ " + (data.error||"No se pudo actualizar"), "#c0392b");
+    } catch(e) { toast("⚠️ Error de conexión", "#c0392b"); }
+}
+
 async function cargarDatos() {
     const grid = document.getElementById("grid-vendedores");
     grid.innerHTML = '<div style="color:var(--plateado);font-size:13px;padding:10px;">⏳ Cargando...</div>';
@@ -1925,6 +1980,7 @@ async function cargarDatos() {
         renderVendedores();
         renderAlertasAfiliadosHub();
         cargarReposicionesPendientes();
+        cargarCortesPendientesCobro();
         cargarLinksAfiliados();
         cargarSolicitudes(); // Verificar solicitudes pendientes
     } catch(e) {
@@ -2158,6 +2214,25 @@ function renderDashboard() {
     document.getElementById("dash-vendedores").textContent = vendedoresActivos.length;
     document.getElementById("dash-piezas").textContent = totalPiezas;
     document.getElementById("dash-valor").textContent = "$" + totalValor.toFixed(0);
+
+    // Cobros pendientes — cortes cerrados sin marcar "ya recibí el pago"
+    const cobrosCard = document.getElementById("dash-cobros-card");
+    const cobrosDiv  = document.getElementById("dash-cobros");
+    if (_cortesPendientesCobro.length) {
+        cobrosCard.style.display = "block";
+        cobrosDiv.innerHTML = _cortesPendientesCobro.map(c => {
+            const fecha = c.fecha ? new Date(c.fecha).toLocaleDateString("es-SV", { day: "numeric", month: "short" }) : "—";
+            return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--gris2);border-radius:8px;margin-bottom:8px;border-left:3px solid #e67e22;">
+                <div>
+                    <div style="font-size:13px;font-weight:600;">${sanitizar(c.vendedorNombre || c.vendedor)}</div>
+                    <div style="font-size:11px;color:var(--plateado);">Corte del ${sanitizar(fecha)} — $${parseFloat(c.aPagarVerex||0).toFixed(2)} sin cobrar</div>
+                </div>
+                <button class="btn" style="background:#e67e22;color:#fff;padding:5px 12px;font-size:11px;" onclick="marcarCorteCobrado('${sanitizar(c.id)}')">💰 Ya cobré</button>
+            </div>`;
+        }).join('');
+    } else {
+        cobrosCard.style.display = "none";
+    }
     document.getElementById("dash-vendido").textContent = "$" + totalPorCobrar.toFixed(0);
 
     // Alertas de corte
@@ -6629,6 +6704,8 @@ function abrirCorte() {
     _corteValorVend = valorVend; _cortePct = pct; _corteGanancia = ganancia;
     decisionesCorte = {};
     sinVender.forEach(c => decisionesCorte[c.id] = "renovar");
+    const chkCobrado = document.getElementById("chk-cobrado-corte");
+    if (chkCobrado) chkCobrado.checked = false; // sin marcar por defecto — hay que confirmarlo a propósito
     document.getElementById("resumen-corte").innerHTML = `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
             <div class="stat-box"><div class="stat-num">${vendidos}</div><div class="stat-label">Vendidos</div></div>
@@ -6671,11 +6748,14 @@ function toggleDecision(id, decision) {
 }
 
 async function confirmarCorte() {
+    const cobrado = !!document.getElementById("chk-cobrado-corte")?.checked;
     const devueltos = Object.entries(decisionesCorte).filter(([_, d]) => d === "devolver").map(([id]) => id);
     await apiPost({ accion: "CERRAR_CORTE", vendedor: vendedorActual.codigo, devueltos });
     await apiPost({ accion: "GUARDAR_CORTE_HISTORIAL", id: Date.now() + "_" + vendedorActual.codigo,
-        vendedor: vendedorActual.codigo, totalVendido: _corteValorVend, comisionPct: _cortePct,
-        gananciaVendedor: _corteGanancia, aPagarVerex: _corteValorVend - _corteGanancia });
+        vendedor: vendedorActual.codigo, vendedorNombre: vendedorActual.nombre, vendedorTelefono: vendedorActual.telefono || "",
+        totalVendido: _corteValorVend, comisionPct: _cortePct,
+        gananciaVendedor: _corteGanancia, aPagarVerex: _corteValorVend - _corteGanancia, cobrado });
+    if (!cobrado) cargarCortesPendientesCobro(); // refresca el aviso de Dashboard/Hub con este corte nuevo
     devueltos.forEach(id => { const item = consignacion.find(c => String(c.id) === String(id)); if (item) item.estado = "devuelto"; });
     // Reflejar en memoria el mismo cierre que hace el worker: piezas totalmente
     // vendidas se marcan "vendido" (no vuelven a verse disponibles), el resto
@@ -6691,7 +6771,7 @@ async function confirmarCorte() {
     if (recCorte) recCorte.style.display = "none";
     await apiPost({ accion: "GUARDAR_TOKEN", vendedor: vendedorActual.codigo, token: "" });
     sessionStorage.removeItem("vx_token_" + vendedorActual.codigo);
-    toast("✅ Corte realizado correctamente");
+    toast(cobrado ? "✅ Corte realizado correctamente" : "✅ Corte realizado — pendiente de cobro (avisará en Dashboard)", cobrado ? "#22c55e" : "#e67e22");
     cerrarModal("modal-corte");
     renderPerfilStats();
     renderInventario();
@@ -6745,23 +6825,34 @@ async function desactivarLink() {
 async function verHistorialCortes() {
     const res  = await fetch(API_URL, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ accion: "GET_HISTORIAL_CORTES", _pass: _sessionPass, vendedor: vendedorActual.codigo }) });
     const data = await res.json();
-    const historial = data.historial || [];
+    // El worker devuelve el historial en "cortes" — este modal llevaba tiempo
+    // leyendo "historial" (siempre undefined) y por eso siempre mostraba
+    // "No hay cortes registrados", aunque sí existieran.
+    const historial = data.cortes || [];
     const lista = document.getElementById("lista-historial");
     if (!historial.length) {
         lista.innerHTML = '<p style="color:var(--plateado);font-size:13px;">No hay cortes registrados.</p>';
     } else {
         lista.innerHTML = historial.map(c => {
             const fecha = c.fecha ? new Date(c.fecha).toLocaleDateString("es-SV") : "—";
-            return '<div style="background:var(--gris2);border:1px solid var(--borde);border-radius:10px;padding:14px;margin-bottom:10px;">'
-                + '<div style="display:flex;justify-content:space-between;margin-bottom:8px;">'
+            // Cortes de antes de este campo (cobrado === undefined) no se
+            // muestran como pendientes — igual que en el aviso de Dashboard/Hub.
+            const pendiente = c.cobrado === false;
+            const estadoCobro = pendiente
+                ? `<button onclick="(async()=>{await marcarCorteCobrado('${sanitizar(c.id)}');verHistorialCortes();})()" style="font-size:11px;background:#e67e22;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-weight:700;">💰 Marcar cobrado</button>`
+                : (c.cobrado === true ? '<span style="font-size:11px;color:#27ae60;font-weight:700;">✅ Cobrado</span>' : '');
+            return '<div style="background:var(--gris2);border:1px solid ' + (pendiente ? '#e67e22' : 'var(--borde)') + ';border-radius:10px;padding:14px;margin-bottom:10px;">'
+                + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;">'
                 + '<span style="font-size:12px;color:var(--dorado);font-weight:600;">' + fecha + '</span>'
                 + '<span style="font-size:12px;color:var(--plateado);">' + c.comisionPct + '% comisión</span>'
                 + '</div>'
-                + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px;">'
+                + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px;margin-bottom:' + (estadoCobro ? '10px' : '0') + ';">'
                 + '<div><div style="color:var(--plateado);">Total vendido</div><div style="font-weight:700;">$' + parseFloat(c.totalVendido||0).toFixed(2) + '</div></div>'
                 + '<div><div style="color:var(--plateado);">Ganancia</div><div style="font-weight:700;color:var(--dorado);">$' + parseFloat(c.gananciaVendedor||0).toFixed(2) + '</div></div>'
                 + '<div><div style="color:var(--plateado);">A VEREX</div><div style="font-weight:700;">$' + parseFloat(c.aPagarVerex||0).toFixed(2) + '</div></div>'
-                + '</div></div>';
+                + '</div>'
+                + (estadoCobro ? '<div style="text-align:right;">' + estadoCobro + '</div>' : '')
+                + '</div>';
         }).reverse().join('');
     }
     abrirModal("modal-historial");
