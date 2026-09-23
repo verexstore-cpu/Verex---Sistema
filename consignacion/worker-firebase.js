@@ -2582,9 +2582,12 @@ async function enviar(){
           // viendo el badge de Vendedores — llega al correo apenas el
           // cliente toca "¡Hazlo tuyo!" o manda el carrito, indicando
           // siempre si es un cliente directo o de un afiliado (y de cuál).
+          // Los pedidos de EE. UU. NO mandan este correo por producto — al
+          // terminar el carrito se manda UNO SOLO con el pedido completo
+          // (ver ENVIAR_PEDIDO_USA), para no fragmentar en varios correos.
           try {
             const RESEND_KEY = env.RESEND_KEY;
-            if (RESEND_KEY) {
+            if (RESEND_KEY && d.pais !== "US") {
               let origenTxt = "👤 Cliente directo (catálogo VEREX)";
               if (d.afiliado) {
                 const vend = await sb.get("vendedores", d.afiliado);
@@ -2624,6 +2627,63 @@ async function enviar(){
           } catch(leadEmailErr) { console.error("Lead email error:", leadEmailErr); }
 
           result = { ok: true, leadId };
+          break;
+        }
+
+        // Un solo correo por pedido completo de catalogo-us.html (no uno por
+        // producto como REGISTRAR_LEAD) — se llama una vez al final del
+        // checkout, en paralelo a que se abra WhatsApp para el cliente. Sin
+        // auth de admin: mismo nivel de confianza público que REGISTRAR_LEAD
+        // (el catálogo es una página pública, no el panel de Admin).
+        case "ENVIAR_PEDIDO_USA": {
+          if (!Array.isArray(d.items) || !d.items.length) { result = { ok: false, error: "Pedido vacío" }; break; }
+          try {
+            const RESEND_KEY = env.RESEND_KEY;
+            if (RESEND_KEY) {
+              const filas = d.items.map(it =>
+                `<tr><td style="padding:6px 0;color:#111;">${it.nombre || "—"}${it.qty > 1 ? ` ×${it.qty}` : ""}</td><td style="padding:6px 0;color:#111;text-align:right;">$${((parseFloat(it.precio)||0)*(parseInt(it.qty)||1)).toFixed(2)}</td></tr>`
+              ).join("");
+              const envio = parseFloat(d.envio) || 0;
+              const total = d.total != null ? parseFloat(d.total) : null;
+              await fetch("https://api.resend.com/emails", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
+                body: JSON.stringify({
+                  from: "VEREX Store <hola@verexstore.com>",
+                  to:   ["hola@verexstore.com"],
+                  subject: `🇺🇸 Pedido USA — ${d.nombreCliente || "cliente"} — $${(total ?? 0).toFixed(2)}`,
+                  html: `
+                    <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;background:#fff;border:2px solid #C9A84C;border-radius:12px;overflow:hidden;">
+                      <div style="background:linear-gradient(135deg,#aaa,#d0d0d0);padding:24px;text-align:center;">
+                        <h1 style="margin:0;font-size:22px;letter-spacing:3px;color:#111;">VEREX STORE</h1>
+                        <p style="margin:6px 0 0;font-size:13px;color:#444;">Nuevo pedido — catálogo Estados Unidos</p>
+                      </div>
+                      <div style="padding:24px;">
+                        <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px;">
+                          <tr><td style="padding:6px 0;color:#888;width:110px;">Cliente</td><td style="padding:6px 0;font-weight:700;color:#111;">${d.nombreCliente || "—"}</td></tr>
+                          <tr><td style="padding:6px 0;color:#888;">Teléfono</td><td style="padding:6px 0;color:#111;">${d.telefono || "—"}</td></tr>
+                          <tr><td style="padding:6px 0;color:#888;">Correo</td><td style="padding:6px 0;color:#111;">${d.correo || "—"}</td></tr>
+                          <tr><td style="padding:6px 0;color:#888;">Dirección</td><td style="padding:6px 0;color:#111;">${d.direccionCompleta || "—"}</td></tr>
+                        </table>
+                        <table style="width:100%;border-collapse:collapse;font-size:13px;border-top:1px solid #eee;padding-top:8px;">
+                          ${filas}
+                          <tr><td style="padding:8px 0 2px;color:#888;">Envío (DHL)</td><td style="padding:8px 0 2px;color:#111;text-align:right;">${envio > 0 ? "$" + envio.toFixed(2) : "GRATIS"}</td></tr>
+                          <tr><td style="padding:2px 0;font-weight:700;color:#111;">Total</td><td style="padding:2px 0;font-weight:700;color:#111;text-align:right;">$${(total ?? 0).toFixed(2)}</td></tr>
+                        </table>
+                        <p style="margin:16px 0 0;font-size:12px;color:#999;">Revisa el panel de Logística USA para marcar el pago, agregar el tracking de DHL e imprimir la etiqueta de envío.</p>
+                      </div>
+                      <div style="padding:16px 24px;background:#f5f5f5;border-top:2px solid #C9A84C;text-align:center;font-size:12px;color:#888;">
+                        El mundo es mejor cuando brillas tú ✨
+                      </div>
+                    </div>`
+                })
+              });
+            }
+            result = { ok: true };
+          } catch(pedidoUsaErr) {
+            console.error("Pedido USA email error:", pedidoUsaErr);
+            result = { ok: false, error: "No se pudo enviar el correo" };
+          }
           break;
         }
 

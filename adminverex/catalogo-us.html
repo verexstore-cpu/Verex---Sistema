@@ -1590,6 +1590,24 @@
             });
         });
 
+        // Un solo correo con el pedido COMPLETO a hola@verexstore.com — en
+        // paralelo al WhatsApp, no en su lugar. No depende de que el cliente
+        // llegue a presionar "enviar" en su WhatsApp (que en EE. UU. no es
+        // algo garantizado como en El Salvador), así que este es el aviso
+        // confiable de que entró un pedido nuevo.
+        try {
+            fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    accion: "ENVIAR_PEDIDO_USA",
+                    nombreCliente, telefono: tel, correo, direccionCompleta: direccionCliente,
+                    items: _carrito.map(it => ({ nombre: it.nombre, qty: it.qty, precio: it.precioUnit })),
+                    envio: costoEnvio, total: totalFinal
+                })
+            }).catch(()=>{});
+        } catch(_){}
+
         _carrito = [];
         guardarCarrito();
         renderCarritoFab();
