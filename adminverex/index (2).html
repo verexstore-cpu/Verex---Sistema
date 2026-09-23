@@ -4250,6 +4250,10 @@ async function generarLinkCatalogo() {
     // _catFiltrada already has grouped AN products — no second grouping needed
     const lista      = _catFiltrada.filter(p=>codsSel.includes(p._codigos?.[0]||p.codigo));
     const esAfiliado = document.getElementById("cat-es-afiliado")?.checked||false;
+    // Catálogo bilingüe para EE. UU. (envío DHL por monto de compra, formulario
+    // de dirección estructurado) — solo aplica en la pestaña Cliente, nunca
+    // Afiliado (ver adminverex/catalogo-us.html).
+    const esUS = !esAfiliado && (document.getElementById("cat-es-us")?.checked || false);
     const nombre     = esAfiliado
         ? (document.getElementById("cat-afiliado-nombre")?.value||"").trim()
         : document.getElementById("cat-nombre").value.trim();
@@ -4285,21 +4289,23 @@ async function generarLinkCatalogo() {
     try {
         // Banner / % descuento: nunca aplica a catálogos de afiliado — ellos ganan
         // comisión por venta y un descuento no acordado les afectaría esa comisión.
-        const bannerTxt = esAfiliado ? "" : (document.getElementById("cat-banner-txt")?.value||"").trim();
-        const bannerSub = esAfiliado ? "" : (document.getElementById("cat-banner-sub")?.value||"").trim();
+        // Tampoco aplica al catálogo de EE. UU. — su propio envío por tramos de
+        // monto (DHL) y su formulario de dirección reemplazan estos incentivos.
+        const bannerTxt = (esAfiliado || esUS) ? "" : (document.getElementById("cat-banner-txt")?.value||"").trim();
+        const bannerSub = (esAfiliado || esUS) ? "" : (document.getElementById("cat-banner-sub")?.value||"").trim();
         const banner = bannerTxt ? { txt: bannerTxt, sub: bannerSub, color: _bannerColor } : null;
-        const descPctRaw = esAfiliado ? 0 : Math.min(90, Math.max(0, parseInt(document.getElementById("cat-banner-desc-pct")?.value) || 0));
+        const descPctRaw = (esAfiliado || esUS) ? 0 : Math.min(90, Math.max(0, parseInt(document.getElementById("cat-banner-desc-pct")?.value) || 0));
         // El % de descuento solo se aplica si el banner está activo — así el cliente
         // siempre ve el contexto de la oferta junto al precio ya calculado.
         const descPct = banner ? descPctRaw : 0;
         if (descPctRaw > 0 && !banner) {
             toast("⚠️ Pusiste % de descuento pero el banner está vacío — no se aplicará. Escribe el texto del banner para activarlo.", "#f97316");
         }
-        // Igual que el % de descuento: solo aplica a Cliente, nunca a Afiliado.
-        const promoCarrito = esAfiliado ? null : _leerPromoCarritoUI();
-        const envioGratisDesde = esAfiliado ? 0 : (parseFloat(document.getElementById("cat-envio-gratis-desde")?.value) || 0);
-        const regaloMonto = esAfiliado ? 0 : (parseFloat(document.getElementById("cat-regalo-monto")?.value) || 0);
-        const regaloTexto = esAfiliado ? "" : (document.getElementById("cat-regalo-texto")?.value || "").trim();
+        // Igual que el % de descuento: solo aplica a Cliente doméstico.
+        const promoCarrito = (esAfiliado || esUS) ? null : _leerPromoCarritoUI();
+        const envioGratisDesde = (esAfiliado || esUS) ? 0 : (parseFloat(document.getElementById("cat-envio-gratis-desde")?.value) || 0);
+        const regaloMonto = (esAfiliado || esUS) ? 0 : (parseFloat(document.getElementById("cat-regalo-monto")?.value) || 0);
+        const regaloTexto = (esAfiliado || esUS) ? "" : (document.getElementById("cat-regalo-texto")?.value || "").trim();
         const regaloSorpresa = (regaloMonto > 0 && regaloTexto) ? { monto: regaloMonto, texto: regaloTexto } : null;
 
         // Para híbridos: excluir productos que ya tienen asignados físicamente en consignación
@@ -4342,6 +4348,7 @@ async function generarLinkCatalogo() {
             ...(envioGratisDesde > 0 && { envioGratisDesde }),
             ...(regaloSorpresa && { regaloSorpresa }),
             ...(esAfiliado && { afiliado: true }),
+            ...(esUS && { tipoCatalogo: "us" }),
             ...(afiliadoId && { customId: afiliadoId }),
             ...(afiliadoCodigo && { afiliadoCodigo }),
             prods: listaFinal.map(p=>{
@@ -5636,6 +5643,8 @@ function abrirModalCatalogo(tipo) {
     document.getElementById("cat-genero").value  = "";
     document.getElementById("cat-nombre").value  = "";
     document.getElementById("cat-validez").value = esAfiliado ? "30" : "15";
+    const esUsEl = document.getElementById("cat-es-us");
+    if (esUsEl) esUsEl.checked = false;
     const descPctEl = document.getElementById("cat-banner-desc-pct");
     if (descPctEl) descPctEl.value = "";
     const promoTipoEl = document.getElementById("cat-promo-tipo");
@@ -6372,6 +6381,10 @@ async function generarPDFCatalogo() {
       <div id="cat-sec-cliente-nombre">
         <label id="cat-nombre-label" style="font-size:12px;color:#aaa;margin-bottom:4px;display:block;">Nombre del cliente (opcional)</label>
         <input type="text" id="cat-nombre" placeholder="Ej: María, Juan..." style="width:100%;box-sizing:border-box;">
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:12px;color:#1e3a8a;cursor:pointer;">
+          <input type="checkbox" id="cat-es-us" style="margin:0;">
+          🇺🇸 Catálogo para Estados Unidos <span style="font-weight:400;color:#3b5998;">— envío DHL por monto de compra, bilingüe ES/EN, con formulario de dirección. Ignora banner/promo/descuento (no aplican a este catálogo).</span>
+        </label>
       </div>
 
       <!-- Afiliado: selector + WA + ID -->

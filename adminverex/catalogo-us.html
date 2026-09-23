@@ -1,0 +1,1771 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>VEREX · USA Catalog</title>
+    <script>var LZString=function(){var r=String.fromCharCode,o="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=",n="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-$",e={};function t(r,o){if(!e[r]){e[r]={};for(var n=0;n<r.length;n++)e[r][r.charAt(n)]=n}return e[r][o]}var i={compressToBase64:function(r){if(null==r)return"";var n=i._compress(r,6,function(r){return o.charAt(r)});switch(n.length%4){default:case 0:return n;case 1:return n+"===";case 2:return n+"==";case 3:return n+"="}},decompressFromBase64:function(r){return null==r?"":""==r?null:i._decompress(r.length,32,function(n){return t(o,r.charAt(n))})},compressToUTF16:function(o){return null==o?"":i._compress(o,15,function(o){return r(o+32)})+" "},decompressFromUTF16:function(r){return null==r?"":""==r?null:i._decompress(r.length,16384,function(o){return r.charCodeAt(o)-32})},compressToUint8Array:function(r){for(var o=i.compress(r),n=new Uint8Array(2*o.length),e=0,t=o.length;e<t;e++){var s=o.charCodeAt(e);n[2*e]=s>>>8,n[2*e+1]=s%256}return n},decompressFromUint8Array:function(o){if(null==o)return i.decompress(o);for(var n=new Array(o.length/2),e=0,t=n.length;e<t;e++)n[e]=256*o[2*e]+o[2*e+1];var s=[];return n.forEach(function(o){s.push(r(o))}),i.decompress(s.join(""))},compressToEncodedURIComponent:function(r){return null==r?"":i._compress(r,6,function(r){return n.charAt(r)})},decompressFromEncodedURIComponent:function(r){return null==r?"":""==r?null:(r=r.replace(/ /g,"+"),i._decompress(r.length,32,function(o){return t(n,r.charAt(o))}))},compress:function(o){return i._compress(o,16,function(o){return r(o)})},_compress:function(r,o,n){if(null==r)return"";var e,t,i,s={},u={},a="",p="",c="",l=2,f=3,h=2,d=[],m=0,v=0;for(i=0;i<r.length;i+=1)if(a=r.charAt(i),Object.prototype.hasOwnProperty.call(s,a)||(s[a]=f++,u[a]=!0),p=c+a,Object.prototype.hasOwnProperty.call(s,p))c=p;else{if(Object.prototype.hasOwnProperty.call(u,c)){if(c.charCodeAt(0)<256){for(e=0;e<h;e++)m<<=1,v==o-1?(v=0,d.push(n(m)),m=0):v++;for(t=c.charCodeAt(0),e=0;e<8;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}else{for(t=1,e=0;e<h;e++)m=m<<1|t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t=0;for(t=c.charCodeAt(0),e=0;e<16;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}0==--l&&(l=Math.pow(2,h),h++),delete u[c]}else for(t=s[c],e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;0==--l&&(l=Math.pow(2,h),h++),s[p]=f++,c=String(a)}if(""!==c){if(Object.prototype.hasOwnProperty.call(u,c)){if(c.charCodeAt(0)<256){for(e=0;e<h;e++)m<<=1,v==o-1?(v=0,d.push(n(m)),m=0):v++;for(t=c.charCodeAt(0),e=0;e<8;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}else{for(t=1,e=0;e<h;e++)m=m<<1|t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t=0;for(t=c.charCodeAt(0),e=0;e<16;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}0==--l&&(l=Math.pow(2,h),h++),delete u[c]}else for(t=s[c],e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;0==--l&&(l=Math.pow(2,h),h++)}for(t=2,e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;for(;;){if(m<<=1,v==o-1){d.push(n(m));break}v++}return d.join("")},decompress:function(r){return null==r?"":""==r?null:i._decompress(r.length,32768,function(o){return r.charCodeAt(o)})},_decompress:function(o,n,e){var t,i,s,u,a,p,c,l=[],f=4,h=4,d=3,m="",v=[],g={val:e(0),position:n,index:1};for(t=0;t<3;t+=1)l[t]=t;for(s=0,a=Math.pow(2,2),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;switch(s){case 0:for(s=0,a=Math.pow(2,8),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;c=r(s);break;case 1:for(s=0,a=Math.pow(2,16),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;c=r(s);break;case 2:return""}for(l[3]=c,i=c,v.push(c);;){if(g.index>o)return"";for(s=0,a=Math.pow(2,d),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;switch(c=s){case 0:for(s=0,a=Math.pow(2,8),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;l[h++]=r(s),c=h-1,f--;break;case 1:for(s=0,a=Math.pow(2,16),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;l[h++]=r(s),c=h-1,f--;break;case 2:return v.join("")}if(0==f&&(f=Math.pow(2,d),d++),l[c])m=l[c];else{if(c!==h)return null;m=i+i.charAt(0)}v.push(m),l[h++]=i+m.charAt(0),i=m,0==--f&&(f=Math.pow(2,d),d++)}}};return i}();"function"==typeof define&&define.amd?define(function(){return LZString}):"undefined"!=typeof module&&null!=module?module.exports=LZString:"undefined"!=typeof angular&&null!=angular&&angular.module("LZString",[]).factory("LZString",function(){return LZString});</script>
+    <style>
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body{font-family:'Segoe UI',sans-serif;background:#f0f2f5;min-height:100vh;}
+
+        header{background:#111;text-align:center;padding:10px 16px;}
+        header img.logo{width:260px;max-width:80vw;display:block;margin:0 auto;}
+
+        .info-bar{
+            background:#fff;border-bottom:1px solid #e2e2e2;
+            padding:10px 16px;text-align:center;font-size:13px;color:#555;
+        }
+        .info-bar strong{color:#111;}
+
+        /* Franja de confianza (envíos / tiempos / pago contra entrega) */
+        #franja-confianza{
+            display:flex;justify-content:center;gap:14px;flex-wrap:wrap;
+            background:#fff;border-bottom:1px solid #e2e2e2;
+            padding:9px 12px;font-size:10.5px;font-weight:700;color:#444;
+        }
+
+        /* Filtro de talla — solo aparece si el catálogo tiene anillos */
+        #filtro-talla-bar{
+            background:#fff;border-bottom:1px solid #e2e2e2;
+            padding:10px 16px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+        }
+        #filtro-talla-bar .flt-lbl{font-size:11px;font-weight:700;color:#555;margin-right:2px;}
+        .chip-talla{
+            padding:5px 11px;border-radius:20px;border:1.5px solid #ddd;background:#fff;
+            color:#111;font-size:11px;font-weight:700;cursor:pointer;
+        }
+        .chip-talla.activa{background:#0277bd;color:#fff;border-color:#0277bd;}
+        .chip-talla-limpiar{
+            padding:5px 11px;border-radius:20px;border:none;background:#f0f0f0;
+            color:#888;font-size:11px;font-weight:700;cursor:pointer;
+        }
+        .card.oculto-talla{display:none;}
+        .validez{color:#f97316;font-weight:700;font-size:12px;margin-top:4px;}
+
+        .grid{
+            display:grid;grid-template-columns:repeat(2,1fr);
+            gap:12px;padding:16px;max-width:580px;margin:0 auto;
+        }
+
+        /* Carrusel — alternativa a la cuadrícula cuando el catálogo trae
+           pocas piezas (ver MAX_CAROUSEL): una tarjeta grande a la vez,
+           deslizable a mano (sin autoplay), con flechas y puntos de apoyo. */
+        /* Sin padding en #carousel a propósito: el ancho de cada tarjeta
+           (flex-basis 100%) tiene que calzar exacto con wrap.clientWidth
+           para que el índice activo (scrollLeft / clientWidth) no se
+           desfase — el "aire" alrededor va en el wrap, no en el scroller. */
+        .carousel-wrap{ position:relative; max-width:400px; margin:0 auto; padding:16px 16px 0; }
+        .carousel{
+            display:flex; overflow-x:auto; scroll-snap-type:x mandatory;
+            -webkit-overflow-scrolling:touch; scrollbar-width:none;
+            cursor:grab; user-select:none;
+        }
+        .carousel.dragging{ cursor:grabbing; scroll-snap-type:none; }
+        .carousel::-webkit-scrollbar{ display:none; }
+        .carousel .card{ scroll-snap-align:center; flex:0 0 100%; }
+        .carousel img{ -webkit-user-drag:none; user-drag:none; }
+        .carousel .card-footer{ display:none; }
+        .carousel-nav{
+            position:absolute; top:50%; transform:translateY(-50%);
+            width:30px; height:30px; border-radius:50%; background:rgba(255,255,255,.92);
+            border:1px solid #e2e2e2; display:flex; align-items:center; justify-content:center;
+            font-size:16px; color:#111; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.15); z-index:2;
+        }
+        .carousel-nav.prev{ left:6px; }
+        .carousel-nav.next{ right:6px; }
+        #carousel-dots{ display:flex; justify-content:center; gap:6px; padding:10px 0 4px; }
+        #carousel-dots .dot{ width:6px; height:6px; border-radius:50%; background:#d9d9d9; transition:background .15s; }
+        #carousel-dots .dot.activo{ background:#C9A84C; }
+        #carousel-cta{ max-width:340px; margin:0 auto; padding:6px 16px 16px; display:flex; flex-direction:column; gap:5px; }
+
+        .card{background:#fff;border:1.5px solid #d9c184;border-radius:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);display:flex;flex-direction:column;}
+        .card-img{width:100%;aspect-ratio:1/1;object-fit:contain;background:#f7f7f7;display:block;flex-shrink:0;}
+        .card-img-ph{
+            width:100%;aspect-ratio:1/1;background:#f0f0f0;
+            display:flex;align-items:center;justify-content:center;
+            font-size:36px;color:#ccc;flex-shrink:0;
+        }
+        .card-body{padding:10px;text-align:center;flex:1;}
+        .card-name{font-size:12px;font-weight:700;color:#1a1a1a;line-height:1.3;margin-bottom:3px;}
+        .card-material{
+            display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.02em;
+            padding:2px 8px;border-radius:20px;margin-bottom:5px;
+        }
+        .card-material.mat-plata{background:#e5e7eb;color:#374151;border:1px solid #cbd5e1;}
+        .card-material.mat-acero{background:#dbeafe;color:#1e3a8a;border:1px solid #93c5fd;}
+        .card-material.mat-oro{background:#fef3c7;color:#92400e;border:1px solid #fcd34d;}
+        .card-material.mat-otro{background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;}
+        .card-price{font-size:16px;font-weight:800;color:#111;margin-bottom:4px;}
+        .card-price-orig{font-size:12px;font-weight:600;color:#9ca3af;text-decoration:line-through;}
+        .card-price-final{font-size:17px;font-weight:800;color:#92400e;}
+        .card-ne{display:inline-block;font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:5px;padding:2px 7px;margin-bottom:4px;line-height:1.5;}
+        .card-nota{display:inline-block;font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:5px;padding:2px 7px;margin-top:5px;line-height:1.5;}
+        .card-footer{padding:0 10px 10px;display:flex;flex-direction:column;gap:5px;}
+        .wa-order{
+            width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+            gap:2px;text-align:center;position:relative;overflow:hidden;
+            background:linear-gradient(135deg,#B8933E,#D4AF5E);
+            color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.25);
+            padding:10px 8px 9px;border-radius:12px;
+            border:none;
+            box-shadow:0 0 0 0 rgba(184,147,62,.5);
+            cursor:pointer;
+            animation:waPulse 2.4s ease-out infinite;
+        }
+        .wa-order:active{ filter:brightness(.9);transform:scale(.97); }
+        .wa-order .wa-main{ font-size:13px;font-weight:800;position:relative;z-index:2; }
+        .wa-order .wa-sub{ font-size:10px;font-weight:500;opacity:.88;position:relative;z-index:2; }
+        @keyframes waPulse{
+            0%  {box-shadow:0 0 0 0 rgba(184,147,62,.55);}
+            65% {box-shadow:0 0 0 8px rgba(184,147,62,.0);}
+            100%{box-shadow:0 0 0 0 rgba(184,147,62,.0);}
+        }
+        .wa-shine{
+            position:absolute;top:0;left:-60%;width:40%;height:100%;
+            background:linear-gradient(120deg,transparent,rgba(255,255,255,.85),transparent);
+            transform:skewX(-20deg);pointer-events:none;
+        }
+        .wa-order.brillando .wa-shine{ animation:waShineSweep .6s ease; }
+        @keyframes waShineSweep{ from{left:-60%;} to{left:130%;} }
+        @keyframes doradoShine{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+        /* Regalo del banner promo: bamboleo suave hasta que se toca/abre */
+        @keyframes giftWiggle{
+            0%,100%{transform:rotate(0deg);}
+            20%{transform:rotate(-12deg);}
+            40%{transform:rotate(10deg);}
+            60%{transform:rotate(-6deg);}
+            80%{transform:rotate(4deg);}
+        }
+        #promo2x50-icon{ display:inline-block; font-size:26px; animation:giftWiggle 1.8s ease-in-out infinite; cursor:pointer; }
+        #promo2x50-icon.abierto{ animation:none; transform:scale(1.3); }
+        @keyframes confettiFall{
+            0%{ transform:translateY(0) rotate(0deg); opacity:1; }
+            100%{ transform:translateY(70px) rotate(360deg); opacity:0; }
+        }
+        .confetti-bit{
+            position:absolute; top:0; left:50%; width:6px; height:10px;
+            pointer-events:none; animation:confettiFall 900ms ease-out forwards;
+        }
+        /* Lluvia de confeti a pantalla completa — anuncia la promo una sola
+           vez al cargar, cayendo desde arriba del todo, no solo cerca del
+           ícono del banner. */
+        @keyframes confettiRainFall{
+            0%{ transform:translateY(-20px) rotate(0deg); opacity:1; }
+            100%{ transform:translateY(105vh) rotate(720deg); opacity:.9; }
+        }
+        #confetti-rain-wrap{ position:fixed; inset:0; pointer-events:none; z-index:9999; overflow:hidden; }
+        .confetti-rain-bit{ position:absolute; top:-20px; pointer-events:none; animation:confettiRainFall linear forwards; }
+        .cart-add{
+            align-self:flex-end;width:44px;
+            background:#fff;color:#111;border:1.5px solid #ddd;
+            border-radius:8px;font-size:13px;cursor:pointer;
+            display:flex;flex-direction:column;align-items:center;justify-content:center;
+            padding:5px 4px 4px;gap:1px;line-height:1;
+        }
+        .cart-add .cart-label{
+            font-size:7.5px;font-weight:600;color:#888;text-align:center;line-height:1.2;
+        }
+
+        /* Carrito flotante — discreto, no interrumpe el catálogo hasta que
+           se agrega el primer producto. */
+        #cart-fab{
+            display:none;position:fixed;bottom:20px;right:16px;z-index:900;
+            background:#111;color:#fff;border:none;border-radius:50px;
+            padding:12px 18px;font-size:14px;font-weight:700;cursor:pointer;
+            box-shadow:0 4px 15px rgba(0,0,0,.3);align-items:center;gap:8px;
+        }
+        #cart-fab.show{display:flex;}
+        #cart-fab-badge{
+            background:#25D366;color:#fff;border-radius:50%;
+            width:20px;height:20px;font-size:11px;font-weight:800;
+            display:flex;align-items:center;justify-content:center;
+        }
+        #cart-overlay{
+            display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+            z-index:999;align-items:flex-end;justify-content:center;
+        }
+        #cart-overlay.open{display:flex;}
+        #cart-box{
+            background:#fff;border-radius:16px 16px 0 0;
+            padding:20px 16px 24px;width:100%;max-width:480px;
+            max-height:80vh;overflow-y:auto;
+        }
+        .cart-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #eee;}
+        .cart-item-qtybtn{
+            width:26px;height:26px;border-radius:50%;border:1px solid #ddd;
+            background:#f7f7f7;font-size:14px;cursor:pointer;
+            display:flex;align-items:center;justify-content:center;
+        }
+
+        /* Agotado (verificado en tiempo real contra el stock actual) */
+        .card.agotado{opacity:.6;}
+        .card.agotado .card-img,.card.agotado .card-img-ph{filter:grayscale(1);}
+        .card-agotado-badge{
+            display:none;position:absolute;top:8px;left:8px;
+            background:#ef4444;color:#fff;font-size:10px;font-weight:800;
+            padding:3px 8px;border-radius:5px;letter-spacing:.3px;z-index:2;
+        }
+        .card.agotado .card-agotado-badge{display:block;}
+        .card.agotado .wa-order{background:#9ca3af;cursor:not-allowed;}
+        .card-img-wrap{position:relative;}
+
+        /* Bajo pedido: el vendedor ya no la tiene en mano pero VEREX sí —
+           se sigue vendiendo, solo se avisa que la entrega tarda un poco */
+        .card-bajopedido-badge{
+            display:none;position:absolute;top:8px;left:8px;
+            background:#f59e0b;color:#fff;font-size:10px;font-weight:800;
+            padding:3px 8px;border-radius:5px;letter-spacing:.3px;z-index:2;
+        }
+        .card.bajopedido .card-bajopedido-badge{display:block;}
+
+        /* Talla exacta agotada pero el modelo sí tiene otras tallas en
+           bodega — se avisa cuáles en vez de ocultar la pieza */
+        .card-otrastallas-badge{
+            display:none;position:absolute;top:8px;left:8px;right:8px;
+            background:#3b82f6;color:#fff;font-size:9.5px;font-weight:800;
+            padding:3px 8px;border-radius:5px;letter-spacing:.2px;z-index:2;
+            text-align:center;
+        }
+        .card.otrastallas .card-otrastallas-badge{display:block;}
+
+        /* Vencido */
+        .expired{
+            display:flex;flex-direction:column;align-items:center;
+            justify-content:center;text-align:center;
+            padding:60px 30px;min-height:65vh;
+        }
+        .exp-icon{font-size:64px;margin-bottom:20px;}
+        .expired h2{font-size:22px;font-weight:800;color:#1a1a1a;margin-bottom:10px;}
+        .expired p{font-size:14px;color:#666;margin-bottom:28px;line-height:1.6;max-width:280px;}
+        .wa-btn{
+            display:inline-flex;align-items:center;gap:8px;
+            background:#25D366;color:#fff;padding:14px 28px;
+            border-radius:10px;font-size:15px;font-weight:700;
+            text-decoration:none;
+        }
+
+        footer{text-align:center;padding:20px;font-size:11px;color:#aaa;}
+        #loading{text-align:center;padding:80px 20px;color:#888;font-size:14px;}
+        @media(max-width:340px){.grid{grid-template-columns:1fr;}}
+
+        /* Selector de talla */
+        #sz-overlay{
+            display:none;position:fixed;inset:0;
+            background:rgba(0,0,0,.5);z-index:999;
+            align-items:flex-end;justify-content:center;
+        }
+        #sz-overlay.open{display:flex;}
+        #sz-box{
+            background:#fff;border-radius:16px 16px 0 0;
+            padding:20px 16px 32px;width:100%;max-width:480px;
+            max-height:90vh;overflow-y:auto;
+        }
+        .sz-btn{
+            padding:8px 10px;border:2px solid #e2e2e2;border-radius:8px;
+            font-weight:700;font-size:13px;background:#fff;cursor:pointer;min-width:44px;
+        }
+        .sz-btn.sel-d{background:#7c3aed;border-color:#7c3aed;color:#fff;}
+        .sz-btn.sel-h{background:#0277bd;border-color:#0277bd;color:#fff;}
+
+        /* Selector de idioma — fijo arriba a la derecha, vive fuera de #app
+           para no perderse cada vez que render() reconstruye el catálogo. */
+        #lang-toggle{
+            position:fixed; top:8px; right:8px; z-index:1100;
+            background:#fff; border:1.5px solid #ddd; border-radius:20px;
+            padding:5px 6px; display:flex; gap:2px; box-shadow:0 2px 8px rgba(0,0,0,.15);
+        }
+        #lang-toggle button{
+            border:none; background:none; padding:4px 9px; border-radius:16px;
+            font-size:11px; font-weight:800; cursor:pointer; color:#888;
+        }
+        #lang-toggle button.activo{background:#111; color:#fff;}
+
+        /* Tramo de envío en vivo — mismo lenguaje visual que el banner de
+           envío gratis del catálogo doméstico, con el tramo exacto de la tabla. */
+        #envio-tramo{ text-align:center; padding:8px 16px; font-size:12.5px; font-weight:700; }
+        #envio-tramo.ok{ background:#166534; color:#fff; }
+        #envio-tramo.falta{ background:#fef9c3; color:#854d0e; }
+        #envio-tramo.bajo-minimo{ background:#fee2e2; color:#991b1b; }
+
+        select.form-input, input.form-input, textarea.form-input{
+            width:100%;padding:12px;border:2px solid #e2e2e2;border-radius:10px;
+            font-size:15px;box-sizing:border-box;margin-bottom:10px;font-family:inherit;background:#fff;
+        }
+        .form-input.form-err{ border-color:#ef4444; }
+        .form-fila2{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+        .form-lbl{ font-size:12px;font-weight:700;color:#111;margin-bottom:6px; }
+    </style>
+</head>
+<body>
+<div id="lang-toggle">
+    <button type="button" id="lang-btn-es" class="activo" onclick="cambiarIdioma('es')">ES</button>
+    <button type="button" id="lang-btn-en" onclick="cambiarIdioma('en')">EN</button>
+</div>
+<div id="app"><div id="loading">Cargando catálogo… / Loading catalog…</div></div>
+
+<!-- Zoom de foto -->
+<div id="foto-zoom-overlay" onclick="cerrarFotoZoom()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:1200;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;">
+    <img id="foto-zoom-img" src="" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;">
+</div>
+
+<!-- Carrito flotante — discreto, aparece solo cuando hay algo agregado -->
+<button id="cart-fab" onclick="abrirCarrito()">
+    🛒 <span id="cart-fab-badge">0</span>
+</button>
+
+<div id="cart-overlay">
+    <div id="cart-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div style="font-weight:800;font-size:15px;color:#111;" id="cart-titulo">🛒 Tu pedido</div>
+            <button onclick="cerrarCarrito()" style="background:none;border:none;font-size:20px;color:#999;cursor:pointer;">✕</button>
+        </div>
+        <div id="cart-list"></div>
+        <div id="cart-promo-linea" style="display:none;text-align:right;font-size:12px;font-weight:700;color:#7c3aed;margin-top:2px;"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0;font-size:15px;font-weight:800;color:#111;">
+            <span id="cart-total-lbl">Total</span><span id="cart-total">$0.00</span>
+        </div>
+        <div id="cart-incentivos"></div>
+        <div id="envio-tramo"></div>
+        <div id="cart-datos-wrap" style="margin-bottom:14px;">
+            <div class="form-lbl" id="cart-lbl-nombre">Full name</div>
+            <input type="text" id="cart-nombre" class="form-input" placeholder="Ex: Maria Perez"
+                oninput="actualizarBotonCarrito()">
+            <div class="form-lbl" id="cart-lbl-direccion">Address (street &amp; number)</div>
+            <input type="text" id="cart-direccion" class="form-input" placeholder="Ex: 1234 Main St, Apt 2B"
+                oninput="actualizarBotonCarrito()">
+            <div class="form-fila2">
+                <div>
+                    <div class="form-lbl" id="cart-lbl-ciudad">City</div>
+                    <input type="text" id="cart-ciudad" class="form-input" placeholder="Ex: Houston"
+                        oninput="actualizarBotonCarrito()">
+                </div>
+                <div>
+                    <div class="form-lbl" id="cart-lbl-estado">State</div>
+                    <select id="cart-estado" class="form-input" onchange="actualizarBotonCarrito()">
+                        <option value="" id="cart-estado-ph">Select a state</option>
+                        <option value="AL">Alabama</option><option value="AK">Alaska</option><option value="AZ">Arizona</option><option value="AR">Arkansas</option><option value="CA">California</option><option value="CO">Colorado</option><option value="CT">Connecticut</option><option value="DE">Delaware</option><option value="DC">District of Columbia</option><option value="FL">Florida</option><option value="GA">Georgia</option><option value="HI">Hawaii</option><option value="ID">Idaho</option><option value="IL">Illinois</option><option value="IN">Indiana</option><option value="IA">Iowa</option><option value="KS">Kansas</option><option value="KY">Kentucky</option><option value="LA">Louisiana</option><option value="ME">Maine</option><option value="MD">Maryland</option><option value="MA">Massachusetts</option><option value="MI">Michigan</option><option value="MN">Minnesota</option><option value="MS">Mississippi</option><option value="MO">Missouri</option><option value="MT">Montana</option><option value="NE">Nebraska</option><option value="NV">Nevada</option><option value="NH">New Hampshire</option><option value="NJ">New Jersey</option><option value="NM">New Mexico</option><option value="NY">New York</option><option value="NC">North Carolina</option><option value="ND">North Dakota</option><option value="OH">Ohio</option><option value="OK">Oklahoma</option><option value="OR">Oregon</option><option value="PA">Pennsylvania</option><option value="RI">Rhode Island</option><option value="SC">South Carolina</option><option value="SD">South Dakota</option><option value="TN">Tennessee</option><option value="TX">Texas</option><option value="UT">Utah</option><option value="VT">Vermont</option><option value="VA">Virginia</option><option value="WA">Washington</option><option value="WV">West Virginia</option><option value="WI">Wisconsin</option><option value="WY">Wyoming</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-fila2">
+                <div>
+                    <div class="form-lbl" id="cart-lbl-zip">ZIP code</div>
+                    <input type="text" id="cart-zip" class="form-input" placeholder="Ej: 77002"
+                        inputmode="numeric" maxlength="5" oninput="actualizarBotonCarrito()">
+                </div>
+                <div>
+                    <div class="form-lbl" id="cart-lbl-telefono">Phone</div>
+                    <input type="tel" id="cart-tel" class="form-input" placeholder="Ex: 713-555-0100"
+                        inputmode="numeric" oninput="actualizarBotonCarrito()">
+                </div>
+            </div>
+            <div class="form-lbl" id="cart-lbl-correo">Email</div>
+            <input type="email" id="cart-correo" class="form-input" placeholder="Ex: name@email.com"
+                oninput="actualizarBotonCarrito()">
+        </div>
+        <button id="cart-confirm" onclick="enviarCarritoWhatsApp()"
+            style="width:100%;background:#25D366;color:#fff;border:none;padding:13px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;">
+            <span id="cart-btn-txt">📱 Enviar pedido por WhatsApp</span></button>
+        <button onclick="cerrarCarrito()" id="cart-btn-seguir"
+            style="width:100%;background:#f0f2f5;color:#555;border:none;padding:11px;border-radius:10px;font-size:14px;cursor:pointer;">
+            Seguir viendo el catálogo</button>
+    </div>
+</div>
+
+<div id="mini-toast" style="display:none;position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:10px 18px;border-radius:30px;font-size:13px;font-weight:700;z-index:1300;box-shadow:0 4px 15px rgba(0,0,0,.3);"></div>
+
+<!-- Selector de talla -->
+<div id="sz-overlay">
+    <div id="sz-box">
+        <div id="sz-title" style="font-weight:800;font-size:15px;color:#111;text-align:center;margin-bottom:4px;line-height:1.3;"></div>
+        <div id="sz-sub" style="font-size:12px;color:#888;text-align:center;margin-bottom:18px;"></div>
+
+        <div id="sz-sec-d">
+            <div id="sz-lbl-d" style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:8px;"></div>
+            <div id="sz-grid-d" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;"></div>
+        </div>
+
+        <div id="sz-sec-h" style="display:none;">
+            <div style="font-size:12px;font-weight:700;color:#0277bd;margin-bottom:8px;">Talla caballero</div>
+            <div id="sz-grid-h" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;"></div>
+        </div>
+
+        <div id="sz-tel-wrap" style="display:none;margin-bottom:18px;">
+            <div class="form-lbl" id="sz-lbl-nombre">Full name</div>
+            <input type="text" id="sz-nombre" class="form-input" placeholder="Ex: Maria Perez"
+                oninput="actualizarBotonSz()">
+            <div class="form-lbl" id="sz-lbl-direccion">Address (street &amp; number)</div>
+            <input type="text" id="sz-direccion" class="form-input" placeholder="Ex: 1234 Main St, Apt 2B"
+                oninput="actualizarBotonSz()">
+            <div class="form-fila2">
+                <div>
+                    <div class="form-lbl" id="sz-lbl-ciudad">City</div>
+                    <input type="text" id="sz-ciudad" class="form-input" placeholder="Ex: Houston"
+                        oninput="actualizarBotonSz()">
+                </div>
+                <div>
+                    <div class="form-lbl" id="sz-lbl-estado">State</div>
+                    <select id="sz-estado" class="form-input" onchange="actualizarBotonSz()">
+                        <option value="" id="sz-estado-ph">Select a state</option>
+                        <option value="AL">Alabama</option><option value="AK">Alaska</option><option value="AZ">Arizona</option><option value="AR">Arkansas</option><option value="CA">California</option><option value="CO">Colorado</option><option value="CT">Connecticut</option><option value="DE">Delaware</option><option value="DC">District of Columbia</option><option value="FL">Florida</option><option value="GA">Georgia</option><option value="HI">Hawaii</option><option value="ID">Idaho</option><option value="IL">Illinois</option><option value="IN">Indiana</option><option value="IA">Iowa</option><option value="KS">Kansas</option><option value="KY">Kentucky</option><option value="LA">Louisiana</option><option value="ME">Maine</option><option value="MD">Maryland</option><option value="MA">Massachusetts</option><option value="MI">Michigan</option><option value="MN">Minnesota</option><option value="MS">Mississippi</option><option value="MO">Missouri</option><option value="MT">Montana</option><option value="NE">Nebraska</option><option value="NV">Nevada</option><option value="NH">New Hampshire</option><option value="NJ">New Jersey</option><option value="NM">New Mexico</option><option value="NY">New York</option><option value="NC">North Carolina</option><option value="ND">North Dakota</option><option value="OH">Ohio</option><option value="OK">Oklahoma</option><option value="OR">Oregon</option><option value="PA">Pennsylvania</option><option value="RI">Rhode Island</option><option value="SC">South Carolina</option><option value="SD">South Dakota</option><option value="TN">Tennessee</option><option value="TX">Texas</option><option value="UT">Utah</option><option value="VT">Vermont</option><option value="VA">Virginia</option><option value="WA">Washington</option><option value="WV">West Virginia</option><option value="WI">Wisconsin</option><option value="WY">Wyoming</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-fila2">
+                <div>
+                    <div class="form-lbl" id="sz-lbl-zip">ZIP code</div>
+                    <input type="text" id="sz-zip" class="form-input" placeholder="Ej: 77002"
+                        inputmode="numeric" maxlength="5" oninput="actualizarBotonSz()">
+                </div>
+                <div>
+                    <div class="form-lbl" id="sz-lbl-telefono">Phone</div>
+                    <input type="tel" id="sz-tel" class="form-input" placeholder="Ex: 713-555-0100"
+                        inputmode="numeric" oninput="actualizarBotonSz()">
+                </div>
+            </div>
+            <div class="form-lbl" id="sz-lbl-correo">Email</div>
+            <input type="email" id="sz-correo" class="form-input" placeholder="Ex: name@email.com"
+                oninput="actualizarBotonSz()">
+        </div>
+
+        <button id="sz-confirm" onclick="confirmarTalla()"
+            style="width:100%;background:#25D366;color:#fff;border:none;padding:13px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;opacity:.5;"
+            disabled><span id="sz-btn-txt">💬 Enviar por WhatsApp</span></button>
+        <button onclick="cerrarTallas()" id="sz-btn-cancelar"
+            style="width:100%;background:#f0f2f5;color:#555;border:none;padding:11px;border-radius:10px;font-size:14px;cursor:pointer;">
+            Cancelar</button>
+    </div>
+</div>
+
+<script>
+(function(){
+    const params = new URLSearchParams(location.search);
+    const c = params.get("c");
+
+    let _prods = [], _waNum = "", _szIdx = -1, _szD = "", _szH = "", _descPct = 0, _afiliadoCodigo = "", _szParMode = false, _szTel = "", _szNombreCliente = "", _szDireccion = "", _szNoTalla = false, _szModo = "wa";
+    // Con pocas piezas el carrusel se ve mejor (una tarjeta grande a la
+    // vez); con muchas, la cuadrícula sigue siendo más práctica para
+    // comparar de un vistazo. _indiceActivo trackea qué tarjeta está
+    // visible para que el botón fijo de abajo siempre apunte a esa.
+    const MAX_CAROUSEL = 6;
+    let _indiceActivo = 0;
+    let _esAutoGeneradoVendedor = false;
+    // _promoCarrito: { tipo: '2x50'|'3x2'|'montoFijo'|'escalonado', montoFijo, escalones }
+    let _promoCarrito = null, _promo2x50 = false; // _promo2x50 se mantiene solo por compatibilidad con links viejos
+    let _envioGratisDesde = 0, _regaloSorpresa = null; // se mantienen solo por compatibilidad de código, no se usan en este catálogo
+
+    // ── Envío EE. UU. (DHL, tarifa plana $37 hasta 2 lb) — SOLO por monto de
+    // compra, sin tope de piezas (piezas de plata livianas: confirmado que
+    // varias caben bajo las 2 lb). Tabla acordada con el negocio:
+    //   < $50        → no disponible (agregar más para completar el pedido)
+    //   $50–$74.99   → $19.99
+    //   $75–$99.99   → $14.99
+    //   $100–$149.99 → $9.99
+    //   $150+        → GRATIS
+    const TRAMOS_ENVIO_US = [
+        { min: 50,  max: 74.99,  costo: 19.99 },
+        { min: 75,  max: 99.99,  costo: 14.99 },
+        { min: 100, max: 149.99, costo: 9.99  },
+        { min: 150, max: Infinity, costo: 0   },
+    ];
+    const MINIMO_COMPRA_US = 50;
+    // Devuelve null si el subtotal no alcanza el mínimo (no se puede pagar
+    // todavía); si alcanza, el costo de envío de su tramo (0 = gratis).
+    function calcularEnvioCatalogo(subtotal) {
+        if (subtotal < MINIMO_COMPRA_US) return null;
+        const tramo = TRAMOS_ENVIO_US.find(t => subtotal >= t.min && subtotal <= t.max);
+        return tramo ? tramo.costo : 0;
+    }
+
+    // ── Idioma (ES/EN) ───────────────────────────────────────────────────
+    let _lang = "es";
+    let _dataGlobal = null; // el data.prods original, para poder re-render() al cambiar de idioma
+    const T = {
+        es: {
+            cargando: "Cargando catálogo…",
+            franja: "🚚 Envíos con DHL  ·  📦 Hasta 2 lb por pedido  ·  💳 Pago por adelantado",
+            para: "Para:", distribuidor: "Distribuidor:", talla: "Talla:", validoHasta: "⏰ Válido hasta:",
+            nudgeCarrito: "Junta varias piezas en el carrito — el envío se calcula sobre el total de tu pedido.",
+            tallaAnillo: "💍 Talla de anillo:", todas: "✕ Todas",
+            agotado: "AGOTADO", bajoPedido: "📦 BAJO PEDIDO", tallaAgotadaDisp: "📏 Talla agotada — disponible:",
+            ref: "Ref:", agregarCarrito: "🛒 Agregar al carrito", piezasMas: "2+ piezas",
+            cancelar: "Cancelar", damaLbl: "Dama", caballeroLbl: "Caballero", tallaCorta: "Talla",
+            tallasParConfirmar: "Tallas a confirmar (dama/caballero)",
+            precioParDamaCab: "Precio del par (dama + caballero)",
+            precioTrio: "Precio del trío (2 anillos dama + 1 caballero)",
+            precioSet: piezas => `Precio del set (${piezas} piezas)`,
+            precioPorPieza: "Precio por pieza",
+            footer: "VEREX · La expresión de tu mejor versión",
+            expiradoTitulo: "Este catálogo ya venció",
+            expiradoTexto: nombre => `Hola${nombre?' <strong>'+nombre+'</strong>':''}, este catálogo ya no está disponible.<br>Contáctanos para ver el inventario actualizado.`,
+            contactarWA: "📱 Contactar por WhatsApp",
+            agotadoAlert: "Este producto ya no está disponible — el stock se agotó.",
+            szSubIndividual: "¿Qué talla necesitas?", szSubPareja: "¿Qué tallas necesitas?",
+            szSubParejaNoTalla: "¿Qué tallas necesita para dama y caballero?", szSubOtra: "Confirma tu pedido",
+            tuTalla: "Tu talla", tallaDama: "Talla dama", tallaCaballero: "Talla caballero",
+            miniAgregado: "✅ Agregado al carrito",
+            carritoTitulo: "🛒 Tu pedido", total: "Total", tuNombre: "Nombre completo",
+            direccion: "Dirección (calle y número)", ciudad: "Ciudad", estado: "Estado",
+            zip: "Código postal", correo: "Correo electrónico", telefono: "Teléfono",
+            enviarPedido: "📱 Enviar pedido por WhatsApp", seguirViendo: "Seguir viendo el catálogo",
+            elegirEstado: "Selecciona un estado",
+            errCorreo: "Ingresa un correo válido (ej: nombre@correo.com)",
+            errZip: "El código postal debe tener 5 dígitos",
+            errCampos: "Completa todos los campos para continuar",
+            tuCarritoVacio: "Tu carrito está vacío.",
+            envioBajoMinimo: monto => `Agrega $${monto.toFixed(2)} más para poder pagar — el pedido mínimo es $${MINIMO_COMPRA_US.toFixed(2)}.`,
+            envioTramo: (costo, subtotal) => costo > 0 ? `🚚 Envío: $${costo.toFixed(2)} · Total con envío: $${(subtotal+costo).toFixed(2)}` : `🚚 ¡Envío GRATIS! · Total: $${subtotal.toFixed(2)}`,
+            envioFalta: (falta, actual) => `🚚 Agrega $${falta.toFixed(2)} más y baja tu envío a $${actual.toFixed(2)}`,
+            waMsgCarritoHola: nombre => `Hola, soy ${nombre}. Quiero pedir estos productos del catálogo VEREX (USA):`,
+            waEnvio: "Envío:", waTotal: "Total:", waGratis: "GRATIS",
+            waMisDatos: "Mis datos de envío:", waTelefono: "Teléfono:", waCorreo: "Correo:", waDireccion: "Dirección:",
+        },
+        en: {
+            cargando: "Loading catalog…",
+            franja: "🚚 Shipped via DHL  ·  📦 Up to 2 lb per order  ·  💳 Prepayment required",
+            para: "For:", distribuidor: "Distributor:", talla: "Size:", validoHasta: "⏰ Valid until:",
+            nudgeCarrito: "Add a few pieces to your cart — shipping is calculated on your order total.",
+            tallaAnillo: "💍 Ring size:", todas: "✕ All",
+            agotado: "SOLD OUT", bajoPedido: "📦 MADE TO ORDER", tallaAgotadaDisp: "📏 That size is out — available:",
+            ref: "Ref:", agregarCarrito: "🛒 Add to cart", piezasMas: "2+ pieces",
+            cancelar: "Cancel", damaLbl: "Women’s", caballeroLbl: "Men’s", tallaCorta: "Size",
+            tallasParConfirmar: "Sizes to confirm (women’s/men’s)",
+            precioParDamaCab: "Price for the pair (women's + men's)",
+            precioTrio: "Price for the trio (2 women's rings + 1 men's)",
+            precioSet: piezas => `Price for the set (${piezas} pieces)`,
+            precioPorPieza: "Price per piece",
+            footer: "VEREX · The expression of your best version",
+            expiradoTitulo: "This catalog has expired",
+            expiradoTexto: nombre => `Hi${nombre?' <strong>'+nombre+'</strong>':''}, this catalog is no longer available.<br>Contact us to see the updated inventory.`,
+            contactarWA: "📱 Contact us on WhatsApp",
+            agotadoAlert: "This product is no longer available — it sold out.",
+            szSubIndividual: "What size do you need?", szSubPareja: "What sizes do you need?",
+            szSubParejaNoTalla: "What sizes do you need for women's and men's?", szSubOtra: "Confirm your order",
+            tuTalla: "Your size", tallaDama: "Women's size", tallaCaballero: "Men's size",
+            miniAgregado: "✅ Added to cart",
+            carritoTitulo: "🛒 Your order", total: "Total", tuNombre: "Full name",
+            direccion: "Address (street & number)", ciudad: "City", estado: "State",
+            zip: "ZIP code", correo: "Email", telefono: "Phone",
+            enviarPedido: "📱 Send order via WhatsApp", seguirViendo: "Keep browsing the catalog",
+            elegirEstado: "Select a state",
+            errCorreo: "Enter a valid email (ex: name@email.com)",
+            errZip: "ZIP code must be 5 digits",
+            errCampos: "Fill in all fields to continue",
+            tuCarritoVacio: "Your cart is empty.",
+            envioBajoMinimo: monto => `Add $${monto.toFixed(2)} more to check out — the order minimum is $${MINIMO_COMPRA_US.toFixed(2)}.`,
+            envioTramo: (costo, subtotal) => costo > 0 ? `🚚 Shipping: $${costo.toFixed(2)} · Total with shipping: $${(subtotal+costo).toFixed(2)}` : `🚚 FREE shipping! · Total: $${subtotal.toFixed(2)}`,
+            envioFalta: (falta, actual) => `🚚 Add $${falta.toFixed(2)} more to drop your shipping to $${actual.toFixed(2)}`,
+            waMsgCarritoHola: nombre => `Hi, I'm ${nombre}. I'd like to order these pieces from the VEREX catalog (USA):`,
+            waEnvio: "Shipping:", waTotal: "Total:", waGratis: "FREE",
+            waMisDatos: "My shipping info:", waTelefono: "Phone:", waCorreo: "Email:", waDireccion: "Address:",
+        },
+    };
+    function t(key, ...args){
+        const v = (T[_lang] || T.es)[key];
+        return typeof v === "function" ? v(...args) : v;
+    }
+    // Traducción de materiales — solo el vocabulario fijo que ya usa el
+    // sistema (Admin → detectarMaterial); si algún día aparece un material
+    // nuevo que no está en esta tabla, se muestra tal cual venía (en español).
+    function materialMostrar(m){
+        if (_lang !== "en" || !m) return m || "";
+        const s = String(m);
+        const reglas = [
+            [/plata\s*925\s*\+?\s*oro\s*laminado|plata\s*925\s*con\s*oro\s*laminado/i, "Gold-Plated 925 Silver"],
+            [/plata\s*fina\s*925|plata\s*925/i, "925 Silver"],
+            [/acero/i, "Stainless Steel"],
+            [/reloj/i, "Watch"],
+        ];
+        for (const [re, out] of reglas) if (re.test(s)) return out;
+        return s;
+    }
+    let _carrito = [];
+    try { _carrito = JSON.parse(sessionStorage.getItem("verex-carrito") || "[]"); } catch(_) {}
+
+    const SIZES   = ["5","5.5","6","6.5","7","7.5","8","8.5","9","9.5","10","10.5","11","12","13","14"];
+    const ES_PAR  = /matrimonio|novios|pareja|alianza/i;
+    const API_URL = "https://verex-api.verexstore.workers.dev/";
+
+    function esc(s){
+        const d=document.createElement("div"); d.textContent=String(s||""); return d.innerHTML;
+    }
+
+    // Las fotos se suben tal cual las manda el vendedor, sin ningún realce —
+    // esto le agrega nitidez (e-sharpen) de ImageKit solo al mostrarla, sin
+    // tocar la foto guardada.
+    function ikSharp(url){
+        if(!url || !url.includes("imagekit.io")) return url;
+        return url.includes("?tr=") ? url + ",e-sharpen" : url + "?tr=e-sharpen";
+    }
+
+    // Clase de color del badge de material — para que el cliente note de
+    // un vistazo si es plata, acero u oro laminado sin tener que leer el texto.
+    function claseMaterial(m){
+        const s = String(m||"").toLowerCase();
+        if(s.includes("acero"))                     return "mat-acero";
+        if(s.includes("oro"))                        return "mat-oro";
+        if(s.includes("plata"))                      return "mat-plata";
+        return "mat-otro";
+    }
+
+    // Registro silencioso del interés del cliente ANTES de abrir WhatsApp — no bloquea
+    // la apertura del chat aunque falle (la venta nunca debe depender de esto).
+    function registrarLead(p, telefono, nombreCliente, direccionCliente){
+        if (!p?.c) return;
+        try {
+            fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    accion: "REGISTRAR_LEAD",
+                    afiliado: _afiliadoCodigo || "",
+                    codigo: p.c,
+                    nombre: p.n || "",
+                    precio: precioFinal(p.p),
+                    foto: p.i || "",
+                    // Teléfono y nombre capturados ANTES de abrir WhatsApp — si el
+                    // envío falla o el cliente no lo manda, ya queda un dato de
+                    // contacto guardado, en vez de un Lead sin nadie a quién
+                    // darle seguimiento. Antes solo se pedía en catálogo de
+                    // afiliado; ahora se pide siempre (también en cliente) porque
+                    // un mismo link se puede compartir a varios clientes distintos
+                    // por distintos canales, y sin nombre no se sabe quién pidió.
+                    telefonoCliente: telefono || "",
+                    nombreCliente: nombreCliente || "",
+                    direccionCliente: direccionCliente || ""
+                })
+            }).catch(()=>{});
+        } catch(_){}
+    }
+
+    function precioFinal(precio){
+        const n = parseFloat(precio) || 0;
+        if (!_descPct) return n;
+        return Math.round(n * (1 - _descPct / 100) * 100) / 100;
+    }
+
+    // Genera el bloque de precio de una tarjeta — usado en el render inicial
+    // y de nuevo por actualizarDisponibilidad() cuando el precio cambió en
+    // Stock desde que se generó el catálogo (sin necesidad de regenerar el link).
+    function renderPrecioHtml(p){
+        const totalSet = (p.par && p.pD != null && p.pH != null)
+            ? parseFloat(p.pD) + parseFloat(p.pH) : null;
+        if (totalSet != null) {
+            const piezas = p.piezas || 2;
+            const nDama = piezas - 1; // hoy: 1 o 2 anillos dama + 1 caballero
+            const label = piezas === 2
+                ? t('precioParDamaCab')
+                : piezas === 3
+                    ? t('precioTrio')
+                    : t('precioSet', piezas);
+            const precioTxt = _descPct
+                ? `<span class="card-price-orig">$${totalSet.toFixed(2)}</span> <span class="card-price-final">$${precioFinal(totalSet).toFixed(2)}</span>`
+                : `$${totalSet.toFixed(2)}`;
+            // Sin desglose Dama/Caballero — estos sets solo se venden completos
+            // (nunca por pieza suelta), así que mostrar el reparto interno del
+            // precio no aporta nada y puede confundir al cliente.
+            return `${precioTxt}<span style="display:block;font-size:10px;font-weight:700;color:#7c3aed;margin-top:2px;">${label}</span>`;
+        }
+        const base = _descPct
+            ? `<span class="card-price-orig">$${esc(p.p)}</span> <span class="card-price-final">$${precioFinal(p.p).toFixed(2)}</span>`
+            : `$${esc(p.p)}`;
+        // Aunque no sea un "par" con precio total (pD/pH), muchas alianzas se
+        // fotografían mostrando las dos piezas aunque se vendan como una sola a
+        // precio unisex — se avisa igual para no confundir al cliente.
+        return `${base}${(p.par || (p.avisoPieza && ES_PAR.test(p.n)))?`<span style="display:block;font-size:10px;font-weight:500;color:#7c3aed;margin-top:2px;">${t('precioPorPieza')}</span>`:""}`;
+    }
+
+    function showExpired(nombre, wa){
+        document.getElementById("app").innerHTML=`
+            <header><img class="logo" src="/images/logo.webp" alt="VEREX"></header>
+            <div class="expired">
+                <div class="exp-icon">⏰</div>
+                <h2>${t('expiradoTitulo')}</h2>
+                <p>${t('expiradoTexto', nombre ? esc(nombre) : '')}</p>
+                <a href="https://wa.me/${esc(normalizarWA(wa))}" class="wa-btn">${t('contactarWA')}</a>
+            </div>
+            <footer>${t('footer')}</footer>`;
+    }
+
+    // Normaliza el teléfono a formato internacional que wa.me realmente
+    // reconoce — el número guardado a veces se guardó local (8 dígitos, sin
+    // "503"), lo que rompe el link silenciosamente: el cliente cree que
+    // envió el mensaje, pero nunca le llega nada al afiliado/VEREX.
+    function normalizarWA(numero){
+        const solo = String(numero||"").replace(/\D/g,"");
+        if (!solo) return "";
+        if (solo.length === 8) return "503" + solo;      // local SV sin código de país
+        if (solo.startsWith("503") && solo.length === 11) return solo;
+        return solo;
+    }
+
+    // Cambia el idioma activo: re-renderiza #app desde _dataGlobal (cubre
+    // todo lo dinámico) y actualiza a mano los textos que viven FUERA de
+    // #app (cart-overlay / sz-overlay), que render() nunca reconstruye.
+    function cambiarIdioma(lang){
+        _lang = (lang === "en") ? "en" : "es";
+        try { localStorage.setItem("verex-us-lang", _lang); } catch(_){}
+        document.getElementById("lang-btn-es")?.classList.toggle("activo", _lang === "es");
+        document.getElementById("lang-btn-en")?.classList.toggle("activo", _lang === "en");
+        aplicarIdiomaEstatico();
+        if (_dataGlobal) render(_dataGlobal);
+    }
+
+    function aplicarIdiomaEstatico(){
+        const setTxt = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+        const setPh  = (id, txt) => { const el = document.getElementById(id); if (el) el.placeholder = txt; };
+        setTxt("cart-titulo", t('carritoTitulo'));
+        setTxt("cart-total-lbl", t('total'));
+        setTxt("cart-btn-txt", t('enviarPedido'));
+        setTxt("cart-btn-seguir", t('seguirViendo'));
+        setTxt("sz-btn-cancelar", t('cancelar'));
+        setTxt("sz-confirm", t('agregarCarrito'));
+        ["cart","sz"].forEach(pfx => {
+            setTxt(`${pfx}-lbl-nombre`, t('tuNombre'));
+            setPh(`${pfx}-nombre`, _lang === "en" ? "Ex: Maria Perez" : "Ej: María Pérez");
+            setTxt(`${pfx}-lbl-direccion`, t('direccion'));
+            setPh(`${pfx}-direccion`, _lang === "en" ? "Ex: 1234 Main St, Apt 2B" : "Ej: 1234 Main St, Apt 2B");
+            setTxt(`${pfx}-lbl-ciudad`, t('ciudad'));
+            setPh(`${pfx}-ciudad`, _lang === "en" ? "Ex: Houston" : "Ej: Houston");
+            setTxt(`${pfx}-lbl-estado`, t('estado'));
+            setTxt(`${pfx}-estado-ph`, t('elegirEstado'));
+            setTxt(`${pfx}-lbl-zip`, t('zip'));
+            setPh(`${pfx}-zip`, _lang === "en" ? "Ex: 77002" : "Ej: 77002");
+            setTxt(`${pfx}-lbl-telefono`, t('telefono'));
+            setPh(`${pfx}-tel`, _lang === "en" ? "Ex: 713-555-0100" : "Ej: 713-555-0100");
+            setTxt(`${pfx}-lbl-correo`, t('correo'));
+            setPh(`${pfx}-correo`, _lang === "en" ? "Ex: name@email.com" : "Ej: nombre@correo.com");
+        });
+        renderCarritoLista();
+        actualizarBotonCarrito();
+    }
+
+    function render(data){
+        _dataGlobal = data;
+        // Acero 316L es la línea secundaria/económica: se manda al final para que
+        // la plata (línea principal) sea lo primero que ve el cliente. El sort de
+        // JS es estable, así que dentro de cada grupo se respeta el orden con el
+        // que se armó el catálogo. Se ordena una copia para no alterar el payload
+        // original, y acá — en el render — para que aplique también a los links
+        // que ya se compartieron, no solo a los catálogos nuevos.
+        const esAceroProd = p => /acero/i.test(p.m || "") || /acero/i.test(p.n || "");
+        _prods = [...(data.prods || [])]
+            .sort((a, b) => (esAceroProd(a) ? 1 : 0) - (esAceroProd(b) ? 1 : 0));
+        _waNum = normalizarWA(data.wa);
+        _descPct = Math.min(90, Math.max(0, parseInt(data.descPct) || 0));
+        _promo2x50 = !!data.promo2x50;
+        // Compatibilidad: links viejos guardaron solo "promo2x50:true" sin el
+        // objeto general — se traduce al nuevo formato para que sigan funcionando.
+        _promoCarrito = data.promoCarrito || (_promo2x50 ? { tipo: "2x50" } : null);
+        _envioGratisDesde = parseFloat(data.envioGratisDesde) || 0;
+        _regaloSorpresa = (data.regaloSorpresa && data.regaloSorpresa.monto > 0) ? data.regaloSorpresa : null;
+        _afiliadoCodigo = data.afiliadoCodigo || "";
+        // Distingue un catálogo AUTO-generado por el vendedor desde su propio
+        // inventario (compartirMiCatalogo, cuyos productos SÍ son su
+        // consignación física real) de un catálogo armado a mano por el admin
+        // para un afiliado (que no necesariamente tiene nada en consignación
+        // — cruzar contra su consignación real lo dejaría vacío por error).
+        _esAutoGeneradoVendedor = /^Auto-generado por el vendedor/i.test(data.nota_interna || "");
+
+        const exp    = new Date(data.expiry);
+        const expStr = exp.toLocaleDateString(_lang === "en" ? "en-US" : "es-CO",{day:"numeric",month:"long",year:"numeric"});
+        const nb     = data.nombre||"";
+        const talla  = data.talla||"";
+
+        let subParts=[];
+        if(nb)    subParts.push(`${data.afiliado?t('distribuidor'):t('para')} <strong>${esc(nb)}</strong>`);
+        if(talla) subParts.push(`${t('talla')} <strong>${esc(talla)}</strong>`);
+        const subHTML = subParts.join(" &nbsp;·&nbsp; ");
+
+        const szChip = sz => `<span style="padding:2px 7px;background:#e8f4fd;border-radius:5px;font-size:10px;font-weight:700;color:#0277bd;">T${sz}</span>`;
+        const cards = _prods.map((p,i)=>{
+            let sizesHtml = "";
+            if (p.cat === "AN") {
+                if (p.par && (p.sizesD?.length || p.sizesH?.length)) {
+                    sizesHtml = `<div style="margin:5px 0;font-size:10px;line-height:1.8;">
+                        ${p.sizesD?.length ? `<div><span style="color:#9333ea;font-weight:700;">Dama:</span> ${p.sizesD.map(szChip).join(" ")}</div>` : ""}
+                        ${p.sizesH?.length ? `<div><span style="color:#2563eb;font-weight:700;">Caballero:</span> ${p.sizesH.map(szChip).join(" ")}</div>` : ""}
+                    </div>`;
+                } else if (p.sizes?.length) {
+                    sizesHtml = `<div style="display:flex;flex-wrap:wrap;gap:3px;justify-content:center;margin:5px 0;">${p.sizes.map(szChip).join("")}</div>`;
+                }
+            }
+            return `
+            <div class="card${p.bajoPedido?' bajopedido':''}${(p.tallasDisponibles&&p.tallasDisponibles.length)?' otrastallas':''}" data-idx="${i}" data-cod="${esc(p.c||'')}">
+                <div class="card-img-wrap">
+                    <span class="card-agotado-badge">${t('agotado')}</span>
+                    <span class="card-bajopedido-badge">${t('bajoPedido')}</span>
+                    <span class="card-otrastallas-badge" id="otrastallas-${i}">${t('tallaAgotadaDisp')} ${esc((p.tallasDisponibles||[]).join(", "))}</span>
+                    ${p.i
+                        ?`<img class="card-img" src="${esc(ikSharp(p.i))}" alt="${esc(p.n)}" loading="lazy" style="cursor:zoom-in;" onclick="abrirFotoZoom('${esc(ikSharp(p.i))}')" onerror="this.outerHTML='<div class=\'card-img-ph\'>💍</div>'">`
+                        :`<div class="card-img-ph">💍</div>`}
+                </div>
+                <div class="card-body">
+                    <div class="card-name">${esc(p.n)}</div>
+                    ${p.m?`<div class="card-material ${claseMaterial(p.m)}">${esc(materialMostrar(p.m))}</div>`:''}
+                    ${p.c?`<div style="font-size:9px;color:#9ca3af;font-weight:600;margin-top:-3px;margin-bottom:4px;">${t('ref')} ${esc(p.c)}</div>`:''}
+                    ${sizesHtml}
+                    ${p.ne?`<div class="card-ne">♦ ${esc(p.ne)}</div>`:''}
+                    <div class="card-price" id="price-${i}">${renderPrecioHtml(p)}</div>
+                    ${p.nota?`<div class="card-nota">${esc(p.nota)}</div>`:''}
+                </div>
+                <div class="card-footer">
+                    <button class="wa-order" onclick="elegirTalla(${i},'carrito')"><span class="wa-main">${t('agregarCarrito')}</span><span class="wa-shine"></span></button>
+                </div>
+            </div>`;
+        }).join("");
+
+        const _useCarrusel = _prods.length > 1 && _prods.length <= MAX_CAROUSEL;
+        const carruselHTML = `
+            <div class="carousel-wrap">
+                <div class="carousel" id="carousel">${cards}</div>
+                <button type="button" class="carousel-nav prev" onclick="_carruselIrA(_indiceActivo-1)" aria-label="Anterior">‹</button>
+                <button type="button" class="carousel-nav next" onclick="_carruselIrA(_indiceActivo+1)" aria-label="Siguiente">›</button>
+            </div>
+            <div id="carousel-dots">${_prods.map((_,i)=>`<span class="dot${i===0?' activo':''}"></span>`).join("")}</div>
+            <div id="carousel-cta">
+                <button type="button" class="wa-order" id="carousel-wa-btn"><span class="wa-main">${t('agregarCarrito')}</span><span class="wa-shine"></span></button>
+            </div>`;
+
+        const b = data.banner;
+        const bannerHTML = b?.txt ? `
+            <div style="background:${esc(b.color||'#ef4444')};color:#fff;text-align:center;padding:14px 20px;">
+                <div style="font-size:16px;font-weight:900;letter-spacing:.5px;line-height:1.3;">${esc(b.txt)}</div>
+                ${b.sub?`<div style="font-size:12px;font-weight:500;margin-top:4px;opacity:.9;">${esc(b.sub)}</div>`:''}
+            </div>` : '';
+        // Banner de promo de carrito — un solo diseño dorado reutilizado para
+        // las 4 variantes, con título/subtítulo según el tipo activo. El
+        // ícono ocupa el alto completo del banner (flex) para llamar más la
+        // atención que un emoji suelto dentro del texto.
+        const _promoCopy = (() => {
+            if(!_promoCarrito) return null;
+            if(_promoCarrito.tipo === "2x50") return { titulo: "2do producto al 50% de descuento", sub: "Se aplica automático a la pieza de igual o menor precio — agrega 2 o más al carrito" };
+            if(_promoCarrito.tipo === "3x2")  return { titulo: "3x2 — la 3ra pieza (más barata) es GRATIS", sub: "Agrega 3 o más piezas al carrito y el descuento se aplica automático" };
+            if(_promoCarrito.tipo === "montoFijo"){
+                const min = parseFloat(_promoCarrito.minimoCompra) || 0;
+                return {
+                    titulo: `$${(parseFloat(_promoCarrito.montoFijo)||0).toFixed(2)} de descuento en tu pedido`,
+                    sub: min > 0 ? `Por cada $${min.toFixed(2)} que gastes — se repite y se aplica automático` : "Se aplica automático al agregar productos al carrito"
+                };
+            }
+            if(_promoCarrito.tipo === "escalonado"){
+                const max = [...(_promoCarrito.escalones||[])].sort((a,b)=>b.pct-a.pct)[0];
+                return { titulo: max ? `Hasta ${max.pct}% de descuento por cantidad` : "Descuento por cantidad", sub: "Entre más piezas agregues al carrito, más grande el descuento" };
+            }
+            return null;
+        })();
+        const promo2x50HTML = _promoCopy ? `
+            <div style="background:linear-gradient(135deg,#8a6a1f 0%,#e8c766 22%,#fff3c4 42%,#C9A84C 58%,#8a6a1f 78%,#f4dd8a 100%);background-size:200% 200%;animation:doradoShine 3.5s ease-in-out infinite;color:#3a2a05;text-align:center;padding:12px 20px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.5);position:relative;overflow:hidden;">
+                <div style="display:flex;align-items:center;justify-content:center;gap:8px;position:relative;">
+                    <span id="promo2x50-icon" onclick="_abrirRegaloPromo(this)" title="Toca para abrir">🎁</span>
+                    <span style="font-size:15px;font-weight:900;letter-spacing:.3px;text-shadow:0 1px 0 rgba(255,255,255,0.35);">${esc(_promoCopy.titulo)}</span>
+                </div>
+                <div style="font-size:11.5px;font-weight:600;margin-top:2px;opacity:.85;">${esc(_promoCopy.sub)}</div>
+            </div>` : '';
+        // Envío gratis / regalo sorpresa — avisos independientes, se pueden
+        // combinar entre sí y con la promo de arriba (son incentivos, no
+        // afectan el cálculo del precio como las 4 promos de carrito).
+        const envioGratisHTML = _envioGratisDesde > 0 ? `
+            <div style="background:#166534;color:#fff;text-align:center;padding:8px 16px;font-size:12.5px;font-weight:700;">🚚 Envío GRATIS en pedidos desde $${_envioGratisDesde.toFixed(2)}</div>` : '';
+        const regaloSorpresaHTML = _regaloSorpresa ? `
+            <div style="background:#5b21b6;color:#fff;text-align:center;padding:8px 16px;font-size:12.5px;font-weight:700;">🎁 Regalo sorpresa en pedidos desde $${_regaloSorpresa.monto.toFixed(2)}: ${esc(_regaloSorpresa.texto)}</div>` : '';
+
+        // Filtro de talla — solo se arma si el catálogo tiene al menos un
+        // anillo con tallas registradas; junta las tallas de todos los
+        // anillos (sencillos y pares dama/caballero) sin repetir.
+        const tallasSet = new Set();
+        _prods.forEach(p => {
+            if (p.cat !== "AN") return;
+            (p.sizes||[]).forEach(s => tallasSet.add(s));
+            (p.sizesD||[]).forEach(s => tallasSet.add(s));
+            (p.sizesH||[]).forEach(s => tallasSet.add(s));
+        });
+        const tallasOrdenadas = [...tallasSet].sort((a,b) => parseFloat(a)-parseFloat(b));
+        const filtroTallaHTML = tallasOrdenadas.length ? `
+            <div id="filtro-talla-bar">
+                <span class="flt-lbl">${t('tallaAnillo')}</span>
+                ${tallasOrdenadas.map(sz => `<button class="chip-talla" data-talla="${esc(sz)}" onclick="toggleFiltroTalla('${esc(sz)}',this)">T${esc(sz)}</button>`).join("")}
+                <button class="chip-talla-limpiar" onclick="limpiarFiltroTalla()">${t('todas')}</button>
+            </div>` : '';
+
+        document.getElementById("app").innerHTML=`
+            <header><img class="logo" src="/images/logo.webp" alt="VEREX"></header>
+            <div id="franja-confianza">${t('franja')}</div>
+            ${bannerHTML}
+            ${promo2x50HTML}
+            ${envioGratisHTML}
+            ${regaloSorpresaHTML}
+            <div class="info-bar">
+                ${subHTML?`<div>${subHTML}</div>`:''}
+                <div class="validez">${t('validoHasta')} ${expStr}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;margin:10px 12px 2px;padding:9px 12px;font-size:11.5px;color:#78350f;line-height:1.4;">
+                <span style="font-size:18px;flex-shrink:0;">🛒</span>
+                <span>${t('nudgeCarrito')}</span>
+            </div>
+            ${filtroTallaHTML}
+            ${_useCarrusel ? carruselHTML : `<div class="grid">${cards}</div>`}
+            <footer>${t('footer')}</footer>`;
+
+        if(_useCarrusel) _initCarrusel();
+
+        // Primer vistazo: la lluvia de confeti cae UNA vez, sin que el
+        // cliente tenga que tocar nada, para que la promo se note de
+        // inmediato. El regalo también se abre en simultáneo — después se
+        // puede volver a tocar para repetir solo el efecto chico.
+        if(_promoCarrito){
+            setTimeout(() => {
+                _lluviaConfettiPromo();
+                const icono = document.getElementById("promo2x50-icon");
+                if(icono) _abrirRegaloPromo(icono);
+            }, 900);
+        }
+    }
+
+    // Tarjeta grande deslizable a mano (sin autoplay) — solo tiene sentido
+    // con pocas piezas; con un catálogo grande la cuadrícula deja comparar
+    // de un vistazo, que es lo que importa ahí. El botón "¡Hazlo tuyo!" y
+    // el del carrito quedan fijos debajo del carrusel (no dentro de cada
+    // tarjeta) y actúan siempre sobre la pieza visible (_indiceActivo),
+    // reusando elegirTalla() tal cual — mismo flujo de tallas/pedido que ya
+    // usa la cuadrícula, sin duplicar esa lógica.
+    function _initCarrusel(){
+        _indiceActivo = 0;
+        const wrap = document.getElementById("carousel");
+        if(!wrap) return;
+        const waBtn = document.getElementById("carousel-wa-btn");
+        if(waBtn) waBtn.onclick = function(){ elegirTalla(_indiceActivo, "carrito"); };
+
+        let _scrollTimer = null;
+        wrap.addEventListener("scroll", () => {
+            clearTimeout(_scrollTimer);
+            _scrollTimer = setTimeout(() => {
+                const idx = Math.round(wrap.scrollLeft / wrap.clientWidth);
+                if(idx !== _indiceActivo && idx >= 0 && idx < _prods.length){
+                    _indiceActivo = idx;
+                    document.querySelectorAll("#carousel-dots .dot").forEach((d,i)=>d.classList.toggle("activo", i===idx));
+                }
+            }, 80);
+        });
+
+        // Deslizar con el mouse (touch ya funciona solo — el navegador scrollea
+        // overflow-x:auto de forma nativa con gestos táctiles/trackpad, pero un
+        // clic-y-arrastre con mouse no dispara ningún scroll por su cuenta).
+        // scroll-snap-type se apaga durante el arrastre: con el snap activo,
+        // asignar wrap.scrollLeft directo no se movía (el navegador lo
+        // reasentaba al punto de snap más cercano en cada frame) — se
+        // reactiva al soltar y _carruselIrA() aterriza prolijo en la tarjeta
+        // más cercana al punto donde se soltó.
+        let _dragCarrusel = null;
+        wrap.addEventListener("mousedown", (e) => {
+            _dragCarrusel = { startX: e.pageX, startScroll: wrap.scrollLeft, moved: false };
+            wrap.classList.add("dragging");
+        });
+        window.addEventListener("mousemove", (e) => {
+            if(!_dragCarrusel) return;
+            const dx = e.pageX - _dragCarrusel.startX;
+            if(Math.abs(dx) > 4) _dragCarrusel.moved = true;
+            if(_dragCarrusel.moved){
+                e.preventDefault();
+                wrap.scrollLeft = _dragCarrusel.startScroll - dx;
+            }
+        });
+        window.addEventListener("mouseup", () => {
+            if(!_dragCarrusel) return;
+            wrap.classList.remove("dragging");
+            if(_dragCarrusel.moved){
+                // Sin esto, soltar el mouse sobre una foto abriría el zoom de
+                // inmediato después de arrastrar — el navegador dispara un
+                // click normal al soltar aunque haya sido un arrastre.
+                wrap.addEventListener("click", _suprimirClickTrasArrastre, { capture:true, once:true });
+                _carruselIrA(Math.round(wrap.scrollLeft / wrap.clientWidth));
+            }
+            _dragCarrusel = null;
+        });
+        wrap.addEventListener("dragstart", e => e.preventDefault()); // no arrastrar la <img> como archivo
+    }
+
+    function _suprimirClickTrasArrastre(e){ e.stopPropagation(); e.preventDefault(); }
+
+    function _carruselIrA(idx){
+        const wrap = document.getElementById("carousel");
+        if(!wrap) return;
+        idx = Math.max(0, Math.min(wrap.children.length - 1, idx));
+        wrap.scrollTo({ left: idx * wrap.clientWidth, behavior: "smooth" });
+    }
+
+    /* ── Filtro de talla (anillos) ── */
+    let _filtroTallas = new Set();
+
+    function toggleFiltroTalla(talla, btn){
+        if(_filtroTallas.has(talla)){ _filtroTallas.delete(talla); btn.classList.remove("activa"); }
+        else { _filtroTallas.add(talla); btn.classList.add("activa"); }
+        aplicarFiltroTalla();
+    }
+
+    function limpiarFiltroTalla(){
+        _filtroTallas.clear();
+        document.querySelectorAll(".chip-talla").forEach(b => b.classList.remove("activa"));
+        aplicarFiltroTalla();
+    }
+
+    // Solo oculta/muestra anillos — el resto de categorías (aretes, pulseras,
+    // etc.) siempre se quedan visibles, el filtro de talla no les aplica.
+    // Usa una clase (no style.display directo) para no chocar con el
+    // display:none que ya pone actualizarDisponibilidad() en lo agotado.
+    function aplicarFiltroTalla(){
+        document.querySelectorAll(".card").forEach(card => {
+            const idx = parseInt(card.dataset.idx);
+            const p = _prods[idx];
+            if(!p || p.cat !== "AN" || _filtroTallas.size === 0){ card.classList.remove("oculto-talla"); return; }
+            const tallas = [...(p.sizes||[]), ...(p.sizesD||[]), ...(p.sizesH||[])];
+            const coincide = tallas.some(t => _filtroTallas.has(t));
+            card.classList.toggle("oculto-talla", !coincide);
+        });
+    }
+
+    /* ── Selector de talla ── */
+
+    function miniToast(msg){
+        const t = document.getElementById("mini-toast");
+        t.textContent = msg;
+        t.style.display = "block";
+        clearTimeout(window._miniToastTimer);
+        window._miniToastTimer = setTimeout(() => { t.style.display = "none"; }, 2200);
+    }
+
+    function elegirTalla(i, modo, btnEl){
+        _szModo = modo || "wa";
+        // Brillo plateado al tocar el botón dorado — se re-dispara quitando y
+        // volviendo a poner la clase (si no, el navegador no repite la misma
+        // animación en clics seguidos).
+        if(btnEl && btnEl.classList.contains("wa-order")){
+            btnEl.classList.remove("brillando");
+            void btnEl.offsetWidth;
+            btnEl.classList.add("brillando");
+        }
+        const p = _prods[i];
+        if(!p) return;
+        if(p._agotado){ alert(t('agotadoAlert')); return; }
+
+        const esPareja = ES_PAR.test(p.n) || p.par;
+
+        // Nombre + teléfono obligatorios SIEMPRE (cliente y afiliado) cuando se
+        // manda directo por WhatsApp — un mismo link de catálogo se puede
+        // compartir por varios canales a varios clientes distintos, y sin estos
+        // datos no hay forma de saber quién pidió qué cuando llega el mensaje.
+        // En modo carrito se piden UNA vez al enviar todo el pedido junto (en
+        // el cajón del carrito), no por cada producto que se va agregando.
+        _szTel = ""; _szNombreCliente = ""; _szDireccion = "";
+        const telWrap = document.getElementById("sz-tel-wrap");
+        const telInput = document.getElementById("sz-tel");
+        const nombreInput = document.getElementById("sz-nombre");
+        const direccionInput = document.getElementById("sz-direccion");
+        if(telWrap){ telWrap.style.display = (_szModo === "wa") ? "block" : "none"; }
+        if(telInput){ telInput.value = ""; }
+        if(nombreInput){ nombreInput.value = ""; }
+        if(direccionInput){ direccionInput.value = ""; }
+
+        // Argollas/pares/tríos: si hay tallas registradas para dama y/o
+        // caballero, se eligen con botones igual que un anillo individual.
+        // Si no hay info de tallas, se pide el teléfono (si aplica) y se
+        // manda por WhatsApp con el mensaje de siempre.
+        if(esPareja){
+            const availD = p.sizesD?.length ? p.sizesD : null;
+            const availH = p.sizesH?.length ? p.sizesH : null;
+
+            if(!availD && !availH){
+                _szIdx=i; _szD="N/A"; _szH="N/A"; _szParMode=true; _szNoTalla=true;
+                document.getElementById("sz-title").textContent = p.n;
+                document.getElementById("sz-sub").textContent   = t('szSubParejaNoTalla');
+                document.getElementById("sz-sec-d").style.display = "none";
+                document.getElementById("sz-sec-h").style.display = "none";
+                actualizarBotonSz();
+                document.getElementById("sz-overlay").classList.add("open");
+                return;
+            }
+
+            _szIdx=i; _szD=""; _szH=""; _szParMode=true; _szNoTalla=false;
+
+            document.getElementById("sz-title").textContent = p.n;
+            document.getElementById("sz-sub").textContent   = t('szSubPareja');
+
+            if(availD){
+                document.getElementById("sz-sec-d").style.display = "";
+                document.getElementById("sz-lbl-d").textContent = t('tallaDama');
+                document.getElementById("sz-grid-d").innerHTML = availD.map(sz=>
+                    `<button class="sz-btn" onclick="selSz('D','${sz}',this)">T${sz}</button>`
+                ).join("");
+            } else {
+                document.getElementById("sz-sec-d").style.display = "none";
+                _szD = "N/A";
+            }
+
+            if(availH){
+                document.getElementById("sz-sec-h").style.display = "";
+                document.getElementById("sz-grid-h").innerHTML = availH.map(sz=>
+                    `<button class="sz-btn" onclick="selSz('H','${sz}',this)">T${sz}</button>`
+                ).join("");
+            } else {
+                document.getElementById("sz-sec-h").style.display = "none";
+                _szH = "N/A";
+            }
+
+            actualizarBotonSz();
+            document.getElementById("sz-overlay").classList.add("open");
+            return;
+        }
+
+        if(p.cat && p.cat !== "AN"){
+            _szIdx=i; _szD="N/A"; _szH="N/A"; _szParMode=false; _szNoTalla=true;
+            document.getElementById("sz-title").textContent = p.n;
+            document.getElementById("sz-sub").textContent   = t('szSubOtra');
+            document.getElementById("sz-sec-d").style.display = "none";
+            document.getElementById("sz-sec-h").style.display = "none";
+            actualizarBotonSz();
+            document.getElementById("sz-overlay").classList.add("open");
+            return;
+        }
+
+        _szIdx=i; _szD=""; _szH=""; _szParMode=false; _szNoTalla=false;
+
+        const availD = (p.sizes?.length ? p.sizes : SIZES);
+
+        document.getElementById("sz-title").textContent = p.n;
+        document.getElementById("sz-sub").textContent   = t('szSubIndividual');
+        document.getElementById("sz-sec-d").style.display = "";
+        document.getElementById("sz-lbl-d").textContent = t('tuTalla');
+        document.getElementById("sz-sec-h").style.display = "none";
+
+        document.getElementById("sz-grid-d").innerHTML = availD.map(sz=>
+            `<button class="sz-btn" onclick="selSz('D','${sz}',this)">T${sz}</button>`
+        ).join("");
+
+        actualizarBotonSz();
+        document.getElementById("sz-overlay").classList.add("open");
+    }
+
+    function selSz(gen, sz, el){
+        if(gen === "D"){
+            document.querySelectorAll("#sz-grid-d .sz-btn").forEach(b=>b.classList.remove("sel-d"));
+            el.classList.add("sel-d");
+            _szD = sz;
+        } else {
+            document.querySelectorAll("#sz-grid-h .sz-btn").forEach(b=>b.classList.remove("sel-h"));
+            el.classList.add("sel-h");
+            _szH = sz;
+        }
+        actualizarBotonSz();
+    }
+
+    // Habilita el botón de confirmar solo cuando ya hay talla(s) elegida(s)
+    // Y, si el catálogo es de afiliado Y se va a enviar YA por WhatsApp, el
+    // teléfono tiene algo escrito (en modo carrito el teléfono se pide luego,
+    // una sola vez, al enviar todo el pedido junto).
+    function actualizarBotonSz(){
+        const tallaLista = _szNoTalla ? true : (_szParMode ? (_szD && _szH) : !!_szD);
+        const telInput = document.getElementById("sz-tel");
+        const nombreInput = document.getElementById("sz-nombre");
+        const direccionInput = document.getElementById("sz-direccion");
+        // Nombre, teléfono y dirección se exigen siempre que se vaya a mandar
+        // YA por WhatsApp (cliente o afiliado) — en modo carrito no aplica
+        // aquí, se piden una sola vez al final en el cajón del carrito.
+        const requiereDatos = _szModo === "wa";
+        const telOk = requiereDatos ? !!(telInput && telInput.value.trim().length >= 4) : true;
+        const nombreOk = requiereDatos ? !!(nombreInput && nombreInput.value.trim().length >= 2) : true;
+        const direccionOk = requiereDatos ? !!(direccionInput && direccionInput.value.trim().length >= 8) : true;
+        _szTel = telInput ? telInput.value.trim() : "";
+        _szNombreCliente = nombreInput ? nombreInput.value.trim() : "";
+        _szDireccion = direccionInput ? direccionInput.value.trim() : "";
+        const listo = tallaLista && telOk && nombreOk && direccionOk;
+        const btn = document.getElementById("sz-confirm");
+        btn.disabled = !listo;
+        btn.style.opacity = listo ? "1" : ".5";
+        btn.textContent = t('agregarCarrito');
+    }
+
+    // Arma un texto corto de talla y el precio unitario ya con descuento
+    // aplicado, reutilizando el mismo estado (p, _szD/_szH/_szParMode/
+    // _szNoTalla) que ya calcula confirmarTalla() para el mensaje directo.
+    function _labelYPrecioCarrito(p){
+        if(_szParMode && _szNoTalla){
+            const precio = (p.pD && p.pH) ? precioFinal(parseFloat(p.pD)) + precioFinal(parseFloat(p.pH)) : precioFinal(p.p);
+            return { label: t('tallasParConfirmar'), precio };
+        }
+        if(_szNoTalla){
+            return { label: "", precio: precioFinal(p.p) };
+        }
+        if(_szParMode){
+            const precio = (p.pD != null && p.pH != null) ? precioFinal(parseFloat(p.pD) + parseFloat(p.pH)) : precioFinal(p.p);
+            const partes = [
+                _szD && _szD !== "N/A" ? `${t('damaLbl')} T${_szD}` : '',
+                _szH && _szH !== "N/A" ? `${t('caballeroLbl')} T${_szH}` : ''
+            ].filter(Boolean);
+            return { label: partes.join(" / "), precio };
+        }
+        return { label: `${t('tallaCorta')} T${_szD}`, precio: precioFinal(p.p) };
+    }
+
+    function confirmarTalla(){
+        const p = _prods[_szIdx];
+
+        if(_szModo === "carrito"){
+            const { label, precio } = _labelYPrecioCarrito(p);
+            agregarACarrito(p, label, precio);
+            cerrarTallas();
+            miniToast("✅ Agregado al carrito");
+            return;
+        }
+
+        let msg;
+        const telLinea = (_szNombreCliente || _szTel || _szDireccion)
+            ? `\n\nMis datos:${_szNombreCliente?`\nNombre: ${_szNombreCliente}`:''}${_szTel?`\nWhatsApp: ${_szTel}`:''}${_szDireccion?`\nDirección de envío: ${_szDireccion}`:''}`
+            : '';
+
+        if(_szParMode && _szNoTalla){
+            const precioInfo = (p.pD && p.pH && p.pD !== p.pH)
+                ? `Precio dama: $${precioFinal(p.pD).toFixed(2)} por pieza\nPrecio caballero: $${precioFinal(p.pH).toFixed(2)} por pieza`
+                : `Precio individual: $${precioFinal(p.p).toFixed(2)} por pieza`;
+            const sizesInfo = [
+                p.sizesD?.length ? `Dama: ${p.sizesD.map(s=>'T'+s).join(', ')}` : '',
+                p.sizesH?.length ? `Caballero: ${p.sizesH.map(s=>'T'+s).join(', ')}` : ''
+            ].filter(Boolean).join('\n');
+            msg = `Hola, me interesan estas argollas del catálogo VEREX:\n\n${p.n}\n${precioInfo}${sizesInfo ? `\n\nTallas disponibles:\n${sizesInfo}` : ''}\n\n¿Qué tallas necesita para dama y caballero?${telLinea}`;
+        } else if(_szNoTalla){
+            msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\nPrecio: $${precioFinal(p.p).toFixed(2)}${telLinea}`;
+        } else if(_szParMode){
+            const precioInfo = (p.pD != null && p.pH != null)
+                ? `Precio total: $${precioFinal(parseFloat(p.pD)+parseFloat(p.pH)).toFixed(2)}`
+                : `Precio: $${precioFinal(p.p).toFixed(2)}`;
+            const tallasInfo = [
+                _szD && _szD !== "N/A" ? `Talla dama: T${_szD}` : '',
+                _szH && _szH !== "N/A" ? `Talla caballero: T${_szH}` : ''
+            ].filter(Boolean).join('\n');
+            msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\n${precioInfo}\n${tallasInfo}${telLinea}`;
+        } else {
+            msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\nPrecio: $${precioFinal(p.p).toFixed(2)}\nTalla: T${_szD}${telLinea}`;
+        }
+        registrarLead(p, _szTel, _szNombreCliente, _szDireccion);
+        cerrarTallas();
+        window.open(`https://wa.me/${_waNum}?text=${encodeURIComponent(msg)}`,"_blank");
+    }
+
+    function cerrarTallas(){
+        document.getElementById("sz-overlay").classList.remove("open");
+    }
+
+    /* ── Carrito multi-producto ── */
+    // Discreto a propósito: no cambia el flujo de "¡Hazlo tuyo!" (que sigue
+    // mandando un WhatsApp inmediato), solo agrega una alternativa para
+    // juntar varios productos y mandarlos en un solo mensaje al final.
+
+    // Regalo del banner promo: al tocarlo (o solo, un segundo después de
+    // cargar la página) deja de bambolear, se agranda, y lanza confeti de
+    // colores dorados desde su posición — puramente decorativo, se puede
+    // volver a tocar para repetir.
+    function _abrirRegaloPromo(el){
+        if(!el) return;
+        el.classList.add("abierto");
+        el.textContent = "🎉";
+        setTimeout(() => { el.classList.remove("abierto"); el.textContent = "🎁"; }, 700);
+
+        const contenedor = el.closest("div[style*='position:relative']") || el.parentElement;
+        const colores = ["#C9A84C","#fff3c4","#8a6a1f","#fff","#e8c766"];
+        for(let i=0;i<22;i++){
+            const bit = document.createElement("span");
+            bit.className = "confetti-bit";
+            bit.style.background = colores[i % colores.length];
+            bit.style.left = (45 + Math.random()*10) + "%";
+            bit.style.transform = `translateX(${(Math.random()-0.5)*140}px)`;
+            bit.style.animationDelay = (Math.random()*120) + "ms";
+            bit.style.animationDuration = (700 + Math.random()*400) + "ms";
+            contenedor.appendChild(bit);
+            setTimeout(() => bit.remove(), 1300);
+        }
+    }
+
+    // Lluvia de confeti a pantalla completa — anuncia la promo UNA sola vez
+    // al cargar la página, cayendo desde arriba de todo el viewport (no solo
+    // cerca del ícono). Se dispara aparte de _abrirRegaloPromo, que sigue
+    // siendo el efecto chico y repetible al tocar el regalo.
+    function _lluviaConfettiPromo(){
+        const wrap = document.createElement("div");
+        wrap.id = "confetti-rain-wrap";
+        document.body.appendChild(wrap);
+        const colores = ["#C9A84C","#fff3c4","#8a6a1f","#fff","#e8c766","#7c3aed"];
+        const formas = ["50%", "2px"]; // algunas redondas, algunas cuadradas
+        for(let i=0;i<70;i++){
+            const bit = document.createElement("span");
+            bit.className = "confetti-rain-bit";
+            const w = 6 + Math.random()*5;
+            bit.style.width = w + "px";
+            bit.style.height = (w*1.5) + "px";
+            bit.style.borderRadius = formas[i % 2];
+            bit.style.background = colores[i % colores.length];
+            bit.style.left = Math.random()*100 + "vw";
+            bit.style.animationDuration = (1800 + Math.random()*1400) + "ms";
+            bit.style.animationDelay = (Math.random()*900) + "ms";
+            wrap.appendChild(bit);
+        }
+        setTimeout(() => wrap.remove(), 3500);
+    }
+
+    function guardarCarrito(){
+        try { sessionStorage.setItem("verex-carrito", JSON.stringify(_carrito)); } catch(_) {}
+    }
+
+    // Envío gratis y regalo sorpresa son incentivos "de progreso" — no
+    // cambian el precio como las promos de arriba, solo motivan a agregar
+    // una pieza más mostrando cuánto falta para desbloquearlos.
+    function _renderProgresoIncentivos(totalActual){
+        const cont = document.getElementById("cart-incentivos");
+        if(!cont) return;
+        const bloques = [];
+        if(_envioGratisDesde > 0){
+            if(totalActual >= _envioGratisDesde){
+                bloques.push(`<div style="background:#dcfce7;color:#166534;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:700;margin-top:8px;">🚚 ¡Envío GRATIS desbloqueado!</div>`);
+            } else {
+                const falta = _envioGratisDesde - totalActual;
+                bloques.push(`<div style="background:#fef9c3;color:#854d0e;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;margin-top:8px;">🚚 Te faltan $${falta.toFixed(2)} para envío GRATIS</div>`);
+            }
+        }
+        if(_regaloSorpresa){
+            if(totalActual >= _regaloSorpresa.monto){
+                bloques.push(`<div style="background:#ede9fe;color:#5b21b6;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:700;margin-top:8px;">🎁 ¡Incluye regalo sorpresa: ${esc(_regaloSorpresa.texto)}!</div>`);
+            } else {
+                const falta = _regaloSorpresa.monto - totalActual;
+                bloques.push(`<div style="background:#fef9c3;color:#854d0e;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;margin-top:8px;">🎁 Te faltan $${falta.toFixed(2)} para un regalo sorpresa</div>`);
+            }
+        }
+        // Monto fijo con mínimo de compra: se repite por tramos, así que
+        // siempre avisa cuánto falta para el PRÓXIMO tramo (no solo el primero).
+        if(_promoCarrito?.tipo === "montoFijo"){
+            const minimo = parseFloat(_promoCarrito.minimoCompra) || 0;
+            const base = parseFloat(_promoCarrito.montoFijo) || 0;
+            if(minimo > 0){
+                const tramosActuales = Math.floor(totalActual / minimo);
+                const faltaProximo = (minimo * (tramosActuales + 1)) - totalActual;
+                bloques.push(`<div style="background:#fef9c3;color:#854d0e;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;margin-top:8px;">🎁 Te faltan $${faltaProximo.toFixed(2)} para ${tramosActuales > 0 ? "otro" : "el"} descuento de $${base.toFixed(2)}</div>`);
+            }
+        }
+        cont.innerHTML = bloques.join("");
+    }
+
+    // Calcula el total del carrito aplicando la promo activa (si hay una).
+    // Las 4 variantes comparten la misma base: expandir el carrito a
+    // unidades individuales (respetando qty>1) y ordenarlas de mayor a
+    // menor precio — así el descuento siempre recae en la(s) pieza(s) más
+    // barata(s), protegiendo el margen sin importar en qué orden el
+    // cliente las haya agregado.
+    function _calcularPromoCarrito(){
+        if(!_promoCarrito || !_promoCarrito.tipo) return null;
+        const unidades = [];
+        _carrito.forEach(it => { for(let i=0;i<it.qty;i++) unidades.push(it.precioUnit); });
+        if(!unidades.length) return null;
+        unidades.sort((a,b) => b-a);
+        const subtotal = unidades.reduce((s,p) => s+p, 0);
+
+        if(_promoCarrito.tipo === "2x50"){
+            if(unidades.length < 2) return null;
+            let total = 0, descuento = 0;
+            unidades.forEach((p, idx) => { if(idx % 2 === 1){ total += p*0.5; descuento += p*0.5; } else total += p; });
+            return { total, descuento, etiqueta: "🎁 Promo 2do al 50%" };
+        }
+        if(_promoCarrito.tipo === "3x2"){
+            if(unidades.length < 3) return null;
+            let total = 0, descuento = 0;
+            unidades.forEach((p, idx) => { if(idx % 3 === 2){ descuento += p; } else total += p; });
+            return { total, descuento, etiqueta: "🎁 Promo 3x2 (la más barata gratis)" };
+        }
+        if(_promoCarrito.tipo === "montoFijo"){
+            const base = parseFloat(_promoCarrito.montoFijo) || 0;
+            const minimo = parseFloat(_promoCarrito.minimoCompra) || 0;
+            let monto;
+            if(minimo > 0){
+                // Se repite por cada tramo completo — $10 por cada $50 gastados:
+                // $100 = 2 tramos = $20 off, $150 = 3 tramos = $30 off.
+                const tramos = Math.floor(subtotal / minimo);
+                if(tramos < 1) return null;
+                monto = Math.min(base * tramos, subtotal);
+                if(monto <= 0) return null;
+                return { total: subtotal - monto, descuento: monto, etiqueta: `🎁 Descuento de $${monto.toFixed(2)} (${tramos}× $${base.toFixed(2)} por cada $${minimo.toFixed(2)})` };
+            }
+            monto = Math.min(base, subtotal);
+            if(monto <= 0) return null;
+            return { total: subtotal - monto, descuento: monto, etiqueta: `🎁 Descuento de $${monto.toFixed(2)}` };
+        }
+        if(_promoCarrito.tipo === "escalonado"){
+            const escalones = [...(_promoCarrito.escalones || [])].sort((a,b) => b.minCant - a.minCant);
+            const tier = escalones.find(e => unidades.length >= e.minCant);
+            if(!tier) return null;
+            const descuento = subtotal * (tier.pct/100);
+            return { total: subtotal - descuento, descuento, etiqueta: `🎁 ${tier.pct}% por llevar ${unidades.length} piezas` };
+        }
+        return null;
+    }
+
+    function renderCarritoFab(){
+        const total = _carrito.reduce((s, it) => s + it.qty, 0);
+        document.getElementById("cart-fab-badge").textContent = total;
+        document.getElementById("cart-fab").classList.toggle("show", total > 0);
+    }
+
+    function agregarACarrito(p, tallaLabel, precioUnit){
+        const key = (p.c || p.n) + "|" + tallaLabel;
+        const existente = _carrito.find(it => it.key === key);
+        if(existente) existente.qty++;
+        else _carrito.push({ key, codigo: p.c || "", nombre: p.n, tallaLabel, precioUnit, qty: 1 });
+        guardarCarrito();
+        renderCarritoFab();
+    }
+
+    function renderCarritoLista(){
+        const cont = document.getElementById("cart-list");
+        if(!_carrito.length){
+            cont.innerHTML = `<p style="text-align:center;color:#999;font-size:13px;padding:20px 0;">${t('tuCarritoVacio')}</p>`;
+        } else {
+            cont.innerHTML = _carrito.map(it => `
+                <div class="cart-item">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:13px;font-weight:700;color:#111;">${esc(it.nombre)}</div>
+                        ${it.tallaLabel ? `<div style="font-size:11px;color:#7c3aed;">${esc(it.tallaLabel)}</div>` : ''}
+                        <div style="font-size:12px;color:#666;">$${it.precioUnit.toFixed(2)} c/u</div>
+                    </div>
+                    <button class="cart-item-qtybtn" onclick="cambiarQtyCarrito('${esc(it.key)}',-1)">−</button>
+                    <span style="font-weight:700;min-width:16px;text-align:center;">${it.qty}</span>
+                    <button class="cart-item-qtybtn" onclick="cambiarQtyCarrito('${esc(it.key)}',1)">+</button>
+                    <div style="font-size:13px;font-weight:800;color:#111;min-width:55px;text-align:right;">$${(it.precioUnit*it.qty).toFixed(2)}</div>
+                </div>`).join("");
+        }
+        const subtotal = _carrito.reduce((s, it) => s + it.precioUnit * it.qty, 0);
+        const promo = _calcularPromoCarrito();
+        const totalEl = document.getElementById("cart-total");
+        const promoLineaEl = document.getElementById("cart-promo-linea");
+        if(promo){
+            totalEl.innerHTML = `<span style="text-decoration:line-through;color:#999;font-size:13px;font-weight:600;">$${subtotal.toFixed(2)}</span> $${promo.total.toFixed(2)}`;
+            if(promoLineaEl) promoLineaEl.textContent = `${promo.etiqueta}: -$${promo.descuento.toFixed(2)}`;
+            if(promoLineaEl) promoLineaEl.style.display = "block";
+        } else {
+            totalEl.textContent = "$" + subtotal.toFixed(2);
+            if(promoLineaEl) promoLineaEl.style.display = "none";
+        }
+        _renderProgresoIncentivos(subtotal);
+        actualizarTramoEnvio(subtotal);
+    }
+
+    // Tramo de envío en vivo (tabla fija de DHL) — se recalcula cada vez que
+    // cambia el carrito, mismo lugar donde antes vivían los incentivos de
+    // envío gratis / regalo sorpresa (que este catálogo no usa).
+    function actualizarTramoEnvio(subtotal){
+        const el = document.getElementById("envio-tramo");
+        if(!el) return;
+        if(!subtotal){ el.className = ""; el.textContent = ""; return; }
+        const costo = calcularEnvioCatalogo(subtotal);
+        if(costo === null){
+            el.className = "bajo-minimo";
+            el.textContent = t('envioBajoMinimo', MINIMO_COMPRA_US - subtotal);
+            return;
+        }
+        const siguienteTramo = TRAMOS_ENVIO_US.find(tr => tr.min > subtotal);
+        if(siguienteTramo && siguienteTramo.costo < costo){
+            el.className = "falta";
+            el.textContent = t('envioFalta', siguienteTramo.min - subtotal, siguienteTramo.costo);
+        } else {
+            el.className = "ok";
+            el.textContent = t('envioTramo', costo, subtotal);
+        }
+    }
+
+    function cambiarQtyCarrito(key, delta){
+        const it = _carrito.find(x => x.key === key);
+        if(!it) return;
+        it.qty += delta;
+        if(it.qty <= 0) _carrito = _carrito.filter(x => x.key !== key);
+        guardarCarrito();
+        renderCarritoFab();
+        renderCarritoLista();
+        actualizarBotonCarrito();
+    }
+
+    // Nombre y teléfono se piden SIEMPRE al enviar el carrito (cliente o
+    // afiliado) — un mismo link se puede compartir por varios canales a
+    // varios clientes distintos, y sin estos datos no se sabe quién pidió.
+    function actualizarBotonCarrito(){
+        const nombreInput = document.getElementById("cart-nombre");
+        const direccionInput = document.getElementById("cart-direccion");
+        const ciudadInput = document.getElementById("cart-ciudad");
+        const estadoInput = document.getElementById("cart-estado");
+        const zipInput = document.getElementById("cart-zip");
+        const correoInput = document.getElementById("cart-correo");
+        const telInput = document.getElementById("cart-tel");
+
+        const nombreOk = !!(nombreInput && nombreInput.value.trim().length >= 2);
+        const direccionOk = !!(direccionInput && direccionInput.value.trim().length >= 5);
+        const ciudadOk = !!(ciudadInput && ciudadInput.value.trim().length >= 2);
+        const estadoOk = !!(estadoInput && estadoInput.value);
+        const zipOk = !!(zipInput && /^\d{5}$/.test(zipInput.value.trim()));
+        const correoOk = !!(correoInput && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correoInput.value.trim()));
+        const telOk = !!(telInput && telInput.value.trim().length >= 7);
+
+        if(zipInput)    zipInput.classList.toggle("form-err", !!(zipInput.value.trim() && !zipOk));
+        if(correoInput) correoInput.classList.toggle("form-err", !!(correoInput.value.trim() && !correoOk));
+
+        const subtotal = _carrito.reduce((s, it) => s + it.precioUnit * it.qty, 0);
+        const envioOk = calcularEnvioCatalogo(subtotal) !== null;
+
+        const btn = document.getElementById("cart-confirm");
+        const listo = _carrito.length > 0 && nombreOk && direccionOk && ciudadOk && estadoOk && zipOk && correoOk && telOk && envioOk;
+        btn.disabled = !listo;
+        btn.style.opacity = listo ? "1" : ".5";
+    }
+
+    function abrirCarrito(){
+        renderCarritoLista();
+        actualizarBotonCarrito();
+        document.getElementById("cart-overlay").classList.add("open");
+    }
+
+    function cerrarCarrito(){
+        document.getElementById("cart-overlay").classList.remove("open");
+    }
+
+    function enviarCarritoWhatsApp(){
+        if(!_carrito.length) return;
+        const nombreCliente = (document.getElementById("cart-nombre")?.value || "").trim();
+        const direccion = (document.getElementById("cart-direccion")?.value || "").trim();
+        const ciudad = (document.getElementById("cart-ciudad")?.value || "").trim();
+        const estado = (document.getElementById("cart-estado")?.value || "").trim();
+        const zip = (document.getElementById("cart-zip")?.value || "").trim();
+        const correo = (document.getElementById("cart-correo")?.value || "").trim();
+        const tel = (document.getElementById("cart-tel")?.value || "").trim();
+        if(!nombreCliente || nombreCliente.length < 2 || !direccion || !ciudad || !estado
+            || !/^\d{5}$/.test(zip) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo) || tel.length < 7) return;
+
+        // Un solo string de dirección — igual que hace el catálogo doméstico
+        // con su textarea única — para no tocar registrarLead() ni el resto
+        // del flujo, que ya tratan la dirección como un solo campo de texto.
+        const direccionCliente = `${direccion}, ${ciudad}, ${estado} ${zip}`;
+
+        const lineas = _carrito.map((it, idx) =>
+            `${idx+1}. ${it.nombre}${it.tallaLabel ? ` (${it.tallaLabel})` : ''}${it.qty > 1 ? ` x${it.qty}` : ''} — $${(it.precioUnit*it.qty).toFixed(2)}`
+        );
+        const subtotal = _carrito.reduce((s, it) => s + it.precioUnit * it.qty, 0);
+        const costoEnvio = calcularEnvioCatalogo(subtotal);
+        if(costoEnvio === null) return; // el botón ya lo bloquea antes de llegar aquí
+        const totalFinal = subtotal + costoEnvio;
+        const totalLinea = `${t('waEnvio')} ${costoEnvio > 0 ? "$" + costoEnvio.toFixed(2) : t('waGratis')}\n${t('waTotal')} $${totalFinal.toFixed(2)}`;
+
+        const msg = `${t('waMsgCarritoHola', nombreCliente)}\n\n${lineas.join("\n")}\n\n${totalLinea}\n\n${t('waMisDatos')}\n${t('waTelefono')} ${tel}\n${t('waCorreo')} ${correo}\n${t('waDireccion')} ${direccionCliente}`;
+
+        // Registro de lead best-effort por cada producto del carrito — igual
+        // que el flujo directo, no debe bloquear el envío si falla.
+        _carrito.forEach(it => {
+            const prod = _prods.find(p => p.c === it.codigo);
+            if(prod) registrarLead(prod, tel, nombreCliente, direccionCliente);
+        });
+
+        _carrito = [];
+        guardarCarrito();
+        renderCarritoFab();
+        cerrarCarrito();
+        window.open(`https://wa.me/${_waNum}?text=${encodeURIComponent(msg)}`,"_blank");
+    }
+
+    // Verifica el stock real contra el catálogo (que es una foto fija tomada al
+    // generar el link) y marca "AGOTADO" lo que ya se vendió por otro canal
+    // (consignación, ecommerce u otro afiliado) desde entonces.
+    async function actualizarDisponibilidad(){
+        try{
+            const res = await fetch(API_URL, {
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body: JSON.stringify({ accion:"GET_STOCK" })
+            });
+            const data = await res.json();
+            const stock = data.stock || [];
+            const mapa = new Map(stock.map(s => [s.codigo, s]));
+
+            // Este catálogo (EE. UU./DHL) tiene su propia franja de confianza y
+            // su propia tabla de envío fija — a propósito NO se sincroniza con
+            // las reglas de envío ni la frase de confianza del catálogo
+            // doméstico (Admin → Dashboard), que están pensadas para El Salvador.
+
+            // Catálogos auto-generados por un vendedor desde su inventario
+            // (ver inventario-sellers → compartirMiCatalogo): la tabla "stock"
+            // global no baja stock_consignacion cuando el vendedor registra
+            // una venta (solo sube stock_vendido), así que el chequeo genérico
+            // de abajo nunca los marcaría agotados. Se cruza en cambio contra
+            // SU consignación real — es la fuente exacta de qué le queda.
+            let vivosVendedorPorClave = null;
+            // Clave = codigoBase + talla — el codigoBase solo no alcanza
+            // porque un anillo con varias tallas genera UNA tarjeta por
+            // talla en el catálogo, todas con el mismo codigoBase; sin la
+            // talla en la clave no se puede saber CUÁL talla exacta sigue
+            // viva y cuál se agotó (podía marcar todas o ninguna agotada).
+            const claveVivo = (base, talla) => String(base||"").toUpperCase() + "|" + String(talla||"").trim();
+            if (_afiliadoCodigo && _esAutoGeneradoVendedor) {
+                try {
+                    const resV = await fetch(API_URL, {
+                        method: "POST", headers: {"Content-Type":"application/json"},
+                        body: JSON.stringify({ accion: "GET_CODIGOS_VENDEDOR", vendedor: _afiliadoCodigo })
+                    });
+                    const dataV = await resV.json();
+                    if (dataV.ok && dataV.productos) {
+                        // Incluye "bajo pedido" (misma talla, se repone) y
+                        // "tallasDisponibles" (esa talla se agotó pero el
+                        // modelo tiene otras tallas en bodega) — en ambos
+                        // casos la tarjeta se sigue mostrando, no se oculta.
+                        vivosVendedorPorClave = new Map();
+                        dataV.productos.forEach(p => {
+                            const base = (p.codigoBase || p.codigo || "").replace(/-\d+$/, "");
+                            vivosVendedorPorClave.set(claveVivo(base, p.talla), p);
+                        });
+                    }
+                } catch(_) {}
+            }
+
+            _prods.forEach((p,i) => {
+                if(!p.c) return;
+                const s = mapa.get(p.c);
+                const card = document.querySelector(`.card[data-idx="${i}"]`);
+
+                // Refrescar la foto si cambió en Stock desde que se generó el link —
+                // así no hace falta regenerar el catálogo solo por una foto nueva.
+                if(s?.foto && s.foto !== p.i){
+                    p.i = s.foto;
+                    const img = card?.querySelector(".card-img");
+                    if(img) img.src = ikSharp(s.foto);
+                }
+
+                // Refrescar el precio si cambió en Stock — así un ajuste de precio
+                // aplica solo, sin tener que regenerar el link.
+                let precioCambio = false;
+                if(!p.par && s && s.precio != null && parseFloat(s.precio) !== parseFloat(p.p)){
+                    p.p = parseFloat(s.precio).toFixed(2);
+                    precioCambio = true;
+                } else if(p.par && (p.cD?.length || p.cC?.length)){
+                    // Pares/tríos: el catálogo guarda el código de CADA pieza del set,
+                    // así que se suma el precio actual de cada una para recalcular el total.
+                    const sumar = codigos => (codigos||[]).reduce((sum, cod) => {
+                        const row = mapa.get(cod);
+                        return sum + (row ? parseFloat(row.precio || 0) : 0);
+                    }, 0);
+                    if(p.cD?.length){
+                        const nuevoD = sumar(p.cD).toFixed(2);
+                        if(nuevoD !== parseFloat(p.pD||0).toFixed(2)){ p.pD = nuevoD; precioCambio = true; }
+                    }
+                    if(p.cC?.length){
+                        const nuevoC = sumar(p.cC).toFixed(2);
+                        if(nuevoC !== parseFloat(p.pH||0).toFixed(2)){ p.pH = nuevoC; precioCambio = true; }
+                    }
+                }
+                if(precioCambio){
+                    const priceEl = document.getElementById(`price-${i}`);
+                    if(priceEl) priceEl.innerHTML = renderPrecioHtml(p);
+                }
+
+                // Si el código ya no existe en stock (eliminado), fue reservado,
+                // o ya no queda en BODEGA, se marca agotado para este catálogo.
+                //
+                // Antes se sumaba bodega+tienda+consignación (como
+                // _stockTotalProd del admin), pero eso significaba que una
+                // pieza ya entregada a OTRO vendedor en consignación seguía
+                // apareciendo disponible aquí — un catálogo de afiliado podía
+                // mostrar productos que en realidad estaban con otro vendedor.
+                // Solo bodega representa lo que VEREX puede entregar a un
+                // cliente nuevo de ESTE catálogo.
+                const sinUnidades = row => !row || row.reservado || (parseInt(row.stock_bodega)||0) <= 0;
+
+                // Pares y tríos: el set solo se puede armar si TODAS sus piezas
+                // tienen unidades. Antes se miraba solo el código principal, así
+                // que el par seguía ofreciéndose aunque la otra pieza ya se
+                // hubiera vendido por consignación, otro afiliado o la tienda —
+                // y el cliente terminaba pidiendo algo imposible de completar.
+                // Los códigos de cada pieza ya vienen en el catálogo (cD/cC), que
+                // es lo mismo que se usa arriba para recalcular el precio del set.
+                const piezas = (p.par ? [...(p.cD||[]), ...(p.cC||[])] : []).filter(Boolean);
+
+                const claveCard = claveVivo(p.c, (p.sizes && p.sizes[0]) || "");
+                const vivoInfo = vivosVendedorPorClave ? vivosVendedorPorClave.get(claveCard) : undefined;
+                const agotado = vivosVendedorPorClave
+                    ? !vivoInfo
+                    : (piezas.length
+                        ? piezas.some(cod => sinUnidades(mapa.get(cod)))
+                        : sinUnidades(s));
+
+                if (vivosVendedorPorClave && card) {
+                    p.bajoPedido = !!vivoInfo?.bajoPedido;
+                    p.tallasDisponibles = vivoInfo?.tallasDisponibles || [];
+                    card.classList.toggle("bajopedido", p.bajoPedido);
+                    card.classList.toggle("otrastallas", !p.bajoPedido && p.tallasDisponibles.length > 0);
+                    const badgeOT = document.getElementById(`otrastallas-${i}`);
+                    if (badgeOT && p.tallasDisponibles.length) badgeOT.textContent = `${t('tallaAgotadaDisp')} ${p.tallasDisponibles.join(", ")}`;
+                }
+
+                if(!agotado) return;
+                p._agotado = true;
+                // Ocultar en vez de tachar — más limpio para el cliente, y evita
+                // que quede un producto "muerto" ocupando espacio en la lista.
+                if(card) card.style.display = "none";
+            });
+        } catch(_){ /* si falla la verificación, se deja el catálogo como estaba */ }
+    }
+
+    function abrirFotoZoom(url){
+        document.getElementById("foto-zoom-img").src = url;
+        document.getElementById("foto-zoom-overlay").style.display = "flex";
+    }
+    function cerrarFotoZoom(){
+        document.getElementById("foto-zoom-overlay").style.display = "none";
+    }
+
+    window.cambiarIdioma   = cambiarIdioma;
+    window.elegirTalla     = elegirTalla;
+    window.selSz           = selSz;
+    window.confirmarTalla  = confirmarTalla;
+    window.cerrarTallas    = cerrarTallas;
+    window.actualizarBotonSz = actualizarBotonSz;
+    window.abrirFotoZoom  = abrirFotoZoom;
+    window.cerrarFotoZoom = cerrarFotoZoom;
+    window.abrirCarrito   = abrirCarrito;
+    window.cerrarCarrito  = cerrarCarrito;
+    window.cambiarQtyCarrito     = cambiarQtyCarrito;
+    window.actualizarBotonCarrito = actualizarBotonCarrito;
+    window.enviarCarritoWhatsApp  = enviarCarritoWhatsApp;
+    window.toggleFiltroTalla = toggleFiltroTalla;
+    window.limpiarFiltroTalla = limpiarFiltroTalla;
+    window._abrirRegaloPromo = _abrirRegaloPromo;
+    window._carruselIrA = _carruselIrA;
+
+    /* ── Arranque ── */
+
+    let data;
+    // KV route: data injected server-side
+    if(window.__CATALOG_DATA__){
+        data = window.__CATALOG_DATA__;
+    } else {
+        if(!c){
+            document.getElementById("app").innerHTML='<div style="text-align:center;padding:60px;color:#888;">Link inválido.</div>';
+            return;
+        }
+        try{
+            // Try LZ-string URL-safe (new), then base64 LZ-string, then plain base64 (legacy)
+            const lzUri = LZString.decompressFromEncodedURIComponent(c);
+            if(lzUri){ data=JSON.parse(lzUri); }
+            else {
+                const raw=decodeURIComponent(c);
+                const lzB64=LZString.decompressFromBase64(raw);
+                data=lzB64 ? JSON.parse(lzB64) : JSON.parse(decodeURIComponent(escape(atob(raw))));
+            }
+        } catch(e){
+            document.getElementById("app").innerHTML='<div style="text-align:center;padding:60px;color:#888;">Link inválido o corrupto.</div>';
+            return;
+        }
+    }
+    if(data.expiry && Date.now()>data.expiry) showExpired(data.nombre, data.wa);
+    else { render(data); actualizarDisponibilidad(); renderCarritoFab(); aplicarIdiomaEstatico(); }
+})();
+</script>
+</body>
+</html>

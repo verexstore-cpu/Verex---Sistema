@@ -17,14 +17,18 @@ export async function onRequest(context) {
     const baseUrl = new URL(context.request.url);
     const origin   = `${baseUrl.protocol}//${baseUrl.host}`;
 
-    const catalogoRes = await fetch(`${origin}/catalogo.html`);
-    let html = await catalogoRes.text();
-
     // Build OG tags with absolute URLs for WhatsApp/social previews
     let catalogNombre = "Catálogo VEREX";
     let catalogDesc = "La expresión de tu mejor versión";
     let data = null;
     try { data = JSON.parse(raw); } catch(_) {}
+
+    // Catálogo bilingüe para EE. UU. (envío DHL por monto de compra) usa su
+    // propia plantilla — se genera desde Admin con la casilla "🇺🇸 Catálogo
+    // para Estados Unidos" (ver catalogo-us.html).
+    const plantilla = (data && data.tipoCatalogo === "us") ? "catalogo-us.html" : "catalogo.html";
+    const catalogoRes = await fetch(`${origin}/${plantilla}`);
+    let html = await catalogoRes.text();
 
     // El banner de afiliado es global (uno solo para todos sus catálogos) —
     // se inyecta aquí en cada carga, así una edición del admin aplica de
