@@ -2710,7 +2710,7 @@ async function enviar(){
                   envioLbl: "Shipping (DHL)", freeLbl: "FREE", totalLbl: "Total",
                   pagoTitulo: "Complete your payment here:",
                   pagoBtn: "Pay with PayPal",
-                  siguiente: "Once we confirm your payment, we'll prepare your order and ship it via DHL.",
+                  siguiente: "Once we confirm your payment, we'll prepare your order and ship it via DHL — delivery takes 5–7 business days.",
                   direccionLbl: "Shipping to:",
                   dudas: "Questions? Just reply to this email.",
                   subject: `🛍️ Your VEREX Store order — complete your payment`
@@ -2721,7 +2721,7 @@ async function enviar(){
                   envioLbl: "Envío (DHL)", freeLbl: "GRATIS", totalLbl: "Total",
                   pagoTitulo: "Para completar tu pedido, realiza el pago aquí:",
                   pagoBtn: "Pagar con PayPal",
-                  siguiente: "Cuando confirmemos tu pago, preparamos tu pedido y lo enviamos por DHL.",
+                  siguiente: "Cuando confirmemos tu pago, preparamos tu pedido y lo enviamos por DHL — la entrega toma entre 5 y 7 días hábiles.",
                   direccionLbl: "Dirección de envío:",
                   dudas: "¿Dudas? Responde este mismo correo.",
                   subject: `🛍️ Tu pedido en VEREX Store — completa tu pago`
