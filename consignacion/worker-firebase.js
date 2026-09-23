@@ -2574,6 +2574,9 @@ async function enviar(){
             zipUS: d.zipUS || "",
             envioUSD: d.envioUSD != null ? parseFloat(d.envioUSD) : null,
             totalPedidoUSD: d.totalPedidoUSD != null ? parseFloat(d.totalPedidoUSD) : null,
+            // Link de PayPal.me con el monto exacto del pedido, armado en el
+            // checkout — el panel de Logística USA lo muestra para copiarlo.
+            pagoLink: d.pagoLink || "",
             historial: [{ estado: "interesado", fecha: new Date().toISOString() }]
           });
 
@@ -2645,6 +2648,16 @@ async function enviar(){
               ).join("");
               const envio = parseFloat(d.envio) || 0;
               const total = d.total != null ? parseFloat(d.total) : null;
+              // Validar formato antes de insertarlo como link clicable en el
+              // correo (este endpoint es público, sin auth de admin) — solo
+              // se acepta un paypal.me/usuario/monto bien formado.
+              const pagoLinkOk = /^https:\/\/paypal\.me\/[A-Za-z0-9_.]{1,50}\/\d+\.\d{2}[A-Z]{0,3}$/.test(d.pagoLink || "");
+              const correoValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.correo || "");
+              const pagoLinkHtml = pagoLinkOk ? `
+                        <div style="margin:0 0 16px;padding:12px 14px;background:#fef9e7;border:1px solid #f0d98c;border-radius:8px;text-align:center;">
+                          <div style="font-size:11px;color:#8a6d1a;font-weight:700;margin-bottom:6px;">💳 LINK DE PAGO (PayPal.me)${correoValido ? "" : " — MANDAR AL CLIENTE"}</div>
+                          <a href="${d.pagoLink}" style="font-size:13px;color:#1a5fb4;word-break:break-all;">${d.pagoLink}</a>
+                        </div>` : "";
               await fetch("https://api.resend.com/emails", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
@@ -2659,6 +2672,7 @@ async function enviar(){
                         <p style="margin:6px 0 0;font-size:13px;color:#444;">Nuevo pedido — catálogo Estados Unidos</p>
                       </div>
                       <div style="padding:24px;">
+                        ${pagoLinkHtml}
                         <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px;">
                           <tr><td style="padding:6px 0;color:#888;width:110px;">Cliente</td><td style="padding:6px 0;font-weight:700;color:#111;">${d.nombreCliente || "—"}</td></tr>
                           <tr><td style="padding:6px 0;color:#888;">Teléfono</td><td style="padding:6px 0;color:#111;">${d.telefono || "—"}</td></tr>
@@ -2670,7 +2684,7 @@ async function enviar(){
                           <tr><td style="padding:8px 0 2px;color:#888;">Envío (DHL)</td><td style="padding:8px 0 2px;color:#111;text-align:right;">${envio > 0 ? "$" + envio.toFixed(2) : "GRATIS"}</td></tr>
                           <tr><td style="padding:2px 0;font-weight:700;color:#111;">Total</td><td style="padding:2px 0;font-weight:700;color:#111;text-align:right;">$${(total ?? 0).toFixed(2)}</td></tr>
                         </table>
-                        <p style="margin:16px 0 0;font-size:12px;color:#999;">Revisa el panel de Logística USA para marcar el pago, agregar el tracking de DHL e imprimir la etiqueta de envío.</p>
+                        <p style="margin:16px 0 0;font-size:12px;color:#999;">${correoValido ? "✅ Ya se le mandó al cliente su resumen y el link de pago por correo — no hace falta reenviárselo." : "⚠️ El cliente no dejó un correo válido — mándale tú el link de pago de arriba por WhatsApp."} Revisa el panel de Logística USA para marcar el pago, agregar el tracking de DHL e imprimir la etiqueta de envío.</p>
                       </div>
                       <div style="padding:16px 24px;background:#f5f5f5;border-top:2px solid #C9A84C;text-align:center;font-size:12px;color:#888;">
                         El mundo es mejor cuando brillas tú ✨
@@ -2678,6 +2692,78 @@ async function enviar(){
                     </div>`
                 })
               });
+
+              // ── Correo al CLIENTE con su pedido + link de pago ──────────
+              // Antes esto dependía de que el admin viera el aviso y le
+              // reenviara el link a mano por WhatsApp (nada garantizado en
+              // EE. UU.) — ahora sale solo, en el idioma que eligió en el
+              // catálogo, apenas termina el checkout.
+              if (correoValido) {
+                const en = d.lang === "en";
+                const filasCliente = d.items.map(it =>
+                  `<tr><td style="padding:6px 0;color:#111;">${it.nombre || "—"}${it.qty > 1 ? ` ×${it.qty}` : ""}</td><td style="padding:6px 0;color:#111;text-align:right;">$${((parseFloat(it.precio)||0)*(parseInt(it.qty)||1)).toFixed(2)}</td></tr>`
+                ).join("");
+                const txt = en ? {
+                  preheader: "New order from the USA catalog",
+                  hola: `Hi ${d.nombreCliente || ""},`,
+                  gracias: "Thanks for your order! Here's your summary:",
+                  envioLbl: "Shipping (DHL)", freeLbl: "FREE", totalLbl: "Total",
+                  pagoTitulo: "Complete your payment here:",
+                  pagoBtn: "Pay with PayPal",
+                  siguiente: "Once we confirm your payment, we'll prepare your order and ship it via DHL.",
+                  direccionLbl: "Shipping to:",
+                  dudas: "Questions? Just reply to this email.",
+                  subject: `🛍️ Your VEREX Store order — complete your payment`
+                } : {
+                  preheader: "Nuevo pedido del catálogo de Estados Unidos",
+                  hola: `Hola ${d.nombreCliente || ""},`,
+                  gracias: "¡Gracias por tu pedido! Aquí está tu resumen:",
+                  envioLbl: "Envío (DHL)", freeLbl: "GRATIS", totalLbl: "Total",
+                  pagoTitulo: "Para completar tu pedido, realiza el pago aquí:",
+                  pagoBtn: "Pagar con PayPal",
+                  siguiente: "Cuando confirmemos tu pago, preparamos tu pedido y lo enviamos por DHL.",
+                  direccionLbl: "Dirección de envío:",
+                  dudas: "¿Dudas? Responde este mismo correo.",
+                  subject: `🛍️ Tu pedido en VEREX Store — completa tu pago`
+                };
+                const botonPago = pagoLinkOk ? `
+                  <div style="text-align:center;margin:20px 0;">
+                    <p style="font-size:13px;color:#555;margin:0 0 10px;">${txt.pagoTitulo}</p>
+                    <a href="${d.pagoLink}" style="display:inline-block;background:#0070ba;color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 28px;border-radius:8px;">${txt.pagoBtn} · $${(total ?? 0).toFixed(2)}</a>
+                  </div>` : "";
+                await fetch("https://api.resend.com/emails", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
+                  body: JSON.stringify({
+                    from: "VEREX Store <hola@verexstore.com>",
+                    to:   [d.correo],
+                    subject: txt.subject,
+                    html: `
+                      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;background:#fff;border:2px solid #C9A84C;border-radius:12px;overflow:hidden;">
+                        <div style="background:linear-gradient(135deg,#8a6a1f,#e8c766,#C9A84C);padding:24px;text-align:center;">
+                          <h1 style="margin:0;font-size:22px;letter-spacing:3px;color:#111;">VEREX STORE</h1>
+                          <p style="margin:6px 0 0;font-size:13px;color:#3a2a05;">${txt.preheader}</p>
+                        </div>
+                        <div style="padding:24px;">
+                          <p style="margin:0 0 14px;font-size:14px;color:#111;">${txt.hola}</p>
+                          <p style="margin:0 0 16px;font-size:13px;color:#555;">${txt.gracias}</p>
+                          <table style="width:100%;border-collapse:collapse;font-size:13px;border-top:1px solid #eee;padding-top:8px;">
+                            ${filasCliente}
+                            <tr><td style="padding:8px 0 2px;color:#888;">${txt.envioLbl}</td><td style="padding:8px 0 2px;color:#111;text-align:right;">${envio > 0 ? "$" + envio.toFixed(2) : txt.freeLbl}</td></tr>
+                            <tr><td style="padding:2px 0;font-weight:700;color:#111;">${txt.totalLbl}</td><td style="padding:2px 0;font-weight:700;color:#111;text-align:right;">$${(total ?? 0).toFixed(2)}</td></tr>
+                          </table>
+                          ${botonPago}
+                          <p style="margin:16px 0 4px;font-size:12px;color:#999;">${txt.direccionLbl}<br>${d.direccionCompleta || "—"}</p>
+                          <p style="margin:14px 0 0;font-size:12px;color:#999;">${txt.siguiente}</p>
+                          <p style="margin:8px 0 0;font-size:12px;color:#999;">${txt.dudas}</p>
+                        </div>
+                        <div style="padding:16px 24px;background:#f5f5f5;border-top:2px solid #C9A84C;text-align:center;font-size:12px;color:#888;">
+                          El mundo es mejor cuando brillas tú ✨
+                        </div>
+                      </div>`
+                  })
+                });
+              }
             }
             result = { ok: true };
           } catch(pedidoUsaErr) {

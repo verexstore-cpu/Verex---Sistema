@@ -586,6 +586,10 @@
     const SIZES   = ["5","5.5","6","6.5","7","7.5","8","8.5","9","9.5","10","10.5","11","12","13","14"];
     const ES_PAR  = /matrimonio|novios|pareja|alianza/i;
     const API_URL = "https://verex-api.verexstore.workers.dev/";
+    // PayPal.me admite el monto exacto en la URL (paypal.me/usuario/monto) —
+    // así no hace falta crear botones de precio fijo por adelantado; el link
+    // se arma con el total real de cada pedido en el momento del checkout.
+    const PAYPAL_ME_USER = "verexst";
 
     function esc(s){
         const d=document.createElement("div"); d.textContent=String(s||""); return d.innerHTML;
@@ -651,7 +655,8 @@
                     estadoUS: opts.estadoUS || "",
                     zipUS: opts.zip || "",
                     envioUSD: opts.envio,
-                    totalPedidoUSD: opts.totalPedido
+                    totalPedidoUSD: opts.totalPedido,
+                    pagoLink: opts.pagoLink || ""
                 })
             }).catch(()=>{});
         } catch(_){}
@@ -1573,6 +1578,10 @@
         if(costoEnvio === null) return; // el botón ya lo bloquea antes de llegar aquí
         const totalFinal = subtotal + costoEnvio;
         const totalLinea = `${t('waEnvio')} ${costoEnvio > 0 ? "$" + costoEnvio.toFixed(2) : t('waGratis')}\n${t('waTotal')} $${totalFinal.toFixed(2)}`;
+        // Link de pago con el monto EXACTO del pedido — PayPal.me acepta el
+        // monto directo en la URL, así no hace falta un botón de precio fijo
+        // por cada tramo de envío.
+        const linkPago = `https://paypal.me/${PAYPAL_ME_USER}/${totalFinal.toFixed(2)}USD`;
 
         const msg = `${t('waMsgCarritoHola', nombreCliente)}\n\n${lineas.join("\n")}\n\n${totalLinea}\n\n${t('waMisDatos')}\n${t('waTelefono')} ${tel}\n${t('waCorreo')} ${correo}\n${t('waDireccion')} ${direccionCliente}`;
 
@@ -1586,7 +1595,7 @@
             if(prod) registrarLead(prod, {
                 telefono: tel, nombreCliente, direccionCliente, correoCliente: correo,
                 pedidoId, qty: it.qty, precioLinea: it.precioUnit,
-                ciudad, estadoUS: estado, zip, envio: costoEnvio, totalPedido: totalFinal
+                ciudad, estadoUS: estado, zip, envio: costoEnvio, totalPedido: totalFinal, pagoLink: linkPago
             });
         });
 
@@ -1594,7 +1603,8 @@
         // paralelo al WhatsApp, no en su lugar. No depende de que el cliente
         // llegue a presionar "enviar" en su WhatsApp (que en EE. UU. no es
         // algo garantizado como en El Salvador), así que este es el aviso
-        // confiable de que entró un pedido nuevo.
+        // confiable de que entró un pedido nuevo. Incluye el link de PayPal
+        // ya armado con el monto exacto, listo para copiar y mandar.
         try {
             fetch(API_URL, {
                 method: "POST",
@@ -1603,7 +1613,7 @@
                     accion: "ENVIAR_PEDIDO_USA",
                     nombreCliente, telefono: tel, correo, direccionCompleta: direccionCliente,
                     items: _carrito.map(it => ({ nombre: it.nombre, qty: it.qty, precio: it.precioUnit })),
-                    envio: costoEnvio, total: totalFinal
+                    envio: costoEnvio, total: totalFinal, pagoLink: linkPago, lang: _lang
                 })
             }).catch(()=>{});
         } catch(_){}
