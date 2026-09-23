@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VEREX · Logística USA</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#faf7f1;
+  --ground-raised:#ffffff;
+  --ink:#241f16;
+  --ink-soft:#6b6252;
+  --line:#e6ddc9;
+  --accent:#a9823f;
+  --accent-ink:#4a3a1a;
+  --accent-wash:#f3e6c9;
+  --pending:#a06a12;
+  --pending-wash:#faf0d9;
+  --transit:#2b5f8a;
+  --transit-wash:#e4eef5;
+  --success:#2f7d52;
+  --success-wash:#e4f1e8;
+  --attention:#a8432f;
+  --attention-wash:#f7e6e1;
+  --shadow: 0 1px 2px rgba(36,31,22,.06), 0 6px 20px -10px rgba(36,31,22,.18);
+}
+*{box-sizing:border-box;}
+html,body{ margin:0; padding:0; background:var(--ground); }
+body{
+  color:var(--ink);
+  font-family:"IBM Plex Sans", system-ui, sans-serif;
+  padding-inline:20px;
+  padding-block:22px 60px;
+}
+.shell{max-width:1180px;margin:0 auto;}
+.num{font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums;}
+[hidden]{ display:none !important; }
+
+/* ── Pantalla de acceso (reusa la sesión del Admin) ─────────────────── */
+#gate{
+  max-width:420px; margin:14vh auto 0; text-align:center;
+  background:var(--ground-raised); border:1px solid var(--line); border-radius:14px;
+  padding:32px 28px; box-shadow:var(--shadow);
+}
+#gate h1{ font-family:"Fraunces",Georgia,serif; font-size:20px; margin:0 0 8px; }
+#gate p{ font-size:13px; color:var(--ink-soft); line-height:1.5; margin:0 0 18px; }
+#gate a{
+  display:inline-block; background:var(--accent); color:#fff; text-decoration:none;
+  font-size:13px; font-weight:600; padding:10px 18px; border-radius:9px;
+}
+
+/* ── Top bar ─────────────────────────────────────────── */
+.topbar{
+  display:flex; align-items:center; gap:18px; flex-wrap:wrap;
+  padding-bottom:18px; margin-bottom:20px; border-bottom:1px solid var(--line);
+}
+.back{
+  font-size:12.5px; color:var(--ink-soft); text-decoration:none;
+  border:1px solid var(--line); border-radius:999px; padding:6px 12px;
+  white-space:nowrap;
+}
+.back:hover{ border-color:var(--accent); color:var(--accent-ink); }
+.wordmark{
+  font-family:"Fraunces", Georgia, serif; font-weight:600; font-size:22px;
+  letter-spacing:.2px; flex:1; min-width:180px;
+}
+.wordmark span{ color:var(--accent); }
+.btn-nuevo{
+  font-size:12.5px; font-weight:600; color:#fff; background:var(--accent);
+  border:none; border-radius:9px; padding:9px 14px; text-decoration:none;
+  white-space:nowrap;
+}
+
+/* ── Stat strip ──────────────────────────────────────── */
+.stats{
+  display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:26px;
+}
+.stat{
+  background:var(--ground-raised); border:1px solid var(--line); border-radius:12px;
+  padding:14px 16px; box-shadow:var(--shadow);
+}
+.stat-label{ display:block; font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.6px; margin-bottom:6px; }
+.stat-value{ display:block; font-size:24px; font-weight:600; }
+.stat.warn .stat-value{ color:var(--pending); }
+.stat.transit .stat-value{ color:var(--transit); }
+
+/* ── Board ───────────────────────────────────────────── */
+.board{
+  display:grid; grid-template-columns:repeat(4,minmax(240px,1fr)); gap:14px;
+}
+.column-head{
+  display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600;
+  padding:0 2px 10px; color:var(--ink);
+}
+.column-head .count{
+  margin-left:auto; font-family:"IBM Plex Mono",monospace; font-size:11px;
+  color:var(--ink-soft); background:var(--ground-raised); border:1px solid var(--line);
+  border-radius:999px; padding:1px 8px;
+}
+.dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.dot.pending{ background:var(--pending); }
+.dot.transit{ background:var(--transit); }
+.dot.success{ background:var(--success); }
+.dot.prep{ background:var(--accent); }
+
+.cards{ display:flex; flex-direction:column; gap:10px; }
+.vacio{ font-size:12px; color:var(--ink-soft); padding:8px 2px; }
+
+.card{
+  background:var(--ground-raised); border:1px solid var(--line); border-radius:12px;
+  padding:13px 14px; box-shadow:var(--shadow); cursor:pointer; text-align:left;
+  width:100%; font:inherit; color:inherit;
+}
+.card:hover{ border-color:var(--accent); }
+.card:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+.card-top{ display:flex; justify-content:space-between; gap:8px; margin-bottom:6px; }
+.card-name{ font-weight:600; font-size:13.5px; }
+.card-total{ font-weight:600; font-size:13.5px; }
+.card-place{ font-size:11.5px; color:var(--ink-soft); margin-bottom:9px; }
+.card-foot{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+
+.chip{
+  font-size:10.5px; font-weight:600; border-radius:6px; padding:2.5px 7px;
+  letter-spacing:.2px; white-space:nowrap;
+}
+.chip.pending{ background:var(--pending-wash); color:var(--pending); }
+.chip.transit{ background:var(--transit-wash); color:var(--transit); }
+.chip.success{ background:var(--success-wash); color:var(--success); }
+.chip.prep{ background:var(--accent-wash); color:var(--accent-ink); }
+.chip.mono{ font-family:"IBM Plex Mono",monospace; }
+.chip.days{ background:var(--attention-wash); color:var(--attention); }
+
+/* ── Drawer ──────────────────────────────────────────── */
+.overlay{
+  position:fixed; inset:0; background:rgba(20,16,10,.38);
+  opacity:0; pointer-events:none; transition:opacity .18s ease; z-index:20;
+}
+.overlay.open{ opacity:1; pointer-events:auto; }
+
+.drawer{
+  position:fixed; top:0; right:0; height:100%; width:min(420px,100%);
+  background:var(--ground-raised); border-left:1px solid var(--line);
+  box-shadow:-16px 0 40px -20px rgba(20,16,10,.4);
+  transform:translateX(100%); transition:transform .22s ease; z-index:21;
+  padding:20px; overflow-y:auto;
+}
+.drawer.open{ transform:translateX(0); }
+
+.drawer-close{
+  background:none; border:1px solid var(--line); border-radius:8px; color:var(--ink-soft);
+  font-size:12px; padding:5px 10px; cursor:pointer; float:right;
+}
+.drawer h2{ font-family:"Fraunces",Georgia,serif; font-size:20px; font-weight:600; margin:2px 0 2px; clear:both; }
+.drawer .sub{ font-size:12px; color:var(--ink-soft); margin-bottom:18px; }
+
+.dsec{ margin-bottom:18px; }
+.dsec-label{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:var(--ink-soft); margin-bottom:8px; }
+.dsec-row{ display:flex; justify-content:space-between; gap:10px; font-size:13px; padding:6px 0; border-bottom:1px solid var(--line); }
+.dsec-row:last-child{ border-bottom:none; }
+.dsec-row span:first-child{ color:var(--ink-soft); }
+
+.items{ display:flex; flex-direction:column; gap:6px; }
+.item-row{ display:flex; justify-content:space-between; font-size:12.5px; gap:8px; }
+.item-name{ flex:1; }
+
+.field{ margin-bottom:12px; }
+.field label{ display:block; font-size:11px; color:var(--ink-soft); margin-bottom:5px; }
+.field input, .field textarea{
+  width:100%; border:1.5px solid var(--line); border-radius:9px; padding:9px 10px;
+  font:inherit; font-size:13px; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Mono",monospace;
+}
+.field textarea{ font-family:"IBM Plex Sans",sans-serif; resize:vertical; min-height:50px; }
+.field input:focus, .field textarea:focus{ outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent); }
+
+.btnrow{ display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
+.btn{
+  border:none; border-radius:9px; padding:10px 14px; font-size:12.5px; font-weight:600;
+  cursor:pointer; flex:1; min-width:120px; text-align:center;
+}
+.btn.primary{ background:var(--accent); color:#fff; }
+.btn.ghost{ background:var(--ground); color:var(--ink); border:1px solid var(--line); }
+.btn:disabled{ opacity:.45; cursor:not-allowed; }
+
+.estado-msg{ text-align:center; padding:40px 10px; color:var(--ink-soft); font-size:13px; }
+
+@media (max-width:860px){
+  .stats{ grid-template-columns:repeat(2,1fr); }
+  .board{ grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+
+<div id="gate" hidden>
+  <h1>Inicia sesión primero</h1>
+  <p>Este panel usa la misma sesión del Admin VEREX. Inicia sesión ahí y vuelve a abrir esta pestaña.</p>
+  <a href="index.html">Ir al Admin</a>
+</div>
+
+<div class="shell" id="shell" hidden>
+  <header class="topbar">
+    <a class="back" href="index.html">← VEREX Admin</a>
+    <div class="wordmark">Logística <span>USA</span></div>
+    <a class="btn-nuevo" href="index.html#catalogo-us">🔗 Generar nuevo catálogo</a>
+  </header>
+
+  <section class="stats">
+    <div class="stat"><span class="stat-label">Pedidos este mes</span><span class="stat-value num" id="stat-mes">—</span></div>
+    <div class="stat"><span class="stat-label">Ingresos cobrados</span><span class="stat-value num" id="stat-ingresos">—</span></div>
+    <div class="stat warn"><span class="stat-label">Pago pendiente</span><span class="stat-value num" id="stat-pend">—</span></div>
+    <div class="stat transit"><span class="stat-label">En tránsito</span><span class="stat-value num" id="stat-transit">—</span></div>
+  </section>
+
+  <div id="estado-msg" class="estado-msg" hidden></div>
+  <section class="board" id="board"></section>
+</div>
+
+<div class="overlay" id="overlay"></div>
+<aside class="drawer" id="drawer" aria-hidden="true"></aside>
+
+<script>
+const API_URL = "https://verex-api.verexstore.workers.dev/";
+
+const STAGES = [
+  { key:"pendiente",  label:"Pago pendiente",       dot:"pending" },
+  { key:"preparando", label:"Pagado · Preparando",  dot:"prep"    },
+  { key:"enviado",    label:"Enviado",              dot:"transit" },
+  { key:"entregado",  label:"Entregado",            dot:"success" },
+];
+
+let ADMIN_PASS = "";
+let PEDIDOS = [];
+
+const money = n => (n == null || isNaN(n)) ? "—" : "$" + Number(n).toFixed(2);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+// ── Sesión: reusa la misma del Admin (mismo dominio, mismo localStorage) ──
+function sesionValidaHoy(){
+    try{
+        const data = JSON.parse(localStorage.getItem("vx_sesion_dia") || "{}");
+        return data.fecha === new Date().toDateString() && data.hash ? data.hash : null;
+    }catch(_){ return null; }
+}
+
+function etapaDe(o){
+    if(o.entregadoUSA) return "entregado";
+    if(o.trackingDHL) return "enviado";
+    if(o.pagadoUSA) return "preparando";
+    return "pendiente";
+}
+
+function diasDesde(fechaISO){
+    const ms = Date.now() - new Date(fechaISO).getTime();
+    return Math.floor(ms / 86400000);
+}
+
+// Agrupa los leads (uno por producto) de un mismo pedido usando pedidoId.
+function agruparPedidos(leads){
+    const grupos = new Map();
+    leads.forEach(l => {
+        const key = l.pedidoId || l.id;
+        if(!grupos.has(key)) grupos.set(key, []);
+        grupos.get(key).push(l);
+    });
+    return [...grupos.entries()].map(([id, leadsGrupo]) => {
+        const first = leadsGrupo[0];
+        const subtotal = leadsGrupo.reduce((s,l) => s + (parseFloat(l.precio)||0) * (parseInt(l.qty)||1), 0);
+        return {
+            id,
+            leadIds: leadsGrupo.map(l => l.id),
+            nombre: first.nombreCliente || "(sin nombre)",
+            tel: first.telefonoCliente || "",
+            correo: first.correoCliente || "",
+            direccion: first.direccionCliente || "",
+            ciudad: first.ciudadUS || "",
+            estado: first.estadoUS || "",
+            zip: first.zipUS || "",
+            fecha: first.fecha,
+            items: leadsGrupo.map(l => ({ nombre: l.nombre, qty: parseInt(l.qty)||1, precio: parseFloat(l.precio)||0 })),
+            subtotal,
+            envio: first.envioUSD,
+            total: first.totalPedidoUSD != null ? first.totalPedidoUSD : subtotal,
+            pagadoUSA: !!first.pagadoUSA,
+            trackingDHL: first.trackingDHL || "",
+            notasUSA: first.notasUSA || "",
+            entregadoUSA: !!first.entregadoUSA,
+        };
+    }).sort((a,b) => new Date(b.fecha) - new Date(a.fecha));
+}
+
+function chipForStage(o){
+    const etapa = etapaDe(o);
+    if(etapa === "pendiente") return `<span class="chip pending">Sin pagar</span>`;
+    if(etapa === "preparando") return `<span class="chip prep">Pagado</span>`;
+    if(etapa === "enviado") return `<span class="chip transit mono">${esc(o.trackingDHL)}</span>`;
+    return `<span class="chip success">Entregado</span>`;
+}
+
+function renderBoard(){
+    const board = document.getElementById("board");
+    board.innerHTML = STAGES.map(st => {
+        const enEtapa = PEDIDOS.filter(o => etapaDe(o) === st.key);
+        return `<div class="column">
+            <div class="column-head"><span class="dot ${st.dot}"></span>${st.label}<span class="count">${enEtapa.length}</span></div>
+            <div class="cards">
+                ${enEtapa.map(o => {
+                    const dias = diasDesde(o.fecha);
+                    return `<button class="card" onclick="abrirPedido('${esc(o.id)}')">
+                        <div class="card-top">
+                            <span class="card-name">${esc(o.nombre)}</span>
+                            <span class="card-total num">${money(o.total)}</span>
+                        </div>
+                        <div class="card-place">${esc(o.ciudad)}${o.ciudad && o.estado ? ", " : ""}${esc(o.estado)}</div>
+                        <div class="card-foot">
+                            ${chipForStage(o)}
+                            ${st.key === "pendiente" && dias >= 2 ? `<span class="chip days">${dias} días</span>` : ""}
+                        </div>
+                    </button>`;
+                }).join("") || `<div class="vacio">Sin pedidos</div>`}
+            </div>
+        </div>`;
+    }).join("");
+
+    document.getElementById("stat-pend").textContent = PEDIDOS.filter(o => etapaDe(o)==="pendiente").length;
+    document.getElementById("stat-transit").textContent = PEDIDOS.filter(o => etapaDe(o)==="enviado").length;
+
+    const hoy = new Date();
+    const esteMes = PEDIDOS.filter(o => {
+        const f = new Date(o.fecha);
+        return f.getMonth() === hoy.getMonth() && f.getFullYear() === hoy.getFullYear();
+    });
+    document.getElementById("stat-mes").textContent = esteMes.length;
+    const ingresos = PEDIDOS.filter(o => o.pagadoUSA).reduce((s,o) => s + (parseFloat(o.total)||0), 0);
+    document.getElementById("stat-ingresos").textContent = money(ingresos);
+}
+
+function abrirPedido(id){
+    const o = PEDIDOS.find(x => x.id === id);
+    if(!o) return;
+    const drawer = document.getElementById("drawer");
+    const overlay = document.getElementById("overlay");
+    const etapa = etapaDe(o);
+
+    drawer.innerHTML = `
+        <button class="drawer-close" onclick="cerrarDrawer()">Cerrar ✕</button>
+        <h2>${esc(o.nombre)}</h2>
+        <div class="sub">${esc(o.ciudad)}${o.ciudad && o.estado ? ", " : ""}${esc(o.estado)} · ${new Date(o.fecha).toLocaleDateString("es-CO",{day:"numeric",month:"short",year:"numeric"})}</div>
+
+        <div class="dsec">
+            <div class="dsec-label">Envío</div>
+            <div class="dsec-row"><span>Dirección</span><span style="text-align:right;">${esc(o.direccion)}<br>${esc(o.ciudad)}, ${esc(o.estado)} ${esc(o.zip)}</span></div>
+            <div class="dsec-row"><span>Correo</span><span class="num">${esc(o.correo)}</span></div>
+            <div class="dsec-row"><span>Teléfono</span><span class="num">${esc(o.tel)}</span></div>
+        </div>
+
+        <div class="dsec">
+            <div class="dsec-label">Productos</div>
+            <div class="items">
+                ${o.items.map(it => `<div class="item-row"><span class="item-name">${esc(it.nombre)}${it.qty>1?` ×${it.qty}`:""}</span><span class="num">${money(it.precio*it.qty)}</span></div>`).join("")}
+            </div>
+            <div class="dsec-row" style="margin-top:6px;"><span>Envío (DHL)</span><span class="num">${money(o.envio)}</span></div>
+            <div class="dsec-row" style="font-weight:600;"><span>Total</span><span class="num">${money(o.total)}</span></div>
+        </div>
+
+        <div class="field">
+            <label for="dr-tracking">Número de tracking DHL</label>
+            <input id="dr-tracking" type="text" placeholder="Ej: 7834 1122 90" value="${esc(o.trackingDHL)}">
+        </div>
+        <div class="field">
+            <label for="dr-notas">Notas internas</label>
+            <textarea id="dr-notas" placeholder="Ej: pidió factura, cambio de talla...">${esc(o.notasUSA)}</textarea>
+        </div>
+
+        <div class="btnrow">
+            ${etapa === "pendiente" ? `<button class="btn primary" onclick="marcarPagado('${esc(o.id)}')">Marcar pagado</button>` : ""}
+            ${etapa === "preparando" ? `<button class="btn primary" onclick="marcarEnviado('${esc(o.id)}')">Marcar enviado</button>` : ""}
+            ${etapa === "enviado" ? `<button class="btn primary" onclick="marcarEntregado('${esc(o.id)}')">Marcar entregado</button>` : ""}
+            ${etapa === "entregado" ? `<button class="btn ghost" disabled>Pedido completo</button>` : ""}
+            <button class="btn ghost" onclick="guardarNotas('${esc(o.id)}')">Guardar</button>
+        </div>
+    `;
+
+    drawer.classList.add("open");
+    drawer.setAttribute("aria-hidden","false");
+    overlay.classList.add("open");
+}
+
+function cerrarDrawer(){
+    document.getElementById("drawer").classList.remove("open");
+    document.getElementById("drawer").setAttribute("aria-hidden","true");
+    document.getElementById("overlay").classList.remove("open");
+}
+
+// Aplica el mismo patch a TODOS los leads del pedido (uno por producto) para
+// que queden consistentes — el panel siempre lee del primero del grupo.
+async function actualizarPedido(id, patch){
+    const o = PEDIDOS.find(x => x.id === id);
+    if(!o) return false;
+    try{
+        await Promise.all(o.leadIds.map(leadId =>
+            fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ accion: "ACTUALIZAR_LEAD_USA", _pass: ADMIN_PASS, id: leadId, ...patch })
+            }).then(r => r.json())
+        ));
+        Object.assign(o, patch);
+        return true;
+    }catch(_){ return false; }
+}
+
+async function marcarPagado(id){
+    await actualizarPedido(id, { pagadoUSA: true });
+    cerrarDrawer();
+    renderBoard();
+}
+async function marcarEnviado(id){
+    const o = PEDIDOS.find(x => x.id === id);
+    const tracking = (document.getElementById("dr-tracking")?.value || "").trim();
+    if(!tracking){ document.getElementById("dr-tracking")?.focus(); return; }
+    await actualizarPedido(id, { trackingDHL: tracking });
+    cerrarDrawer();
+    renderBoard();
+}
+async function marcarEntregado(id){
+    await actualizarPedido(id, { entregadoUSA: true });
+    cerrarDrawer();
+    renderBoard();
+}
+async function guardarNotas(id){
+    const tracking = (document.getElementById("dr-tracking")?.value || "").trim();
+    const notas = (document.getElementById("dr-notas")?.value || "").trim();
+    await actualizarPedido(id, { trackingDHL: tracking, notasUSA: notas });
+    cerrarDrawer();
+    renderBoard();
+}
+
+document.getElementById("overlay").addEventListener("click", cerrarDrawer);
+
+async function cargarPedidos(){
+    const msg = document.getElementById("estado-msg");
+    try{
+        const res = await fetch(API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accion: "GET_LEADS_ADMIN", _pass: ADMIN_PASS })
+        });
+        const data = await res.json();
+        if(!data.ok){ msg.textContent = "⚠️ No se pudo cargar — verifica la sesión."; msg.hidden = false; return; }
+        const leadsUS = (data.leads || []).filter(l => l.pais === "US");
+        PEDIDOS = agruparPedidos(leadsUS);
+        msg.hidden = PEDIDOS.length > 0;
+        if(!PEDIDOS.length) msg.textContent = "Todavía no hay pedidos del catálogo de Estados Unidos.";
+        renderBoard();
+    }catch(e){
+        msg.textContent = "⚠️ Error conectando con la API.";
+        msg.hidden = false;
+    }
+}
+
+(function boot(){
+    const hash = sesionValidaHoy();
+    if(!hash){
+        document.getElementById("gate").hidden = false;
+        return;
+    }
+    ADMIN_PASS = hash;
+    document.getElementById("shell").hidden = false;
+    cargarPedidos();
+    setInterval(cargarPedidos, 45000);
+})();
+</script>
+</body>
+</html>

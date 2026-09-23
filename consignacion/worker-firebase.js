@@ -2550,6 +2550,7 @@ async function enviar(){
             codigo: d.codigo,
             nombre: d.nombre || "",
             precio: parseFloat(d.precio) || 0,
+            qty: parseInt(d.qty) || 1,
             foto: d.foto || "",
             fecha: new Date().toISOString(),
             estado: "interesado",
@@ -2560,6 +2561,19 @@ async function enviar(){
             telefonoCliente: d.telefonoCliente || "",
             nombreCliente: d.nombreCliente || "",
             direccionCliente: d.direccionCliente || "",
+            correoCliente: d.correoCliente || "",
+            // "US" cuando viene de catalogo-us.html — el panel de Logística
+            // USA filtra por este campo sin tocar los leads domésticos.
+            // pedidoId agrupa varios leads (uno por producto) en un mismo
+            // pedido; ciudad/estado/zip/envío/total van repetidos en cada
+            // lead del grupo para no tener que armar un join al leerlos.
+            pais: d.pais || "",
+            pedidoId: d.pedidoId || "",
+            ciudadUS: d.ciudadUS || "",
+            estadoUS: d.estadoUS || "",
+            zipUS: d.zipUS || "",
+            envioUSD: d.envioUSD != null ? parseFloat(d.envioUSD) : null,
+            totalPedidoUSD: d.totalPedidoUSD != null ? parseFloat(d.totalPedidoUSD) : null,
             historial: [{ estado: "interesado", fecha: new Date().toISOString() }]
           });
 
@@ -2650,6 +2664,24 @@ async function enviar(){
           if (!esAdmin) return forbidden();
           const todos = await sb.getAll("leads");
           result = { ok: true, leads: todos };
+          break;
+        }
+
+        // Panel de Logística USA: actualiza pago/tracking/notas/entrega de un
+        // pedido del catálogo de Estados Unidos. Son campos propios,
+        // independientes del ciclo estado/historial que ya usa el flujo
+        // doméstico (interesado→reportado→en_camino→vendido) — para no
+        // arriesgar esa lógica, este merge solo toca las llaves que llegan.
+        case "ACTUALIZAR_LEAD_USA": {
+          if (!esAdmin) return forbidden();
+          if (!d.id) { result = { ok: false, error: "Falta el id del pedido" }; break; }
+          const patch = {};
+          if (d.pagadoUSA !== undefined) patch.pagadoUSA = !!d.pagadoUSA;
+          if (d.trackingDHL !== undefined) patch.trackingDHL = String(d.trackingDHL || "").trim();
+          if (d.notasUSA !== undefined) patch.notasUSA = String(d.notasUSA || "").trim();
+          if (d.entregadoUSA !== undefined) patch.entregadoUSA = !!d.entregadoUSA;
+          await sb.update("leads", d.id, patch);
+          result = { ok: true };
           break;
         }
 

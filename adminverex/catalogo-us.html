@@ -611,7 +611,13 @@
 
     // Registro silencioso del interés del cliente ANTES de abrir WhatsApp — no bloquea
     // la apertura del chat aunque falle (la venta nunca debe depender de esto).
-    function registrarLead(p, telefono, nombreCliente, direccionCliente){
+    // opts: { telefono, nombreCliente, direccionCliente, correoCliente, pedidoId,
+    //         qty, precioLinea, ciudad, estadoUS, zip, envio, totalPedido }
+    // Un pedido del carrito genera UN lead POR PRODUCTO (igual que el catálogo
+    // doméstico) — pedidoId es lo que el panel de Logística USA usa para
+    // agruparlos de nuevo en una sola tarjeta de pedido.
+    function registrarLead(p, opts){
+        opts = opts || {};
         if (!p?.c) return;
         try {
             fetch(API_URL, {
@@ -622,7 +628,8 @@
                     afiliado: _afiliadoCodigo || "",
                     codigo: p.c,
                     nombre: p.n || "",
-                    precio: precioFinal(p.p),
+                    precio: opts.precioLinea != null ? opts.precioLinea : precioFinal(p.p),
+                    qty: opts.qty || 1,
                     foto: p.i || "",
                     // Teléfono y nombre capturados ANTES de abrir WhatsApp — si el
                     // envío falla o el cliente no lo manda, ya queda un dato de
@@ -631,9 +638,20 @@
                     // afiliado; ahora se pide siempre (también en cliente) porque
                     // un mismo link se puede compartir a varios clientes distintos
                     // por distintos canales, y sin nombre no se sabe quién pidió.
-                    telefonoCliente: telefono || "",
-                    nombreCliente: nombreCliente || "",
-                    direccionCliente: direccionCliente || ""
+                    telefonoCliente: opts.telefono || "",
+                    nombreCliente: opts.nombreCliente || "",
+                    direccionCliente: opts.direccionCliente || "",
+                    correoCliente: opts.correoCliente || "",
+                    // Marca el lead como de Estados Unidos — así el panel de
+                    // Logística USA puede filtrarlos sin tocar los leads
+                    // domésticos (que no mandan estos campos).
+                    pais: "US",
+                    pedidoId: opts.pedidoId || "",
+                    ciudadUS: opts.ciudad || "",
+                    estadoUS: opts.estadoUS || "",
+                    zipUS: opts.zip || "",
+                    envioUSD: opts.envio,
+                    totalPedidoUSD: opts.totalPedido
                 })
             }).catch(()=>{});
         } catch(_){}
@@ -1246,7 +1264,7 @@
         } else {
             msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\nPrecio: $${precioFinal(p.p).toFixed(2)}\nTalla: T${_szD}${telLinea}`;
         }
-        registrarLead(p, _szTel, _szNombreCliente, _szDireccion);
+        registrarLead(p, { telefono: _szTel, nombreCliente: _szNombreCliente, direccionCliente: _szDireccion });
         cerrarTallas();
         window.open(`https://wa.me/${_waNum}?text=${encodeURIComponent(msg)}`,"_blank");
     }
@@ -1559,10 +1577,17 @@
         const msg = `${t('waMsgCarritoHola', nombreCliente)}\n\n${lineas.join("\n")}\n\n${totalLinea}\n\n${t('waMisDatos')}\n${t('waTelefono')} ${tel}\n${t('waCorreo')} ${correo}\n${t('waDireccion')} ${direccionCliente}`;
 
         // Registro de lead best-effort por cada producto del carrito — igual
-        // que el flujo directo, no debe bloquear el envío si falla.
+        // que el flujo directo, no debe bloquear el envío si falla. pedidoId
+        // agrupa las líneas de este mismo pedido para el panel de Logística
+        // USA (un lead por producto, igual que el catálogo doméstico).
+        const pedidoId = "US" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         _carrito.forEach(it => {
             const prod = _prods.find(p => p.c === it.codigo);
-            if(prod) registrarLead(prod, tel, nombreCliente, direccionCliente);
+            if(prod) registrarLead(prod, {
+                telefono: tel, nombreCliente, direccionCliente, correoCliente: correo,
+                pedidoId, qty: it.qty, precioLinea: it.precioUnit,
+                ciudad, estadoUS: estado, zip, envio: costoEnvio, totalPedido: totalFinal
+            });
         });
 
         _carrito = [];

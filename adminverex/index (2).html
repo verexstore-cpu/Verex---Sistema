@@ -371,6 +371,7 @@
         <div class="tab" onclick="abrirModalCatalogo('afiliado')">🤝 Catálogo Afiliado</div>
         <div class="tab" onclick="tab(7);cargarVentasAdmin();cargarCierresMensuales()">💰 Ventas</div>
         <div class="tab" onclick="tab(8);cargarPanelLinks()">🔗 Links</div>
+        <div class="tab" onclick="window.open('logistica-usa.html','_blank')">🇺🇸 Logística USA</div>
     </div>
 
     <!-- TAB 0: DASHBOARD -->
@@ -1695,6 +1696,16 @@ async function init() {
     await cargarDatos();
     setInterval(()=>cargarDatos(true), 45000);
     cargarHistorialLinks();
+
+    // Acceso rápido desde el panel de Logística USA ("Generar nuevo
+    // catálogo"): abre directo el modal de Catálogo Cliente con la casilla
+    // de Estados Unidos ya marcada, en vez de duplicar ese formulario allá.
+    if (location.hash === "#catalogo-us") {
+        abrirModalCatalogo("cliente");
+        const chkUS = document.getElementById("cat-es-us");
+        if (chkUS) chkUS.checked = true;
+        history.replaceState(null, "", location.pathname + location.search);
+    }
 }
 
 async function cargarDatos(silencioso=false) {
