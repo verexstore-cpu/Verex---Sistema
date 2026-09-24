@@ -286,6 +286,31 @@
         }
         #lang-toggle button.activo{background:#111; color:#fff;}
 
+        /* Botón de info — mismo lenguaje visual que el selector de idioma,
+           en la esquina opuesta para no chocar con él. */
+        #info-btn{
+            position:fixed; top:8px; left:8px; z-index:1100;
+            background:#fff; border:1.5px solid #ddd; border-radius:20px;
+            padding:6px 12px; box-shadow:0 2px 8px rgba(0,0,0,.15);
+            font-size:11px; font-weight:800; color:#555; cursor:pointer;
+        }
+        #info-overlay{
+            display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+            z-index:999;align-items:flex-end;justify-content:center;
+        }
+        #info-overlay.open{display:flex;}
+        #info-box{
+            background:#fff;border-radius:16px 16px 0 0;
+            padding:20px 16px 28px;width:100%;max-width:480px;
+            max-height:85vh;overflow-y:auto;
+        }
+        .info-sec{ margin-bottom:18px; }
+        .info-sec h3{ font-size:14px;font-weight:800;color:#111;margin:0 0 8px;display:flex;align-items:center;gap:6px; }
+        .info-sec p{ font-size:13px;color:#444;line-height:1.5;margin:0 0 8px; }
+        .info-tier-table{ width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px; }
+        .info-tier-table td{ padding:5px 8px;border-bottom:1px solid #f0f0f0;color:#333; }
+        .info-tier-table td:last-child{ text-align:right;font-weight:700; }
+
         /* Tramo de envío en vivo — mismo lenguaje visual que el banner de
            envío gratis del catálogo doméstico, con el tramo exacto de la tabla. */
         #envio-tramo{ text-align:center; padding:8px 16px; font-size:12.5px; font-weight:700; }
@@ -306,6 +331,16 @@
 <div id="lang-toggle">
     <button type="button" id="lang-btn-es" class="activo" onclick="cambiarIdioma('es')">ES</button>
     <button type="button" id="lang-btn-en" onclick="cambiarIdioma('en')">EN</button>
+</div>
+<button type="button" id="info-btn" onclick="abrirInfo()">ℹ️ <span id="info-btn-txt">Envíos y pagos</span></button>
+<div id="info-overlay" onclick="if(event.target===this) cerrarInfo()">
+    <div id="info-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div style="font-weight:800;font-size:16px;color:#111;" id="info-titulo">Envíos y formas de pago</div>
+            <button onclick="cerrarInfo()" style="background:none;border:none;font-size:20px;color:#999;cursor:pointer;">✕</button>
+        </div>
+        <div id="info-contenido"></div>
+    </div>
 </div>
 <div id="app"><div id="loading">Cargando catálogo… / Loading catalog…</div></div>
 
@@ -497,6 +532,7 @@
             agotado: "AGOTADO", bajoPedido: "📦 BAJO PEDIDO", tallaAgotadaDisp: "📏 Talla agotada — disponible:",
             ref: "Ref:", agregarCarrito: "🛒 Agregar al carrito", piezasMas: "2+ piezas",
             cancelar: "Cancelar", damaLbl: "Dama", caballeroLbl: "Caballero", tallaCorta: "Talla", cadaUno: "c/u",
+            infoBtn: "Envíos y pagos", infoTitulo: "Envíos y formas de pago",
             tallasParConfirmar: "Tallas a confirmar (dama/caballero)",
             precioParDamaCab: "Precio del par (dama + caballero)",
             precioTrio: "Precio del trío (2 anillos dama + 1 caballero)",
@@ -536,6 +572,7 @@
             agotado: "SOLD OUT", bajoPedido: "📦 MADE TO ORDER", tallaAgotadaDisp: "📏 That size is out — available:",
             ref: "Ref:", agregarCarrito: "🛒 Add to cart", piezasMas: "2+ pieces",
             cancelar: "Cancel", damaLbl: "Women’s", caballeroLbl: "Men’s", tallaCorta: "Size", cadaUno: "each",
+            infoBtn: "Shipping & payment", infoTitulo: "Shipping & payment methods",
             tallasParConfirmar: "Sizes to confirm (women’s/men’s)",
             precioParDamaCab: "Price for the pair (women's + men's)",
             precioTrio: "Price for the trio (2 women's rings + 1 men's)",
@@ -866,6 +903,70 @@
         });
         renderCarritoLista();
         actualizarBotonCarrito();
+        setTxt("info-btn-txt", t('infoBtn'));
+        setTxt("info-titulo", t('infoTitulo'));
+        renderInfoPanel();
+    }
+
+    // Panel de "Envíos y formas de pago" — contenido rico (tabla de tramos,
+    // listas), así que se arma como HTML directo según _lang en vez de
+    // forzarlo en el diccionario T de strings sueltos.
+    function renderInfoPanel(){
+        const cont = document.getElementById("info-contenido");
+        if(!cont) return;
+        const en = _lang === "en";
+        const filasTramos = TRAMOS_ENVIO_US.map((tr, i) => {
+            const rango = tr.max === Infinity
+                ? (en ? `$${tr.min}+` : `$${tr.min}+`)
+                : `$${tr.min} – $${tr.max.toFixed(2)}`;
+            const costo = tr.costo > 0 ? `$${tr.costo.toFixed(2)}` : (en ? "FREE" : "GRATIS");
+            return `<tr><td>${rango}</td><td>${costo}</td></tr>`;
+        }).join("");
+        const filaMin = `<tr><td>${en ? "Under $" + MINIMO_COMPRA_US : "Menos de $" + MINIMO_COMPRA_US}</td><td>${en ? "Not available" : "No disponible"}</td></tr>`;
+
+        cont.innerHTML = en ? `
+            <div class="info-sec">
+                <h3>🚚 Shipping</h3>
+                <p>All orders ship via DHL, with an estimated delivery time of 5–7 business days after we confirm your payment.</p>
+                <p>Shipping cost depends on your purchase amount:</p>
+                <table class="info-tier-table">${filaMin}${filasTramos}</table>
+                <p style="margin-top:8px;">Minimum order: $${MINIMO_COMPRA_US}.</p>
+            </div>
+            <div class="info-sec">
+                <h3>💳 Payment methods</h3>
+                <p>We accept payment through PayPal. Once you complete your order, we send you a payment link for the exact amount — you can pay with your PayPal balance or with a credit/debit card, no PayPal account required.</p>
+                <p>Your order is prepared and shipped once payment is confirmed.</p>
+            </div>
+            <div class="info-sec">
+                <h3>📦 After you order</h3>
+                <p>You'll get a confirmation email with your order summary and payment link. Once we confirm your payment, we'll prepare and ship your order and share the DHL tracking number with you.</p>
+            </div>
+        ` : `
+            <div class="info-sec">
+                <h3>🚚 Envíos</h3>
+                <p>Todos los pedidos se envían por DHL, con una entrega estimada de 5 a 7 días hábiles después de confirmar tu pago.</p>
+                <p>El costo de envío depende del monto de tu compra:</p>
+                <table class="info-tier-table">${filaMin}${filasTramos}</table>
+                <p style="margin-top:8px;">Pedido mínimo: $${MINIMO_COMPRA_US}.</p>
+            </div>
+            <div class="info-sec">
+                <h3>💳 Formas de pago</h3>
+                <p>Aceptamos pago con PayPal. Al completar tu pedido, te enviamos un link de pago con el monto exacto — puedes pagar con tu saldo de PayPal o con tarjeta de crédito/débito, sin necesidad de tener cuenta de PayPal.</p>
+                <p>Tu pedido se prepara y se envía una vez que confirmamos el pago.</p>
+            </div>
+            <div class="info-sec">
+                <h3>📦 Después de tu pedido</h3>
+                <p>Te llega un correo de confirmación con el resumen de tu compra y el link de pago. Cuando confirmemos tu pago, preparamos y enviamos tu pedido, y te compartimos el número de tracking de DHL.</p>
+            </div>
+        `;
+    }
+
+    function abrirInfo(){
+        renderInfoPanel();
+        document.getElementById("info-overlay").classList.add("open");
+    }
+    function cerrarInfo(){
+        document.getElementById("info-overlay").classList.remove("open");
     }
 
     function render(data){
@@ -1891,6 +1992,8 @@
     window.cerrarFotoZoom = cerrarFotoZoom;
     window.abrirCarrito   = abrirCarrito;
     window.cerrarCarrito  = cerrarCarrito;
+    window.abrirInfo      = abrirInfo;
+    window.cerrarInfo     = cerrarInfo;
     window.cambiarQtyCarrito     = cambiarQtyCarrito;
     window.actualizarBotonCarrito = actualizarBotonCarrito;
     window.enviarCarritoWhatsApp  = enviarCarritoWhatsApp;
