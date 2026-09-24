@@ -1369,13 +1369,18 @@
         // Si no hay info de tallas, se pide el teléfono (si aplica) y se
         // manda por WhatsApp con el mensaje de siempre.
         if(esPareja){
-            // Si el producto no trae tallas propias registradas para NINGUNO
-            // de los dos, se cae al rango estándar (mismo que usa un anillo
-            // individual sin tallas) para los dos lados — así el cliente
-            // siempre elige con botones, nunca escribiendo la talla a mano.
+            // Muchas "Alianza" se venden en par pero están cargadas en el
+            // inventario como una sola pieza (par:false, sin sizesD/sizesH
+            // separados) — el nombre ya las manda por este flujo de pareja.
+            // Si no hay tallas propias para NINGUNO de los dos lados, se usa
+            // la MISMA lista que ya se muestra en la tarjeta (p.sizes, que
+            // además se mantiene actualizada contra stock real) — nunca el
+            // rango genérico completo, que ofrecería tallas que ese modelo
+            // ni siquiera maneja.
             const sinTallasRegistradas = !p.sizesD?.length && !p.sizesH?.length;
-            const availD = p.sizesD?.length ? p.sizesD : (sinTallasRegistradas ? SIZES : null);
-            const availH = p.sizesH?.length ? p.sizesH : (sinTallasRegistradas ? SIZES : null);
+            const tallasDeLaTarjeta = p.sizes?.length ? p.sizes : SIZES;
+            const availD = p.sizesD?.length ? p.sizesD : (sinTallasRegistradas ? tallasDeLaTarjeta : null);
+            const availH = p.sizesH?.length ? p.sizesH : (sinTallasRegistradas ? tallasDeLaTarjeta : null);
 
             _szIdx=i; _szD=""; _szH=""; _szParMode=true; _szNoTalla=false;
 
