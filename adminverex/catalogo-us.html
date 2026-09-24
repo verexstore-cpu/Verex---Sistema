@@ -192,6 +192,11 @@
             max-height:80vh;overflow-y:auto;
         }
         .cart-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #eee;}
+        .cart-item-foto{
+            width:42px;height:42px;border-radius:8px;object-fit:cover;flex-shrink:0;
+            background:#f5f5f5;border:1px solid #eee;
+        }
+        .cart-item-foto-ph{display:flex;align-items:center;justify-content:center;font-size:18px;}
         .cart-item-qtybtn{
             width:26px;height:26px;border-radius:50%;border:1px solid #ddd;
             background:#f7f7f7;font-size:14px;cursor:pointer;
@@ -1438,7 +1443,7 @@
         const key = (p.c || p.n) + "|" + tallaLabel;
         const existente = _carrito.find(it => it.key === key);
         if(existente) existente.qty++;
-        else _carrito.push({ key, codigo: p.c || "", nombre: p.n, tallaLabel, precioUnit, qty: 1 });
+        else _carrito.push({ key, codigo: p.c || "", nombre: p.n, foto: p.i || "", tallaLabel, precioUnit, qty: 1 });
         guardarCarrito();
         renderCarritoFab();
     }
@@ -1450,6 +1455,9 @@
         } else {
             cont.innerHTML = _carrito.map(it => `
                 <div class="cart-item">
+                    ${it.foto
+                        ? `<img class="cart-item-foto" src="${esc(ikSharp(it.foto))}" alt="" loading="lazy" onerror="this.outerHTML='<span class=\\'cart-item-foto cart-item-foto-ph\\'>💍</span>'">`
+                        : `<span class="cart-item-foto cart-item-foto-ph">💍</span>`}
                     <div style="flex:1;min-width:0;">
                         <div style="font-size:13px;font-weight:700;color:#111;">${esc(it.nombre)}</div>
                         ${it.tallaLabel ? `<div style="font-size:11px;color:#7c3aed;">${esc(it.tallaLabel)}</div>` : ''}
