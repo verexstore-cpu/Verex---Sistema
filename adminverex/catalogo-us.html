@@ -439,11 +439,6 @@
             <div id="sz-grid-h" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;"></div>
         </div>
 
-        <div id="sz-talla-manual-wrap" style="display:none;margin-bottom:18px;">
-            <div class="form-lbl" id="sz-talla-manual-lbl"></div>
-            <input type="text" id="sz-talla-manual" class="form-input" oninput="actualizarBotonSz()">
-        </div>
-
         <div id="sz-tel-wrap" style="display:none;margin-bottom:18px;">
             <div class="form-lbl" id="sz-lbl-nombre">Full name</div>
             <input type="text" id="sz-nombre" class="form-input" placeholder="Ex: Maria Perez"
@@ -497,11 +492,6 @@
     const c = params.get("c");
 
     let _prods = [], _waNum = "", _szIdx = -1, _szD = "", _szH = "", _descPct = 0, _afiliadoCodigo = "", _szParMode = false, _szTel = "", _szNombreCliente = "", _szDireccion = "", _szNoTalla = false, _szModo = "wa";
-    // true SOLO cuando es una pareja (argollas/alianzas) sin tallas
-    // registradas en el catálogo — ahí no hay botones de talla que tocar,
-    // así que se le pide al cliente escribir la talla que necesita antes de
-    // agregar al carrito (si no, "sizes to confirm" nunca decía cuáles).
-    let _szRequiereTallaManual = false;
     // Con pocas piezas el carrusel se ve mejor (una tarjeta grande a la
     // vez); con muchas, la cuadrícula sigue siendo más práctica para
     // comparar de un vistazo. _indiceActivo trackea qué tarjeta está
@@ -563,8 +553,7 @@
             contactarWA: "📱 Contactar por WhatsApp",
             agotadoAlert: "Este producto ya no está disponible — el stock se agotó.",
             szSubIndividual: "¿Qué talla necesitas?", szSubPareja: "¿Qué tallas necesitas?",
-            szSubParejaNoTalla: "¿Qué tallas necesita para dama y caballero?", szSubOtra: "Confirma tu pedido",
-            tallaManualLbl: "Escribe las tallas que necesitas", tallaManualPh: "Ej: Dama T7, Caballero T10",
+            szSubOtra: "Confirma tu pedido",
             tuTalla: "Tu talla", tallaDama: "Talla dama", tallaCaballero: "Talla caballero",
             miniAgregado: "✅ Agregado al carrito",
             carritoTitulo: "🛒 Tu pedido", total: "Total", tuNombre: "Nombre completo",
@@ -605,8 +594,7 @@
             contactarWA: "📱 Contact us on WhatsApp",
             agotadoAlert: "This product is no longer available — it sold out.",
             szSubIndividual: "What size do you need?", szSubPareja: "What sizes do you need?",
-            szSubParejaNoTalla: "What sizes do you need for women's and men's?", szSubOtra: "Confirm your order",
-            tallaManualLbl: "Type the sizes you need", tallaManualPh: "Ex: Women's 7, Men's 10",
+            szSubOtra: "Confirm your order",
             tuTalla: "Your size", tallaDama: "Women's size", tallaCaballero: "Men's size",
             miniAgregado: "✅ Added to cart",
             carritoTitulo: "🛒 Your order", total: "Total", tuNombre: "Full name",
@@ -1376,40 +1364,18 @@
         if(nombreInput){ nombreInput.value = ""; }
         if(direccionInput){ direccionInput.value = ""; }
 
-        _szRequiereTallaManual = false;
-        const tallaManualWrap = document.getElementById("sz-talla-manual-wrap");
-        const tallaManualInput = document.getElementById("sz-talla-manual");
-        if(tallaManualWrap){ tallaManualWrap.style.display = "none"; }
-        if(tallaManualInput){ tallaManualInput.value = ""; }
-
         // Argollas/pares/tríos: si hay tallas registradas para dama y/o
         // caballero, se eligen con botones igual que un anillo individual.
         // Si no hay info de tallas, se pide el teléfono (si aplica) y se
         // manda por WhatsApp con el mensaje de siempre.
         if(esPareja){
-            const availD = p.sizesD?.length ? p.sizesD : null;
-            const availH = p.sizesH?.length ? p.sizesH : null;
-
-            if(!availD && !availH){
-                _szIdx=i; _szD="N/A"; _szH="N/A"; _szParMode=true; _szNoTalla=true;
-                document.getElementById("sz-title").textContent = traducirNombre(p.n);
-                document.getElementById("sz-sub").textContent   = t('szSubParejaNoTalla');
-                document.getElementById("sz-sec-d").style.display = "none";
-                document.getElementById("sz-sec-h").style.display = "none";
-                // Sin botones de talla que tocar acá — se le pide al cliente
-                // que escriba la talla que necesita, si no "sizes to
-                // confirm" se agregaba al carrito sin decir nunca cuáles.
-                _szRequiereTallaManual = true;
-                const tallaManualWrap = document.getElementById("sz-talla-manual-wrap");
-                const tallaManualInput = document.getElementById("sz-talla-manual");
-                const tallaManualLbl = document.getElementById("sz-talla-manual-lbl");
-                if(tallaManualWrap) tallaManualWrap.style.display = "block";
-                if(tallaManualLbl) tallaManualLbl.textContent = t('tallaManualLbl');
-                if(tallaManualInput) tallaManualInput.placeholder = t('tallaManualPh');
-                actualizarBotonSz();
-                document.getElementById("sz-overlay").classList.add("open");
-                return;
-            }
+            // Si el producto no trae tallas propias registradas para NINGUNO
+            // de los dos, se cae al rango estándar (mismo que usa un anillo
+            // individual sin tallas) para los dos lados — así el cliente
+            // siempre elige con botones, nunca escribiendo la talla a mano.
+            const sinTallasRegistradas = !p.sizesD?.length && !p.sizesH?.length;
+            const availD = p.sizesD?.length ? p.sizesD : (sinTallasRegistradas ? SIZES : null);
+            const availH = p.sizesH?.length ? p.sizesH : (sinTallasRegistradas ? SIZES : null);
 
             _szIdx=i; _szD=""; _szH=""; _szParMode=true; _szNoTalla=false;
 
@@ -1504,11 +1470,7 @@
         _szTel = telInput ? telInput.value.trim() : "";
         _szNombreCliente = nombreInput ? nombreInput.value.trim() : "";
         _szDireccion = direccionInput ? direccionInput.value.trim() : "";
-        const tallaManualInput = document.getElementById("sz-talla-manual");
-        const tallaManualOk = _szRequiereTallaManual
-            ? !!(tallaManualInput && tallaManualInput.value.trim().length >= 3)
-            : true;
-        const listo = tallaLista && telOk && nombreOk && direccionOk && tallaManualOk;
+        const listo = tallaLista && telOk && nombreOk && direccionOk;
         const btn = document.getElementById("sz-confirm");
         btn.disabled = !listo;
         btn.style.opacity = listo ? "1" : ".5";
@@ -1521,11 +1483,7 @@
     function _labelYPrecioCarrito(p){
         if(_szParMode && _szNoTalla){
             const precio = (p.pD && p.pH) ? precioFinal(parseFloat(p.pD)) + precioFinal(parseFloat(p.pH)) : precioFinal(p.p);
-            // La talla que el cliente escribió a mano (ver _szRequiereTallaManual)
-            // — sin esto el carrito solo decía "tallas a confirmar" sin
-            // guardar nunca cuáles pidió realmente.
-            const tallaManual = (document.getElementById("sz-talla-manual")?.value || "").trim();
-            return { label: tallaManual || t('tallasParConfirmar'), precio };
+            return { label: t('tallasParConfirmar'), precio };
         }
         if(_szNoTalla){
             return { label: "", precio: precioFinal(p.p) };
