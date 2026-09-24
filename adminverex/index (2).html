@@ -5315,7 +5315,6 @@ function tieneStock(p, talla) {
 
 function agruparParaCatalogo(lista) {
     if (lista.length) console.log("[VEREX] campos producto:", Object.keys(lista[0]));
-    const ES_PAR_GRP  = /matrimonio|argolla|novios|pareja|alianza/i;
     const ES_DAMA_GRP = /\b(dama|mujer)\b/i;
     const ES_CAB_GRP  = /\b(caballero|hombre)\b/i;
 
@@ -5386,7 +5385,13 @@ function agruparParaCatalogo(lista) {
     // (ej. compromiso + matrimonio) + 1 caballero, es un trío — se detecta solo,
     // sin requerir ninguna opción nueva al ingresar stock.
     map.forEach(g => {
-        if (!ES_PAR_GRP.test(g.nombre)) return;
+        // Antes exigía que el NOMBRE trajera una palabra en español (alianza,
+        // matrimonio...) para intentar agrupar — eso dejaba fuera cualquier
+        // diseño con nombre en inglés (ej. "One & Only") aunque sus códigos SÍ
+        // traigan la letra D/C/H que identifica dama/caballero. Ahora basta con
+        // que sea categoría Anillo: la detección real de pareja/trío más abajo
+        // (isDamaP/isCabP) ya se apoya en el código, no en el nombre.
+        if (g._catKey !== "AN") return;
         const originals = lista.filter(p => g._codigos.includes(p.codigo));
         let damas = originals.filter(isDamaP);
         let cabs  = originals.filter(isCabP);
