@@ -1439,7 +1439,9 @@
             <h3>↩️ Registrar Devolución</h3>
             <button class="modal-close" onclick="cerrarModal('modal-devolucion')">×</button>
         </div>
-        <p style="font-size:13px;color:var(--plateado);margin-bottom:14px;">Productos que el vendedor devuelve a bodega. Solo aparecen los disponibles.</p>
+        <p style="font-size:13px;color:var(--plateado);margin-bottom:14px;">Productos que el vendedor devuelve a bodega. Solo aparecen los disponibles. Escaneá cada pieza a medida que el vendedor te la entrega — la cantidad sube sola y abajo ves si algo no cuadra.</p>
+        <button class="btn" style="background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1,#38bdf8,#0a4a6b);color:#e0f7ff;font-weight:700;width:100%;margin-bottom:14px;" onclick="abrirScannerQR(_onScanDevolucion, '📷 Escanear devolución')">📷 Escanear producto devuelto</button>
+        <div id="resumen-devolucion" style="margin-bottom:14px;"></div>
         <div id="lista-devolucion"></div>
         <div style="margin-top:16px;display:flex;gap:10px;">
             <button class="btn btn-gris" style="flex:1;" onclick="cerrarModal('modal-devolucion')">Cancelar</button>
@@ -4427,6 +4429,12 @@ function abrirDevolucion() {
         </div>`;
     }).join('');
     window._devItems = disponibles.map(c => ({ id: c.id, codigo: c.codigo, nombre: c.nombre, max: parseInt(c.cantidad||0) - parseInt(c.vendido||0) }));
+    // Mientras no se use el escáner, el modal arranca con todo marcado para
+    // devolver (comportamiento de siempre: devolver todo de un tin). En
+    // cuanto se escanea la primera pieza, _onScanDevolucion() pone todo en 0
+    // y pasa a modo "conteo por escaneo" — ver ese comentario para el porqué.
+    window._devEscaneoIniciado = false;
+    renderResumenDevolucion();
     abrirModal("modal-devolucion");
 }
 
@@ -4435,6 +4443,7 @@ function toggleDevRow(id) {
     const qty   = document.getElementById("dev-qty-" + id);
     const item  = window._devItems?.find(i => sanitizar(i.id) === id);
     if (check && qty && item) qty.textContent = check.checked ? item.max : "0";
+    renderResumenDevolucion();
 }
 
 function cambiarCantDev(id, delta, max) {
@@ -4444,6 +4453,69 @@ function cambiarCantDev(id, delta, max) {
     const nueva = Math.min(max, Math.max(0, (parseInt(qty.textContent)||0) + delta));
     qty.textContent = nueva;
     if (check) check.checked = nueva > 0;
+    renderResumenDevolucion();
+}
+
+// Resumen en vivo de la devolución: compara lo pendiente (entregado - vendido,
+// osea lo que aún no está ni vendido ni devuelto) contra lo que se lleva
+// marcado/escaneado para devolver ahora. Si no coincide, avisa cuáles
+// productos quedan con piezas sin explicar — sin bloquear el "Confirmar
+// Devolución", solo como advertencia (puede ser una pieza perdida/dañada real).
+function renderResumenDevolucion() {
+    const box = document.getElementById("resumen-devolucion");
+    if (!box || !window._devItems) return;
+    let pendiente = 0, aDevolver = 0;
+    const faltantes = [];
+    window._devItems.forEach(item => {
+        const qty = parseInt(document.getElementById("dev-qty-" + sanitizar(item.id))?.textContent) || 0;
+        pendiente += item.max;
+        aDevolver += qty;
+        if (qty < item.max) faltantes.push({ codigo: item.codigo, nombre: item.nombre, faltan: item.max - qty });
+    });
+    const faltanteTotal = pendiente - aDevolver;
+    box.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div class="stat-box"><div class="stat-num">${pendiente}</div><div class="stat-label">Pendiente (sin vender)</div></div>
+            <div class="stat-box"><div class="stat-num">${aDevolver}</div><div class="stat-label">A devolver ahora</div></div>
+        </div>
+        ${faltanteTotal > 0 ? `
+        <div style="margin-top:8px;padding:10px 12px;background:rgba(230,126,34,0.12);border:1px solid #e67e22;border-radius:10px;">
+            <div style="color:#e67e22;font-weight:700;font-size:12px;margin-bottom:4px;">⚠️ Faltan ${faltanteTotal} pieza(s) sin explicar</div>
+            <div style="font-size:11px;color:var(--plateado);line-height:1.5;">
+                ${faltantes.map(f => sanitizar(f.codigo) + " — " + sanitizar(f.nombre) + " (faltan " + f.faltan + ")").join("<br>")}
+            </div>
+        </div>` : `
+        <div style="margin-top:8px;padding:8px 12px;background:rgba(46,204,113,0.1);border:1px solid #27ae60;border-radius:10px;color:#27ae60;font-size:12px;font-weight:700;">✅ Todo cuadra con lo pendiente</div>`}
+    `;
+}
+
+// Escaneo de piezas devueltas físicamente — el vendedor entrega los productos
+// y se escanean uno a uno para que la cantidad no dependa de contarlos a mano.
+function _onScanDevolucion(codRaw) {
+    const cod = String(codRaw || "").trim().toUpperCase();
+    if (!window._devItems || !window._devItems.length) return;
+    if (!window._devEscaneoIniciado) {
+        window._devItems.forEach(item => {
+            const qty = document.getElementById("dev-qty-" + sanitizar(item.id));
+            const chk = document.getElementById("dev-check-" + sanitizar(item.id));
+            if (qty) qty.textContent = "0";
+            if (chk) chk.checked = false;
+        });
+        window._devEscaneoIniciado = true;
+    }
+    const item = window._devItems.find(i => String(i.codigo).toUpperCase() === cod);
+    if (!item) {
+        toast("⚠️ \"" + cod + "\" no está pendiente de devolver de este vendedor", "#f97316");
+        return;
+    }
+    const idSan = sanitizar(item.id);
+    const actual = parseInt(document.getElementById("dev-qty-" + idSan)?.textContent) || 0;
+    if (actual >= item.max) {
+        toast("⚠️ " + item.codigo + " ya tiene las " + item.max + " pieza(s) disponibles registradas", "#f97316");
+        return;
+    }
+    cambiarCantDev(idSan, 1, item.max);
+    mostrarConfirmacionEscaneo(null, item.nombre, item.codigo + " · devuelto " + (actual + 1) + "/" + item.max);
 }
 
 async function confirmarDevolucion() {
