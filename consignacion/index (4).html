@@ -1474,7 +1474,7 @@
                 <span style="display:block;font-size:11px;color:var(--plateado);font-weight:400;margin-top:2px;">Si no la marcas, este corte se puede cerrar igual, pero queda como pendiente de cobro en Dashboard hasta que lo marques.</span>
             </span>
         </label>
-        <button class="btn btn-dorado btn-full" onclick="confirmarCorte()">✅ Confirmar Corte</button>
+        <button class="btn btn-dorado btn-full" id="btn-confirmar-corte" onclick="confirmarCorte()">✅ Confirmar Corte</button>
     </div>
 </div>
 
@@ -6684,6 +6684,12 @@ let decisionesCorte = {};
 let _corteValorVend = 0;
 let _cortePct = 25;
 let _corteGanancia = 0;
+// Evita que un doble-tap en "Confirmar Corte" dispare confirmarCorte() dos
+// veces en paralelo — GUARDAR_CORTE_HISTORIAL usa Date.now() como parte del
+// id, así que dos ejecuciones (aunque sea con milisegundos de diferencia)
+// generaban dos registros de historial distintos para el mismo corte, y por
+// eso aparecía duplicado en "Cobros pendientes".
+let _corteProcesando = false;
 
 function calcularComision(totalVendido, tipoVendedor, comisionFija) {
     if (comisionFija !== undefined && comisionFija !== null && comisionFija !== "") {
@@ -6748,6 +6754,11 @@ function toggleDecision(id, decision) {
 }
 
 async function confirmarCorte() {
+    if (_corteProcesando) return;
+    _corteProcesando = true;
+    const btnConfirmarCorte = document.getElementById("btn-confirmar-corte");
+    if (btnConfirmarCorte) btnConfirmarCorte.disabled = true;
+    try {
     const cobrado = !!document.getElementById("chk-cobrado-corte")?.checked;
     const devueltos = Object.entries(decisionesCorte).filter(([_, d]) => d === "devolver").map(([id]) => id);
     await apiPost({ accion: "CERRAR_CORTE", vendedor: vendedorActual.codigo, devueltos });
@@ -6795,6 +6806,10 @@ async function confirmarCorte() {
             ? "VEREX te debe pagar: $" + _corteGanancia.toFixed(2)
             : "A pagar a VEREX: $" + (_corteValorVend - _corteGanancia).toFixed(2));
     window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg));
+    } finally {
+        _corteProcesando = false;
+        if (btnConfirmarCorte) btnConfirmarCorte.disabled = false;
+    }
 }
 
 async function verLinkInventario() {
