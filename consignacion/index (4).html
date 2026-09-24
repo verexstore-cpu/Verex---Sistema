@@ -1423,7 +1423,7 @@
      de verificar a simple vista que el QR leído era el producto correcto. -->
 <div id="scan-confirm" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2100;pointer-events:none;width:min(320px,88vw);box-sizing:border-box;">
     <div style="background:#1c1c1e;border:1px solid #333;border-radius:16px;padding:16px;display:flex;align-items:center;gap:12px;box-shadow:0 8px 30px rgba(0,0,0,0.5);animation:scanConfirmIn .25s ease-out;">
-        <img id="scan-confirm-foto" src="" style="width:64px;height:64px;border-radius:10px;object-fit:cover;background:#000;flex-shrink:0;">
+        <img id="scan-confirm-foto" src="" onclick="_zoomFotoEscaneo()" style="width:104px;height:104px;border-radius:10px;object-fit:cover;background:#000;flex-shrink:0;pointer-events:auto;cursor:zoom-in;">
         <div>
             <div style="color:#2ecc71;font-weight:700;font-size:12px;margin-bottom:2px;">✅ Agregado</div>
             <div id="scan-confirm-nombre" style="color:#fff;font-weight:700;font-size:13px;line-height:1.3;"></div>
@@ -8452,13 +8452,25 @@ function mostrarConfirmacionEscaneo(foto, nombre, sub) {
     const box = document.getElementById("scan-confirm");
     if (!box) return;
     const img = document.getElementById("scan-confirm-foto");
-    img.src = foto ? ikFoto(foto, 200) : "";
+    img.src = foto ? ikFoto(foto, 400) : "";
+    img.dataset.fotoRaw = foto || "";
     img.style.display = foto ? "block" : "none";
     document.getElementById("scan-confirm-nombre").textContent = nombre || "";
     document.getElementById("scan-confirm-sub").textContent = sub || "";
     box.style.display = "flex";
     clearTimeout(window._scanConfirmTimer);
     window._scanConfirmTimer = setTimeout(() => { box.style.display = "none"; }, 2200);
+}
+
+// Toca la foto de la confirmación de escaneo (Venta Directa) para verla en
+// grande — la abre en el mismo lightbox de zoom que ya usa el resto del
+// sistema y frena el auto-cierre para que no desaparezca mientras se mira.
+function _zoomFotoEscaneo() {
+    const img = document.getElementById("scan-confirm-foto");
+    if (!img || !img.dataset.fotoRaw) return;
+    clearTimeout(window._scanConfirmTimer);
+    document.getElementById("scan-confirm").style.display = "none";
+    abrirFotoZoom(img.dataset.fotoRaw, document.getElementById("scan-confirm-nombre").textContent);
 }
 
 // Etiquetas legibles para las categorías estándar — cualquier categoría
