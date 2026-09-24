@@ -1911,6 +1911,44 @@
             const stock = data.stock || [];
             const mapa = new Map(stock.map(s => [s.codigo, s]));
 
+            // Tallas REALMENTE en existencia ahora mismo — cada talla de un
+            // mismo modelo es un código de stock distinto que comparte
+            // codigoBase (ej. AN001T6, AN001T7 comparten codigoBase AN001).
+            // Se agrupa todo el stock por codigoBase para poder preguntar
+            // "¿qué tallas de este modelo tienen unidades en bodega ahora?"
+            // en vez de confiar solo en la lista fija que trae el catálogo
+            // desde que se generó el link.
+            const stockPorBase = new Map();
+            stock.forEach(s => {
+                const base = s.codigoBase || s.codigo;
+                if(!base) return;
+                if(!stockPorBase.has(base)) stockPorBase.set(base, []);
+                stockPorBase.get(base).push(s);
+            });
+            // Tallas con unidades en bodega del modelo al que pertenece ese
+            // código representativo — null si el código no aparece en stock
+            // (ahí no se toca la lista que ya traía el catálogo).
+            const tallasVivasDe = codigo => {
+                const rec = mapa.get(codigo);
+                if(!rec) return null;
+                const base = rec.codigoBase || rec.codigo;
+                const tallas = [...new Set(
+                    (stockPorBase.get(base) || [])
+                        .filter(s => !s.reservado && (parseInt(s.stock_bodega)||0) > 0 && s.talla)
+                        .map(s => String(s.talla))
+                )];
+                return tallas.length ? tallas.sort((a,b)=>parseFloat(a)-parseFloat(b)) : null;
+            };
+            // Igual que arriba, pero uniendo varios códigos representativos
+            // (un "trío" puede traer 2 diseños de dama en cD) — si CUALQUIERA
+            // de los códigos no se puede verificar, se deja la lista
+            // original completa en vez de reemplazarla a medias.
+            const tallasVivasDeVarios = codigos => {
+                const resultados = (codigos||[]).map(tallasVivasDe);
+                if(!resultados.length || resultados.some(r => r === null)) return null;
+                return [...new Set(resultados.flat())].sort((a,b)=>parseFloat(a)-parseFloat(b));
+            };
+
             // Este catálogo (EE. UU./DHL) tiene su propia franja de confianza y
             // su propia tabla de envío fija — a propósito NO se sincroniza con
             // las reglas de envío ni la frase de confianza del catálogo
@@ -1988,6 +2026,20 @@
                 if(precioCambio){
                     const priceEl = document.getElementById(`price-${i}`);
                     if(priceEl) priceEl.innerHTML = renderPrecioHtml(p);
+                }
+
+                // Refrescar las tallas con lo que hay AHORA en bodega —
+                // reemplaza la lista fija del catálogo (o el rango genérico
+                // de respaldo si no traía ninguna) por la disponibilidad
+                // real. elegirTalla() lee p.sizes/p.sizesD/p.sizesH recién
+                // al abrir el selector, así que ya toma este valor corregido
+                // sin necesidad de volver a renderizar la tarjeta.
+                if(p.par){
+                    if(p.cD?.length){ const v = tallasVivasDeVarios(p.cD); if(v) p.sizesD = v; }
+                    if(p.cC?.length){ const v = tallasVivasDeVarios(p.cC); if(v) p.sizesH = v; }
+                } else if(p.cat === "AN" && p.c){
+                    const v = tallasVivasDe(p.c);
+                    if(v) p.sizes = v;
                 }
 
                 // Si el código ya no existe en stock (eliminado), fue reservado,
