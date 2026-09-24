@@ -644,6 +644,39 @@
 
         return categoriaEN ? (s ? `${s} ${categoriaEN}` : categoriaEN) : s;
     }
+
+    // Traducción de las notas (nota especial ♦ y nota del catálogo) — igual
+    // de texto libre que el nombre, pero acá el orden español/inglés
+    // coincide casi siempre ("Talla 7, ajustable hasta talla 9" → "Size 7,
+    // adjustable up to Size 9"), así que alcanza con sustituir palabras sin
+    // reordenar nada.
+    function traducirNota(texto){
+        if (_lang !== "en" || !texto) return texto || "";
+        let s = String(texto);
+        const reglas = [
+            [/\bedici[oó]n\s+limitada\b/gi, "limited edition"],
+            [/\bpor\s+encargo\b/gi, "made to order"],
+            [/\bbajo\s+pedido\b/gi, "made to order"],
+            [/\bentrega\s+inmediata\b/gi, "ready to ship"],
+            [/\bstock\s+limitado\b/gi, "limited stock"],
+            [/\btallas?\b/gi, "Size"],
+            [/\bajustables?\b/gi, "adjustable"],
+            [/\bhasta\b/gi, "up to"],
+            [/\bdisponibles?\b/gi, "available"],
+            [/\bnuevas?\b/gi, "new"],
+            [/\bnuevos?\b/gi, "new"],
+            // Sin \b al inicio: en JS \b no reconoce un límite de palabra
+            // justo antes de una vocal acentuada ("Última" nunca hacía match
+            // con \b[uú]ltima\b) — se usa lookbehind/lookahead en su lugar.
+            [/(?<![a-záéíóúñA-ZÁÉÍÓÚÑ])[uú]ltimas?(?![a-záéíóúñA-ZÁÉÍÓÚÑ])/gi, "last"],
+            [/(?<![a-záéíóúñA-ZÁÉÍÓÚÑ])[uú]ltimos?(?![a-záéíóúñA-ZÁÉÍÓÚÑ])/gi, "last"],
+            [/\bpiezas?\b/gi, "piece"],
+            [/\bexclusivas?\b/gi, "exclusive"],
+            [/\bexclusivos?\b/gi, "exclusive"],
+        ];
+        reglas.forEach(([re, out]) => { s = s.replace(re, out); });
+        return s;
+    }
     let _carrito = [];
     try { _carrito = JSON.parse(sessionStorage.getItem("verex-carrito") || "[]"); } catch(_) {}
 
@@ -893,9 +926,9 @@
                     ${p.m?`<div class="card-material ${claseMaterial(p.m)}">${esc(materialMostrar(p.m))}</div>`:''}
                     ${p.c?`<div style="font-size:9px;color:#9ca3af;font-weight:600;margin-top:-3px;margin-bottom:4px;">${t('ref')} ${esc(p.c)}</div>`:''}
                     ${sizesHtml}
-                    ${p.ne?`<div class="card-ne">♦ ${esc(p.ne)}</div>`:''}
+                    ${p.ne?`<div class="card-ne">♦ ${esc(traducirNota(p.ne))}</div>`:''}
                     <div class="card-price" id="price-${i}">${renderPrecioHtml(p)}</div>
-                    ${p.nota?`<div class="card-nota">${esc(p.nota)}</div>`:''}
+                    ${p.nota?`<div class="card-nota">${esc(traducirNota(p.nota))}</div>`:''}
                 </div>
                 <div class="card-footer">
                     <button class="wa-order" onclick="elegirTalla(${i},'carrito')"><span class="wa-main">${t('agregarCarrito')}</span><span class="wa-shine"></span></button>
