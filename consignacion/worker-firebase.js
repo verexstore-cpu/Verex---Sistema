@@ -2708,7 +2708,60 @@ async function enviar(){
               // catálogo, apenas termina el checkout.
               if (correoValido) {
                 const en = d.lang === "en";
-                const filasCliente = d.items.map(filaProducto).join("");
+                // Mismo diccionario de palabras comunes de joyería que usa
+                // catalogo-us.html (duplicado a propósito: el worker no
+                // comparte código con la página estática) — el correo al
+                // admin (arriba) se queda siempre en español tal cual está
+                // en el inventario; esto solo aplica al correo del cliente.
+                const traducirNombreEN = nombre => {
+                  if (!nombre) return nombre || "";
+                  let s = String(nombre).trim();
+                  // La categoría (Anillo, Cadena...) suele ser la primera
+                  // palabra en español, pero en inglés va al final del
+                  // nombre ("Sterling Silver Ring", no "Ring Sterling
+                  // Silver") — se saca del frente y se reordena al final.
+                  const categorias = [
+                    [/^alianzas?\b/i, "Wedding Band"],
+                    [/^argollas?\b/i, "Band"],
+                    [/^anillos?\b/i, "Ring"],
+                    [/^cadenas?\b/i, "Chain"],
+                    [/^pulseras?\b/i, "Bracelet"],
+                    [/^aretes?\b/i, "Earrings"],
+                    [/^aros?\b/i, "Hoops"],
+                    [/^dijes?\b/i, "Charm"],
+                    [/^collares?\b/i, "Necklace"],
+                    [/^conjuntos?\b/i, "Set"],
+                    [/^relojes?\b/i, "Watch"],
+                  ];
+                  let categoriaEN = "";
+                  for (const [re, out] of categorias) {
+                    if (re.test(s)) { categoriaEN = out; s = s.replace(re, "").trim(); break; }
+                  }
+                  const reglas = [
+                    [/plata\s*925\s*(?:\+|con)?\s*oro\s*laminado/gi, "Sterling Silver with Gold Plating"],
+                    [/plata\s*(?:fina\s*)?925/gi, "Sterling Silver"],
+                    [/oro\s*laminado/gi, "Gold Plated"],
+                    [/acero\s*(?:inoxidable\s*)?316l?/gi, "Stainless Steel"],
+                    [/\bplata\b/gi, "Silver"],
+                    [/\bacero\b/gi, "Steel"],
+                    [/\bmatrimonios?\b/gi, "Wedding"],
+                    [/\bnovios?\b/gi, "Bridal"],
+                    [/\bsolitarios?\b/gi, "Solitaire"],
+                    [/\bparejas?\b/gi, "Pair"],
+                    [/\bdama\b/gi, "Women's"],
+                    [/\bcaballero\b/gi, "Men's"],
+                    [/\bcoraz[oó]n\b/gi, "Heart"],
+                    [/\bdobles?\b/gi, "Double"],
+                    [/\btr[ií]o\b/gi, "Trio"],
+                    [/\bsencillos?\b/gi, "Simple"],
+                  ];
+                  reglas.forEach(([re, out]) => { s = s.replace(re, out); });
+                  s = s.trim();
+                  return categoriaEN ? (s ? `${s} ${categoriaEN}` : categoriaEN) : s;
+                };
+                const filasCliente = d.items
+                  .map(it => en ? { ...it, nombre: traducirNombreEN(it.nombre) } : it)
+                  .map(filaProducto).join("");
                 const txt = en ? {
                   preheader: "New order from the USA catalog",
                   hola: `Hi ${d.nombreCliente || ""},`,

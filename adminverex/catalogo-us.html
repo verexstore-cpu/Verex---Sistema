@@ -577,13 +577,72 @@
         if (_lang !== "en" || !m) return m || "";
         const s = String(m);
         const reglas = [
-            [/plata\s*925\s*\+?\s*oro\s*laminado|plata\s*925\s*con\s*oro\s*laminado/i, "Gold-Plated 925 Silver"],
-            [/plata\s*fina\s*925|plata\s*925/i, "925 Silver"],
+            [/plata\s*925\s*\+?\s*oro\s*laminado|plata\s*925\s*con\s*oro\s*laminado/i, "Sterling Silver with Gold Plating"],
+            [/plata\s*fina\s*925|plata\s*925/i, "Sterling Silver"],
             [/acero/i, "Stainless Steel"],
             [/reloj/i, "Watch"],
         ];
         for (const [re, out] of reglas) if (re.test(s)) return out;
         return s;
+    }
+
+    // Traducción del NOMBRE del producto — es texto libre (lo escribe el
+    // admin al crear cada pieza), así que no hay diccionario cerrado posible.
+    // Se traducen solo las palabras comunes de joyería que aparecen dentro
+    // del nombre (Anillo, Cadena, Solitario...); lo que no está en la lista
+    // (nombres propios como "Windsor") se queda tal cual venía — imperfecto
+    // pero deja el nombre mayormente en inglés sin depender de traducción
+    // manual por producto.
+    function traducirNombre(nombre){
+        if (_lang !== "en" || !nombre) return nombre || "";
+        let s = String(nombre).trim();
+
+        // La categoría (Anillo, Cadena...) casi siempre es la PRIMERA palabra
+        // en español, pero en inglés ese sustantivo va al FINAL del nombre
+        // ("Sterling Silver Ring", no "Ring Sterling Silver") — se saca del
+        // frente, se traduce el resto, y se reordena al final.
+        const categorias = [
+            [/^alianzas?\b/i, "Wedding Band"],
+            [/^argollas?\b/i, "Band"],
+            [/^anillos?\b/i, "Ring"],
+            [/^cadenas?\b/i, "Chain"],
+            [/^pulseras?\b/i, "Bracelet"],
+            [/^aretes?\b/i, "Earrings"],
+            [/^aros?\b/i, "Hoops"],
+            [/^dijes?\b/i, "Charm"],
+            [/^collares?\b/i, "Necklace"],
+            [/^conjuntos?\b/i, "Set"],
+            [/^relojes?\b/i, "Watch"],
+        ];
+        let categoriaEN = "";
+        for (const [re, out] of categorias) {
+            if (re.test(s)) { categoriaEN = out; s = s.replace(re, "").trim(); break; }
+        }
+
+        const reglas = [
+            // Frases compuestas primero — si no, "plata 925" adentro de la frase
+            // larga se reemplaza antes y rompe el match de la frase completa.
+            [/plata\s*925\s*(?:\+|con)?\s*oro\s*laminado/gi, "Sterling Silver with Gold Plating"],
+            [/plata\s*(?:fina\s*)?925/gi, "Sterling Silver"],
+            [/oro\s*laminado/gi, "Gold Plated"],
+            [/acero\s*(?:inoxidable\s*)?316l?/gi, "Stainless Steel"],
+            [/\bplata\b/gi, "Silver"],
+            [/\bacero\b/gi, "Steel"],
+            [/\bmatrimonios?\b/gi, "Wedding"],
+            [/\bnovios?\b/gi, "Bridal"],
+            [/\bsolitarios?\b/gi, "Solitaire"],
+            [/\bparejas?\b/gi, "Pair"],
+            [/\bdama\b/gi, "Women's"],
+            [/\bcaballero\b/gi, "Men's"],
+            [/\bcoraz[oó]n\b/gi, "Heart"],
+            [/\bdobles?\b/gi, "Double"],
+            [/\btr[ií]o\b/gi, "Trio"],
+            [/\bsencillos?\b/gi, "Simple"],
+        ];
+        reglas.forEach(([re, out]) => { s = s.replace(re, out); });
+        s = s.trim();
+
+        return categoriaEN ? (s ? `${s} ${categoriaEN}` : categoriaEN) : s;
     }
     let _carrito = [];
     try { _carrito = JSON.parse(sessionStorage.getItem("verex-carrito") || "[]"); } catch(_) {}
@@ -826,11 +885,11 @@
                     <span class="card-bajopedido-badge">${t('bajoPedido')}</span>
                     <span class="card-otrastallas-badge" id="otrastallas-${i}">${t('tallaAgotadaDisp')} ${esc((p.tallasDisponibles||[]).join(", "))}</span>
                     ${p.i
-                        ?`<img class="card-img" src="${esc(ikSharp(p.i))}" alt="${esc(p.n)}" loading="lazy" style="cursor:zoom-in;" onclick="abrirFotoZoom('${esc(ikSharp(p.i))}')" onerror="this.outerHTML='<div class=\'card-img-ph\'>💍</div>'">`
+                        ?`<img class="card-img" src="${esc(ikSharp(p.i))}" alt="${esc(traducirNombre(p.n))}" loading="lazy" style="cursor:zoom-in;" onclick="abrirFotoZoom('${esc(ikSharp(p.i))}')" onerror="this.outerHTML='<div class=\'card-img-ph\'>💍</div>'">`
                         :`<div class="card-img-ph">💍</div>`}
                 </div>
                 <div class="card-body">
-                    <div class="card-name">${esc(p.n)}</div>
+                    <div class="card-name">${esc(traducirNombre(p.n))}</div>
                     ${p.m?`<div class="card-material ${claseMaterial(p.m)}">${esc(materialMostrar(p.m))}</div>`:''}
                     ${p.c?`<div style="font-size:9px;color:#9ca3af;font-weight:600;margin-top:-3px;margin-bottom:4px;">${t('ref')} ${esc(p.c)}</div>`:''}
                     ${sizesHtml}
@@ -1105,7 +1164,7 @@
 
             if(!availD && !availH){
                 _szIdx=i; _szD="N/A"; _szH="N/A"; _szParMode=true; _szNoTalla=true;
-                document.getElementById("sz-title").textContent = p.n;
+                document.getElementById("sz-title").textContent = traducirNombre(p.n);
                 document.getElementById("sz-sub").textContent   = t('szSubParejaNoTalla');
                 document.getElementById("sz-sec-d").style.display = "none";
                 document.getElementById("sz-sec-h").style.display = "none";
@@ -1116,7 +1175,7 @@
 
             _szIdx=i; _szD=""; _szH=""; _szParMode=true; _szNoTalla=false;
 
-            document.getElementById("sz-title").textContent = p.n;
+            document.getElementById("sz-title").textContent = traducirNombre(p.n);
             document.getElementById("sz-sub").textContent   = t('szSubPareja');
 
             if(availD){
@@ -1147,7 +1206,7 @@
 
         if(p.cat && p.cat !== "AN"){
             _szIdx=i; _szD="N/A"; _szH="N/A"; _szParMode=false; _szNoTalla=true;
-            document.getElementById("sz-title").textContent = p.n;
+            document.getElementById("sz-title").textContent = traducirNombre(p.n);
             document.getElementById("sz-sub").textContent   = t('szSubOtra');
             document.getElementById("sz-sec-d").style.display = "none";
             document.getElementById("sz-sec-h").style.display = "none";
@@ -1160,7 +1219,7 @@
 
         const availD = (p.sizes?.length ? p.sizes : SIZES);
 
-        document.getElementById("sz-title").textContent = p.n;
+        document.getElementById("sz-title").textContent = traducirNombre(p.n);
         document.getElementById("sz-sub").textContent   = t('szSubIndividual');
         document.getElementById("sz-sec-d").style.display = "";
         document.getElementById("sz-lbl-d").textContent = t('tuTalla');
@@ -1459,7 +1518,7 @@
                         ? `<img class="cart-item-foto" src="${esc(ikSharp(it.foto))}" alt="" loading="lazy" onerror="this.outerHTML='<span class=\\'cart-item-foto cart-item-foto-ph\\'>💍</span>'">`
                         : `<span class="cart-item-foto cart-item-foto-ph">💍</span>`}
                     <div style="flex:1;min-width:0;">
-                        <div style="font-size:13px;font-weight:700;color:#111;">${esc(it.nombre)}</div>
+                        <div style="font-size:13px;font-weight:700;color:#111;">${esc(traducirNombre(it.nombre))}</div>
                         ${it.tallaLabel ? `<div style="font-size:11px;color:#7c3aed;">${esc(it.tallaLabel)}</div>` : ''}
                         <div style="font-size:12px;color:#666;">$${it.precioUnit.toFixed(2)} c/u</div>
                     </div>
@@ -1579,7 +1638,7 @@
         const direccionCliente = `${direccion}, ${ciudad}, ${estado} ${zip}`;
 
         const lineas = _carrito.map((it, idx) =>
-            `${idx+1}. ${it.nombre}${it.tallaLabel ? ` (${it.tallaLabel})` : ''}${it.qty > 1 ? ` x${it.qty}` : ''} — $${(it.precioUnit*it.qty).toFixed(2)}`
+            `${idx+1}. ${traducirNombre(it.nombre)}${it.tallaLabel ? ` (${it.tallaLabel})` : ''}${it.qty > 1 ? ` x${it.qty}` : ''} — $${(it.precioUnit*it.qty).toFixed(2)}`
         );
         const subtotal = _carrito.reduce((s, it) => s + it.precioUnit * it.qty, 0);
         const costoEnvio = calcularEnvioCatalogo(subtotal);
