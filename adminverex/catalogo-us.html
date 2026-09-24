@@ -1925,16 +1925,29 @@
                 if(!stockPorBase.has(base)) stockPorBase.set(base, []);
                 stockPorBase.get(base).push(s);
             });
-            // Tallas con unidades en bodega del modelo al que pertenece ese
-            // código representativo — null si el código no aparece en stock
-            // (ahí no se toca la lista que ya traía el catálogo).
-            const tallasVivasDe = codigo => {
+            // En parejas, dama y caballero a veces COMPARTEN el mismo
+            // codigoBase (ej. ANP060DT6 y ANP060CT9 → codigoBase "ANP060"
+            // para ambos), distinguidos solo por la letra de rol (D/C/...)
+            // justo antes de la "T" de la talla en el código. Sin esto, las
+            // tallas de dama y caballero se mezclarían en un solo grupo.
+            const rolDe = rec => {
+                const base = String(rec.codigoBase || rec.codigo || "");
+                const resto = String(rec.codigo || "").slice(base.length);
+                const m = resto.match(/^(.*?)T\d/);
+                return m ? m[1] : "";
+            };
+            // Tallas con unidades en bodega del modelo (y, si se pide, del
+            // mismo rol dama/caballero) al que pertenece ese código
+            // representativo — null si el código no aparece en stock (ahí
+            // no se toca la lista que ya traía el catálogo).
+            const tallasVivasDe = (codigo, filtrarPorRol) => {
                 const rec = mapa.get(codigo);
                 if(!rec) return null;
                 const base = rec.codigoBase || rec.codigo;
+                const rol = filtrarPorRol ? rolDe(rec) : null;
                 const tallas = [...new Set(
                     (stockPorBase.get(base) || [])
-                        .filter(s => !s.reservado && (parseInt(s.stock_bodega)||0) > 0 && s.talla)
+                        .filter(s => (!filtrarPorRol || rolDe(s) === rol) && !s.reservado && (parseInt(s.stock_bodega)||0) > 0 && s.talla)
                         .map(s => String(s.talla))
                 )];
                 return tallas.length ? tallas.sort((a,b)=>parseFloat(a)-parseFloat(b)) : null;
@@ -1943,8 +1956,8 @@
             // (un "trío" puede traer 2 diseños de dama en cD) — si CUALQUIERA
             // de los códigos no se puede verificar, se deja la lista
             // original completa en vez de reemplazarla a medias.
-            const tallasVivasDeVarios = codigos => {
-                const resultados = (codigos||[]).map(tallasVivasDe);
+            const tallasVivasDeVarios = (codigos, filtrarPorRol) => {
+                const resultados = (codigos||[]).map(c => tallasVivasDe(c, filtrarPorRol));
                 if(!resultados.length || resultados.some(r => r === null)) return null;
                 return [...new Set(resultados.flat())].sort((a,b)=>parseFloat(a)-parseFloat(b));
             };
@@ -2035,10 +2048,10 @@
                 // al abrir el selector, así que ya toma este valor corregido
                 // sin necesidad de volver a renderizar la tarjeta.
                 if(p.par){
-                    if(p.cD?.length){ const v = tallasVivasDeVarios(p.cD); if(v) p.sizesD = v; }
-                    if(p.cC?.length){ const v = tallasVivasDeVarios(p.cC); if(v) p.sizesH = v; }
+                    if(p.cD?.length){ const v = tallasVivasDeVarios(p.cD, true); if(v) p.sizesD = v; }
+                    if(p.cC?.length){ const v = tallasVivasDeVarios(p.cC, true); if(v) p.sizesH = v; }
                 } else if(p.cat === "AN" && p.c){
-                    const v = tallasVivasDe(p.c);
+                    const v = tallasVivasDe(p.c, false);
                     if(v) p.sizes = v;
                 }
 
