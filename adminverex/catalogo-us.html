@@ -310,6 +310,14 @@
         .info-tier-table{ width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px; }
         .info-tier-table td{ padding:5px 8px;border-bottom:1px solid #f0f0f0;color:#333; }
         .info-tier-table td:last-child{ text-align:right;font-weight:700; }
+        .info-terminos-link{ display:inline-block;font-size:12.5px;color:#0277bd;font-weight:700;text-decoration:none; }
+        .info-terminos-full{
+            display:none;margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0;
+        }
+        .info-terminos-full.open{ display:block; }
+        .info-terminos-full p{ font-size:12.5px;color:#555;line-height:1.5;margin:0 0 8px; }
+        .info-terminos-full ul{ margin:0 0 8px;padding-left:18px; }
+        .info-terminos-full li{ font-size:12.5px;color:#555;line-height:1.5;margin-bottom:3px; }
 
         /* Tramo de envío en vivo — mismo lenguaje visual que el banner de
            envío gratis del catálogo doméstico, con el tramo exacto de la tabla. */
@@ -533,6 +541,7 @@
             ref: "Ref:", agregarCarrito: "🛒 Agregar al carrito", piezasMas: "2+ piezas",
             cancelar: "Cancelar", damaLbl: "Dama", caballeroLbl: "Caballero", tallaCorta: "Talla", cadaUno: "c/u",
             infoBtn: "Envíos y pagos", infoTitulo: "Envíos y formas de pago",
+            leerPolitica: "Leer política completa ▾", cerrarPolitica: "Ocultar política ▴",
             tallasParConfirmar: "Tallas a confirmar (dama/caballero)",
             precioParDamaCab: "Precio del par (dama + caballero)",
             precioTrio: "Precio del trío (2 anillos dama + 1 caballero)",
@@ -573,6 +582,7 @@
             ref: "Ref:", agregarCarrito: "🛒 Add to cart", piezasMas: "2+ pieces",
             cancelar: "Cancel", damaLbl: "Women’s", caballeroLbl: "Men’s", tallaCorta: "Size", cadaUno: "each",
             infoBtn: "Shipping & payment", infoTitulo: "Shipping & payment methods",
+            leerPolitica: "Read full policy ▾", cerrarPolitica: "Hide policy ▴",
             tallasParConfirmar: "Sizes to confirm (women’s/men’s)",
             precioParDamaCab: "Price for the pair (women's + men's)",
             precioTrio: "Price for the trio (2 women's rings + 1 men's)",
@@ -947,7 +957,23 @@
             </div>
             <div class="info-sec">
                 <h3>🔄 Returns & exchanges</h3>
-                <p>Because this is an international shipment, we're unable to accept returns or exchanges for sizing or personal preference — please confirm your size carefully before paying. If your order arrives damaged or with an error on our part, contact us within 48 hours of delivery so we can make it right.</p>
+                <p>International orders are final sale — no exchanges for sizing or personal preference. If there's a defect, damage, or an error on our part, you're covered.</p>
+                <a href="#" id="terminos-link" class="info-terminos-link" onclick="toggleTerminos(); return false;">${t('leerPolitica')}</a>
+                <div id="terminos-full" class="info-terminos-full">
+                    <p>All international orders are final sale.</p>
+                    <p>Due to the high cost of international shipping, VEREX does not accept exchanges or returns for change of mind, incorrect size selection, personal preference, or other reasons unrelated to a product defect or an error on our part.</p>
+                    <p>However, if you receive:</p>
+                    <ul>
+                        <li>A defective piece.</li>
+                        <li>A damaged piece.</li>
+                        <li>A different product than what you ordered.</li>
+                        <li>An incorrect size sent by VEREX.</li>
+                    </ul>
+                    <p>Contact us within 72 hours of delivery, sending photos of the product and the packaging.</p>
+                    <p>If we confirm the issue is VEREX's responsibility, we'll offer a solution that may include a replacement, exchange, or refund.</p>
+                    <p>Taxes, duties, and customs charges applicable in the United States are the buyer's responsibility and are not refundable by VEREX.</p>
+                    <p>Do not send any product back without prior authorization from VEREX.</p>
+                </div>
             </div>
         ` : `
             <div class="info-sec">
@@ -972,9 +998,36 @@
             </div>
             <div class="info-sec">
                 <h3>🔄 Cambios y devoluciones</h3>
-                <p>Por ser un envío internacional, no podemos aceptar cambios ni devoluciones por talla o preferencia personal — te recomendamos confirmar bien la talla antes de pagar. Si tu pedido llega dañado o con un error nuestro, contáctanos dentro de las 48 horas después de recibirlo para resolverlo.</p>
+                <p>Los pedidos internacionales son venta final — no aplican cambios por talla o preferencia personal. Si hay un defecto, daño o un error de nuestra parte, sí te cubrimos.</p>
+                <a href="#" id="terminos-link" class="info-terminos-link" onclick="toggleTerminos(); return false;">${t('leerPolitica')}</a>
+                <div id="terminos-full" class="info-terminos-full">
+                    <p>Todos los pedidos internacionales son venta final.</p>
+                    <p>Debido al alto costo de los envíos internacionales, VEREX no acepta cambios ni devoluciones por cambio de opinión, elección incorrecta de talla, preferencia personal u otras razones ajenas a un defecto del producto o a un error de nuestra parte.</p>
+                    <p>Sin embargo, si recibes:</p>
+                    <ul>
+                        <li>Una pieza defectuosa.</li>
+                        <li>Una pieza dañada.</li>
+                        <li>Un producto diferente al solicitado.</li>
+                        <li>Una talla incorrecta enviada por VEREX.</li>
+                    </ul>
+                    <p>Comunícate con nosotros dentro de las 72 horas posteriores a la entrega, enviando fotografías del producto y del empaque.</p>
+                    <p>Si confirmamos que el inconveniente es responsabilidad de VEREX, te ofreceremos una solución que puede incluir reemplazo, cambio o reembolso.</p>
+                    <p>Los impuestos, aranceles y cargos aduaneros aplicables en Estados Unidos son responsabilidad del comprador y no son reembolsables por VEREX.</p>
+                    <p>No envíes ningún producto de regreso sin autorización previa de VEREX.</p>
+                </div>
             </div>
         `;
+    }
+
+    // El texto completo de la política de cambios va colapsado por defecto
+    // (ver renderInfoPanel) para no saturar el panel — este link lo despliega
+    // sin necesidad de otra pantalla ni pestaña nueva.
+    function toggleTerminos(){
+        const full = document.getElementById("terminos-full");
+        const link = document.getElementById("terminos-link");
+        if(!full || !link) return;
+        const abierto = full.classList.toggle("open");
+        link.textContent = abierto ? t('cerrarPolitica') : t('leerPolitica');
     }
 
     function abrirInfo(){
@@ -2010,6 +2063,7 @@
     window.cerrarCarrito  = cerrarCarrito;
     window.abrirInfo      = abrirInfo;
     window.cerrarInfo     = cerrarInfo;
+    window.toggleTerminos = toggleTerminos;
     window.cambiarQtyCarrito     = cambiarQtyCarrito;
     window.actualizarBotonCarrito = actualizarBotonCarrito;
     window.enviarCarritoWhatsApp  = enviarCarritoWhatsApp;
