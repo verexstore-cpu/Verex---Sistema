@@ -1259,6 +1259,19 @@ async function enviar(){
           break;
         }
 
+        // Borra un registro del historial de cortes — para limpiar duplicados
+        // (ej. los que deja un doble-tap en "Confirmar Corte", antes de que
+        // se le pusiera protección). No toca inventario ni comisiones: solo
+        // borra el registro de historial/cobro, no revierte el corte en sí.
+        case "ELIMINAR_CORTE_HISTORIAL": {
+          if (!esAdmin) return forbidden();
+          const corteDel = await sb.get("cortes_historial", d.id);
+          if (!corteDel) { result = { ok: false, error: "Corte no encontrado" }; break; }
+          await sb.delete("cortes_historial", d.id);
+          result = { ok: true };
+          break;
+        }
+
         // Todos los cortes (de cualquier vendedor), marcando cuáles son de un
         // afiliado sin stock físico — el Dashboard usa esto para descontar del
         // ingreso bruto la comisión YA pagada a esos afiliados.
