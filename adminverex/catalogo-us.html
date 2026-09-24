@@ -1346,7 +1346,22 @@
         if(!p) return;
         if(p._agotado){ alert(t('agotadoAlert')); return; }
 
-        const esPareja = ES_PAR.test(p.n) || p.par;
+        // OJO: antes esto era "ES_PAR.test(p.n) || p.par" — cualquier nombre
+        // con "alianza"/"matrimonio"/etc. entraba al selector dividido
+        // dama/caballero, aunque el producto NO tuviera esa estructura real.
+        // En el inventario hay 3 escenarios reales para estos anillos:
+        //   1) Sin etiqueta de piezas → tallas UNISEX (código termina en T o
+        //      U): se vende en par, pero es UNA sola talla a elegir (no dos
+        //      lados independientes) — debe ir por el flujo de anillo
+        //      individual, usando p.sizes tal cual.
+        //   2) "2 pieza" → dama y caballero de verdad (p.par=true, con
+        //      sizesD/sizesH o códigos D/C) → selector dividido.
+        //   3) "3 piezas" → trío (2 diseños de dama + 1 caballero), también
+        //      p.par=true — mismo selector dividido, sumando ambos diseños
+        //      de dama en un solo lado.
+        // Por eso ahora se exige evidencia real de dama/caballero (p.par, o
+        // que el catálogo ya traiga sizesD/sizesH), nunca solo el nombre.
+        const esPareja = p.par || !!(p.sizesD?.length || p.sizesH?.length);
 
         // Nombre + teléfono obligatorios SIEMPRE (cliente y afiliado) cuando se
         // manda directo por WhatsApp — un mismo link de catálogo se puede
