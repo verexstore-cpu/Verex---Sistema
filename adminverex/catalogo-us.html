@@ -516,7 +516,7 @@
             tuCarritoVacio: "Tu carrito está vacío.",
             envioBajoMinimo: monto => `Agrega $${monto.toFixed(2)} más para poder pagar — el pedido mínimo es $${MINIMO_COMPRA_US.toFixed(2)}.`,
             envioTramo: (costo, subtotal) => costo > 0 ? `🚚 Envío: $${costo.toFixed(2)} · Total con envío: $${(subtotal+costo).toFixed(2)}` : `🚚 ¡Envío GRATIS! · Total: $${subtotal.toFixed(2)}`,
-            envioFalta: (falta, actual) => `🚚 Agrega $${falta.toFixed(2)} más y baja tu envío a $${actual.toFixed(2)}`,
+            envioFalta: (costoActual, falta, siguienteCosto) => `🚚 Envío: $${costoActual.toFixed(2)} · Agrega $${falta.toFixed(2)} más y bájalo a ${siguienteCosto > 0 ? "$"+siguienteCosto.toFixed(2) : "GRATIS"}`,
             waMsgCarritoHola: nombre => `Hola, soy ${nombre}. Quiero pedir estos productos del catálogo VEREX (USA):`,
             waEnvio: "Envío:", waTotal: "Total:", waGratis: "GRATIS",
             waMisDatos: "Mis datos de envío:", waTelefono: "Teléfono:", waCorreo: "Correo:", waDireccion: "Dirección:",
@@ -555,7 +555,7 @@
             tuCarritoVacio: "Your cart is empty.",
             envioBajoMinimo: monto => `Add $${monto.toFixed(2)} more to check out — the order minimum is $${MINIMO_COMPRA_US.toFixed(2)}.`,
             envioTramo: (costo, subtotal) => costo > 0 ? `🚚 Shipping: $${costo.toFixed(2)} · Total with shipping: $${(subtotal+costo).toFixed(2)}` : `🚚 FREE shipping! · Total: $${subtotal.toFixed(2)}`,
-            envioFalta: (falta, actual) => `🚚 Add $${falta.toFixed(2)} more to drop your shipping to $${actual.toFixed(2)}`,
+            envioFalta: (costoActual, falta, siguienteCosto) => `🚚 Shipping: $${costoActual.toFixed(2)} · Add $${falta.toFixed(2)} more to drop it to ${siguienteCosto > 0 ? "$"+siguienteCosto.toFixed(2) : "FREE"}`,
             waMsgCarritoHola: nombre => `Hi, I'm ${nombre}. I'd like to order these pieces from the VEREX catalog (USA):`,
             waEnvio: "Shipping:", waTotal: "Total:", waGratis: "FREE",
             waMisDatos: "My shipping info:", waTelefono: "Phone:", waCorreo: "Email:", waDireccion: "Address:",
@@ -1493,7 +1493,7 @@
         const siguienteTramo = TRAMOS_ENVIO_US.find(tr => tr.min > subtotal);
         if(siguienteTramo && siguienteTramo.costo < costo){
             el.className = "falta";
-            el.textContent = t('envioFalta', siguienteTramo.min - subtotal, siguienteTramo.costo);
+            el.textContent = t('envioFalta', costo, siguienteTramo.min - subtotal, siguienteTramo.costo);
         } else {
             el.className = "ok";
             el.textContent = t('envioTramo', costo, subtotal);
