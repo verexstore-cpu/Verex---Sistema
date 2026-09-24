@@ -5476,6 +5476,18 @@ function onPillChange() {
     filtrarParaCatalogo();
 }
 
+// Mismo patrón visual que las pills de categoría, pero para material — ahora
+// se puede combinar más de uno (ej. plata Y acero en el mismo catálogo) en
+// vez de tener que elegir uno solo.
+function onMaterialPillChange() {
+    document.querySelectorAll(".cat-material-chk").forEach(chk => {
+        const lbl = chk.closest("label");
+        if (chk.checked) { lbl.style.background="var(--azul)"; lbl.style.color="#fff"; lbl.style.borderColor="var(--azul)"; }
+        else             { lbl.style.background="#fff"; lbl.style.color=""; lbl.style.borderColor="var(--borde)"; }
+    });
+    filtrarParaCatalogo();
+}
+
 function onToggleAfiliado(checked) {
     // El tipo lo decide la pestaña (Catálogo Cliente / Catálogo Afiliado) — se
     // muestra solo la sección de la ficha que corresponde a ese tipo.
@@ -5656,6 +5668,11 @@ function abrirModalCatalogo(tipo) {
     document.getElementById("cat-validez").value = esAfiliado ? "30" : "15";
     const esUsEl = document.getElementById("cat-es-us");
     if (esUsEl) esUsEl.checked = false;
+    document.querySelectorAll(".cat-material-chk").forEach(chk => {
+        chk.checked = false;
+        const lbl = chk.closest("label");
+        if (lbl) { lbl.style.background = "#fff"; lbl.style.color = ""; lbl.style.borderColor = "var(--borde)"; }
+    });
     const descPctEl = document.getElementById("cat-banner-desc-pct");
     if (descPctEl) descPctEl.value = "";
     const promoTipoEl = document.getElementById("cat-promo-tipo");
@@ -5803,15 +5820,18 @@ function filtrarParaCatalogo() {
     // ofrecerse para armar un catálogo nuevo, aunque globalmente no esté agotada
     lista = lista.filter(p => _stockBodegaProd(p) > 0);
 
-    // Filtro de material — aplica a TODAS las categorías, no solo Anillos
-    const materialFiltro = document.getElementById("cat-material")?.value || "";
-    if (materialFiltro) {
+    // Filtro de material — aplica a TODAS las categorías, no solo Anillos.
+    // Se puede marcar más de uno (ej. plata Y acero) — sin selección = todos.
+    const materialesFiltro = [...document.querySelectorAll(".cat-material-chk:checked")].map(c => c.value);
+    if (materialesFiltro.length) {
         lista = lista.filter(p => {
             const m = (p.material || detectarMaterial(p.nombre) || "").toLowerCase();
-            if (materialFiltro === "plata")  return m.includes("plata") && !m.includes("oro");
-            if (materialFiltro === "acero")  return m.includes("acero");
-            if (materialFiltro === "oro")    return m.includes("oro");
-            return true;
+            return materialesFiltro.some(materialFiltro => {
+                if (materialFiltro === "plata")  return m.includes("plata") && !m.includes("oro");
+                if (materialFiltro === "acero")  return m.includes("acero");
+                if (materialFiltro === "oro")    return m.includes("oro");
+                return false;
+            });
         });
     }
 
@@ -6464,13 +6484,21 @@ async function generarPDFCatalogo() {
       </div>
 
       <div style="margin-bottom:12px;">
-        <label style="font-size:12px;color:#aaa;margin-bottom:4px;display:block;">Material <span style="color:#666;font-weight:400;">(aplica a todas las categorías)</span></label>
-        <select id="cat-material" onchange="filtrarParaCatalogo()" style="width:100%;box-sizing:border-box;">
-          <option value="">— Todos —</option>
-          <option value="plata">🔘 Plata 925</option>
-          <option value="acero">⛓️ Acero 316L</option>
-          <option value="oro">✨ Oro / Laminado</option>
-        </select>
+        <label style="font-size:12px;color:#aaa;margin-bottom:6px;display:block;">Material <span style="color:#666;font-weight:400;">(aplica a todas las categorías · sin selección = todos)</span></label>
+        <div id="cat-material-pills" style="display:flex;flex-wrap:wrap;gap:6px;">
+          <label style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:20px;border:1.5px solid var(--borde);background:#fff;font-size:12px;font-weight:600;user-select:none;transition:all .15s;">
+            <input type="checkbox" class="cat-material-chk" value="plata" style="display:none;" onchange="onMaterialPillChange()">
+            🔘 Plata 925
+          </label>
+          <label style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:20px;border:1.5px solid var(--borde);background:#fff;font-size:12px;font-weight:600;user-select:none;transition:all .15s;">
+            <input type="checkbox" class="cat-material-chk" value="acero" style="display:none;" onchange="onMaterialPillChange()">
+            ⛓️ Acero 316L
+          </label>
+          <label style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:20px;border:1.5px solid var(--borde);background:#fff;font-size:12px;font-weight:600;user-select:none;transition:all .15s;">
+            <input type="checkbox" class="cat-material-chk" value="oro" style="display:none;" onchange="onMaterialPillChange()">
+            ✨ Oro / Laminado
+          </label>
+        </div>
       </div>
 
       <!-- Filtros de Anillos -->
