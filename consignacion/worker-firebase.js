@@ -1824,6 +1824,57 @@ async function enviar(){
             sb.getAll("vendedores")
           ]);
           const vendMap = new Map(vends.map(v => [v.codigo, v]));
+
+          // Consignación / afiliados: una fila por cada venta INDIVIDUAL real,
+          // tomada de vendedores[].historialVentas — tiene la fecha real en
+          // que se vendió (no la de entrega de la pieza al vendedor), y
+          // sobrevive a CERRAR_CORTE (que resetea el contador vivo
+          // consignacion.vendido, pero no toca historialVentas). Antes esta
+          // lista se armaba leyendo consignacion.vendido directamente: usaba
+          // la fecha de ENTREGA en vez de la de venta, y una venta parcial
+          // desaparecía del historial apenas se hacía el corte del vendedor
+          // (porque vendido volvía a 0 ahí).
+          const cubiertosPorHistorial = new Set();
+          const desdeHistorialVentas = [];
+          vends.forEach(v => {
+            const esAfiliadoSinStock = v.tipo === "afiliado" && !v.recibeFisico;
+            (Array.isArray(v.historialVentas) ? v.historialVentas : []).forEach(h => {
+              if (h.consignacionId) cubiertosPorHistorial.add(h.consignacionId);
+              desdeHistorialVentas.push({
+                id: h.id || `HV_${v.codigo}_${h.fecha}`,
+                fecha: h.fecha,
+                tipo: esAfiliadoSinStock ? "afiliado_sin_stock" : "consignacion",
+                cliente: v.codigo || "—", telefono: "",
+                afiliadoNombre: v.nombre || v.codigo || "",
+                total: parseFloat(h.precio || 0) * parseInt(h.cantidad || 1),
+                estado: "pagado",
+                saldoPendiente: 0,
+                items: JSON.stringify([{ nombre: h.nombre || h.codigo, codigo: h.codigo, cantidad: h.cantidad, precio: h.precio }]),
+                nota: h.migrado ? "Fecha aproximada (migrada desde la fecha de entrega)" : ""
+              });
+            });
+          });
+          // Respaldo — piezas con vendido>0 que todavía no tienen su registro
+          // individual (nunca corrió MIGRAR_HISTORIAL_VENTAS_ANTIGUAS, o algún
+          // camino viejo no llegó a dejar historial): se agregan igual, con la
+          // fecha de entrega como mejor aproximación disponible, para que la
+          // venta no desaparezca en silencio del historial.
+          const sinHistorialVentas = consig.filter(c => parseInt(c.vendido) > 0 && !cubiertosPorHistorial.has(c.id)).map(c => {
+            const vend = vendMap.get(c.vendedor);
+            const esAfiliadoSinStock = vend?.tipo === "afiliado" && !vend?.recibeFisico;
+            return {
+              id: c.id, fecha: c.fecha,
+              tipo: esAfiliadoSinStock ? "afiliado_sin_stock" : "consignacion",
+              cliente: c.vendedor || "—", telefono: "",
+              afiliadoNombre: vend?.nombre || c.vendedor || "",
+              total: parseFloat(c.precio || 0) * parseInt(c.vendido || 1),
+              estado: "pagado",
+              saldoPendiente: 0,
+              items: JSON.stringify([{ nombre: c.nombre || c.codigo, codigo: c.codigo, cantidad: c.vendido, precio: c.precio }]),
+              nota: "Fecha aproximada (sin registro individual — fecha de entrega)"
+            };
+          });
+
           const unificadas = [
             ...vd.map(v => ({
               id: v.id, fecha: v.fecha, tipo: "directa",
@@ -1856,27 +1907,8 @@ async function enviar(){
               ),
               nota: p.municipio || ""
             })),
-            // Un vendedor de consignación tradicional (con piezas físicas) cobra él
-            // mismo al cliente y liquida con VEREX después — esa venta NO es dinero
-            // que ya entró a la caja de VEREX, así que se etiqueta aparte.
-            // Un afiliado SIN piezas físicas es distinto: VEREX entrega y cobra
-            // directo al cliente, así que ese dinero sí es ingreso real de VEREX
-            // ya en caja (solo falta pagarle la comisión al afiliado).
-            ...consig.filter(c => parseInt(c.vendido) > 0).map(c => {
-              const vend = vendMap.get(c.vendedor);
-              const esAfiliadoSinStock = vend?.tipo === "afiliado" && !vend?.recibeFisico;
-              return {
-                id: c.id, fecha: c.fecha,
-                tipo: esAfiliadoSinStock ? "afiliado_sin_stock" : "consignacion",
-                cliente: c.vendedor || "—", telefono: "",
-                afiliadoNombre: vend?.nombre || c.vendedor || "",
-                total: parseFloat(c.precio || 0) * parseInt(c.vendido || 1),
-                estado: "pagado",
-                saldoPendiente: 0,
-                items: JSON.stringify([{ nombre: c.nombre || c.codigo, cantidad: c.vendido, precio: c.precio }]),
-                nota: c.notaCambio || ""
-              };
-            })
+            ...desdeHistorialVentas,
+            ...sinHistorialVentas
           ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
           result = { ok: true, ventas: unificadas };
           break;
