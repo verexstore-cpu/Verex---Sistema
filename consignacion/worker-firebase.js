@@ -2716,7 +2716,7 @@ async function enviar(){
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
                 body: JSON.stringify({
                   from: "VEREX Store <hola@verexstore.com>",
-                  to:   ["pedidos@verexstore.com"],
+                  to:   ["verex.pedidos@verexstore.com"],
                   subject: `🇺🇸 Pedido USA — ${d.nombreCliente || "cliente"} — $${(total ?? 0).toFixed(2)}`,
                   html: `
                     <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;background:#fff;border:2px solid #C9A84C;border-radius:12px;overflow:hidden;">
