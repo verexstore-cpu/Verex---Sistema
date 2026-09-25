@@ -2918,18 +2918,54 @@ async function enviar(){
         }
 
         // Panel de Logística USA: actualiza pago/tracking/notas/entrega de un
-        // pedido del catálogo de Estados Unidos. Son campos propios,
-        // independientes del ciclo estado/historial que ya usa el flujo
-        // doméstico (interesado→reportado→en_camino→vendido) — para no
-        // arriesgar esa lógica, este merge solo toca las llaves que llegan.
+        // pedido del catálogo de Estados Unidos. El ciclo estado/historial
+        // sigue siendo independiente del flujo doméstico (interesado→
+        // reportado→en_camino→vendido) — este merge solo toca las llaves
+        // que llegan. El stock SÍ se mueve en las transiciones de pago/
+        // entrega (ver abajo), para que no dependa de que el admin se
+        // acuerde de descontarlo aparte.
         case "ACTUALIZAR_LEAD_USA": {
           if (!esAdmin) return forbidden();
           if (!d.id) { result = { ok: false, error: "Falta el id del pedido" }; break; }
+          const leadUSA = await sb.get("leads", d.id);
+          if (!leadUSA) { result = { ok: false, error: "Lead no encontrado" }; break; }
           const patch = {};
           if (d.pagadoUSA !== undefined) patch.pagadoUSA = !!d.pagadoUSA;
           if (d.trackingDHL !== undefined) patch.trackingDHL = String(d.trackingDHL || "").trim();
           if (d.notasUSA !== undefined) patch.notasUSA = String(d.notasUSA || "").trim();
           if (d.entregadoUSA !== undefined) patch.entregadoUSA = !!d.entregadoUSA;
+
+          // "Marcar pagado" reserva el stock (resta de bodega/tienda, suma a
+          // reservado) — mismo criterio que CONFIRMAR_LEAD_ENVIO del flujo
+          // doméstico de afiliados, pero sin crear registro de consignación
+          // ni comisión (estos pedidos no tienen afiliado). Solo se mueve la
+          // primera vez que se marca pagado, para no reservar dos veces si
+          // se reenvía el patch (ej. al guardar notas después).
+          if (patch.pagadoUSA === true && !leadUSA.pagadoUSA) {
+            const sPago = await sb.get("stock", leadUSA.codigo);
+            if (sPago) {
+              const restaDeBodega = Math.min(1, parseInt(sPago.stock_bodega)||0);
+              await sb.update("stock", leadUSA.codigo, {
+                stock_bodega:    Math.max(0, (parseInt(sPago.stock_bodega)||0) - restaDeBodega),
+                stock_tienda:    Math.max(0, (parseInt(sPago.stock_tienda)||0) - (1 - restaDeBodega)),
+                stock_reservado: (parseInt(sPago.stock_reservado)||0) + 1
+              });
+            }
+          }
+          // "Marcar entregado" cierra la venta: pasa de reservado a vendido —
+          // mismo criterio que CONFIRMAR_LEAD_ENTREGA. Solo si de verdad
+          // había stock reservado para este pedido (se marcó pagado antes,
+          // como exige el orden del panel).
+          if (patch.entregadoUSA === true && !leadUSA.entregadoUSA && (leadUSA.pagadoUSA || patch.pagadoUSA)) {
+            const sEntrega = await sb.get("stock", leadUSA.codigo);
+            if (sEntrega) {
+              await sb.update("stock", leadUSA.codigo, {
+                stock_reservado: Math.max(0, (parseInt(sEntrega.stock_reservado)||0) - 1),
+                stock_vendido:   (parseInt(sEntrega.stock_vendido)||0) + 1
+              });
+            }
+          }
+
           await sb.update("leads", d.id, patch);
           result = { ok: true };
           break;
