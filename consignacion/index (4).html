@@ -14882,7 +14882,10 @@ function renderHistorialVentas() {
         if (busq) {
             const hayCliente = (v.cliente || "").toLowerCase().includes(busq);
             let hayItem = false;
-            try { hayItem = JSON.parse(v.items||"[]").some(i => (i.nombre||"").toLowerCase().includes(busq)); } catch(_) {}
+            // El placeholder dice "cliente o producto" pero solo comparaba
+            // nombre — buscar directo por código (ej. al revisar cuándo se
+            // vendió una pieza puntual) no encontraba nada.
+            try { hayItem = JSON.parse(v.items||"[]").some(i => (i.nombre||"").toLowerCase().includes(busq) || (i.codigo||"").toLowerCase().includes(busq)); } catch(_) {}
             if (!hayCliente && !hayItem) return false;
         }
         return true;
