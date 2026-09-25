@@ -14698,6 +14698,9 @@ function enviarRecordatorioAbono(ventaId) {
                 <option value="credito">🕐 Crédito</option>
                 <option value="pendiente">⏳ Pendiente</option>
             </select>
+            <select id="hv-filtro-mes" onchange="renderHistorialVentas()" style="width:150px;background:#f9fafb;border:1px solid #e5e7eb;color:#1a1a1a;">
+                <option value="">Todos los meses</option>
+            </select>
         </div>
 
         <div id="lista-historial-ventas"><p style="color:#888;font-size:13px;">Toca 🔄 para cargar.</p></div>
@@ -14864,10 +14867,31 @@ async function cargarHistorialVentas() {
     try {
         const res = await apiPost({ accion: "GET_HISTORIAL_VENTAS" });
         _historialVentas = res.ventas || [];
+        poblarFiltroMesHistorial();
         renderHistorialVentas();
     } catch(e) {
         lista.innerHTML = '<p style="color:#e74c3c;font-size:13px;">⚠️ Error al cargar.</p>';
     }
+}
+
+const MESES_HISTORIAL_VENTAS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+// Arma las opciones del filtro de mes a partir de los meses que realmente
+// tienen ventas — no una lista fija de 12 meses que en su mayoría estaría
+// vacía. Se recalcula cada vez que se recarga el historial (🔄), por si hay
+// ventas nuevas de un mes que aún no tenía opción.
+function poblarFiltroMesHistorial() {
+    const sel = document.getElementById("hv-filtro-mes");
+    if (!sel) return;
+    const actual = sel.value;
+    const clavesUnicas = [...new Set(_historialVentas.map(v => (v.fecha || "").slice(0, 7)).filter(Boolean))];
+    clavesUnicas.sort().reverse(); // más reciente primero
+    sel.innerHTML = '<option value="">Todos los meses</option>' +
+        clavesUnicas.map(clave => {
+            const [anio, mes] = clave.split("-");
+            const nombreMes = MESES_HISTORIAL_VENTAS[parseInt(mes, 10) - 1] || mes;
+            return `<option value="${clave}">${nombreMes} ${anio}</option>`;
+        }).join("");
+    if (clavesUnicas.includes(actual)) sel.value = actual;
 }
 
 function renderHistorialVentas() {
@@ -14875,10 +14899,12 @@ function renderHistorialVentas() {
     const busq    = (document.getElementById("hv-buscar")?.value || "").toLowerCase();
     const filtTipo = document.getElementById("hv-filtro-tipo")?.value || "";
     const filtEst  = document.getElementById("hv-filtro-estado")?.value || "";
+    const filtMes  = document.getElementById("hv-filtro-mes")?.value || "";
 
     let ventas = _historialVentas.filter(v => {
         if (filtTipo && v.tipo !== filtTipo) return false;
         if (filtEst  && v.estado !== filtEst) return false;
+        if (filtMes  && (v.fecha || "").slice(0, 7) !== filtMes) return false;
         if (busq) {
             const hayCliente = (v.cliente || "").toLowerCase().includes(busq);
             let hayItem = false;
