@@ -13644,6 +13644,19 @@ function abrirQRVD() {
 }
 
 // ── PDF VENTA DIRECTA ─────────────────────────────────────────────────
+// Formato fijo pedido para los recibos: "24-SEP-2026" — día en dos dígitos,
+// mes abreviado en español y mayúsculas (sin punto), año completo. No se usa
+// toLocaleDateString con month:"short" porque el resultado varía según el
+// navegador/entorno (con o sin punto, con o sin mayúscula), y acá se quiere
+// siempre el mismo formato exacto en el recibo impreso.
+const MESES_RECIBO_VD = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
+function formatearFechaReciboVD(fecha) {
+    if (!fecha) return "";
+    const d = fecha instanceof Date ? fecha : new Date(fecha);
+    if (isNaN(d)) return "";
+    return String(d.getDate()).padStart(2, "0") + "-" + MESES_RECIBO_VD[d.getMonth()] + "-" + d.getFullYear();
+}
+
 // Despachador — decide el formato según lo elegido en "Venta Directa" (select
 // persistido en localStorage). Por defecto sigue siendo A5, así que nada
 // cambia para quien no toque el selector nuevo.
@@ -13692,7 +13705,7 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
     doc.setFont('courier', 'bold');
     doc.setFontSize(11);
     doc.setTextColor(80, 80, 80);
-    const fechaVenta = venta.fecha ? new Date(venta.fecha).toLocaleDateString('es-SV', { day:'2-digit', month:'long', year:'numeric' }) : '';
+    const fechaVenta = formatearFechaReciboVD(venta.fecha);
     doc.text('Fecha de compra: ' + fechaVenta, pad, y);
     const refCorta = String(venta.id || '').replace('VD_','').slice(-6);
     doc.text('Ref: ' + refCorta, W - pad, y, { align: 'right' });
@@ -13766,7 +13779,7 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
         if (fechaExtra) {
             y += 4.5;
             const etiquetaExtra = item.fechaAgregado ? 'agregado' : 'cambiado';
-            const fechaTxt = new Date(fechaExtra).toLocaleDateString('es-SV', { day:'2-digit', month:'short', year:'numeric' });
+            const fechaTxt = formatearFechaReciboVD(fechaExtra);
             doc.setFont('courier', 'normal');
             doc.setFontSize(8);
             doc.setTextColor(160, 160, 160);
@@ -13789,12 +13802,23 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
     const pagado  = venta.tipo === 'credito' ? enganche + totalAbonado : total;
     const saldo   = Math.max(0, total - pagado);
 
-    const filaTotal = (label, valor, bold, color, negativo) => {
+    // fechaSub (opcional): fecha chica en gris pegada justo a la izquierda del
+    // monto — se calcula su ancho con getTextWidth() para no adivinar cuánto
+    // espacio deja libre el monto (varía según cuántos dígitos tenga).
+    const filaTotal = (label, valor, bold, color, negativo, fechaSub) => {
         doc.setFont('courier', 'bold');
         if (color) doc.setTextColor(...color); else doc.setTextColor(30, 30, 30);
         doc.setFontSize(11);
         doc.text(label, pad, y);
-        doc.text((negativo ? '-' : '') + '$' + Math.abs(parseFloat(valor)).toFixed(2), W - pad, y, { align: 'right' });
+        const montoTxt = (negativo ? '-' : '') + '$' + Math.abs(parseFloat(valor)).toFixed(2);
+        doc.text(montoTxt, W - pad, y, { align: 'right' });
+        if (fechaSub) {
+            const anchoMonto = doc.getTextWidth(montoTxt);
+            doc.setFont('courier', 'normal');
+            doc.setFontSize(7.5);
+            doc.setTextColor(150, 150, 150);
+            doc.text(fechaSub, W - pad - anchoMonto - 3, y, { align: 'right' });
+        }
         y += 6.5;
     };
     // Si se aplicó descuento, mostrar el desglose (subtotal → descuento →
@@ -13821,7 +13845,9 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
     }
     filaTotal('Total de compra:', total, true, [30,30,30]);
     if (venta.tipo === 'credito') {
-        filaTotal('Enganche pagado:', enganche, false, [39,174,96]);
+        // El enganche se paga el mismo día de la venta — no hay un campo de
+        // fecha propio para el enganche, así que se usa venta.fecha.
+        filaTotal('Enganche pagado:', enganche, false, [39,174,96], false, enganche > 0 ? formatearFechaReciboVD(venta.fecha) : null);
         if (totalAbonado > 0) filaTotal('Abonos realizados:', totalAbonado, false, [39,174,96]);
         filaTotal('Saldo pendiente:', saldo, true, saldo > 0 ? [201,60,60] : [39,174,96]);
     }
@@ -13840,7 +13866,7 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
         y += 4;
         abonos.forEach((ab, i) => {
             checkPage(8.5);
-            const fa = ab.fecha ? new Date(ab.fecha).toLocaleDateString('es-SV', { day:'2-digit', month:'short', year:'numeric' }) : '';
+            const fa = formatearFechaReciboVD(ab.fecha);
             doc.setFont('courier', 'bold');
             doc.setFontSize(9.5);
             doc.setTextColor(30, 30, 30);
@@ -13992,7 +14018,7 @@ async function generarPDFVentaDirecta58mm(venta, abonos) {
     doc.line(pad, y, W-pad, y); y += 4.5;
 
     doc.setFontSize(7.5); doc.setTextColor(30,30,30);
-    const fechaVenta = venta.fecha ? new Date(venta.fecha).toLocaleDateString('es-SV',{day:'2-digit',month:'2-digit',year:'2-digit'}) + ' ' + new Date(venta.fecha).toLocaleTimeString('es-SV',{hour:'2-digit',minute:'2-digit'}) : '';
+    const fechaVenta = venta.fecha ? formatearFechaReciboVD(venta.fecha) + ' ' + new Date(venta.fecha).toLocaleTimeString('es-SV',{hour:'2-digit',minute:'2-digit'}) : '';
     doc.text('Fecha: ' + fechaVenta, pad, y); y += 4;
     doc.text('Cliente: ' + (venta.cliente||''), pad, y); y += 4;
     if (venta.telefono) { doc.text('Tel: ' + venta.telefono, pad, y); y += 4; }
@@ -14017,7 +14043,7 @@ async function generarPDFVentaDirecta58mm(venta, abonos) {
         const fechaExtra58 = item.fechaAgregado || item.fechaCambio;
         if (fechaExtra58) {
             const etq = item.fechaAgregado ? 'Agregado' : 'Cambiado';
-            const ftx = new Date(fechaExtra58).toLocaleDateString('es-SV', { day:'2-digit', month:'2-digit', year:'2-digit' });
+            const ftx = formatearFechaReciboVD(fechaExtra58);
             doc.setFont('courier','normal'); doc.setFontSize(6.5); doc.setTextColor(201,168,76);
             doc.text(`↳ ${etq} ${ftx}`, pad, y); y += 3.6;
         }
@@ -14040,12 +14066,20 @@ async function generarPDFVentaDirecta58mm(venta, abonos) {
     doc.setFontSize(9);
     doc.text('TOTAL', pad, y); doc.text('$'+total.toFixed(2), W-pad, y, {align:'right'}); y += 5;
     if (venta.tipo === 'credito') {
-        doc.setFont('courier','normal'); doc.setFontSize(7);
-        doc.text('Enganche: $'+enganche.toFixed(2), pad, y); y += 3.6;
+        doc.setFont('courier','normal'); doc.setFontSize(7); doc.setTextColor(30,30,30);
+        doc.text('Enganche: $'+enganche.toFixed(2), pad, y);
+        // Fecha del enganche a la par del monto — el enganche se paga el
+        // mismo día de la venta, así que se usa venta.fecha.
+        if (enganche > 0) {
+            doc.setFontSize(6); doc.setTextColor(150,150,150);
+            doc.text(formatearFechaReciboVD(venta.fecha), W - pad, y, { align: 'right' });
+            doc.setTextColor(30,30,30);
+        }
+        y += 3.6;
         abonos.forEach((ab,i) => {
             doc.setFont('courier','normal'); doc.setFontSize(7);
             doc.text(`Abono ${i+1}: $${parseFloat(ab.monto).toFixed(2)}`, pad, y); y += 3.2;
-            const faTerm = ab.fecha ? new Date(ab.fecha).toLocaleDateString('es-SV', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
+            const faTerm = formatearFechaReciboVD(ab.fecha);
             doc.setFontSize(6); doc.setTextColor(150,150,150);
             doc.text(faTerm, pad + 2, y); y += 3.4;
             doc.setTextColor(30,30,30);
