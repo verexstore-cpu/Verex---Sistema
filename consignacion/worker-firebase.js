@@ -8,6 +8,12 @@
 //    SECRET_PASS          → contraseña del admin
 //    SECRET_KEY           → clave legacy de vendedores
 //    IMAGEKIT_PRIVATE_KEY → clave privada de ImageKit
+//    RESEND_KEY           → API key de Resend (correos)
+//    WOMPI_CLIENT_ID       → App ID del negocio en Wompi (checkout USA)
+//    WOMPI_CLIENT_SECRET   → API Secret del negocio en Wompi
+//    WOMPI_WEBHOOK_SECRET  → token random propio — NO viene de Wompi, se
+//                            genera acá y se usa como sufijo de la URL del
+//                            webhook (Wompi no firma sus webhooks)
 // ═══════════════════════════════════════════════════════════════════
 
 const CORS = {
@@ -251,6 +257,18 @@ async function enviar(){
         });
       } catch(e) {
         return json({ ok: false, error: e.message }, 500);
+      }
+    }
+
+    // Webhook de Wompi (pago con tarjeta del catálogo USA) — ruta aparte
+    // porque el body que manda Wompi no trae "accion". Wompi no documenta
+    // firma/HMAC para validar el webhook, así que la URL misma (con el
+    // secreto al final) es la autenticación: solo Wompi la conoce porque
+    // se la pasamos nosotros al crear cada enlace de pago.
+    {
+      const urlPost = new URL(request.url);
+      if (request.method === "POST" && urlPost.pathname === `/webhook-wompi/${env.WOMPI_WEBHOOK_SECRET}`) {
+        return manejarWebhookWompi(request, env, sb);
       }
     }
 
@@ -2704,11 +2722,13 @@ async function enviar(){
               // Validar formato antes de insertarlo como link clicable en el
               // correo (este endpoint es público, sin auth de admin) — solo
               // se acepta un paypal.me/usuario/monto bien formado.
-              const pagoLinkOk = /^https:\/\/paypal\.me\/[A-Za-z0-9_.]{1,50}\/\d+\.\d{2}[A-Z]{0,3}$/.test(d.pagoLink || "");
+              const esWompi = d.metodoPago === "wompi";
+              const pagoLinkOk = /^https:\/\/paypal\.me\/[A-Za-z0-9_.]{1,50}\/\d+\.\d{2}[A-Z]{0,3}$/.test(d.pagoLink || "")
+                || /^https:\/\/([a-z0-9-]+\.)*wompi\.sv\//.test(d.pagoLink || "");
               const correoValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.correo || "");
               const pagoLinkHtml = pagoLinkOk ? `
                         <div style="margin:0 0 16px;padding:12px 14px;background:#fef9e7;border:1px solid #f0d98c;border-radius:8px;text-align:center;">
-                          <div style="font-size:11px;color:#8a6d1a;font-weight:700;margin-bottom:6px;">💳 LINK DE PAGO (PayPal.me)${correoValido ? "" : " — MANDAR AL CLIENTE"}</div>
+                          <div style="font-size:11px;color:#8a6d1a;font-weight:700;margin-bottom:6px;">💳 LINK DE PAGO (${esWompi ? "Wompi" : "PayPal.me"})${correoValido ? "" : " — MANDAR AL CLIENTE"}</div>
                           <a href="${d.pagoLink}" style="font-size:13px;color:#1a5fb4;word-break:break-all;">${d.pagoLink}</a>
                         </div>` : "";
               await fetch("https://api.resend.com/emails", {
@@ -2813,7 +2833,7 @@ async function enviar(){
                   gracias: "Thanks for your order! Here's your summary:",
                   envioLbl: "Shipping (DHL)", freeLbl: "FREE", totalLbl: "Total",
                   pagoTitulo: "Complete your payment here:",
-                  pagoBtn: "Pay with PayPal",
+                  pagoBtn: esWompi ? "Pay with card" : "Pay with PayPal",
                   siguiente: "Once we confirm your payment, we'll prepare your order and ship it via DHL — delivery takes 5–7 business days.",
                   direccionLbl: "Shipping to:",
                   dudas: "Questions? Just reply to this email.",
@@ -2824,7 +2844,7 @@ async function enviar(){
                   gracias: "¡Gracias por tu pedido! Aquí está tu resumen:",
                   envioLbl: "Envío (DHL)", freeLbl: "GRATIS", totalLbl: "Total",
                   pagoTitulo: "Para completar tu pedido, realiza el pago aquí:",
-                  pagoBtn: "Pagar con PayPal",
+                  pagoBtn: esWompi ? "Pagar con tarjeta" : "Pagar con PayPal",
                   siguiente: "Cuando confirmemos tu pago, preparamos tu pedido y lo enviamos por DHL — la entrega toma entre 5 y 7 días hábiles.",
                   direccionLbl: "Dirección de envío:",
                   dudas: "¿Dudas? Responde este mismo correo.",
@@ -2833,7 +2853,7 @@ async function enviar(){
                 const botonPago = pagoLinkOk ? `
                   <div style="text-align:center;margin:20px 0;">
                     <p style="font-size:13px;color:#555;margin:0 0 10px;">${txt.pagoTitulo}</p>
-                    <a href="${d.pagoLink}" style="display:inline-block;background:#0070ba;color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 28px;border-radius:8px;">${txt.pagoBtn} · $${(total ?? 0).toFixed(2)}</a>
+                    <a href="${d.pagoLink}" style="display:inline-block;background:${esWompi ? "#4f46e5" : "#0070ba"};color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 28px;border-radius:8px;">${txt.pagoBtn} · $${(total ?? 0).toFixed(2)}</a>
                   </div>` : "";
                 await fetch("https://api.resend.com/emails", {
                   method: "POST",
@@ -2873,6 +2893,69 @@ async function enviar(){
           } catch(pedidoUsaErr) {
             console.error("Pedido USA email error:", pedidoUsaErr);
             result = { ok: false, error: "No se pudo enviar el correo" };
+          }
+          break;
+        }
+
+        // Alternativa a PayPal en el checkout de EE.UU.: genera un enlace de
+        // pago de Wompi (comisión más baja, depósito directo a la cuenta en
+        // El Salvador) por el monto exacto del pedido. Mismo nivel de
+        // confianza público que ENVIAR_PEDIDO_USA — sin auth de admin.
+        case "CREAR_ENLACE_PAGO_WOMPI": {
+          const montoWompi = parseFloat(d.monto);
+          if (!d.pedidoId || !(montoWompi > 0) || montoWompi > 50000) {
+            result = { ok: false, error: "Pedido inválido" }; break;
+          }
+          try {
+            const token = await wompiToken(env);
+            const ahora = new Date();
+            const vence = new Date(ahora.getTime() + 48 * 3600 * 1000);
+            const resEnlace = await fetch("https://api.wompi.sv/EnlacePago", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "authorization": `Bearer ${token}` },
+              body: JSON.stringify({
+                identificadorEnlaceComercio: String(d.pedidoId),
+                monto: montoWompi,
+                nombreProducto: "Pedido VEREX Store",
+                formaPago: {
+                  permitirTarjetaCreditoDebido: true,
+                  permitirPagoConPuntoAgricola: false,
+                  permitirPagoEnCuotasAgricola: false,
+                  permitirPagoEnBitcoin: false,
+                  permitePagoQuickPay: false
+                },
+                infoProducto: {
+                  descripcionProducto: String(d.descripcion || "").slice(0, 300),
+                  urlImagenProducto: /^https:\/\//.test(d.foto || "") ? d.foto : ""
+                },
+                configuracion: {
+                  esMontoEditable: false,
+                  esCantidadEditable: false,
+                  cantidadPorDefecto: 1,
+                  urlWebhook: `https://verex-api.verexstore.workers.dev/webhook-wompi/${env.WOMPI_WEBHOOK_SECRET}`,
+                  urlRetorno: "https://us.verexstore.com/",
+                  notificarTransaccionCliente: true,
+                  emailsNotificacion: "verex.pedidos@verexstore.com"
+                },
+                vigencia: {
+                  fechaInicio: ahora.toISOString(),
+                  fechaFin: vence.toISOString()
+                },
+                limitesDeUso: {
+                  cantidadMaximaPagosExitosos: 1,
+                  cantidadMaximaPagosFallidos: 5
+                }
+              })
+            });
+            const dataEnlace = await resEnlace.json();
+            if (!resEnlace.ok || !dataEnlace.urlEnlace) {
+              console.error("Wompi enlace error:", dataEnlace);
+              result = { ok: false, error: "No se pudo generar el link de pago" }; break;
+            }
+            result = { ok: true, urlEnlace: dataEnlace.urlEnlace, idEnlace: dataEnlace.idEnlace };
+          } catch(wompiErr) {
+            console.error("Wompi error:", wompiErr);
+            result = { ok: false, error: "No se pudo generar el link de pago" };
           }
           break;
         }
@@ -4346,6 +4429,63 @@ function json(data, status = 200) {
 }
 function forbidden() {
   return json({ ok: false, error: "No autorizado" }, 403);
+}
+
+// ── WOMPI (pago con tarjeta, catálogo USA) ────────────────────────
+// OAuth 2.0 Client Credentials — el token dura 1h, pero como cada request
+// del worker es una invocación aparte no vale la pena cachearlo entre
+// peticiones (bajo volumen de pedidos); se pide uno nuevo cada vez.
+async function wompiToken(env) {
+  const res = await fetch("https://id.wompi.sv/connect/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      audience: "wompi_api",
+      client_id: env.WOMPI_CLIENT_ID,
+      client_secret: env.WOMPI_CLIENT_SECRET
+    })
+  });
+  const data = await res.json();
+  if (!data.access_token) throw new Error("No se pudo autenticar con Wompi");
+  return data.access_token;
+}
+
+// El webhook llega apenas Wompi resuelve la transacción (aprobada o no).
+// Como no hay firma documentada para validarlo, la URL secreta (ver arriba)
+// es la única autenticación — así que acá sí se confía en el body.
+async function manejarWebhookWompi(request, env, sb) {
+  try {
+    const payload = await request.json();
+    const idTransaccion = payload.IdTransaccion;
+    const pedidoId = payload.EnlacePago?.IdentificadorEnlaceComercio;
+    if (!idTransaccion || !pedidoId) return json({ ok: true });
+    if (payload.ResultadoTransaccion !== "ExitosaAprobada") return json({ ok: true });
+
+    // Mismo movimiento de stock que ACTUALIZAR_LEAD_USA hace al marcar
+    // pagado a mano — acá se dispara solo, sin que el admin toque nada.
+    const todosLeads = await sb.getAll("leads");
+    const leadsPedido = todosLeads.filter(l => l.pedidoId === pedidoId && l.pais === "US");
+    for (const lead of leadsPedido) {
+      if (lead.pagadoUSA) continue; // ya procesado — evita reservar dos veces
+      const s = await sb.get("stock", lead.codigo);
+      if (s) {
+        const restaDeBodega = Math.min(1, parseInt(s.stock_bodega)||0);
+        await sb.update("stock", lead.codigo, {
+          stock_bodega:    Math.max(0, (parseInt(s.stock_bodega)||0) - restaDeBodega),
+          stock_tienda:    Math.max(0, (parseInt(s.stock_tienda)||0) - (1 - restaDeBodega)),
+          stock_reservado: (parseInt(s.stock_reservado)||0) + 1
+        });
+      }
+      await sb.update("leads", lead.id, { pagadoUSA: true, metodoPagoUSA: "wompi", wompiIdTransaccion: idTransaccion });
+    }
+    return json({ ok: true });
+  } catch(e) {
+    console.error("Webhook Wompi error:", e);
+    // Siempre 200 — un error nuestro no debe hacer que Wompi reintente
+    // indefinidamente el mismo webhook.
+    return json({ ok: true });
+  }
 }
 
 // ── CORTE DEL VENDEDOR: FECHA REAL ────────────────────────────────
