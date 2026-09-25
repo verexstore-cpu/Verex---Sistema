@@ -8553,7 +8553,12 @@ function _onScanVD(codRaw) {
     // que la pantalla se re-dibujara dos veces seguidas y se sintiera como que
     // "se movía sola" justo al cerrarse la cámara.
     const cod = String(codRaw || "").trim().toUpperCase();
-    const match = stockData.find(s => (s.codigo || "").toUpperCase() === cod && parseInt(s.stock_bodega || 0) > 0);
+    // Cuenta bodega + tienda como vendible — igual que agregarAlVD()/filtrarVD()
+    // y que el propio worker (REGISTRAR_VENTA_DIRECTA descuenta primero de
+    // tienda y luego de bodega). Antes esto solo miraba stock_bodega, así que
+    // un producto que físicamente ya estaba en la tienda (no en bodega) salía
+    // como "no encontrado" al escanearlo, aunque sí era vendible.
+    const match = stockData.find(s => (s.codigo || "").toUpperCase() === cod && (parseInt(s.stock_bodega || 0) + parseInt(s.stock_tienda || 0)) > 0);
     if (match) {
         agregarAlVD(match.codigo);
         mostrarConfirmacionEscaneo(match.foto, match.nombre || match.codigo, match.codigo + " · $" + parseFloat(match.precio||0).toFixed(2));
@@ -12191,7 +12196,8 @@ function autocompletarClienteVD() {
 function filtrarVD() {
     const q = (document.getElementById("bus-vd")?.value || "").toLowerCase();
     const prods = stockData.filter(s => {
-        const disp = parseInt(s.stock_bodega || 0);
+        // Bodega + tienda: ambas son vendibles en Venta Directa (ver _onScanVD/agregarAlVD).
+        const disp = parseInt(s.stock_bodega || 0) + parseInt(s.stock_tienda || 0);
         if (disp <= 0) return false;
         if (!q) return true;
         return (s.codigo || "").toLowerCase().includes(q) || (s.nombre || "").toLowerCase().includes(q);
@@ -12202,21 +12208,26 @@ function filtrarVD() {
 function renderGridVD(prods) {
     const grid = document.getElementById("grid-vd");
     if (!grid) return;
-    if (!prods.length) { grid.innerHTML = '<p style="color:var(--plateado);font-size:13px;grid-column:1/-1;">Sin productos en bodega.</p>'; return; }
+    if (!prods.length) { grid.innerHTML = '<p style="color:var(--plateado);font-size:13px;grid-column:1/-1;">Sin productos disponibles.</p>'; return; }
     grid.innerHTML = prods.map(p => {
         const qty      = _vdCarrito[p.codigo]?.qty || 0;
         const bodega   = parseInt(p.stock_bodega || 0);
+        const tienda   = parseInt(p.stock_tienda || 0);
+        const disp     = bodega + tienda;
         const selec    = qty > 0;
         const fotoHtml = p.foto
             ? `<img src="${ikFoto(p.foto,1200)}" onerror="this.style.display='none'">`
             : ``;
+        // Desglose bodega/tienda visible — si no, al vender algo que solo está
+        // en tienda el admin iría a buscarlo a bodega y no lo encontraría.
+        const desglose = [bodega > 0 ? `Bodega: ${bodega}` : "", tienda > 0 ? `Tienda: ${tienda}` : ""].filter(Boolean).join(" · ");
         return `<div class="prod-card ${selec ? 'seleccionado' : ''}">
             ${fotoHtml}
             <div class="prod-card-info">
                 <div class="prod-card-codigo">${p.codigo}</div>
                 <div class="prod-card-nombre">${p.nombre}</div>
                 <div class="prod-card-precio">$${parseFloat(p.precio||0).toFixed(2)}</div>
-                <div style="font-size:10px;color:${bodega>0?'#2ecc71':'#e74c3c'};margin-top:2px;">Bodega: ${bodega}</div>
+                <div style="font-size:10px;color:${disp>0?'#2ecc71':'#e74c3c'};margin-top:2px;">${desglose}</div>
             </div>
             <div class="prod-card-qty">
                 <button class="qty-btn" onclick="quitarDeVD('${p.codigo}')">−</button>
@@ -13308,9 +13319,10 @@ function imprimirPDFReciboNavegador(pdfBase64) {
 function agregarAlVD(codigo) {
     const prod = stockData.find(s => s.codigo === codigo);
     if (!prod) return;
-    const max = parseInt(prod.stock_bodega || 0);
+    // Bodega + tienda: ambas son vendibles en Venta Directa (ver _onScanVD).
+    const max = parseInt(prod.stock_bodega || 0) + parseInt(prod.stock_tienda || 0);
     if (!_vdCarrito[codigo]) _vdCarrito[codigo] = { prod, qty: 0 };
-    if (_vdCarrito[codigo].qty >= max) { toast("⚠️ No hay más unidades en bodega"); return; }
+    if (_vdCarrito[codigo].qty >= max) { toast("⚠️ No hay más unidades disponibles"); return; }
     _vdCarrito[codigo].qty++;
     filtrarVD();
     renderCarritoVD();
