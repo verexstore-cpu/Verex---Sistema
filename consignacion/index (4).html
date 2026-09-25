@@ -13508,9 +13508,19 @@ async function confirmarVentaDirecta() {
                 }, 500);
             }
             generarPDFVentaDirecta(payload, []);
+            // Reflejar en memoria el mismo descuento que hace el worker
+            // (REGISTRAR_VENTA_DIRECTA): primero de tienda, luego de bodega.
+            // Antes esto solo restaba de stock_bodega, así que una venta con
+            // stock solo en tienda se veía correcta en el recibo pero la
+            // grilla seguía mostrando el stock de tienda viejo hasta recargar.
             items.forEach(({ prod, qty }) => {
                 const s = stockData.find(s => s.codigo === prod.codigo);
-                if (s) s.stock_bodega = Math.max(0, parseInt(s.stock_bodega||0) - qty);
+                if (s) {
+                    const tiendaAntes = parseInt(s.stock_tienda||0);
+                    const descTienda  = Math.min(tiendaAntes, qty);
+                    s.stock_tienda = Math.max(0, tiendaAntes - descTienda);
+                    s.stock_bodega = Math.max(0, parseInt(s.stock_bodega||0) - (qty - descTienda));
+                }
             });
             _vdCarrito = {};
             document.getElementById("vd-cliente-nombre").value = "";
