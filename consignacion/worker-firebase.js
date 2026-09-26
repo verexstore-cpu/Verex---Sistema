@@ -4088,6 +4088,56 @@ async function enviar(){
           break;
         }
 
+        // Traduce al inglés la frase de marketing (descripcionTienda) de un
+        // producto para el catálogo de EE.UU. Pública (la llama el catálogo,
+        // no el admin) — se usa la primera vez que alguien ve ese producto
+        // en inglés. El resultado se guarda en descripcionTiendaEN en todos
+        // los SKUs del grupo (tallas) para no tener que volver a traducir.
+        case "TRADUCIR_DESCRIPCION": {
+          const texto = String(d.texto || "").trim();
+          const codigos = Array.isArray(d.codigos) ? d.codigos.filter(Boolean) : [];
+          if (!texto) { result = { ok: false, error: "Texto vacío" }; break; }
+          if (texto.length > 500) { result = { ok: false, error: "Texto demasiado largo" }; break; }
+          const groqKey = env.GROQ_KEY;
+          if (!groqKey) { result = { ok: false, error: "GROQ_KEY no configurada en Cloudflare" }; break; }
+          try {
+            const prompt =
+              `Traduce esta frase de marketing de una joyería del español al inglés, para una tienda en Estados Unidos. ` +
+              `Que suene natural para un hablante nativo de inglés, no una traducción literal palabra por palabra — ` +
+              `mantén el mismo tono emotivo y de venta. Responde ÚNICAMENTE con la traducción, sin comillas ni texto adicional.\n\n` +
+              `Frase original: "${texto}"`;
+            const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model: "qwen/qwen3.8-27b",
+                messages: [{ role: "user", content: prompt }],
+                reasoning_effort: "none",
+                max_tokens: 150,
+                temperature: 0.5
+              }),
+              signal: AbortSignal.timeout(15000)
+            });
+            if (!groqRes.ok) {
+              const errTxt = await groqRes.text();
+              result = { ok: false, error: "Groq error " + groqRes.status + ": " + errTxt.slice(0, 150) };
+              break;
+            }
+            const groqData = await groqRes.json();
+            let traduccion = (groqData.choices?.[0]?.message?.content || "").trim();
+            traduccion = traduccion.replace(/<think>[\s\S]*?<\/think>/i, "").trim();
+            traduccion = traduccion.replace(/^["“”']|["“”']$/g, "").trim();
+            if (!traduccion) { result = { ok: false, error: "Groq no devolvió traducción" }; break; }
+            for (const cod of codigos) {
+              await sb.update("stock", cod, { descripcionTiendaEN: traduccion }).catch(() => {});
+            }
+            result = { ok: true, traduccion };
+          } catch (e) {
+            result = { ok: false, error: e.name === "TimeoutError" ? "Groq no respondió a tiempo" : "Error de traducción: " + e.message };
+          }
+          break;
+        }
+
         case "GUARDAR_FOTO_PENDIENTE": {
           // Guarda URL de foto subida desde celular para usarla en el sistema
           const id = `foto_${Date.now()}`;
