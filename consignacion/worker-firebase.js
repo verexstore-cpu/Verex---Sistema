@@ -2135,17 +2135,29 @@ async function enviar(){
             await sb.update("pedidos", d.numeroPedido, { stockActualizado: true });
 
           } else if ((d.estado === "Cancelado" || d.estado === "No entregado") && !pedidoActual.stockLiberado) {
-            // Reservado → regresa a Tienda
-            for (const item of itemsEst) {
-              if (!item.codigo) continue;
-              const prod = await sb.get("stock", item.codigo);
-              if (!prod) continue;
-              const qty = parseInt(item.cantidad || 1);
-              await sb.update("stock", item.codigo, {
-                stock_reservado: Math.max(0, (parseInt(prod.stock_reservado)||0) - qty),
-                stock_tienda:    (parseInt(prod.stock_tienda)||0) + qty,
-                enCatalogo:      true
-              });
+            // Reservado → regresa a stock. Si el pedido tiene el detalle
+            // exacto de dónde salió cada unidad (reservas, pedidos creados
+            // desde que existe la reserva atómica), se repone ahí mismo; si
+            // no (pedidos de antes de ese cambio), se usa el criterio
+            // anterior (todo de vuelta a tienda).
+            if (Array.isArray(pedidoActual.reservas) && pedidoActual.reservas.length) {
+              for (const r of pedidoActual.reservas) {
+                if (!r.codigo) continue;
+                try { await sb.liberar(r.codigo, r.descTienda || 0, r.descBodega || 0); } catch (_) {}
+                try { await sb.update("stock", r.codigo, { enCatalogo: true }); } catch (_) {}
+              }
+            } else {
+              for (const item of itemsEst) {
+                if (!item.codigo) continue;
+                const prod = await sb.get("stock", item.codigo);
+                if (!prod) continue;
+                const qty = parseInt(item.cantidad || 1);
+                await sb.update("stock", item.codigo, {
+                  stock_reservado: Math.max(0, (parseInt(prod.stock_reservado)||0) - qty),
+                  stock_tienda:    (parseInt(prod.stock_tienda)||0) + qty,
+                  enCatalogo:      true
+                });
+              }
             }
             await sb.update("pedidos", d.numeroPedido, { stockLiberado: true });
           }
@@ -2408,6 +2420,31 @@ async function enviar(){
         }
 
         case "NUEVO_PEDIDO": {
+          // Reservar stock ANTES de crear el pedido — de forma atómica (ver
+          // reservar_stock_pedido en Supabase), para que dos pedidos por
+          // WhatsApp casi simultáneos del mismo producto no puedan vender la
+          // misma pieza dos veces. Si algún producto ya no alcanza, el
+          // pedido ni se crea, y lo que sí se alcanzó a reservar de items
+          // anteriores se libera (todo o nada).
+          let itemsPedNuevo = [];
+          try { itemsPedNuevo = typeof d.items === "string" ? JSON.parse(d.items) : (d.items || []); } catch(_) {}
+          const reservasPed = [];
+          let faltantePed = null;
+          for (const item of itemsPedNuevo) {
+            if (!item.codigo) continue;
+            const qtyPed = parseInt(item.cantidad || 1);
+            let resReservaPed;
+            try { resReservaPed = await sb.reservar(item.codigo, qtyPed); }
+            catch (eResPed) { faltantePed = { codigo: item.codigo, error: eResPed.message }; break; }
+            if (!resReservaPed.ok) { faltantePed = { codigo: item.codigo, error: resReservaPed.error }; break; }
+            reservasPed.push({ codigo: item.codigo, descTienda: resReservaPed.desc_tienda || 0, descBodega: resReservaPed.desc_bodega || 0 });
+          }
+          if (faltantePed) {
+            for (const r of reservasPed) { try { await sb.liberar(r.codigo, r.descTienda, r.descBodega); } catch (_) {} }
+            result = { ok: false, error: "sin_stock", codigo: faltantePed.codigo };
+            break;
+          }
+
           const now      = new Date();
           const dd       = String(now.getDate()).padStart(2, "0");
           const mm       = String(now.getMonth() + 1).padStart(2, "0");
@@ -2448,22 +2485,12 @@ async function enviar(){
             estado: "Pendiente", metodoPago: d.metodoPago || "",
             items: d.items || "", cuponUsado: d.cuponUsado || "",
             descMonto: d.descMonto || 0, envio: d.envio || 0,
-            codigoCliente: codigoCliente || "", canal: d.canal || "whatsapp"
+            codigoCliente: codigoCliente || "", canal: d.canal || "whatsapp",
+            // De dónde salió exactamente cada unidad reservada arriba —
+            // necesario para poder reponerla al lugar correcto si el pedido
+            // se cancela (ver ACTUALIZAR_ESTADO_PEDIDO).
+            reservas: reservasPed
           });
-
-          // ── Reservar stock inmediatamente ──────────────────────────
-          let itemsPed = [];
-          try { itemsPed = typeof d.items === "string" ? JSON.parse(d.items) : (d.items || []); } catch(_) {}
-          for (const item of itemsPed) {
-            if (!item.codigo) continue;
-            const prod = await sb.get("stock", item.codigo);
-            if (!prod) continue;
-            const qty = parseInt(item.cantidad || 1);
-            await sb.update("stock", item.codigo, {
-              stock_tienda:    Math.max(0, (parseInt(prod.stock_tienda)||0) - qty),
-              stock_reservado: (parseInt(prod.stock_reservado)||0) + qty
-            });
-          }
 
           // ── Notificación por email ─────────────────────────────────
           try {
