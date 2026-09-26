@@ -8070,13 +8070,16 @@ function renderStock(items) {
     items.forEach(item => {
         const base = item.codigoBase || item.codigo;
         const key = base.replace(/^(.+\d)B$/, "$1");
-        if (!grupos.has(key)) grupos.set(key, { key, nombre: item.nombre_base || item.nombre, material: item.material, caracterEspecial: item.caracterEspecial, foto: item.foto, categoria: item.categoria, items: [] });
+        if (!grupos.has(key)) grupos.set(key, { key, nombre: item.nombre_base || item.nombre, material: item.material, caracterEspecial: item.caracterEspecial, foto: item.foto, fotoMejorada: item.fotoMejorada || "", categoria: item.categoria, items: [] });
         const g = grupos.get(key);
         g.items.push(item);
         if (!g.caracterEspecial && item.caracterEspecial) g.caracterEspecial = item.caracterEspecial;
         // Preferir el nombre/foto de la pieza "base" (sin la B) para el
         // encabezado del grupo, si la B llegó primero por orden de fecha.
         if (base === key) { g.nombre = item.nombre_base || item.nombre; g.foto = item.foto || g.foto; }
+        // Foto "mejorada" (nitidez, botón ✨) — se muestra en vez de la
+        // original cuando existe, sin sobrescribirla nunca.
+        if (!g.fotoMejorada && item.fotoMejorada) g.fotoMejorada = item.fotoMejorada;
     });
 
     // ── Vista grid: mismo agrupado por diseño, una tarjeta por grupo con
@@ -8106,7 +8109,7 @@ function renderStock(items) {
             return `<div data-grupo="${sanitizar(g.key)}" data-activo="${sanitizar(activo.codigo)}" onclick="toggleSeleccionGrupo(${jsArgArr(codigos)})" style="background:#2C2C2E;border:${selAll?"2px solid var(--dorado)":"1px solid var(--dorado)"};border-radius:12px;overflow:hidden;cursor:pointer;position:relative;">
                 <div onclick="event.stopPropagation();toggleSeleccionGrupo(${jsArgArr(codigos)})" style="position:absolute;top:6px;left:6px;width:18px;height:18px;border:2px solid ${selAll?"var(--dorado)":"#666"};border-radius:4px;background:${selAll?"var(--dorado)":"rgba(0,0,0,0.5)"};display:flex;align-items:center;justify-content:center;font-size:11px;z-index:2;">${selAll?"✓":""}</div>
                 <div style="width:100%;aspect-ratio:1;background:#1a1a1a;overflow:hidden;">
-                    ${g.foto ? `<img src="${sanitizar(ikFoto(g.foto,300))}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;">💍</div>`}
+                    ${g.foto ? `<img src="${sanitizar(ikFoto(g.fotoMejorada||g.foto,300))}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;">💍</div>`}
                 </div>
                 <div style="padding:7px 8px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -8231,7 +8234,7 @@ function renderStock(items) {
                 <div style="width:18px;height:18px;border:2px solid ${selAll?"var(--dorado)":"#555"};border-radius:4px;background:${selAll?"var(--dorado)":"transparent"};display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">
                     ${selAll ? "✓" : ""}
                 </div>
-                ${g.foto ? `<img src="${sanitizar(ikFoto(g.foto,200))}" onerror="this.style.display='none'" onclick="event.stopPropagation();abrirFotoZoom(${jsArg(g.foto)},${jsArg(g.nombre)})" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;background:#3a3a3c;">` : '<div style="width:64px;height:64px;background:#3a3a3c;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">💍</div>'}
+                ${g.foto ? `<img src="${sanitizar(ikFoto(g.fotoMejorada||g.foto,200))}" onerror="this.style.display='none'" onclick="event.stopPropagation();abrirFotoZoom(${jsArg(g.fotoMejorada||g.foto)},${jsArg(g.nombre)})" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;background:#3a3a3c;">` : '<div style="width:64px;height:64px;background:#3a3a3c;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">💍</div>'}
                 <div style="flex:1;min-width:0;">
                     <div style="color:#fff;font-size:14px;font-weight:600;">${sanitizar(g.nombre)}</div>
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;">
@@ -8817,7 +8820,7 @@ function abrirEditarStockItem(codigo) {
     productoEditando = { key: item.codigo, p: { ...item, img: item.foto || item.img || "" } };
     document.getElementById("modal-prod-titulo").textContent = item.codigo || "Producto";
     const foto = document.getElementById("modal-prod-foto");
-    if (item.foto || item.img) { foto.src = ikFoto(item.foto || item.img, 900); foto.style.display = "block"; }
+    if (item.foto || item.img) { foto.src = ikFoto(item.fotoMejorada || item.foto || item.img, 900); foto.style.display = "block"; }
     else { foto.style.display = "none"; }
     document.getElementById("vp-codigo").textContent  = item.codigo  || "";
     document.getElementById("vp-nombre").textContent  = item.nombre  || "";

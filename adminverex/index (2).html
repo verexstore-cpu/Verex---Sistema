@@ -2796,7 +2796,7 @@ function renderProductos() {
         } catch(_){ stock="Sin tallas"; }
         const dest = p.destacado===true||p.destacado==="TRUE";
         return `<div class="pc">
-            <img src="${ikSharp(p.foto||p.img||'')}" alt="" onerror="this.style.display='none'">
+            <img src="${ikSharp(p.fotoMejorada||p.foto||p.img||'')}" alt="" onerror="this.style.display='none'">
             <div class="pi">
                 <div class="pn">${p.nombre||"—"} ${dest?'<span class="badge bam2">⭐ Destacado</span>':''}</div>
                 <div class="pd">Ref: ${p.codigo||"—"} · $${parseFloat(p.precio||0).toFixed(2)} · ${stock}${getNotaEspecial(p)?` · <span style="color:#92400e;background:#fef3c7;border-radius:3px;padding:0 4px;font-size:10px;">♦ ${getNotaEspecial(p)}</span>`:''}</div>
