@@ -2702,6 +2702,9 @@ async function enviar(){
             // Link de PayPal.me con el monto exacto del pedido, armado en el
             // checkout — el panel de Logística USA lo muestra para copiarlo.
             pagoLink: d.pagoLink || "",
+            // Idioma elegido en el catálogo — para poder mandar el correo de
+            // pago confirmado en el mismo idioma que el cliente ya venía usando.
+            lang: d.lang || "",
             historial: [{ estado: "interesado", fecha: new Date().toISOString() }]
           });
 
@@ -3110,6 +3113,9 @@ async function enviar(){
           }
 
           await sb.update("leads", d.id, patch);
+          if (patch.pagadoUSA === true && !leadUSA.pagadoUSA) {
+            await enviarCorreoPagoConfirmadoUSA(env, sb, leadUSA.pedidoId);
+          }
           result = { ok: true };
           break;
         }
@@ -4647,6 +4653,95 @@ async function liberarReservasVencidas(sb) {
 }
 
 // ── WOMPI (pago con tarjeta, catálogo USA) ────────────────────────
+
+// Correo al cliente cuando su pago se confirma de verdad — automático desde
+// el webhook de Wompi, o cuando el admin marca "pagado" a mano (PayPal).
+// Antes no existía: el cliente solo veía el correo inicial de "completá tu
+// pago", nunca un aviso de que el pago sí llegó.
+//
+// Se manda UNO por pedido (agrupado por pedidoId), no uno por producto —
+// un pedido de 3 artículos no debe generar 3 correos. Se guarda una bandera
+// en los leads del grupo para no reenviarlo si esto se llama de nuevo
+// (reintento del webhook de Wompi, o el admin marca cada artículo por
+// separado en vez de todo el pedido junto).
+async function enviarCorreoPagoConfirmadoUSA(env, sb, pedidoId) {
+  if (!pedidoId) return;
+  const RESEND_KEY = env.RESEND_KEY;
+  if (!RESEND_KEY) return;
+  try {
+    const todosLeads = await sb.getAll("leads");
+    const leadsPedido = todosLeads.filter(l => l.pedidoId === pedidoId && l.pais === "US");
+    if (!leadsPedido.length) return;
+    if (leadsPedido.some(l => l.correoPagoConfirmadoEnviado)) return; // ya se mandó
+
+    const primero = leadsPedido[0];
+    const correo = primero.correoCliente || "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) return;
+
+    const en = primero.lang === "en";
+    const nombreCliente = primero.nombreCliente || "";
+    const filas = leadsPedido.map(l => {
+      const nombre = l.nombre || l.codigo || "—";
+      const precio = parseFloat(l.precio) || 0;
+      return `<tr><td style="padding:6px 0;color:#111;">${nombre}</td><td style="padding:6px 0;color:#111;text-align:right;">$${precio.toFixed(2)}</td></tr>`;
+    }).join("");
+    const totalPedido = primero.totalPedidoUSD != null
+      ? parseFloat(primero.totalPedidoUSD)
+      : leadsPedido.reduce((s, l) => s + (parseFloat(l.precio) || 0), 0);
+
+    const txt = en ? {
+      subject: "✅ Payment received — your VEREX Store order is on its way",
+      preheader: "Payment confirmed",
+      hola: `Hi ${nombreCliente},`,
+      msg: "We've received your payment! Your order is now being prepared and will ship via DHL — delivery takes 5–7 business days.",
+      totalLbl: "Total paid",
+      dudas: "Questions? Just reply to this email."
+    } : {
+      subject: "✅ Pago recibido — tu pedido de VEREX Store va en camino",
+      preheader: "Pago confirmado",
+      hola: `Hola ${nombreCliente},`,
+      msg: "¡Recibimos tu pago! Tu pedido ya se está preparando y saldrá por DHL — la entrega toma de 5 a 7 días hábiles.",
+      totalLbl: "Total pagado",
+      dudas: "¿Dudas? Responde este correo."
+    };
+
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
+      body: JSON.stringify({
+        from: "VEREX Store <hola@verexstore.com>",
+        to: [correo],
+        subject: txt.subject,
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#fff;border:2px solid #0a7d3d;border-radius:12px;overflow:hidden;">
+            <div style="background:linear-gradient(135deg,#0a7d3d,#12a852);padding:24px;text-align:center;">
+              <h1 style="margin:0;font-size:22px;letter-spacing:3px;color:#fff;">VEREX STORE</h1>
+              <p style="margin:6px 0 0;font-size:13px;color:#e8f7ee;">${txt.preheader}</p>
+            </div>
+            <div style="padding:24px;">
+              <p style="margin:0 0 16px;font-size:15px;color:#111;">${txt.hola}</p>
+              <p style="margin:0 0 16px;font-size:14px;color:#444;">${txt.msg}</p>
+              <table style="width:100%;border-collapse:collapse;font-size:13px;border-top:1px solid #eee;padding-top:8px;">
+                ${filas}
+                <tr><td style="padding:8px 0 2px;font-weight:700;color:#111;">${txt.totalLbl}</td><td style="padding:8px 0 2px;font-weight:700;color:#111;text-align:right;">$${totalPedido.toFixed(2)}</td></tr>
+              </table>
+              <p style="margin:20px 0 0;font-size:13px;color:#444;">${txt.dudas}</p>
+            </div>
+            <div style="padding:16px 24px;background:#f5f5f5;border-top:2px solid #0a7d3d;text-align:center;font-size:12px;color:#888;">
+              El mundo es mejor cuando brillas tú ✨
+            </div>
+          </div>`
+      })
+    });
+
+    for (const l of leadsPedido) {
+      await sb.update("leads", l.id, { correoPagoConfirmadoEnviado: true });
+    }
+  } catch (e) {
+    console.error("Error enviando correo de pago confirmado:", e);
+  }
+}
+
 // OAuth 2.0 Client Credentials — el token dura 1h, pero como cada request
 // del worker es una invocación aparte no vale la pena cachearlo entre
 // peticiones (bajo volumen de pedidos); se pide uno nuevo cada vez.
@@ -4702,6 +4797,7 @@ async function manejarWebhookWompi(request, env, sb) {
       }
       await sb.update("leads", lead.id, patchWompi);
     }
+    await enviarCorreoPagoConfirmadoUSA(env, sb, pedidoId);
     return json({ ok: true });
   } catch(e) {
     console.error("Webhook Wompi error:", e);
