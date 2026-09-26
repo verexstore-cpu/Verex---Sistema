@@ -571,6 +571,7 @@
             waMsgCarritoHola: nombre => `Hola, soy ${nombre}. Quiero pedir estos productos del catálogo VEREX (USA):`,
             waEnvio: "Envío:", waTotal: "Total:", waGratis: "GRATIS",
             waMisDatos: "Mis datos de envío:", waTelefono: "Teléfono:", waCorreo: "Correo:", waDireccion: "Dirección:",
+            waSinStock: nombre => `Lo sentimos, "${nombre}" ya no está disponible — alguien más lo compró justo antes. Actualiza la página e intenta de nuevo.`,
         },
         en: {
             cargando: "Loading catalog…",
@@ -612,6 +613,7 @@
             waMsgCarritoHola: nombre => `Hi, I'm ${nombre}. I'd like to order these pieces from the VEREX catalog (USA):`,
             waEnvio: "Shipping:", waTotal: "Total:", waGratis: "FREE",
             waMisDatos: "My shipping info:", waTelefono: "Phone:", waCorreo: "Email:", waDireccion: "Address:",
+            waSinStock: nombre => `Sorry, "${nombre}" is no longer available — someone else just bought it. Please refresh the page and try again.`,
         },
     };
     function t(key, ...args){
@@ -758,18 +760,21 @@
         return "mat-otro";
     }
 
-    // Registro silencioso del interés del cliente ANTES de abrir WhatsApp — no bloquea
-    // la apertura del chat aunque falle (la venta nunca debe depender de esto).
+    // Registra el interés del cliente y RESERVA el stock de ese producto de
+    // inmediato — a diferencia de antes, ahora SÍ se espera la respuesta: si
+    // el servidor dice que ya no hay stock (alguien más lo compró justo
+    // antes), el envío del pedido debe detenerse en vez de abrir WhatsApp
+    // igual con un pedido que ya no se puede cumplir.
     // opts: { telefono, nombreCliente, direccionCliente, correoCliente, pedidoId,
     //         qty, precioLinea, ciudad, estadoUS, zip, envio, totalPedido }
     // Un pedido del carrito genera UN lead POR PRODUCTO (igual que el catálogo
     // doméstico) — pedidoId es lo que el panel de Logística USA usa para
     // agruparlos de nuevo en una sola tarjeta de pedido.
-    function registrarLead(p, opts){
+    async function registrarLead(p, opts){
         opts = opts || {};
-        if (!p?.c) return;
+        if (!p?.c) return { ok: false, error: "item_invalido" };
         try {
-            fetch(API_URL, {
+            const res = await fetch(API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -803,8 +808,11 @@
                     totalPedidoUSD: opts.totalPedido,
                     pagoLink: opts.pagoLink || ""
                 })
-            }).catch(()=>{});
-        } catch(_){}
+            });
+            return await res.json();
+        } catch(e) {
+            return { ok: false, error: "network_error" };
+        }
     }
 
     function precioFinal(precio){
@@ -1519,7 +1527,7 @@
         return { label: `${t('tallaCorta')} T${_szD}`, precio: precioFinal(p.p) };
     }
 
-    function confirmarTalla(){
+    async function confirmarTalla(){
         const p = _prods[_szIdx];
 
         if(_szModo === "carrito"){
@@ -1527,6 +1535,16 @@
             agregarACarrito(p, label, precio);
             cerrarTallas();
             miniToast("✅ Agregado al carrito");
+            return;
+        }
+
+        // Reserva stock antes de abrir WhatsApp — si ya no hay (alguien más
+        // lo compró justo antes), se avisa en vez de mandar al cliente a
+        // preguntar por algo que ya no existe.
+        const resLeadSz = await registrarLead(p, { telefono: _szTel, nombreCliente: _szNombreCliente, direccionCliente: _szDireccion });
+        if (!resLeadSz.ok) {
+            cerrarTallas();
+            alert(t('waSinStock', p.n));
             return;
         }
 
@@ -1558,7 +1576,6 @@
         } else {
             msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\nPrecio: $${precioFinal(p.p).toFixed(2)}\nTalla: T${_szD}${telLinea}`;
         }
-        registrarLead(p, { telefono: _szTel, nombreCliente: _szNombreCliente, direccionCliente: _szDireccion });
         cerrarTallas();
         window.open(`https://wa.me/${_waNum}?text=${encodeURIComponent(msg)}`,"_blank");
     }
@@ -1845,7 +1862,7 @@
         document.getElementById("cart-overlay").classList.remove("open");
     }
 
-    function enviarCarritoWhatsApp(){
+    async function enviarCarritoWhatsApp(){
         if(!_carrito.length) return;
         const nombreCliente = (document.getElementById("cart-nombre")?.value || "").trim();
         const direccion = (document.getElementById("cart-direccion")?.value || "").trim();
@@ -1877,19 +1894,33 @@
 
         const msg = `${t('waMsgCarritoHola', nombreCliente)}\n\n${lineas.join("\n")}\n\n${totalLinea}\n\n${t('waMisDatos')}\n${t('waTelefono')} ${tel}\n${t('waCorreo')} ${correo}\n${t('waDireccion')} ${direccionCliente}`;
 
-        // Registro de lead best-effort por cada producto del carrito — igual
-        // que el flujo directo, no debe bloquear el envío si falla. pedidoId
-        // agrupa las líneas de este mismo pedido para el panel de Logística
-        // USA (un lead por producto, igual que el catálogo doméstico).
+        // Reserva el stock de cada producto del carrito ANTES de abrir
+        // WhatsApp — si alguno ya no está disponible (otra persona lo
+        // compró justo antes), el envío se detiene aquí en vez de mandar al
+        // cliente a pedir algo que ya no existe. pedidoId agrupa las líneas
+        // de este mismo pedido para el panel de Logística USA (un lead por
+        // producto, igual que el catálogo doméstico).
         const pedidoId = "US" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-        _carrito.forEach(it => {
+        const btnCarrito = document.getElementById("cart-confirm");
+        const txtCarrito = document.getElementById("cart-btn-txt");
+        const txtOriginalCarrito = txtCarrito.textContent;
+        btnCarrito.disabled = true; txtCarrito.textContent = "⏳ ...";
+        const resultadosLeadCarrito = await Promise.all(_carrito.map(it => {
             const prod = _prods.find(p => p.c === it.codigo);
-            if(prod) registrarLead(prod, {
+            if (!prod) return Promise.resolve({ ok: false, error: "producto_no_existe" });
+            return registrarLead(prod, {
                 telefono: tel, nombreCliente, direccionCliente, correoCliente: correo,
                 pedidoId, qty: it.qty, precioLinea: it.precioUnit,
                 ciudad, estadoUS: estado, zip, envio: costoEnvio, totalPedido: totalFinal, pagoLink: linkPago
             });
-        });
+        }));
+        btnCarrito.disabled = false; txtCarrito.textContent = txtOriginalCarrito;
+        const fallaCarrito = resultadosLeadCarrito.find(r => !r.ok);
+        if (fallaCarrito) {
+            const prodFaltante = _prods.find(p => p.c === fallaCarrito.codigo);
+            alert(t('waSinStock', prodFaltante?.n || fallaCarrito.codigo || ""));
+            return;
+        }
 
         // Un solo correo con el pedido COMPLETO a hola@verexstore.com — en
         // paralelo al WhatsApp, no en su lugar. No depende de que el cliente
