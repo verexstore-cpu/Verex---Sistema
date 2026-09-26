@@ -5995,6 +5995,127 @@ function ikFoto(url, size) {
     return tr ? `${base}?tr=${tr},w-${s},e-sharpen` : `${base}?tr=w-${s},e-sharpen`;
 }
 
+// ── MEJORAR IMAGEN (nitidez vía ImageKit) ──────────────────────────
+// Solo transformaciones de nitidez (sharpen), nunca color/contraste/brillo
+// ni IA generativa — la pieza debe verse exactamente igual, solo más nítida.
+// Es una transformación por URL de ImageKit (mismo servicio ya en uso, sin
+// nueva integración ni archivo adicional).
+const NIVELES_MEJORA_IMG_STOCK = { natural: "e-sharpen-3", mejorado: "e-sharpen-8" };
+function ikMejorar(url, nivel, size) {
+    if (!url || !url.includes("imagekit.io")) return url;
+    const s = size || 900;
+    const base = url.split("?")[0];
+    const tr = NIVELES_MEJORA_IMG_STOCK[nivel] || NIVELES_MEJORA_IMG_STOCK.natural;
+    return `${base}?tr=w-${s},${tr}`;
+}
+
+// Textos del panel en ES/EN — autocontenido, no depende de ningún sistema
+// de idioma del resto de Stock (que es solo en español).
+const MEJORA_STOCK_I18N = {
+    es: {
+        titulo: "✨ Mejorar imagen", original: "Original", preview: "Vista previa mejorada",
+        nivel: "Nivel", natural: "Natural", mejorado: "Mejorado",
+        cancelar: "Cancelar", aplicar: "Aplicar mejora", aplicando: "Aplicando...",
+        toggleIdioma: "EN", okMsg: "✨ Mejora aplicada — el original se conserva intacto",
+        errMsg: "⚠️ No se pudo aplicar la mejora"
+    },
+    en: {
+        titulo: "✨ Enhance image", original: "Original", preview: "Enhanced preview",
+        nivel: "Level", natural: "Natural", mejorado: "Enhanced",
+        cancelar: "Cancel", aplicar: "Apply enhancement", aplicando: "Applying...",
+        toggleIdioma: "ES", okMsg: "✨ Enhancement applied — the original is kept untouched",
+        errMsg: "⚠️ Could not apply the enhancement"
+    }
+};
+let _mjsIdioma = "es";
+let _mjsNivel  = "natural";
+let _mjsItem   = null;
+
+function renderTextosMejoraStock() {
+    const L = MEJORA_STOCK_I18N[_mjsIdioma];
+    document.getElementById("mjs-titulo").textContent         = L.titulo;
+    document.getElementById("mjs-label-original").textContent = L.original;
+    document.getElementById("mjs-label-preview").textContent  = L.preview;
+    document.getElementById("mjs-label-nivel").textContent    = L.nivel;
+    document.getElementById("mjs-btn-natural").textContent    = L.natural;
+    document.getElementById("mjs-btn-mejorado").textContent   = L.mejorado;
+    document.getElementById("mjs-btn-cancelar").textContent   = L.cancelar;
+    document.getElementById("mjs-btn-aplicar").textContent    = L.aplicar;
+    document.getElementById("mjs-btn-idioma").textContent     = L.toggleIdioma;
+}
+
+function toggleIdiomaMejoraStock() {
+    _mjsIdioma = _mjsIdioma === "es" ? "en" : "es";
+    renderTextosMejoraStock();
+}
+
+// Se abre desde la vista de un producto de Stock (modal-ver-producto), que
+// ya dejó el item actual en productoEditando.p al llamar abrirEditarStockItem.
+function abrirMejorarFotoStock() {
+    const item = productoEditando?.p;
+    const foto = item?.foto || item?.img || "";
+    if (!foto) { toast("⚠️ Este producto no tiene foto", "#f97316"); return; }
+    _mjsItem  = item;
+    _mjsNivel = "natural"; // Natural es siempre el nivel predeterminado
+    document.getElementById("mjs-nombre").textContent = `${item.nombre || "—"} · ${item.codigo || "—"}`;
+    document.getElementById("mjs-img-original").src   = ikFoto(foto, 700);
+    renderTextosMejoraStock();
+    actualizarNivelMejoraStock();
+    abrirModal("modal-mejorar-foto-stock");
+}
+
+function cerrarMejorarFotoStock() {
+    cerrarModal("modal-mejorar-foto-stock");
+    _mjsItem = null;
+}
+
+function setNivelMejoraStock(nivel) {
+    _mjsNivel = nivel;
+    actualizarNivelMejoraStock();
+}
+
+function actualizarNivelMejoraStock() {
+    if (!_mjsItem) return;
+    const foto = _mjsItem.foto || _mjsItem.img || "";
+    document.getElementById("mjs-img-preview").src = ikMejorar(foto, _mjsNivel, 700);
+    const natActivo = _mjsNivel === "natural";
+    const btnNat = document.getElementById("mjs-btn-natural");
+    const btnMej = document.getElementById("mjs-btn-mejorado");
+    btnNat.className = natActivo ? "btn" : "btn btn-gris";
+    btnNat.style.background = natActivo ? "var(--dorado)" : "";
+    btnNat.style.color = natActivo ? "#111" : "";
+    btnMej.className = !natActivo ? "btn" : "btn btn-gris";
+    btnMej.style.background = !natActivo ? "var(--dorado)" : "";
+    btnMej.style.color = !natActivo ? "#111" : "";
+}
+
+async function aplicarMejoraFotoStock() {
+    if (!_mjsItem) return;
+    const foto = _mjsItem.foto || _mjsItem.img || "";
+    const L = MEJORA_STOCK_I18N[_mjsIdioma];
+    const btn = document.getElementById("mjs-btn-aplicar");
+    btn.textContent = L.aplicando; btn.disabled = true;
+    try {
+        const data = await apiPost({
+            accion: "EDITAR_PRODUCTO",
+            codigo: _mjsItem.codigo,
+            fotoMejorada: ikMejorar(foto, _mjsNivel, 1600),
+            fotoMejoraNivel: _mjsNivel
+        });
+        if (data.ok) {
+            toast(L.okMsg, "#22c55e");
+            cerrarMejorarFotoStock();
+            cerrarModal("modal-ver-producto");
+        } else {
+            toast(L.errMsg, "#ef4444");
+        }
+    } catch (e) {
+        toast(L.errMsg, "#ef4444");
+    } finally {
+        btn.textContent = L.aplicar; btn.disabled = false;
+    }
+}
+
 async function subirFotoImageKit(fileOrBase64, nombre, crop) {
     try {
         // Convertir File a base64 si es necesario
@@ -14184,7 +14305,10 @@ function enviarRecordatorioAbono(ventaId) {
             <div style="font-size:16px;font-weight:700;margin-bottom:6px;" id="vp-nombre"></div>
             <div style="font-size:13px;color:var(--plateado);margin-bottom:10px;" id="vp-desc"></div>
             <div style="font-size:20px;font-weight:700;color:var(--dorado-claro);margin-bottom:16px;" id="vp-precio"></div>
-            <button class="btn btn-dorado btn-full" onclick="activarEdicionProducto()">✏️ Editar Producto</button>
+            <div style="display:flex;gap:8px;">
+                <button class="btn btn-dorado" style="flex:1;" onclick="activarEdicionProducto()">✏️ Editar Producto</button>
+                <button class="btn" style="flex:1;background:var(--gris2);color:var(--blanco);" onclick="abrirMejorarFotoStock()" title="Mejorar imagen / Enhance image">✨ Mejorar imagen</button>
+            </div>
         </div>
         <div id="modal-prod-edicion" style="display:none;">
             <input type="text" id="ep-codigo" placeholder="Código">
@@ -14250,6 +14374,48 @@ function enviarRecordatorioAbono(ventaId) {
                 <button class="btn btn-gris" onclick="cancelarEdicionProducto()">Cancelar</button>
                 <button class="btn btn-dorado" onclick="guardarEdicionProducto()">💾 Guardar</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Mejorar Imagen (nitidez vía ImageKit) -->
+<div class="modal-overlay" id="modal-mejorar-foto-stock">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="mjs-titulo">✨ Mejorar imagen</h3>
+            <button class="modal-close" onclick="cerrarMejorarFotoStock()">×</button>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
+            <p id="mjs-nombre" style="margin:0;color:var(--plateado);font-size:12px;"></p>
+            <button class="btn btn-gris" style="padding:4px 10px;font-size:11px;flex-shrink:0;" onclick="toggleIdiomaMejoraStock()" id="mjs-btn-idioma">EN</button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+                <div id="mjs-label-original" style="font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--plateado);text-transform:uppercase;margin-bottom:5px;">Original</div>
+                <div style="background:var(--gris2);border-radius:10px;overflow:hidden;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;">
+                    <img id="mjs-img-original" src="" alt="" style="width:100%;height:100%;object-fit:contain;">
+                </div>
+            </div>
+            <div>
+                <div id="mjs-label-preview" style="font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--plateado);text-transform:uppercase;margin-bottom:5px;">Vista previa mejorada</div>
+                <div style="background:var(--gris2);border-radius:10px;overflow:hidden;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;">
+                    <img id="mjs-img-preview" src="" alt="" style="width:100%;height:100%;object-fit:contain;">
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top:14px;">
+            <div id="mjs-label-nivel" style="font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--plateado);text-transform:uppercase;margin-bottom:5px;">Nivel</div>
+            <div style="display:flex;gap:8px;">
+                <button class="btn" id="mjs-btn-natural" style="flex:1;background:var(--dorado);color:#111;" onclick="setNivelMejoraStock('natural')">Natural</button>
+                <button class="btn btn-gris" id="mjs-btn-mejorado" style="flex:1;" onclick="setNivelMejoraStock('mejorado')">Mejorado</button>
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;">
+            <button class="btn btn-gris" id="mjs-btn-cancelar" onclick="cerrarMejorarFotoStock()">Cancelar</button>
+            <button class="btn btn-dorado" id="mjs-btn-aplicar" onclick="aplicarMejoraFotoStock()">Aplicar mejora</button>
         </div>
     </div>
 </div>
