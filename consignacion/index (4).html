@@ -8127,9 +8127,9 @@ function renderStock(items) {
                         <button onclick="event.stopPropagation();_stockGridToggleMover(this)" style="flex:2;padding:4px 6px;font-size:10px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">⇄ Mover ▾</button>
                         <button onclick="event.stopPropagation();imprimirEtiquetaStock(_stockGridCodActivo(this))" title="Imprimir etiqueta de la talla activa" style="flex:1;padding:4px 0;font-size:12px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;">🖨️</button>
                         <div class="menu-mover-grid" style="display:none;position:absolute;bottom:30px;right:0;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
-                            <button onclick="event.stopPropagation();moverItemDirecto(_stockGridCodActivo(this),'tienda')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4caf82;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🛍️ Enviar a Tienda</button>
-                            <button onclick="event.stopPropagation();moverItemDirecto(_stockGridCodActivo(this),'bodega')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4a6fa5;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">📦 Devolver a Bodega</button>
-                            <button onclick="event.stopPropagation();moverItemDirectoVendedor(_stockGridCodActivo(this))" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:var(--dorado);border:none;cursor:pointer;text-align:left;font-weight:600;">👤 Asignar a Vendedor</button>
+                            <button onclick="event.stopPropagation();moverItemDirecto(${jsArgArr(codigos)},'tienda')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4caf82;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;" title="Mueve todas las tallas en existencia de este diseño">🛍️ Enviar todo a Tienda</button>
+                            <button onclick="event.stopPropagation();moverItemDirecto(${jsArgArr(codigos)},'bodega')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4a6fa5;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;" title="Mueve todas las tallas en existencia de este diseño">📦 Devolver todo a Bodega</button>
+                            <button onclick="event.stopPropagation();moverItemDirectoVendedor(${jsArgArr(codigos)})" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:var(--dorado);border:none;cursor:pointer;text-align:left;font-weight:600;" title="Asigna todas las tallas en existencia de este diseño">👤 Asignar todo a Vendedor</button>
                         </div>
                     </div>
                 </div>
@@ -8403,17 +8403,22 @@ function toggleMenuMover(codigo, btn) {
     }
 }
 
-async function moverItemDirecto(codigo, destino) {
+async function moverItemDirecto(codigoOCodigos, destino) {
     document.querySelectorAll('[id^="menu-mover-"]').forEach(m => m.style.display = "none");
-    // Seleccionar solo ese item y ejecutar la acción
-    stockSeleccionados = [codigo];
+    document.querySelectorAll('.menu-mover-grid').forEach(m => m.style.display = "none");
+    // Acepta un código individual (fila de lista = una talla puntual) o un
+    // arreglo de códigos (tarjeta de grupo en la vista grid): mover desde el
+    // grupo mueve TODAS las tallas en existencia de ese diseño, no solo la
+    // que estaba activa/resaltada en ese momento.
+    stockSeleccionados = Array.isArray(codigoOCodigos) ? [...codigoOCodigos] : [codigoOCodigos];
     if (destino === "tienda") await asignarATienda();
     else if (destino === "bodega") await devolverABodega();
     stockSeleccionados = [];
 }
 
-function moverItemDirectoVendedor(codigo) {
+function moverItemDirectoVendedor(codigoOCodigos) {
     document.querySelectorAll('[id^="menu-mover-"]').forEach(m => m.style.display = "none");
+    document.querySelectorAll('.menu-mover-grid').forEach(m => m.style.display = "none");
     // asignarAVendedor() solo ABRE el modal — no espera a que el usuario elija
     // vendedor y confirme, así que un `await` seguido de vaciar
     // stockSeleccionados se ejecutaba de inmediato, antes de que el usuario
@@ -8423,7 +8428,9 @@ function moverItemDirectoVendedor(codigo) {
     // correctamente" aunque la asignación real nunca se ejecutó. Ahora queda
     // seteado hasta que confirmarAsignarVendedor() lo limpie de verdad
     // (via limpiarSeleccion(), al terminar con éxito).
-    stockSeleccionados = [codigo];
+    // Mismo criterio que moverItemDirecto: desde una tarjeta de grupo (vista
+    // grid) llega un arreglo con TODAS las tallas en existencia, no solo la activa.
+    stockSeleccionados = Array.isArray(codigoOCodigos) ? [...codigoOCodigos] : [codigoOCodigos];
     asignarAVendedor();
 }
 
