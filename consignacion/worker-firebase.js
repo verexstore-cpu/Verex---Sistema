@@ -3523,6 +3523,10 @@ async function enviar(){
           if (d.nombre_base     !== undefined) upd.nombre_base       = d.nombre_base;
           if (d.precio          !== undefined) upd.precio            = Math.round((parseFloat(d.precio) || 0) * 100) / 100;
           if (d.img             !== undefined) upd.foto              = d.img;
+          // Foto "Mejorada" (nitidez vía ImageKit, desde el botón ✨ del
+          // admin) — nunca toca `foto` (la original), se guarda aparte.
+          if (d.fotoMejorada    !== undefined) upd.fotoMejorada      = d.fotoMejorada;
+          if (d.fotoMejoraNivel !== undefined) upd.fotoMejoraNivel   = d.fotoMejoraNivel;
           if (d.descripcion     !== undefined) upd.descripcionTienda = d.descripcion;
           if (d.destacado       !== undefined) upd.destacado         = d.destacado;
           if (d.enCatalogo      !== undefined) upd.enCatalogo        = Boolean(d.enCatalogo);

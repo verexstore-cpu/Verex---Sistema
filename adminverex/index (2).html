@@ -1166,6 +1166,48 @@
     </div>
 </div>
 
+<!-- Modal Mejorar Imagen (nitidez vía ImageKit) -->
+<div class="mo" id="modal-mejorar-foto">
+    <div class="mb" style="max-width:640px;">
+        <button class="mc" onclick="cerrarMejorarFoto()">✕</button>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px;">
+            <h3 id="mj-titulo" style="margin:0;">✨ Mejorar imagen</h3>
+            <div style="flex-shrink:0;">
+                <button class="btn bg" style="padding:5px 10px;font-size:11px;" onclick="toggleIdiomaMejora()" id="mj-btn-idioma">EN</button>
+            </div>
+        </div>
+        <p id="mj-nombre" style="margin:0 0 14px;color:#888;font-size:13px;"></p>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div>
+                <div id="mj-label-original" style="font-size:11px;font-weight:700;letter-spacing:.5px;color:#999;text-transform:uppercase;margin-bottom:6px;">Original</div>
+                <div style="background:var(--gris);border-radius:10px;overflow:hidden;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;">
+                    <img id="mj-img-original" src="" alt="" style="width:100%;height:100%;object-fit:contain;">
+                </div>
+            </div>
+            <div>
+                <div id="mj-label-preview" style="font-size:11px;font-weight:700;letter-spacing:.5px;color:#999;text-transform:uppercase;margin-bottom:6px;">Vista previa mejorada</div>
+                <div style="background:var(--gris);border-radius:10px;overflow:hidden;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;">
+                    <img id="mj-img-preview" src="" alt="" style="width:100%;height:100%;object-fit:contain;">
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top:16px;">
+            <div id="mj-label-nivel" style="font-size:11px;font-weight:700;letter-spacing:.5px;color:#999;text-transform:uppercase;margin-bottom:6px;">Nivel</div>
+            <div style="display:flex;gap:8px;">
+                <button class="btn bg" id="mj-btn-natural" style="flex:1;justify-content:center;" onclick="setNivelMejora('natural')">Natural</button>
+                <button class="btn bg" id="mj-btn-mejorado" style="flex:1;justify-content:center;" onclick="setNivelMejora('mejorado')">Mejorado</button>
+            </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:18px;">
+            <button class="btn bg" id="mj-btn-cancelar" style="flex:1;justify-content:center;" onclick="cerrarMejorarFoto()">Cancelar</button>
+            <button class="btn bp" id="mj-btn-aplicar" style="flex:1;justify-content:center;" onclick="aplicarMejoraFoto()">Aplicar mejora</button>
+        </div>
+    </div>
+</div>
+
 <!-- Modal Guía C807 -->
 <div id="modal-c807" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10000;justify-content:center;align-items:center;padding:20px;">
     <div style="background:#fff;border-radius:16px;padding:24px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.4);">
@@ -2761,6 +2803,7 @@ function renderProductos() {
             </div>
             <div class="pa">
                 <button class="btn bg" onclick='abrirEditar(${JSON.stringify(p)})'>✏️</button>
+                <button class="btn bg" onclick='abrirMejorarFoto(${JSON.stringify(p)})' title="Mejorar imagen / Enhance image">✨</button>
                 <button class="btn ${dest?'bam':'bg'}" onclick="toggleDest('${p.codigo}',${!dest})" title="${dest?'Quitar':'Marcar'} destacado">⭐</button>
             </div>
         </div>`;
@@ -6224,6 +6267,116 @@ async function autoSeleccionarVariado(evitarCodigos) {
 function ikSharp(url) {
     if (!url || !url.includes("imagekit.io")) return url;
     return url.includes("?tr=") ? url + ",e-sharpen" : url + "?tr=e-sharpen";
+}
+
+// ── MEJORAR IMAGEN (nitidez vía ImageKit) ──────────────────────────
+// Solo transformaciones de nitidez (sharpen), nunca color/contraste/brillo
+// ni IA generativa — la pieza debe verse exactamente igual, solo más nítida.
+// Es una transformación por URL de ImageKit (mismo servicio ya en uso, sin
+// nueva integración): no sube ni duplica ningún archivo.
+const NIVELES_MEJORA_IMG = { natural: "e-sharpen-3", mejorado: "e-sharpen-8" };
+function ikMejorar(url, nivel) {
+    if (!url || !url.includes("imagekit.io")) return url;
+    const tr = NIVELES_MEJORA_IMG[nivel] || NIVELES_MEJORA_IMG.natural;
+    return url.includes("?tr=") ? url + "," + tr : url + "?tr=" + tr;
+}
+
+// Textos del panel en ES/EN — panel autocontenido, no depende de ningún
+// sistema de idioma del resto del admin (que es solo en español).
+const MEJORA_I18N = {
+    es: {
+        titulo: "✨ Mejorar imagen", original: "Original", preview: "Vista previa mejorada",
+        nivel: "Nivel", natural: "Natural", mejorado: "Mejorado",
+        cancelar: "Cancelar", aplicar: "Aplicar mejora", aplicando: "Aplicando...",
+        toggleIdioma: "EN", okMsg: "✨ Mejora aplicada — el original se conserva intacto",
+        errMsg: "⚠️ No se pudo aplicar la mejora"
+    },
+    en: {
+        titulo: "✨ Enhance image", original: "Original", preview: "Enhanced preview",
+        nivel: "Level", natural: "Natural", mejorado: "Enhanced",
+        cancelar: "Cancel", aplicar: "Apply enhancement", aplicando: "Applying...",
+        toggleIdioma: "ES", okMsg: "✨ Enhancement applied — the original is kept untouched",
+        errMsg: "⚠️ Could not apply the enhancement"
+    }
+};
+let _mjIdioma = "es";
+let _mjNivel  = "natural";
+let _mjProd   = null;
+
+function renderTextosMejora() {
+    const L = MEJORA_I18N[_mjIdioma];
+    document.getElementById("mj-titulo").textContent          = L.titulo;
+    document.getElementById("mj-label-original").textContent  = L.original;
+    document.getElementById("mj-label-preview").textContent   = L.preview;
+    document.getElementById("mj-label-nivel").textContent     = L.nivel;
+    document.getElementById("mj-btn-natural").textContent     = L.natural;
+    document.getElementById("mj-btn-mejorado").textContent    = L.mejorado;
+    document.getElementById("mj-btn-cancelar").textContent    = L.cancelar;
+    document.getElementById("mj-btn-aplicar").textContent     = L.aplicar;
+    document.getElementById("mj-btn-idioma").textContent      = L.toggleIdioma;
+}
+
+function toggleIdiomaMejora() {
+    _mjIdioma = _mjIdioma === "es" ? "en" : "es";
+    renderTextosMejora();
+}
+
+function abrirMejorarFoto(p) {
+    const foto = p.foto || p.img || "";
+    if (!foto) { toast("⚠️ Este producto no tiene foto", "#f97316"); return; }
+    _mjProd   = p;
+    _mjNivel  = "natural"; // Natural es siempre el nivel predeterminado
+    document.getElementById("mj-nombre").textContent = `${p.nombre || "—"} · Ref: ${p.codigo || "—"}`;
+    document.getElementById("mj-img-original").src   = foto;
+    renderTextosMejora();
+    actualizarNivelMejora();
+    document.getElementById("modal-mejorar-foto").classList.add("open");
+}
+
+function cerrarMejorarFoto() {
+    document.getElementById("modal-mejorar-foto").classList.remove("open");
+    _mjProd = null;
+}
+
+function setNivelMejora(nivel) {
+    _mjNivel = nivel;
+    actualizarNivelMejora();
+}
+
+function actualizarNivelMejora() {
+    if (!_mjProd) return;
+    const foto = _mjProd.foto || _mjProd.img || "";
+    document.getElementById("mj-img-preview").src = ikMejorar(foto, _mjNivel);
+    document.getElementById("mj-btn-natural").classList.toggle("bp", _mjNivel === "natural");
+    document.getElementById("mj-btn-natural").classList.toggle("bg", _mjNivel !== "natural");
+    document.getElementById("mj-btn-mejorado").classList.toggle("bp", _mjNivel === "mejorado");
+    document.getElementById("mj-btn-mejorado").classList.toggle("bg", _mjNivel !== "mejorado");
+}
+
+async function aplicarMejoraFoto() {
+    if (!_mjProd) return;
+    const foto = _mjProd.foto || _mjProd.img || "";
+    const L = MEJORA_I18N[_mjIdioma];
+    const btn = document.getElementById("mj-btn-aplicar");
+    btn.textContent = L.aplicando; btn.disabled = true;
+    try {
+        const res = await fetch(API_URL, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                accion: "EDITAR_PRODUCTO", _pass: ADMIN_PASS,
+                codigo: _mjProd.codigo,
+                fotoMejorada: ikMejorar(foto, _mjNivel),
+                fotoMejoraNivel: _mjNivel
+            })
+        });
+        const data = await res.json();
+        if (data.ok) { toast(L.okMsg, "#22c55e"); cerrarMejorarFoto(); await cargarDatos(true); }
+        else { toast(L.errMsg, "#ef4444"); }
+    } catch (e) {
+        toast(L.errMsg, "#ef4444");
+    } finally {
+        btn.textContent = L.aplicar; btn.disabled = false;
+    }
 }
 
 async function imgToBase64Cat(url) {
