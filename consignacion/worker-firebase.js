@@ -141,7 +141,8 @@ export default {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
             body: JSON.stringify({
-              from: "VEREX Store <hola@verexstore.com>",
+              from: "VEREX Store <hola@notificaciones.verexstore.com>",
+              reply_to: "hola@verexstore.com",
               to:   ["hola@verexstore.com"],
               subject: `💾 Respaldo semanal VEREX — ${fechaBk}`,
               html: `<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#fff;border:2px solid #C9A84C;border-radius:12px;padding:24px;">
@@ -2171,7 +2172,8 @@ async function enviar(){
                   method: "POST",
                   headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
                   body: JSON.stringify({
-                    from: "VEREX Store <hola@verexstore.com>",
+                    from: "VEREX Store <hola@notificaciones.verexstore.com>",
+                    reply_to: "hola@verexstore.com",
                     to:   [pedidoActual.correo],
                     subject: `🚚 Tu pedido ${pedidoActual.numeroPedido} está en camino — VEREX Store`,
                     html: `
@@ -2500,7 +2502,8 @@ async function enviar(){
               method: "POST",
               headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
               body: JSON.stringify({
-                from: "VEREX Store <hola@verexstore.com>",
+                from: "VEREX Store <hola@notificaciones.verexstore.com>",
+                reply_to: "hola@verexstore.com",
                 to:   ["hola@verexstore.com"],
                 subject: `🛍️ Nuevo Pedido ${numeroPedido} — ${d.total}`,
                 html: `
@@ -2538,7 +2541,8 @@ async function enviar(){
                   method: "POST",
                   headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
                   body: JSON.stringify({
-                    from: "VEREX Store <hola@verexstore.com>",
+                    from: "VEREX Store <hola@notificaciones.verexstore.com>",
+                    reply_to: "hola@verexstore.com",
                     to:   [d.correo],
                     subject: `✅ Confirmación de tu pedido ${numeroPedido} — VEREX Store — ${d.total}`,
                     html: `
@@ -2728,7 +2732,8 @@ async function enviar(){
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
                 body: JSON.stringify({
-                  from: "VEREX Store <hola@verexstore.com>",
+                  from: "VEREX Store <hola@notificaciones.verexstore.com>",
+                  reply_to: "hola@verexstore.com",
                   to:   ["hola@verexstore.com"],
                   subject: `💛 Nuevo interés — ${d.nombre || d.codigo} — $${(parseFloat(d.precio)||0).toFixed(2)}`,
                   html: `
@@ -2800,7 +2805,8 @@ async function enviar(){
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
                 body: JSON.stringify({
-                  from: "VEREX Store <hola@verexstore.com>",
+                  from: "VEREX Store <hola@notificaciones.verexstore.com>",
+                  reply_to: "hola@verexstore.com",
                   to:   ["verex.pedidos@verexstore.com"],
                   subject: `🇺🇸 Pedido USA — ${d.nombreCliente || "cliente"} — $${(total ?? 0).toFixed(2)}`,
                   html: `
@@ -2924,7 +2930,8 @@ async function enviar(){
                   method: "POST",
                   headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
                   body: JSON.stringify({
-                    from: "VEREX Store <hola@verexstore.com>",
+                    from: "VEREX Store <hola@notificaciones.verexstore.com>",
+                    reply_to: "hola@verexstore.com",
                     to:   [d.correo],
                     subject: txt.subject,
                     html: `
@@ -4709,7 +4716,8 @@ async function enviarCorreoPagoConfirmadoUSA(env, sb, pedidoId) {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
       body: JSON.stringify({
-        from: "VEREX Store <hola@verexstore.com>",
+        from: "VEREX Store <hola@notificaciones.verexstore.com>",
+        reply_to: "hola@verexstore.com",
         to: [correo],
         subject: txt.subject,
         html: `
