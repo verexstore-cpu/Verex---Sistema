@@ -8246,7 +8246,17 @@ function renderStock(items) {
                     <div style="color:#FF9500;font-size:11px;font-weight:700;margin-top:2px;">${sanitizar(g.key)}${g.categoria?` · ${sanitizar(g.categoria)}`:''}</div>
                 </div>
             </div>
-            <div onclick="event.stopPropagation();">${statsRow}${detalles}</div>
+            <div onclick="event.stopPropagation();">
+                <div style="display:flex;justify-content:flex-end;margin:2px 0 6px;position:relative;">
+                    <button onclick="_stockGridToggleMover(this)" style="padding:5px 10px;font-size:11px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;" title="Mueve todas las tallas en existencia de este diseño">⇄ Mover grupo completo ▾</button>
+                    <div class="menu-mover-grid" style="display:none;position:absolute;top:30px;right:0;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:180px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+                        <button onclick="moverItemDirecto(${jsArgArr(codigos)},'tienda')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4caf82;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🛍️ Enviar todo a Tienda</button>
+                        <button onclick="moverItemDirecto(${jsArgArr(codigos)},'bodega')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4a6fa5;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">📦 Devolver todo a Bodega</button>
+                        <button onclick="moverItemDirectoVendedor(${jsArgArr(codigos)})" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:var(--dorado);border:none;cursor:pointer;text-align:left;font-weight:600;">👤 Asignar todo a Vendedor</button>
+                    </div>
+                </div>
+                ${statsRow}${detalles}
+            </div>
         </div>`;
     }).join('');
 }
