@@ -2903,8 +2903,7 @@ async function enviar(){
                   hola: `Hi ${d.nombreCliente || ""},`,
                   gracias: "Thanks for your order! Here's your summary:",
                   envioLbl: "Shipping (DHL)", freeLbl: "FREE", totalLbl: "Total",
-                  pagoTitulo: "Complete your payment here:",
-                  pagoBtn: esWompi ? "Pay with card" : "Pay with PayPal",
+                  pagoTitulo: "You should already be able to pay directly on our site. If you closed the page before finishing, here's your payment link:",
                   siguiente: "Once we confirm your payment, we'll prepare your order and ship it via DHL — delivery takes 5–7 business days.",
                   direccionLbl: "Shipping to:",
                   dudas: "Questions? Just reply to this email.",
@@ -2914,17 +2913,22 @@ async function enviar(){
                   hola: `Hola ${d.nombreCliente || ""},`,
                   gracias: "¡Gracias por tu pedido! Aquí está tu resumen:",
                   envioLbl: "Envío (DHL)", freeLbl: "GRATIS", totalLbl: "Total",
-                  pagoTitulo: "Para completar tu pedido, realiza el pago aquí:",
-                  pagoBtn: esWompi ? "Pagar con tarjeta" : "Pagar con PayPal",
+                  pagoTitulo: "Ya deberías poder pagar directo desde nuestra página. Si cerraste la página antes de terminar, este es tu link de pago:",
                   siguiente: "Cuando confirmemos tu pago, preparamos tu pedido y lo enviamos por DHL — la entrega toma entre 5 y 7 días hábiles.",
                   direccionLbl: "Dirección de envío:",
                   dudas: "¿Dudas? Responde este mismo correo.",
                   subject: `🛍️ Tu pedido en VEREX Store — completa tu pago`
                 };
+                // Ya no es un botón grande de "pagar aquí": el pago se completa
+                // directo en la página al hacer el pedido (link de respaldo
+                // visible ahí mismo si el pop-up se bloquea). Este correo solo
+                // deja el link como texto simple, por si el cliente cerró la
+                // página antes de terminar y necesita retomarlo sin volver a
+                // hacer el pedido.
                 const botonPago = pagoLinkOk ? `
-                  <div style="text-align:center;margin:20px 0;">
-                    <p style="font-size:13px;color:#555;margin:0 0 10px;">${txt.pagoTitulo}</p>
-                    <a href="${d.pagoLink}" style="display:inline-block;background:${esWompi ? "#4f46e5" : "#0070ba"};color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 28px;border-radius:8px;">${txt.pagoBtn} · $${(total ?? 0).toFixed(2)}</a>
+                  <div style="margin:16px 0;padding:12px 14px;background:#faf8f2;border-radius:8px;">
+                    <p style="font-size:12px;color:#777;margin:0 0 6px;">${txt.pagoTitulo}</p>
+                    <a href="${d.pagoLink}" style="font-size:13px;color:#1a5fb4;word-break:break-all;">${d.pagoLink}</a>
                   </div>` : "";
                 await fetch("https://api.resend.com/emails", {
                   method: "POST",
