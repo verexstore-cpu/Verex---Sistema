@@ -26,11 +26,23 @@ const CORS = {
 const ADMIN_WA = "50371250725"; // WhatsApp VEREX
 
 export default {
-  // ── CRON DIARIO: alertas pedidos pendientes +2 días, cortes por vencer
-  // y reposiciones pendientes — todo en un solo WhatsApp, para no depender
-  // de que el admin entre a NEXUS a verlas. ──
   async scheduled(event, env, ctx) {
-    const sb    = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+    const sb = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+
+    // ── CRON CADA 5 MIN: liberar reservas de stock vencidas ──
+    // Pedidos que reservaron pieza al crearse (REGISTRAR_LEAD) pero nadie
+    // confirmó en 30 min (cliente no completó el pago, etc.) — se liberan
+    // solas para no dejar piezas "atascadas" como no disponibles para
+    // siempre. Un cron aparte del diario de abajo, distinguido por el
+    // patrón exacto del schedule (ver wrangler.toml).
+    if (event.cron === "*/5 * * * *") {
+      await liberarReservasVencidas(sb);
+      return;
+    }
+
+    // ── CRON DIARIO: alertas pedidos pendientes +2 días, cortes por vencer
+    // y reposiciones pendientes — todo en un solo WhatsApp, para no depender
+    // de que el admin entre a NEXUS a verlas. ──
     const todos = await sb.getAll("pedidos");
     const hace2dias = Date.now() - 2 * 24 * 60 * 60 * 1000;
     const pendientes = todos.filter(p =>
@@ -2606,6 +2618,23 @@ async function enviar(){
         // conversación no llega a cerrarse como venta.
         case "REGISTRAR_LEAD": {
           if (!d.codigo) { result = { ok: false, error: "Datos incompletos" }; break; }
+          const qtyLead = parseInt(d.qty) || 1;
+          // Reserva atómica al momento del pedido (no cuando un admin lo
+          // confirma después) — así el catálogo deja de mostrar la pieza
+          // como disponible de inmediato, en vez de dejar una ventana donde
+          // dos personas pueden pedir la misma última pieza. Si no hay
+          // stock, el lead ni se crea.
+          let resReservaLead;
+          try {
+            resReservaLead = await sb.reservar(d.codigo, qtyLead);
+          } catch (eReservaLead) {
+            result = { ok: false, error: "No se pudo verificar el stock: " + eReservaLead.message };
+            break;
+          }
+          if (!resReservaLead.ok) {
+            result = { ok: false, error: "sin_stock", disponible: resReservaLead.disponible || 0 };
+            break;
+          }
           const leadId = "LEAD_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
           await sb.set("leads", leadId, {
             id: leadId,
@@ -2613,10 +2642,16 @@ async function enviar(){
             codigo: d.codigo,
             nombre: d.nombre || "",
             precio: parseFloat(d.precio) || 0,
-            qty: parseInt(d.qty) || 1,
+            qty: qtyLead,
             foto: d.foto || "",
             fecha: new Date().toISOString(),
             estado: "interesado",
+            // Reserva ya aplicada en stock (ver arriba) — se necesita guardar
+            // exactamente de dónde salió para poder reponerla igual si la
+            // reserva vence sin confirmarse o el pedido se cancela.
+            reservaDescTienda: resReservaLead.desc_tienda || 0,
+            reservaDescBodega: resReservaLead.desc_bodega || 0,
+            reservaExpiraEn: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
             // Capturados ANTES de que el cliente abra WhatsApp — si el envío
             // falla o nunca lo manda, estos datos son lo único que queda
             // para poder contactarlo. No se guardan en "cliente" (eso sigue
@@ -3018,22 +3053,20 @@ async function enviar(){
           if (d.notasUSA !== undefined) patch.notasUSA = String(d.notasUSA || "").trim();
           if (d.entregadoUSA !== undefined) patch.entregadoUSA = !!d.entregadoUSA;
 
-          // "Marcar pagado" reserva el stock (resta de bodega/tienda, suma a
-          // reservado) — mismo criterio que CONFIRMAR_LEAD_ENVIO del flujo
-          // doméstico de afiliados, pero sin crear registro de consignación
-          // ni comisión (estos pedidos no tienen afiliado). Solo se mueve la
-          // primera vez que se marca pagado, para no reservar dos veces si
-          // se reenvía el patch (ej. al guardar notas después).
+          // La reserva normalmente ya se hizo en REGISTRAR_LEAD, al momento del
+          // pedido — acá solo se confirma (deja de poder vencer sola). Un lead
+          // de antes de este cambio, que nunca llegó a reservar nada, se
+          // reserva recién ahora como respaldo.
           if (patch.pagadoUSA === true && !leadUSA.pagadoUSA) {
-            const sPago = await sb.get("stock", leadUSA.codigo);
-            if (sPago) {
-              const restaDeBodega = Math.min(1, parseInt(sPago.stock_bodega)||0);
-              await sb.update("stock", leadUSA.codigo, {
-                stock_bodega:    Math.max(0, (parseInt(sPago.stock_bodega)||0) - restaDeBodega),
-                stock_tienda:    Math.max(0, (parseInt(sPago.stock_tienda)||0) - (1 - restaDeBodega)),
-                stock_reservado: (parseInt(sPago.stock_reservado)||0) + 1
-              });
+            if (!leadUSA.reservaDescTienda && !leadUSA.reservaDescBodega) {
+              let resPago;
+              try { resPago = await sb.reservar(leadUSA.codigo, leadUSA.qty || 1); }
+              catch (ePago) { result = { ok: false, error: "No se pudo verificar el stock: " + ePago.message }; break; }
+              if (!resPago.ok) { result = { ok: false, error: "Sin stock disponible para confirmar este pago" }; break; }
+              patch.reservaDescTienda = resPago.desc_tienda || 0;
+              patch.reservaDescBodega = resPago.desc_bodega || 0;
             }
+            patch.reservaExpiraEn = null;
           }
           // "Marcar entregado" cierra la venta: pasa de reservado a vendido —
           // mismo criterio que CONFIRMAR_LEAD_ENTREGA. Solo si de verdad
@@ -3070,18 +3103,38 @@ async function enviar(){
             result = { ok: false, error: "Este lead no está pendiente de envío" }; break;
           }
           const codigoReal = (d.codigoOverride && String(d.codigoOverride).trim()) || lead.codigo;
-          const s = await sb.get("stock", codigoReal);
-          if (!s) { result = { ok: false, error: "El producto (" + codigoReal + ") ya no existe en stock" }; break; }
-          const disponible = (parseInt(s.stock_bodega)||0) + (parseInt(s.stock_tienda)||0);
-          if (disponible < 1) { result = { ok: false, error: "Sin stock disponible para confirmar esta venta" }; break; }
-          const restaDeBodega = Math.min(1, parseInt(s.stock_bodega)||0);
-          await sb.update("stock", codigoReal, {
-            stock_bodega:    Math.max(0, (parseInt(s.stock_bodega)||0) - restaDeBodega),
-            stock_tienda:    Math.max(0, (parseInt(s.stock_tienda)||0) - (1 - restaDeBodega)),
-            stock_reservado: (parseInt(s.stock_reservado)||0) + 1
-          });
+          // La reserva normalmente ya se hizo en REGISTRAR_LEAD (al momento del
+          // pedido, no aquí). Solo se toca el stock de nuevo si: (a) el admin
+          // cambió el producto respecto al pedido original (codigoOverride), lo
+          // que implica liberar la reserva vieja y reservar la nueva, o (b) es
+          // un lead de antes de este cambio, que nunca llegó a reservar nada.
+          let descTienda = lead.reservaDescTienda || 0;
+          let descBodega = lead.reservaDescBodega || 0;
+          if (codigoReal !== lead.codigo) {
+            if (descTienda || descBodega) { try { await sb.liberar(lead.codigo, descTienda, descBodega); } catch (_) {} }
+            let resCambio;
+            try { resCambio = await sb.reservar(codigoReal, lead.qty || 1); }
+            catch (eCambio) { result = { ok: false, error: "No se pudo verificar el stock del nuevo producto: " + eCambio.message }; break; }
+            if (!resCambio.ok) {
+              if (descTienda || descBodega) { try { await sb.reservar(lead.codigo, lead.qty || 1); } catch (_) {} }
+              result = { ok: false, error: "Sin stock disponible para el nuevo producto" }; break;
+            }
+            descTienda = resCambio.desc_tienda || 0;
+            descBodega = resCambio.desc_bodega || 0;
+          } else if (!descTienda && !descBodega) {
+            let resViejo;
+            try { resViejo = await sb.reservar(codigoReal, lead.qty || 1); }
+            catch (eViejo) { result = { ok: false, error: "No se pudo verificar el stock: " + eViejo.message }; break; }
+            if (!resViejo.ok) { result = { ok: false, error: "Sin stock disponible para confirmar esta venta" }; break; }
+            descTienda = resViejo.desc_tienda || 0;
+            descBodega = resViejo.desc_bodega || 0;
+          }
           const historial = [...(lead.historial || []), { estado: "en_camino", fecha: new Date().toISOString(), codigoConfirmado: codigoReal }];
-          await sb.update("leads", d.id, { estado: "en_camino", historial, codigoConfirmado: codigoReal });
+          await sb.update("leads", d.id, {
+            estado: "en_camino", historial, codigoConfirmado: codigoReal,
+            reservaDescTienda: descTienda, reservaDescBodega: descBodega,
+            reservaExpiraEn: null // confirmado — ya no vence solo
+          });
           result = { ok: true };
           break;
         }
@@ -3256,8 +3309,19 @@ async function enviar(){
           if (!esAdmin) return forbidden();
           const lead = await sb.get("leads", d.id);
           if (!lead) { result = { ok: false, error: "Lead no encontrado" }; break; }
+          // Si el pedido tenía una reserva activa (no se había vendido ni
+          // entregado todavía), se repone al cancelar — si no, la pieza queda
+          // atascada en stock_reservado para siempre, sin poder venderse.
+          const yaVendido = lead.estado === "vendido" || lead.entregadoUSA;
+          if (!yaVendido && (lead.reservaDescTienda || lead.reservaDescBodega)) {
+            try { await sb.liberar(lead.codigo, lead.reservaDescTienda || 0, lead.reservaDescBodega || 0); }
+            catch (eCancela) { console.error("Error liberando reserva al cancelar lead " + d.id, eCancela); }
+          }
           const historial = [...(lead.historial || []), { estado: "cancelado", fecha: new Date().toISOString() }];
-          await sb.update("leads", d.id, { estado: "cancelado", historial });
+          await sb.update("leads", d.id, {
+            estado: "cancelado", historial,
+            reservaExpiraEn: null, reservaDescTienda: 0, reservaDescBodega: 0
+          });
           result = { ok: true };
           break;
         }
@@ -4363,6 +4427,40 @@ class Supabase {
     }
   }
 
+  // Reserva atómica de stock (ver reservar_stock_pedido en Supabase — SQL
+  // Editor): descuenta primero de tienda, luego de bodega, y suma a
+  // stock_reservado, todo o nada. Bloquea la fila mientras corre, así que
+  // dos pedidos simultáneos del mismo producto nunca pueden vender de más.
+  // { ok:false, error:"sin_stock" } si no alcanza — no cambia nada.
+  async reservar(id, cantidad = 1) {
+    const res = await fetch(`${this.url}/rest/v1/rpc/reservar_stock_pedido`, {
+      method:  "POST",
+      headers: this._headers(),
+      body:    JSON.stringify({ p_id: String(id), p_cantidad: cantidad })
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`SB reservar ${id}: ${res.status} ${txt}`);
+    }
+    return await res.json();
+  }
+
+  // Inversa de reservar(): repone la cantidad exacta a su origen (tienda y/o
+  // bodega) y resta de stock_reservado. Se usa al vencer una reserva sin
+  // confirmar, o al cancelar un pedido que sí llegó a reservar.
+  async liberar(id, descTienda = 0, descBodega = 0) {
+    const res = await fetch(`${this.url}/rest/v1/rpc/liberar_stock_reservado`, {
+      method:  "POST",
+      headers: this._headers(),
+      body:    JSON.stringify({ p_id: String(id), p_desc_tienda: descTienda, p_desc_bodega: descBodega })
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`SB liberar ${id}: ${res.status} ${txt}`);
+    }
+    return await res.json();
+  }
+
   // Eliminar documento
   async delete(table, id) {
     const res = await fetch(
@@ -4485,6 +4583,42 @@ function forbidden() {
   return json({ ok: false, error: "No autorizado" }, 403);
 }
 
+// ── RESERVAS DE STOCK: liberar las vencidas ────────────────────────
+// Un lead "interesado" o "reportado" con reservaExpiraEn ya pasada nunca
+// llegó a que un admin lo confirmara (cliente no completó el pago, cambió de
+// opinión, etc.) — se repone la pieza a stock y se marca el lead como
+// cancelado (mismo estado que una cancelación manual), para que no quede
+// "atascada" como no disponible para siempre. Corre cada 5 min (ver
+// scheduled() arriba y el cron en wrangler.toml).
+async function liberarReservasVencidas(sb) {
+  const ahora = Date.now();
+  let leads;
+  try { leads = await sb.getAll("leads"); }
+  catch (e) { console.error("liberarReservasVencidas: no se pudo leer leads", e); return; }
+
+  const vencidos = leads.filter(l =>
+    (l.estado === "interesado" || l.estado === "reportado") &&
+    l.reservaExpiraEn && new Date(l.reservaExpiraEn).getTime() < ahora
+  );
+
+  for (const lead of vencidos) {
+    try {
+      if (lead.reservaDescTienda || lead.reservaDescBodega) {
+        await sb.liberar(lead.codigo, lead.reservaDescTienda || 0, lead.reservaDescBodega || 0);
+      }
+      const historial = [...(lead.historial || []), {
+        estado: "cancelado", fecha: new Date().toISOString(), motivo: "Reserva vencida sin confirmar"
+      }];
+      await sb.update("leads", lead.id, {
+        estado: "cancelado", historial,
+        reservaExpiraEn: null, reservaDescTienda: 0, reservaDescBodega: 0
+      });
+    } catch (eLib) {
+      console.error("liberarReservasVencidas: error con lead " + lead.id, eLib);
+    }
+  }
+}
+
 // ── WOMPI (pago con tarjeta, catálogo USA) ────────────────────────
 // OAuth 2.0 Client Credentials — el token dura 1h, pero como cada request
 // del worker es una invocación aparte no vale la pena cachearlo entre
@@ -4516,22 +4650,30 @@ async function manejarWebhookWompi(request, env, sb) {
     if (!idTransaccion || !pedidoId) return json({ ok: true });
     if (payload.ResultadoTransaccion !== "ExitosaAprobada") return json({ ok: true });
 
-    // Mismo movimiento de stock que ACTUALIZAR_LEAD_USA hace al marcar
-    // pagado a mano — acá se dispara solo, sin que el admin toque nada.
+    // La reserva normalmente ya se hizo en REGISTRAR_LEAD, al momento del
+    // pedido (antes de que el cliente llegara a pagar) — acá solo se
+    // confirma. Igual que ACTUALIZAR_LEAD_USA, si por algo el lead nunca
+    // llegó a reservar (ej. el fetch fire-and-forget del catálogo falló),
+    // se reserva recién ahora como respaldo.
     const todosLeads = await sb.getAll("leads");
     const leadsPedido = todosLeads.filter(l => l.pedidoId === pedidoId && l.pais === "US");
     for (const lead of leadsPedido) {
       if (lead.pagadoUSA) continue; // ya procesado — evita reservar dos veces
-      const s = await sb.get("stock", lead.codigo);
-      if (s) {
-        const restaDeBodega = Math.min(1, parseInt(s.stock_bodega)||0);
-        await sb.update("stock", lead.codigo, {
-          stock_bodega:    Math.max(0, (parseInt(s.stock_bodega)||0) - restaDeBodega),
-          stock_tienda:    Math.max(0, (parseInt(s.stock_tienda)||0) - (1 - restaDeBodega)),
-          stock_reservado: (parseInt(s.stock_reservado)||0) + 1
-        });
+      const patchWompi = { pagadoUSA: true, metodoPagoUSA: "wompi", wompiIdTransaccion: idTransaccion, reservaExpiraEn: null };
+      if (!lead.reservaDescTienda && !lead.reservaDescBodega) {
+        try {
+          const resWompi = await sb.reservar(lead.codigo, lead.qty || 1);
+          if (resWompi.ok) {
+            patchWompi.reservaDescTienda = resWompi.desc_tienda || 0;
+            patchWompi.reservaDescBodega = resWompi.desc_bodega || 0;
+          } else {
+            console.error("Webhook Wompi: sin stock para " + lead.codigo + " (pedido " + pedidoId + ")");
+          }
+        } catch (eResWompi) {
+          console.error("Webhook Wompi: error reservando " + lead.codigo, eResWompi);
+        }
       }
-      await sb.update("leads", lead.id, { pagadoUSA: true, metodoPagoUSA: "wompi", wompiIdTransaccion: idTransaccion });
+      await sb.update("leads", lead.id, patchWompi);
     }
     return json({ ok: true });
   } catch(e) {
