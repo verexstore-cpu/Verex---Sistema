@@ -7105,6 +7105,11 @@ async function guardarEdicionProducto() {
         const tallaH = getTallaFromCodigo(h.codigo);
         const nombreH = tallaH ? `${nombreBaseEP} T${tallaH}` : nombreBaseEP;
         await apiPost({ accion: "EDITAR_PRODUCTO", codigo: h.codigo, nombre: nombreH, nombre_base: nombreBaseEP, descripcion: desc, img, material, caracterEspecial });
+        // h es la misma referencia que el objeto dentro de stockData — reflejar
+        // el cambio ahí también para que sus tarjetas se vean actualizadas sin
+        // esperar a un cargarStock().
+        h.nombre = nombreH; h.nombre_base = nombreBaseEP; h.descripcion = desc;
+        h.img = img; h.foto = img; h.material = material; h.caracterEspecial = caracterEspecial;
     }
     // Sumar existencia a bodega si se ingresó cantidad
     const existencia = parseInt(document.getElementById("ep-existencia")?.value) || 0;
@@ -7146,7 +7151,7 @@ async function guardarEdicionProducto() {
     const p = productoEditando.p;
     const idx = productosDisponibles.findIndex(x => x.codigo === codigoViejo);
     p.codigo = codigo; p.nombre = nombre; p.nombre_base = nombreBaseEP; p.descripcion = desc;
-    p.precio = precio; p.precioNum = precio; p.img = img; p.material = material; p.caracterEspecial = caracterEspecial;
+    p.precio = precio; p.precioNum = precio; p.img = img; p.foto = img; p.material = material; p.caracterEspecial = caracterEspecial;
     if (idx >= 0) productosDisponibles[idx] = p;
     // productoEditando.p es una COPIA (no la misma referencia que stockData),
     // así que hay que reflejar el cambio ahí también — si no, la pestaña de
