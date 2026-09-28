@@ -1423,7 +1423,7 @@
      de verificar a simple vista que el QR leído era el producto correcto. -->
 <div id="scan-confirm" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2100;pointer-events:none;width:min(320px,88vw);box-sizing:border-box;">
     <div style="background:#1c1c1e;border:1px solid #333;border-radius:16px;padding:16px;display:flex;align-items:center;gap:12px;box-shadow:0 8px 30px rgba(0,0,0,0.5);animation:scanConfirmIn .25s ease-out;">
-        <img id="scan-confirm-foto" src="" style="width:64px;height:64px;border-radius:10px;object-fit:cover;background:#000;flex-shrink:0;">
+        <img id="scan-confirm-foto" src="" onclick="_zoomFotoEscaneo()" style="width:104px;height:104px;border-radius:10px;object-fit:cover;background:#000;flex-shrink:0;pointer-events:auto;cursor:zoom-in;">
         <div>
             <div style="color:#2ecc71;font-weight:700;font-size:12px;margin-bottom:2px;">✅ Agregado</div>
             <div id="scan-confirm-nombre" style="color:#fff;font-weight:700;font-size:13px;line-height:1.3;"></div>
@@ -1439,7 +1439,9 @@
             <h3>↩️ Registrar Devolución</h3>
             <button class="modal-close" onclick="cerrarModal('modal-devolucion')">×</button>
         </div>
-        <p style="font-size:13px;color:var(--plateado);margin-bottom:14px;">Productos que el vendedor devuelve a bodega. Solo aparecen los disponibles.</p>
+        <p style="font-size:13px;color:var(--plateado);margin-bottom:14px;">Productos que el vendedor devuelve a bodega. Solo aparecen los disponibles. Escaneá cada pieza a medida que el vendedor te la entrega — la cantidad sube sola y abajo ves si algo no cuadra.</p>
+        <button class="btn" style="background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1,#38bdf8,#0a4a6b);color:#e0f7ff;font-weight:700;width:100%;margin-bottom:14px;" onclick="abrirScannerQR(_onScanDevolucion, '📷 Escanear devolución')">📷 Escanear producto devuelto</button>
+        <div id="resumen-devolucion" style="margin-bottom:14px;"></div>
         <div id="lista-devolucion"></div>
         <div style="margin-top:16px;display:flex;gap:10px;">
             <button class="btn btn-gris" style="flex:1;" onclick="cerrarModal('modal-devolucion')">Cancelar</button>
@@ -1474,7 +1476,7 @@
                 <span style="display:block;font-size:11px;color:var(--plateado);font-weight:400;margin-top:2px;">Si no la marcas, este corte se puede cerrar igual, pero queda como pendiente de cobro en Dashboard hasta que lo marques.</span>
             </span>
         </label>
-        <button class="btn btn-dorado btn-full" onclick="confirmarCorte()">✅ Confirmar Corte</button>
+        <button class="btn btn-dorado btn-full" id="btn-confirmar-corte" onclick="confirmarCorte()">✅ Confirmar Corte</button>
     </div>
 </div>
 
@@ -1887,7 +1889,10 @@ function renderAlertasAfiliadosHub() {
                             <div style="font-weight:700;font-size:13px;">${sanitizar(c.vendedorNombre || c.vendedor)}</div>
                             <div style="font-size:11px;font-weight:700;color:#e67e22;margin-top:2px;">⚠️ Corte del ${sanitizar(fecha)} — $${parseFloat(c.aPagarVerex||0).toFixed(2)} sin cobrar</div>
                         </div>
-                        <button onclick="marcarCorteCobrado('${sanitizar(c.id)}')" style="padding:5px 10px;font-size:11px;background:#e67e22;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">💰 Ya cobré</button>
+                        <div style="display:flex;flex-direction:column;gap:4px;">
+                            <button onclick="marcarCorteCobrado('${sanitizar(c.id)}')" style="padding:5px 10px;font-size:11px;background:#e67e22;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">💰 Ya cobré</button>
+                            <button onclick="eliminarCorteHistorial('${sanitizar(c.id)}')" style="padding:4px 10px;font-size:10px;background:none;color:#e74c3c;border:1px solid #e74c3c;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">🗑️ Eliminar</button>
+                        </div>
                     </div>
                 </div>`;
             }).join("")}
@@ -1963,6 +1968,21 @@ async function marcarCorteCobrado(id) {
             toast("✅ Marcado como cobrado");
             await cargarCortesPendientesCobro();
         } else toast("⚠️ " + (data.error||"No se pudo actualizar"), "#c0392b");
+    } catch(e) { toast("⚠️ Error de conexión", "#c0392b"); }
+}
+
+// Borra un registro del historial de cortes — para limpiar duplicados (ej.
+// los que deja un doble-tap en "Confirmar Corte") sin tocar inventario ni
+// comisiones, ya que esto solo borra el registro de historial/cobro.
+async function eliminarCorteHistorial(id) {
+    if (!confirm("¿Eliminar este registro del historial de cortes? No se puede deshacer.")) return;
+    try {
+        const res  = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ accion:"ELIMINAR_CORTE_HISTORIAL", id, _pass: _sessionPass }) });
+        const data = await res.json();
+        if (data.ok) {
+            toast("🗑️ Registro eliminado");
+            await cargarCortesPendientesCobro();
+        } else toast("⚠️ " + (data.error||"No se pudo eliminar"), "#c0392b");
     } catch(e) { toast("⚠️ Error de conexión", "#c0392b"); }
 }
 
@@ -2227,7 +2247,10 @@ function renderDashboard() {
                     <div style="font-size:13px;font-weight:600;">${sanitizar(c.vendedorNombre || c.vendedor)}</div>
                     <div style="font-size:11px;color:var(--plateado);">Corte del ${sanitizar(fecha)} — $${parseFloat(c.aPagarVerex||0).toFixed(2)} sin cobrar</div>
                 </div>
-                <button class="btn" style="background:#e67e22;color:#fff;padding:5px 12px;font-size:11px;" onclick="marcarCorteCobrado('${sanitizar(c.id)}')">💰 Ya cobré</button>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    <button class="btn" style="background:#e67e22;color:#fff;padding:5px 12px;font-size:11px;" onclick="marcarCorteCobrado('${sanitizar(c.id)}')">💰 Ya cobré</button>
+                    <button class="btn" style="background:none;color:#e74c3c;border:1px solid #e74c3c;padding:4px 12px;font-size:10px;" onclick="eliminarCorteHistorial('${sanitizar(c.id)}')">🗑️ Eliminar</button>
+                </div>
             </div>`;
         }).join('');
     } else {
@@ -4406,6 +4429,12 @@ function abrirDevolucion() {
         </div>`;
     }).join('');
     window._devItems = disponibles.map(c => ({ id: c.id, codigo: c.codigo, nombre: c.nombre, max: parseInt(c.cantidad||0) - parseInt(c.vendido||0) }));
+    // Mientras no se use el escáner, el modal arranca con todo marcado para
+    // devolver (comportamiento de siempre: devolver todo de un tin). En
+    // cuanto se escanea la primera pieza, _onScanDevolucion() pone todo en 0
+    // y pasa a modo "conteo por escaneo" — ver ese comentario para el porqué.
+    window._devEscaneoIniciado = false;
+    renderResumenDevolucion();
     abrirModal("modal-devolucion");
 }
 
@@ -4414,6 +4443,7 @@ function toggleDevRow(id) {
     const qty   = document.getElementById("dev-qty-" + id);
     const item  = window._devItems?.find(i => sanitizar(i.id) === id);
     if (check && qty && item) qty.textContent = check.checked ? item.max : "0";
+    renderResumenDevolucion();
 }
 
 function cambiarCantDev(id, delta, max) {
@@ -4423,6 +4453,69 @@ function cambiarCantDev(id, delta, max) {
     const nueva = Math.min(max, Math.max(0, (parseInt(qty.textContent)||0) + delta));
     qty.textContent = nueva;
     if (check) check.checked = nueva > 0;
+    renderResumenDevolucion();
+}
+
+// Resumen en vivo de la devolución: compara lo pendiente (entregado - vendido,
+// osea lo que aún no está ni vendido ni devuelto) contra lo que se lleva
+// marcado/escaneado para devolver ahora. Si no coincide, avisa cuáles
+// productos quedan con piezas sin explicar — sin bloquear el "Confirmar
+// Devolución", solo como advertencia (puede ser una pieza perdida/dañada real).
+function renderResumenDevolucion() {
+    const box = document.getElementById("resumen-devolucion");
+    if (!box || !window._devItems) return;
+    let pendiente = 0, aDevolver = 0;
+    const faltantes = [];
+    window._devItems.forEach(item => {
+        const qty = parseInt(document.getElementById("dev-qty-" + sanitizar(item.id))?.textContent) || 0;
+        pendiente += item.max;
+        aDevolver += qty;
+        if (qty < item.max) faltantes.push({ codigo: item.codigo, nombre: item.nombre, faltan: item.max - qty });
+    });
+    const faltanteTotal = pendiente - aDevolver;
+    box.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div class="stat-box"><div class="stat-num">${pendiente}</div><div class="stat-label">Pendiente (sin vender)</div></div>
+            <div class="stat-box"><div class="stat-num">${aDevolver}</div><div class="stat-label">A devolver ahora</div></div>
+        </div>
+        ${faltanteTotal > 0 ? `
+        <div style="margin-top:8px;padding:10px 12px;background:rgba(230,126,34,0.12);border:1px solid #e67e22;border-radius:10px;">
+            <div style="color:#e67e22;font-weight:700;font-size:12px;margin-bottom:4px;">⚠️ Faltan ${faltanteTotal} pieza(s) sin explicar</div>
+            <div style="font-size:11px;color:var(--plateado);line-height:1.5;">
+                ${faltantes.map(f => sanitizar(f.codigo) + " — " + sanitizar(f.nombre) + " (faltan " + f.faltan + ")").join("<br>")}
+            </div>
+        </div>` : `
+        <div style="margin-top:8px;padding:8px 12px;background:rgba(46,204,113,0.1);border:1px solid #27ae60;border-radius:10px;color:#27ae60;font-size:12px;font-weight:700;">✅ Todo cuadra con lo pendiente</div>`}
+    `;
+}
+
+// Escaneo de piezas devueltas físicamente — el vendedor entrega los productos
+// y se escanean uno a uno para que la cantidad no dependa de contarlos a mano.
+function _onScanDevolucion(codRaw) {
+    const cod = String(codRaw || "").trim().toUpperCase();
+    if (!window._devItems || !window._devItems.length) return;
+    if (!window._devEscaneoIniciado) {
+        window._devItems.forEach(item => {
+            const qty = document.getElementById("dev-qty-" + sanitizar(item.id));
+            const chk = document.getElementById("dev-check-" + sanitizar(item.id));
+            if (qty) qty.textContent = "0";
+            if (chk) chk.checked = false;
+        });
+        window._devEscaneoIniciado = true;
+    }
+    const item = window._devItems.find(i => String(i.codigo).toUpperCase() === cod);
+    if (!item) {
+        toast("⚠️ \"" + cod + "\" no está pendiente de devolver de este vendedor", "#f97316");
+        return;
+    }
+    const idSan = sanitizar(item.id);
+    const actual = parseInt(document.getElementById("dev-qty-" + idSan)?.textContent) || 0;
+    if (actual >= item.max) {
+        toast("⚠️ " + item.codigo + " ya tiene las " + item.max + " pieza(s) disponibles registradas", "#f97316");
+        return;
+    }
+    cambiarCantDev(idSan, 1, item.max);
+    mostrarConfirmacionEscaneo(null, item.nombre, item.codigo + " · devuelto " + (actual + 1) + "/" + item.max);
 }
 
 async function confirmarDevolucion() {
@@ -5902,6 +5995,127 @@ function ikFoto(url, size) {
     return tr ? `${base}?tr=${tr},w-${s},e-sharpen` : `${base}?tr=w-${s},e-sharpen`;
 }
 
+// ── MEJORAR IMAGEN (nitidez vía ImageKit) ──────────────────────────
+// Solo transformaciones de nitidez (sharpen), nunca color/contraste/brillo
+// ni IA generativa — la pieza debe verse exactamente igual, solo más nítida.
+// Es una transformación por URL de ImageKit (mismo servicio ya en uso, sin
+// nueva integración ni archivo adicional).
+const NIVELES_MEJORA_IMG_STOCK = { natural: "e-sharpen-3", mejorado: "e-sharpen-8" };
+function ikMejorar(url, nivel, size) {
+    if (!url || !url.includes("imagekit.io")) return url;
+    const s = size || 900;
+    const base = url.split("?")[0];
+    const tr = NIVELES_MEJORA_IMG_STOCK[nivel] || NIVELES_MEJORA_IMG_STOCK.natural;
+    return `${base}?tr=w-${s},${tr}`;
+}
+
+// Textos del panel en ES/EN — autocontenido, no depende de ningún sistema
+// de idioma del resto de Stock (que es solo en español).
+const MEJORA_STOCK_I18N = {
+    es: {
+        titulo: "✨ Mejorar imagen", original: "Original", preview: "Vista previa mejorada",
+        nivel: "Nivel", natural: "Natural", mejorado: "Mejorado",
+        cancelar: "Cancelar", aplicar: "Aplicar mejora", aplicando: "Aplicando...",
+        toggleIdioma: "EN", okMsg: "✨ Mejora aplicada — el original se conserva intacto",
+        errMsg: "⚠️ No se pudo aplicar la mejora"
+    },
+    en: {
+        titulo: "✨ Enhance image", original: "Original", preview: "Enhanced preview",
+        nivel: "Level", natural: "Natural", mejorado: "Enhanced",
+        cancelar: "Cancel", aplicar: "Apply enhancement", aplicando: "Applying...",
+        toggleIdioma: "ES", okMsg: "✨ Enhancement applied — the original is kept untouched",
+        errMsg: "⚠️ Could not apply the enhancement"
+    }
+};
+let _mjsIdioma = "es";
+let _mjsNivel  = "natural";
+let _mjsItem   = null;
+
+function renderTextosMejoraStock() {
+    const L = MEJORA_STOCK_I18N[_mjsIdioma];
+    document.getElementById("mjs-titulo").textContent         = L.titulo;
+    document.getElementById("mjs-label-original").textContent = L.original;
+    document.getElementById("mjs-label-preview").textContent  = L.preview;
+    document.getElementById("mjs-label-nivel").textContent    = L.nivel;
+    document.getElementById("mjs-btn-natural").textContent    = L.natural;
+    document.getElementById("mjs-btn-mejorado").textContent   = L.mejorado;
+    document.getElementById("mjs-btn-cancelar").textContent   = L.cancelar;
+    document.getElementById("mjs-btn-aplicar").textContent    = L.aplicar;
+    document.getElementById("mjs-btn-idioma").textContent     = L.toggleIdioma;
+}
+
+function toggleIdiomaMejoraStock() {
+    _mjsIdioma = _mjsIdioma === "es" ? "en" : "es";
+    renderTextosMejoraStock();
+}
+
+// Se abre desde la vista de un producto de Stock (modal-ver-producto), que
+// ya dejó el item actual en productoEditando.p al llamar abrirEditarStockItem.
+function abrirMejorarFotoStock() {
+    const item = productoEditando?.p;
+    const foto = item?.foto || item?.img || "";
+    if (!foto) { toast("⚠️ Este producto no tiene foto", "#f97316"); return; }
+    _mjsItem  = item;
+    _mjsNivel = "natural"; // Natural es siempre el nivel predeterminado
+    document.getElementById("mjs-nombre").textContent = `${item.nombre || "—"} · ${item.codigo || "—"}`;
+    document.getElementById("mjs-img-original").src   = ikFoto(foto, 700);
+    renderTextosMejoraStock();
+    actualizarNivelMejoraStock();
+    abrirModal("modal-mejorar-foto-stock");
+}
+
+function cerrarMejorarFotoStock() {
+    cerrarModal("modal-mejorar-foto-stock");
+    _mjsItem = null;
+}
+
+function setNivelMejoraStock(nivel) {
+    _mjsNivel = nivel;
+    actualizarNivelMejoraStock();
+}
+
+function actualizarNivelMejoraStock() {
+    if (!_mjsItem) return;
+    const foto = _mjsItem.foto || _mjsItem.img || "";
+    document.getElementById("mjs-img-preview").src = ikMejorar(foto, _mjsNivel, 700);
+    const natActivo = _mjsNivel === "natural";
+    const btnNat = document.getElementById("mjs-btn-natural");
+    const btnMej = document.getElementById("mjs-btn-mejorado");
+    btnNat.className = natActivo ? "btn" : "btn btn-gris";
+    btnNat.style.background = natActivo ? "var(--dorado)" : "";
+    btnNat.style.color = natActivo ? "#111" : "";
+    btnMej.className = !natActivo ? "btn" : "btn btn-gris";
+    btnMej.style.background = !natActivo ? "var(--dorado)" : "";
+    btnMej.style.color = !natActivo ? "#111" : "";
+}
+
+async function aplicarMejoraFotoStock() {
+    if (!_mjsItem) return;
+    const foto = _mjsItem.foto || _mjsItem.img || "";
+    const L = MEJORA_STOCK_I18N[_mjsIdioma];
+    const btn = document.getElementById("mjs-btn-aplicar");
+    btn.textContent = L.aplicando; btn.disabled = true;
+    try {
+        const data = await apiPost({
+            accion: "EDITAR_PRODUCTO",
+            codigo: _mjsItem.codigo,
+            fotoMejorada: ikMejorar(foto, _mjsNivel, 1600),
+            fotoMejoraNivel: _mjsNivel
+        });
+        if (data.ok) {
+            toast(L.okMsg, "#22c55e");
+            cerrarMejorarFotoStock();
+            cerrarModal("modal-ver-producto");
+        } else {
+            toast(L.errMsg, "#ef4444");
+        }
+    } catch (e) {
+        toast(L.errMsg, "#ef4444");
+    } finally {
+        btn.textContent = L.aplicar; btn.disabled = false;
+    }
+}
+
 async function subirFotoImageKit(fileOrBase64, nombre, crop) {
     try {
         // Convertir File a base64 si es necesario
@@ -6684,6 +6898,12 @@ let decisionesCorte = {};
 let _corteValorVend = 0;
 let _cortePct = 25;
 let _corteGanancia = 0;
+// Evita que un doble-tap en "Confirmar Corte" dispare confirmarCorte() dos
+// veces en paralelo — GUARDAR_CORTE_HISTORIAL usa Date.now() como parte del
+// id, así que dos ejecuciones (aunque sea con milisegundos de diferencia)
+// generaban dos registros de historial distintos para el mismo corte, y por
+// eso aparecía duplicado en "Cobros pendientes".
+let _corteProcesando = false;
 
 function calcularComision(totalVendido, tipoVendedor, comisionFija) {
     if (comisionFija !== undefined && comisionFija !== null && comisionFija !== "") {
@@ -6748,6 +6968,11 @@ function toggleDecision(id, decision) {
 }
 
 async function confirmarCorte() {
+    if (_corteProcesando) return;
+    _corteProcesando = true;
+    const btnConfirmarCorte = document.getElementById("btn-confirmar-corte");
+    if (btnConfirmarCorte) btnConfirmarCorte.disabled = true;
+    try {
     const cobrado = !!document.getElementById("chk-cobrado-corte")?.checked;
     const devueltos = Object.entries(decisionesCorte).filter(([_, d]) => d === "devolver").map(([id]) => id);
     await apiPost({ accion: "CERRAR_CORTE", vendedor: vendedorActual.codigo, devueltos });
@@ -6757,6 +6982,13 @@ async function confirmarCorte() {
         gananciaVendedor: _corteGanancia, aPagarVerex: _corteValorVend - _corteGanancia, cobrado });
     if (!cobrado) cargarCortesPendientesCobro(); // refresca el aviso de Dashboard/Hub con este corte nuevo
     devueltos.forEach(id => { const item = consignacion.find(c => String(c.id) === String(id)); if (item) item.estado = "devuelto"; });
+    // Copia del inventario ANTES de resetear "vendido" abajo — el PDF del corte
+    // necesita las cantidades vendidas reales de cada producto (incluyendo los
+    // que se renuevan con stock parcial), no las ya reseteadas a 0. Generar el
+    // PDF a partir de "consignacion" después del reset hacía que los productos
+    // parcialmente vendidos desaparecieran de la tabla (aunque su monto sí
+    // contaba en el total), porque quedaban con vendido=0 antes de imprimirse.
+    const invCorte = consignacion.filter(c => c.vendedor === vendedorActual.codigo).map(c => ({ ...c }));
     // Reflejar en memoria el mismo cierre que hace el worker: piezas totalmente
     // vendidas se marcan "vendido" (no vuelven a verse disponibles), el resto
     // arranca de cero — si no, la pantalla mostraba datos viejos hasta recargar.
@@ -6775,7 +7007,6 @@ async function confirmarCorte() {
     cerrarModal("modal-corte");
     renderPerfilStats();
     renderInventario();
-    const invCorte = consignacion.filter(c => c.vendedor === vendedorActual.codigo);
     generarPDFCorte(vendedorActual, invCorte, _corteValorVend, _cortePct, _corteGanancia);
     const tel = String(vendedorActual.telefono||"").replace(/\D/g,"");
     // Un afiliado sin stock físico nunca cobra al cliente — VEREX cobra directo y
@@ -6789,6 +7020,10 @@ async function confirmarCorte() {
             ? "VEREX te debe pagar: $" + _corteGanancia.toFixed(2)
             : "A pagar a VEREX: $" + (_corteValorVend - _corteGanancia).toFixed(2));
     window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg));
+    } finally {
+        _corteProcesando = false;
+        if (btnConfirmarCorte) btnConfirmarCorte.disabled = false;
+    }
 }
 
 async function verLinkInventario() {
@@ -6844,7 +7079,10 @@ async function verHistorialCortes() {
             return '<div style="background:var(--gris2);border:1px solid ' + (pendiente ? '#e67e22' : 'var(--borde)') + ';border-radius:10px;padding:14px;margin-bottom:10px;">'
                 + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;">'
                 + '<span style="font-size:12px;color:var(--dorado);font-weight:600;">' + fecha + '</span>'
+                + '<div style="display:flex;align-items:center;gap:10px;">'
                 + '<span style="font-size:12px;color:var(--plateado);">' + c.comisionPct + '% comisión</span>'
+                + '<button onclick="(async()=>{await eliminarCorteHistorial(\'' + sanitizar(c.id) + '\');verHistorialCortes();})()" style="font-size:11px;background:none;color:#e74c3c;border:1px solid #e74c3c;border-radius:6px;padding:2px 8px;cursor:pointer;" title="Eliminar este registro">🗑️</button>'
+                + '</div>'
                 + '</div>'
                 + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px;margin-bottom:' + (estadoCobro ? '10px' : '0') + ';">'
                 + '<div><div style="color:var(--plateado);">Total vendido</div><div style="font-weight:700;">$' + parseFloat(c.totalVendido||0).toFixed(2) + '</div></div>'
@@ -7105,6 +7343,11 @@ async function guardarEdicionProducto() {
         const tallaH = getTallaFromCodigo(h.codigo);
         const nombreH = tallaH ? `${nombreBaseEP} T${tallaH}` : nombreBaseEP;
         await apiPost({ accion: "EDITAR_PRODUCTO", codigo: h.codigo, nombre: nombreH, nombre_base: nombreBaseEP, descripcion: desc, img, material, caracterEspecial });
+        // h es la misma referencia que el objeto dentro de stockData — reflejar
+        // el cambio ahí también para que sus tarjetas se vean actualizadas sin
+        // esperar a un cargarStock().
+        h.nombre = nombreH; h.nombre_base = nombreBaseEP; h.descripcion = desc;
+        h.img = img; h.foto = img; h.material = material; h.caracterEspecial = caracterEspecial;
     }
     // Sumar existencia a bodega si se ingresó cantidad
     const existencia = parseInt(document.getElementById("ep-existencia")?.value) || 0;
@@ -7146,7 +7389,7 @@ async function guardarEdicionProducto() {
     const p = productoEditando.p;
     const idx = productosDisponibles.findIndex(x => x.codigo === codigoViejo);
     p.codigo = codigo; p.nombre = nombre; p.nombre_base = nombreBaseEP; p.descripcion = desc;
-    p.precio = precio; p.precioNum = precio; p.img = img; p.material = material; p.caracterEspecial = caracterEspecial;
+    p.precio = precio; p.precioNum = precio; p.img = img; p.foto = img; p.material = material; p.caracterEspecial = caracterEspecial;
     if (idx >= 0) productosDisponibles[idx] = p;
     // productoEditando.p es una COPIA (no la misma referencia que stockData),
     // así que hay que reflejar el cambio ahí también — si no, la pestaña de
@@ -7832,13 +8075,16 @@ function renderStock(items) {
     items.forEach(item => {
         const base = item.codigoBase || item.codigo;
         const key = base.replace(/^(.+\d)B$/, "$1");
-        if (!grupos.has(key)) grupos.set(key, { key, nombre: item.nombre_base || item.nombre, material: item.material, caracterEspecial: item.caracterEspecial, foto: item.foto, categoria: item.categoria, items: [] });
+        if (!grupos.has(key)) grupos.set(key, { key, nombre: item.nombre_base || item.nombre, material: item.material, caracterEspecial: item.caracterEspecial, foto: item.foto, fotoMejorada: item.fotoMejorada || "", categoria: item.categoria, items: [] });
         const g = grupos.get(key);
         g.items.push(item);
         if (!g.caracterEspecial && item.caracterEspecial) g.caracterEspecial = item.caracterEspecial;
         // Preferir el nombre/foto de la pieza "base" (sin la B) para el
         // encabezado del grupo, si la B llegó primero por orden de fecha.
         if (base === key) { g.nombre = item.nombre_base || item.nombre; g.foto = item.foto || g.foto; }
+        // Foto "mejorada" (nitidez, botón ✨) — se muestra en vez de la
+        // original cuando existe, sin sobrescribirla nunca.
+        if (!g.fotoMejorada && item.fotoMejorada) g.fotoMejorada = item.fotoMejorada;
     });
 
     // ── Vista grid: mismo agrupado por diseño, una tarjeta por grupo con
@@ -7868,7 +8114,7 @@ function renderStock(items) {
             return `<div data-grupo="${sanitizar(g.key)}" data-activo="${sanitizar(activo.codigo)}" onclick="toggleSeleccionGrupo(${jsArgArr(codigos)})" style="background:#2C2C2E;border:${selAll?"2px solid var(--dorado)":"1px solid var(--dorado)"};border-radius:12px;overflow:hidden;cursor:pointer;position:relative;">
                 <div onclick="event.stopPropagation();toggleSeleccionGrupo(${jsArgArr(codigos)})" style="position:absolute;top:6px;left:6px;width:18px;height:18px;border:2px solid ${selAll?"var(--dorado)":"#666"};border-radius:4px;background:${selAll?"var(--dorado)":"rgba(0,0,0,0.5)"};display:flex;align-items:center;justify-content:center;font-size:11px;z-index:2;">${selAll?"✓":""}</div>
                 <div style="width:100%;aspect-ratio:1;background:#1a1a1a;overflow:hidden;">
-                    ${g.foto ? `<img src="${sanitizar(ikFoto(g.foto,300))}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;">💍</div>`}
+                    ${g.foto ? `<img src="${sanitizar(ikFoto(g.fotoMejorada||g.foto,300))}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;">💍</div>`}
                 </div>
                 <div style="padding:7px 8px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -7889,9 +8135,9 @@ function renderStock(items) {
                         <button onclick="event.stopPropagation();_stockGridToggleMover(this)" style="flex:2;padding:4px 6px;font-size:10px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">⇄ Mover ▾</button>
                         <button onclick="event.stopPropagation();imprimirEtiquetaStock(_stockGridCodActivo(this))" title="Imprimir etiqueta de la talla activa" style="flex:1;padding:4px 0;font-size:12px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;">🖨️</button>
                         <div class="menu-mover-grid" style="display:none;position:absolute;bottom:30px;right:0;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
-                            <button onclick="event.stopPropagation();moverItemDirecto(_stockGridCodActivo(this),'tienda')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4caf82;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🛍️ Enviar a Tienda</button>
-                            <button onclick="event.stopPropagation();moverItemDirecto(_stockGridCodActivo(this),'bodega')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4a6fa5;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">📦 Devolver a Bodega</button>
-                            <button onclick="event.stopPropagation();moverItemDirectoVendedor(_stockGridCodActivo(this))" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:var(--dorado);border:none;cursor:pointer;text-align:left;font-weight:600;">👤 Asignar a Vendedor</button>
+                            <button onclick="event.stopPropagation();moverItemDirecto(${jsArgArr(codigos)},'tienda')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4caf82;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;" title="Mueve todas las tallas en existencia de este diseño">🛍️ Enviar todo a Tienda</button>
+                            <button onclick="event.stopPropagation();moverItemDirecto(${jsArgArr(codigos)},'bodega')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4a6fa5;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;" title="Mueve todas las tallas en existencia de este diseño">📦 Devolver todo a Bodega</button>
+                            <button onclick="event.stopPropagation();moverItemDirectoVendedor(${jsArgArr(codigos)})" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:var(--dorado);border:none;cursor:pointer;text-align:left;font-weight:600;" title="Asigna todas las tallas en existencia de este diseño">👤 Asignar todo a Vendedor</button>
                         </div>
                     </div>
                 </div>
@@ -7993,7 +8239,7 @@ function renderStock(items) {
                 <div style="width:18px;height:18px;border:2px solid ${selAll?"var(--dorado)":"#555"};border-radius:4px;background:${selAll?"var(--dorado)":"transparent"};display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">
                     ${selAll ? "✓" : ""}
                 </div>
-                ${g.foto ? `<img src="${sanitizar(ikFoto(g.foto,200))}" onerror="this.style.display='none'" onclick="event.stopPropagation();abrirFotoZoom(${jsArg(g.foto)},${jsArg(g.nombre)})" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;background:#3a3a3c;">` : '<div style="width:64px;height:64px;background:#3a3a3c;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">💍</div>'}
+                ${g.foto ? `<img src="${sanitizar(ikFoto(g.fotoMejorada||g.foto,200))}" onerror="this.style.display='none'" onclick="event.stopPropagation();abrirFotoZoom(${jsArg(g.fotoMejorada||g.foto)},${jsArg(g.nombre)})" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;background:#3a3a3c;">` : '<div style="width:64px;height:64px;background:#3a3a3c;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">💍</div>'}
                 <div style="flex:1;min-width:0;">
                     <div style="color:#fff;font-size:14px;font-weight:600;">${sanitizar(g.nombre)}</div>
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;">
@@ -8008,7 +8254,17 @@ function renderStock(items) {
                     <div style="color:#FF9500;font-size:11px;font-weight:700;margin-top:2px;">${sanitizar(g.key)}${g.categoria?` · ${sanitizar(g.categoria)}`:''}</div>
                 </div>
             </div>
-            <div onclick="event.stopPropagation();">${statsRow}${detalles}</div>
+            <div onclick="event.stopPropagation();">
+                <div style="display:flex;justify-content:flex-end;margin:2px 0 6px;position:relative;">
+                    <button onclick="_stockGridToggleMover(this)" style="padding:5px 10px;font-size:11px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;" title="Mueve todas las tallas en existencia de este diseño">⇄ Mover grupo completo ▾</button>
+                    <div class="menu-mover-grid" style="display:none;position:absolute;top:30px;right:0;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:180px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+                        <button onclick="moverItemDirecto(${jsArgArr(codigos)},'tienda')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4caf82;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🛍️ Enviar todo a Tienda</button>
+                        <button onclick="moverItemDirecto(${jsArgArr(codigos)},'bodega')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4a6fa5;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">📦 Devolver todo a Bodega</button>
+                        <button onclick="moverItemDirectoVendedor(${jsArgArr(codigos)})" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:var(--dorado);border:none;cursor:pointer;text-align:left;font-weight:600;">👤 Asignar todo a Vendedor</button>
+                    </div>
+                </div>
+                ${statsRow}${detalles}
+            </div>
         </div>`;
     }).join('');
 }
@@ -8165,17 +8421,22 @@ function toggleMenuMover(codigo, btn) {
     }
 }
 
-async function moverItemDirecto(codigo, destino) {
+async function moverItemDirecto(codigoOCodigos, destino) {
     document.querySelectorAll('[id^="menu-mover-"]').forEach(m => m.style.display = "none");
-    // Seleccionar solo ese item y ejecutar la acción
-    stockSeleccionados = [codigo];
+    document.querySelectorAll('.menu-mover-grid').forEach(m => m.style.display = "none");
+    // Acepta un código individual (fila de lista = una talla puntual) o un
+    // arreglo de códigos (tarjeta de grupo en la vista grid): mover desde el
+    // grupo mueve TODAS las tallas en existencia de ese diseño, no solo la
+    // que estaba activa/resaltada en ese momento.
+    stockSeleccionados = Array.isArray(codigoOCodigos) ? [...codigoOCodigos] : [codigoOCodigos];
     if (destino === "tienda") await asignarATienda();
     else if (destino === "bodega") await devolverABodega();
     stockSeleccionados = [];
 }
 
-function moverItemDirectoVendedor(codigo) {
+function moverItemDirectoVendedor(codigoOCodigos) {
     document.querySelectorAll('[id^="menu-mover-"]').forEach(m => m.style.display = "none");
+    document.querySelectorAll('.menu-mover-grid').forEach(m => m.style.display = "none");
     // asignarAVendedor() solo ABRE el modal — no espera a que el usuario elija
     // vendedor y confirme, así que un `await` seguido de vaciar
     // stockSeleccionados se ejecutaba de inmediato, antes de que el usuario
@@ -8185,7 +8446,9 @@ function moverItemDirectoVendedor(codigo) {
     // correctamente" aunque la asignación real nunca se ejecutó. Ahora queda
     // seteado hasta que confirmarAsignarVendedor() lo limpie de verdad
     // (via limpiarSeleccion(), al terminar con éxito).
-    stockSeleccionados = [codigo];
+    // Mismo criterio que moverItemDirecto: desde una tarjeta de grupo (vista
+    // grid) llega un arreglo con TODAS las tallas en existencia, no solo la activa.
+    stockSeleccionados = Array.isArray(codigoOCodigos) ? [...codigoOCodigos] : [codigoOCodigos];
     asignarAVendedor();
 }
 
@@ -8436,7 +8699,12 @@ function _onScanVD(codRaw) {
     // que la pantalla se re-dibujara dos veces seguidas y se sintiera como que
     // "se movía sola" justo al cerrarse la cámara.
     const cod = String(codRaw || "").trim().toUpperCase();
-    const match = stockData.find(s => (s.codigo || "").toUpperCase() === cod && parseInt(s.stock_bodega || 0) > 0);
+    // Cuenta bodega + tienda como vendible — igual que agregarAlVD()/filtrarVD()
+    // y que el propio worker (REGISTRAR_VENTA_DIRECTA descuenta primero de
+    // tienda y luego de bodega). Antes esto solo miraba stock_bodega, así que
+    // un producto que físicamente ya estaba en la tienda (no en bodega) salía
+    // como "no encontrado" al escanearlo, aunque sí era vendible.
+    const match = stockData.find(s => (s.codigo || "").toUpperCase() === cod && (parseInt(s.stock_bodega || 0) + parseInt(s.stock_tienda || 0)) > 0);
     if (match) {
         agregarAlVD(match.codigo);
         mostrarConfirmacionEscaneo(match.foto, match.nombre || match.codigo, match.codigo + " · $" + parseFloat(match.precio||0).toFixed(2));
@@ -8452,13 +8720,25 @@ function mostrarConfirmacionEscaneo(foto, nombre, sub) {
     const box = document.getElementById("scan-confirm");
     if (!box) return;
     const img = document.getElementById("scan-confirm-foto");
-    img.src = foto ? ikFoto(foto, 200) : "";
+    img.src = foto ? ikFoto(foto, 400) : "";
+    img.dataset.fotoRaw = foto || "";
     img.style.display = foto ? "block" : "none";
     document.getElementById("scan-confirm-nombre").textContent = nombre || "";
     document.getElementById("scan-confirm-sub").textContent = sub || "";
     box.style.display = "flex";
     clearTimeout(window._scanConfirmTimer);
     window._scanConfirmTimer = setTimeout(() => { box.style.display = "none"; }, 2200);
+}
+
+// Toca la foto de la confirmación de escaneo (Venta Directa) para verla en
+// grande — la abre en el mismo lightbox de zoom que ya usa el resto del
+// sistema y frena el auto-cierre para que no desaparezca mientras se mira.
+function _zoomFotoEscaneo() {
+    const img = document.getElementById("scan-confirm-foto");
+    if (!img || !img.dataset.fotoRaw) return;
+    clearTimeout(window._scanConfirmTimer);
+    document.getElementById("scan-confirm").style.display = "none";
+    abrirFotoZoom(img.dataset.fotoRaw, document.getElementById("scan-confirm-nombre").textContent);
 }
 
 // Etiquetas legibles para las categorías estándar — cualquier categoría
@@ -8545,7 +8825,7 @@ function abrirEditarStockItem(codigo) {
     productoEditando = { key: item.codigo, p: { ...item, img: item.foto || item.img || "" } };
     document.getElementById("modal-prod-titulo").textContent = item.codigo || "Producto";
     const foto = document.getElementById("modal-prod-foto");
-    if (item.foto || item.img) { foto.src = ikFoto(item.foto || item.img, 900); foto.style.display = "block"; }
+    if (item.foto || item.img) { foto.src = ikFoto(item.fotoMejorada || item.foto || item.img, 900); foto.style.display = "block"; }
     else { foto.style.display = "none"; }
     document.getElementById("vp-codigo").textContent  = item.codigo  || "";
     document.getElementById("vp-nombre").textContent  = item.nombre  || "";
@@ -12062,7 +12342,8 @@ function autocompletarClienteVD() {
 function filtrarVD() {
     const q = (document.getElementById("bus-vd")?.value || "").toLowerCase();
     const prods = stockData.filter(s => {
-        const disp = parseInt(s.stock_bodega || 0);
+        // Bodega + tienda: ambas son vendibles en Venta Directa (ver _onScanVD/agregarAlVD).
+        const disp = parseInt(s.stock_bodega || 0) + parseInt(s.stock_tienda || 0);
         if (disp <= 0) return false;
         if (!q) return true;
         return (s.codigo || "").toLowerCase().includes(q) || (s.nombre || "").toLowerCase().includes(q);
@@ -12073,21 +12354,26 @@ function filtrarVD() {
 function renderGridVD(prods) {
     const grid = document.getElementById("grid-vd");
     if (!grid) return;
-    if (!prods.length) { grid.innerHTML = '<p style="color:var(--plateado);font-size:13px;grid-column:1/-1;">Sin productos en bodega.</p>'; return; }
+    if (!prods.length) { grid.innerHTML = '<p style="color:var(--plateado);font-size:13px;grid-column:1/-1;">Sin productos disponibles.</p>'; return; }
     grid.innerHTML = prods.map(p => {
         const qty      = _vdCarrito[p.codigo]?.qty || 0;
         const bodega   = parseInt(p.stock_bodega || 0);
+        const tienda   = parseInt(p.stock_tienda || 0);
+        const disp     = bodega + tienda;
         const selec    = qty > 0;
         const fotoHtml = p.foto
             ? `<img src="${ikFoto(p.foto,1200)}" onerror="this.style.display='none'">`
             : ``;
+        // Desglose bodega/tienda visible — si no, al vender algo que solo está
+        // en tienda el admin iría a buscarlo a bodega y no lo encontraría.
+        const desglose = [bodega > 0 ? `Bodega: ${bodega}` : "", tienda > 0 ? `Tienda: ${tienda}` : ""].filter(Boolean).join(" · ");
         return `<div class="prod-card ${selec ? 'seleccionado' : ''}">
             ${fotoHtml}
             <div class="prod-card-info">
                 <div class="prod-card-codigo">${p.codigo}</div>
                 <div class="prod-card-nombre">${p.nombre}</div>
                 <div class="prod-card-precio">$${parseFloat(p.precio||0).toFixed(2)}</div>
-                <div style="font-size:10px;color:${bodega>0?'#2ecc71':'#e74c3c'};margin-top:2px;">Bodega: ${bodega}</div>
+                <div style="font-size:10px;color:${disp>0?'#2ecc71':'#e74c3c'};margin-top:2px;">${desglose}</div>
             </div>
             <div class="prod-card-qty">
                 <button class="qty-btn" onclick="quitarDeVD('${p.codigo}')">−</button>
@@ -13179,9 +13465,10 @@ function imprimirPDFReciboNavegador(pdfBase64) {
 function agregarAlVD(codigo) {
     const prod = stockData.find(s => s.codigo === codigo);
     if (!prod) return;
-    const max = parseInt(prod.stock_bodega || 0);
+    // Bodega + tienda: ambas son vendibles en Venta Directa (ver _onScanVD).
+    const max = parseInt(prod.stock_bodega || 0) + parseInt(prod.stock_tienda || 0);
     if (!_vdCarrito[codigo]) _vdCarrito[codigo] = { prod, qty: 0 };
-    if (_vdCarrito[codigo].qty >= max) { toast("⚠️ No hay más unidades en bodega"); return; }
+    if (_vdCarrito[codigo].qty >= max) { toast("⚠️ No hay más unidades disponibles"); return; }
     _vdCarrito[codigo].qty++;
     filtrarVD();
     renderCarritoVD();
@@ -13367,9 +13654,19 @@ async function confirmarVentaDirecta() {
                 }, 500);
             }
             generarPDFVentaDirecta(payload, []);
+            // Reflejar en memoria el mismo descuento que hace el worker
+            // (REGISTRAR_VENTA_DIRECTA): primero de tienda, luego de bodega.
+            // Antes esto solo restaba de stock_bodega, así que una venta con
+            // stock solo en tienda se veía correcta en el recibo pero la
+            // grilla seguía mostrando el stock de tienda viejo hasta recargar.
             items.forEach(({ prod, qty }) => {
                 const s = stockData.find(s => s.codigo === prod.codigo);
-                if (s) s.stock_bodega = Math.max(0, parseInt(s.stock_bodega||0) - qty);
+                if (s) {
+                    const tiendaAntes = parseInt(s.stock_tienda||0);
+                    const descTienda  = Math.min(tiendaAntes, qty);
+                    s.stock_tienda = Math.max(0, tiendaAntes - descTienda);
+                    s.stock_bodega = Math.max(0, parseInt(s.stock_bodega||0) - (qty - descTienda));
+                }
             });
             _vdCarrito = {};
             document.getElementById("vd-cliente-nombre").value = "";
@@ -13503,6 +13800,19 @@ function abrirQRVD() {
 }
 
 // ── PDF VENTA DIRECTA ─────────────────────────────────────────────────
+// Formato fijo pedido para los recibos: "24-SEP-2026" — día en dos dígitos,
+// mes abreviado en español y mayúsculas (sin punto), año completo. No se usa
+// toLocaleDateString con month:"short" porque el resultado varía según el
+// navegador/entorno (con o sin punto, con o sin mayúscula), y acá se quiere
+// siempre el mismo formato exacto en el recibo impreso.
+const MESES_RECIBO_VD = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
+function formatearFechaReciboVD(fecha) {
+    if (!fecha) return "";
+    const d = fecha instanceof Date ? fecha : new Date(fecha);
+    if (isNaN(d)) return "";
+    return String(d.getDate()).padStart(2, "0") + "-" + MESES_RECIBO_VD[d.getMonth()] + "-" + d.getFullYear();
+}
+
 // Despachador — decide el formato según lo elegido en "Venta Directa" (select
 // persistido en localStorage). Por defecto sigue siendo A5, así que nada
 // cambia para quien no toque el selector nuevo.
@@ -13551,7 +13861,7 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
     doc.setFont('courier', 'bold');
     doc.setFontSize(11);
     doc.setTextColor(80, 80, 80);
-    const fechaVenta = venta.fecha ? new Date(venta.fecha).toLocaleDateString('es-SV', { day:'2-digit', month:'long', year:'numeric' }) : '';
+    const fechaVenta = formatearFechaReciboVD(venta.fecha);
     doc.text('Fecha de compra: ' + fechaVenta, pad, y);
     const refCorta = String(venta.id || '').replace('VD_','').slice(-6);
     doc.text('Ref: ' + refCorta, W - pad, y, { align: 'right' });
@@ -13625,7 +13935,7 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
         if (fechaExtra) {
             y += 4.5;
             const etiquetaExtra = item.fechaAgregado ? 'agregado' : 'cambiado';
-            const fechaTxt = new Date(fechaExtra).toLocaleDateString('es-SV', { day:'2-digit', month:'short', year:'numeric' });
+            const fechaTxt = formatearFechaReciboVD(fechaExtra);
             doc.setFont('courier', 'normal');
             doc.setFontSize(8);
             doc.setTextColor(160, 160, 160);
@@ -13648,12 +13958,23 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
     const pagado  = venta.tipo === 'credito' ? enganche + totalAbonado : total;
     const saldo   = Math.max(0, total - pagado);
 
-    const filaTotal = (label, valor, bold, color, negativo) => {
+    // fechaSub (opcional): fecha chica en gris pegada justo a la izquierda del
+    // monto — se calcula su ancho con getTextWidth() para no adivinar cuánto
+    // espacio deja libre el monto (varía según cuántos dígitos tenga).
+    const filaTotal = (label, valor, bold, color, negativo, fechaSub) => {
         doc.setFont('courier', 'bold');
         if (color) doc.setTextColor(...color); else doc.setTextColor(30, 30, 30);
         doc.setFontSize(11);
         doc.text(label, pad, y);
-        doc.text((negativo ? '-' : '') + '$' + Math.abs(parseFloat(valor)).toFixed(2), W - pad, y, { align: 'right' });
+        const montoTxt = (negativo ? '-' : '') + '$' + Math.abs(parseFloat(valor)).toFixed(2);
+        doc.text(montoTxt, W - pad, y, { align: 'right' });
+        if (fechaSub) {
+            const anchoMonto = doc.getTextWidth(montoTxt);
+            doc.setFont('courier', 'normal');
+            doc.setFontSize(7.5);
+            doc.setTextColor(150, 150, 150);
+            doc.text(fechaSub, W - pad - anchoMonto - 3, y, { align: 'right' });
+        }
         y += 6.5;
     };
     // Si se aplicó descuento, mostrar el desglose (subtotal → descuento →
@@ -13680,15 +14001,17 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
     }
     filaTotal('Total de compra:', total, true, [30,30,30]);
     if (venta.tipo === 'credito') {
-        filaTotal('Enganche pagado:', enganche, false, [39,174,96]);
+        // El enganche se paga el mismo día de la venta — no hay un campo de
+        // fecha propio para el enganche, así que se usa venta.fecha.
+        filaTotal('Enganche pagado:', enganche, false, [39,174,96], false, enganche > 0 ? formatearFechaReciboVD(venta.fecha) : null);
         if (totalAbonado > 0) filaTotal('Abonos realizados:', totalAbonado, false, [39,174,96]);
         filaTotal('Saldo pendiente:', saldo, true, saldo > 0 ? [201,60,60] : [39,174,96]);
     }
     y += 4;
 
-    // Historial de abonos
+    // Historial de abonos — fecha a la par del monto, en la misma línea
     if (abonos.length > 0) {
-        checkPage(14 + abonos.length * 8.5);
+        checkPage(14 + abonos.length * 5);
         doc.setFont('courier', 'bold');
         doc.setFontSize(10);
         doc.setTextColor(201, 168, 76);
@@ -13698,22 +14021,17 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
         doc.line(pad, y, W - pad, y);
         y += 4;
         abonos.forEach((ab, i) => {
-            checkPage(8.5);
-            const fa = ab.fecha ? new Date(ab.fecha).toLocaleDateString('es-SV', { day:'2-digit', month:'short', year:'numeric' }) : '';
+            checkPage(5);
+            const fa = formatearFechaReciboVD(ab.fecha);
             doc.setFont('courier', 'bold');
             doc.setFontSize(9.5);
             doc.setTextColor(30, 30, 30);
-            doc.text(`Abono ${i+1}`, pad, y);
+            doc.text(`Abono ${i+1}${fa ? '  ·  ' + fa : ''}`, pad, y);
             doc.setTextColor(39, 174, 96);
             doc.text(`+$${parseFloat(ab.monto).toFixed(2)}`, W - pad, y, { align: 'right' });
-            y += 4;
-            doc.setFont('courier', 'normal');
-            doc.setFontSize(8);
-            doc.setTextColor(150, 150, 150);
-            doc.text(fa, pad, y);
-            y += 4.5;
+            y += 5;
         });
-        y += 2;
+        y += 1;
     }
 
     // Notas — cada cambio/pieza agregada quedó como su propia línea (separadas
@@ -13834,7 +14152,7 @@ async function generarPDFVentaDirecta58mm(venta, abonos) {
     const alturaEstim = 26                                    // header
         + 10 + (venta.departamentoEnvio ? 4 : 0)               // cliente
         + 6 + lineasItems*4                                    // productos
-        + 6 + (descuento>0?8:0) + (costoEnvio>0?4:0) + 4 + (venta.tipo==='credito' ? 8+(abonos.length*6.6) : 0) // totales
+        + 6 + (descuento>0?8:0) + (costoEnvio>0?4:0) + 4 + (venta.tipo==='credito' ? 8+(abonos.length*3.6) : 0) // totales
         + 10 + 14;                                             // footer + margen
     const H = Math.max(70, Math.ceil(alturaEstim));
     const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'portrait' });
@@ -13851,7 +14169,7 @@ async function generarPDFVentaDirecta58mm(venta, abonos) {
     doc.line(pad, y, W-pad, y); y += 4.5;
 
     doc.setFontSize(7.5); doc.setTextColor(30,30,30);
-    const fechaVenta = venta.fecha ? new Date(venta.fecha).toLocaleDateString('es-SV',{day:'2-digit',month:'2-digit',year:'2-digit'}) + ' ' + new Date(venta.fecha).toLocaleTimeString('es-SV',{hour:'2-digit',minute:'2-digit'}) : '';
+    const fechaVenta = venta.fecha ? formatearFechaReciboVD(venta.fecha) + ' ' + new Date(venta.fecha).toLocaleTimeString('es-SV',{hour:'2-digit',minute:'2-digit'}) : '';
     doc.text('Fecha: ' + fechaVenta, pad, y); y += 4;
     doc.text('Cliente: ' + (venta.cliente||''), pad, y); y += 4;
     if (venta.telefono) { doc.text('Tel: ' + venta.telefono, pad, y); y += 4; }
@@ -13876,7 +14194,7 @@ async function generarPDFVentaDirecta58mm(venta, abonos) {
         const fechaExtra58 = item.fechaAgregado || item.fechaCambio;
         if (fechaExtra58) {
             const etq = item.fechaAgregado ? 'Agregado' : 'Cambiado';
-            const ftx = new Date(fechaExtra58).toLocaleDateString('es-SV', { day:'2-digit', month:'2-digit', year:'2-digit' });
+            const ftx = formatearFechaReciboVD(fechaExtra58);
             doc.setFont('courier','normal'); doc.setFontSize(6.5); doc.setTextColor(201,168,76);
             doc.text(`↳ ${etq} ${ftx}`, pad, y); y += 3.6;
         }
@@ -13899,15 +14217,22 @@ async function generarPDFVentaDirecta58mm(venta, abonos) {
     doc.setFontSize(9);
     doc.text('TOTAL', pad, y); doc.text('$'+total.toFixed(2), W-pad, y, {align:'right'}); y += 5;
     if (venta.tipo === 'credito') {
-        doc.setFont('courier','normal'); doc.setFontSize(7);
-        doc.text('Enganche: $'+enganche.toFixed(2), pad, y); y += 3.6;
-        abonos.forEach((ab,i) => {
-            doc.setFont('courier','normal'); doc.setFontSize(7);
-            doc.text(`Abono ${i+1}: $${parseFloat(ab.monto).toFixed(2)}`, pad, y); y += 3.2;
-            const faTerm = ab.fecha ? new Date(ab.fecha).toLocaleDateString('es-SV', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
+        doc.setFont('courier','normal'); doc.setFontSize(7); doc.setTextColor(30,30,30);
+        doc.text('Enganche: $'+enganche.toFixed(2), pad, y);
+        // Fecha del enganche a la par del monto — el enganche se paga el
+        // mismo día de la venta, así que se usa venta.fecha.
+        if (enganche > 0) {
             doc.setFontSize(6); doc.setTextColor(150,150,150);
-            doc.text(faTerm, pad + 2, y); y += 3.4;
+            doc.text(formatearFechaReciboVD(venta.fecha), W - pad, y, { align: 'right' });
             doc.setTextColor(30,30,30);
+        }
+        y += 3.6;
+        abonos.forEach((ab,i) => {
+            const faTerm = formatearFechaReciboVD(ab.fecha);
+            doc.setFont('courier','normal'); doc.setFontSize(7); doc.setTextColor(30,30,30);
+            doc.text(`Abono ${i+1}${faTerm ? ' ('+faTerm+')' : ''}`, pad, y);
+            doc.text(`$${parseFloat(ab.monto).toFixed(2)}`, W-pad, y, {align:'right'});
+            y += 3.6;
         });
         doc.setFont('courier','bold'); doc.setTextColor(saldo>0?200:0,saldo>0?0:120,0);
         doc.text('SALDO: $'+saldo.toFixed(2), pad, y); y += 5;
@@ -13999,7 +14324,10 @@ function enviarRecordatorioAbono(ventaId) {
             <div style="font-size:16px;font-weight:700;margin-bottom:6px;" id="vp-nombre"></div>
             <div style="font-size:13px;color:var(--plateado);margin-bottom:10px;" id="vp-desc"></div>
             <div style="font-size:20px;font-weight:700;color:var(--dorado-claro);margin-bottom:16px;" id="vp-precio"></div>
-            <button class="btn btn-dorado btn-full" onclick="activarEdicionProducto()">✏️ Editar Producto</button>
+            <div style="display:flex;gap:8px;">
+                <button class="btn btn-dorado" style="flex:1;" onclick="activarEdicionProducto()">✏️ Editar Producto</button>
+                <button class="btn" style="flex:1;background:var(--gris2);color:var(--blanco);" onclick="abrirMejorarFotoStock()" title="Mejorar imagen / Enhance image">✨ Mejorar imagen</button>
+            </div>
         </div>
         <div id="modal-prod-edicion" style="display:none;">
             <input type="text" id="ep-codigo" placeholder="Código">
@@ -14065,6 +14393,48 @@ function enviarRecordatorioAbono(ventaId) {
                 <button class="btn btn-gris" onclick="cancelarEdicionProducto()">Cancelar</button>
                 <button class="btn btn-dorado" onclick="guardarEdicionProducto()">💾 Guardar</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Mejorar Imagen (nitidez vía ImageKit) -->
+<div class="modal-overlay" id="modal-mejorar-foto-stock">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="mjs-titulo">✨ Mejorar imagen</h3>
+            <button class="modal-close" onclick="cerrarMejorarFotoStock()">×</button>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
+            <p id="mjs-nombre" style="margin:0;color:var(--plateado);font-size:12px;"></p>
+            <button class="btn btn-gris" style="padding:4px 10px;font-size:11px;flex-shrink:0;" onclick="toggleIdiomaMejoraStock()" id="mjs-btn-idioma">EN</button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+                <div id="mjs-label-original" style="font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--plateado);text-transform:uppercase;margin-bottom:5px;">Original</div>
+                <div style="background:var(--gris2);border-radius:10px;overflow:hidden;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;">
+                    <img id="mjs-img-original" src="" alt="" style="width:100%;height:100%;object-fit:contain;">
+                </div>
+            </div>
+            <div>
+                <div id="mjs-label-preview" style="font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--plateado);text-transform:uppercase;margin-bottom:5px;">Vista previa mejorada</div>
+                <div style="background:var(--gris2);border-radius:10px;overflow:hidden;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;">
+                    <img id="mjs-img-preview" src="" alt="" style="width:100%;height:100%;object-fit:contain;">
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top:14px;">
+            <div id="mjs-label-nivel" style="font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--plateado);text-transform:uppercase;margin-bottom:5px;">Nivel</div>
+            <div style="display:flex;gap:8px;">
+                <button class="btn" id="mjs-btn-natural" style="flex:1;background:var(--dorado);color:#111;" onclick="setNivelMejoraStock('natural')">Natural</button>
+                <button class="btn btn-gris" id="mjs-btn-mejorado" style="flex:1;" onclick="setNivelMejoraStock('mejorado')">Mejorado</button>
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;">
+            <button class="btn btn-gris" id="mjs-btn-cancelar" onclick="cerrarMejorarFotoStock()">Cancelar</button>
+            <button class="btn btn-dorado" id="mjs-btn-aplicar" onclick="aplicarMejoraFotoStock()">Aplicar mejora</button>
         </div>
     </div>
 </div>
@@ -14513,6 +14883,9 @@ function enviarRecordatorioAbono(ventaId) {
                 <option value="credito">🕐 Crédito</option>
                 <option value="pendiente">⏳ Pendiente</option>
             </select>
+            <select id="hv-filtro-mes" onchange="renderHistorialVentas()" style="width:150px;background:#f9fafb;border:1px solid #e5e7eb;color:#1a1a1a;">
+                <option value="">Todos los meses</option>
+            </select>
         </div>
 
         <div id="lista-historial-ventas"><p style="color:#888;font-size:13px;">Toca 🔄 para cargar.</p></div>
@@ -14679,10 +15052,31 @@ async function cargarHistorialVentas() {
     try {
         const res = await apiPost({ accion: "GET_HISTORIAL_VENTAS" });
         _historialVentas = res.ventas || [];
+        poblarFiltroMesHistorial();
         renderHistorialVentas();
     } catch(e) {
         lista.innerHTML = '<p style="color:#e74c3c;font-size:13px;">⚠️ Error al cargar.</p>';
     }
+}
+
+const MESES_HISTORIAL_VENTAS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+// Arma las opciones del filtro de mes a partir de los meses que realmente
+// tienen ventas — no una lista fija de 12 meses que en su mayoría estaría
+// vacía. Se recalcula cada vez que se recarga el historial (🔄), por si hay
+// ventas nuevas de un mes que aún no tenía opción.
+function poblarFiltroMesHistorial() {
+    const sel = document.getElementById("hv-filtro-mes");
+    if (!sel) return;
+    const actual = sel.value;
+    const clavesUnicas = [...new Set(_historialVentas.map(v => (v.fecha || "").slice(0, 7)).filter(Boolean))];
+    clavesUnicas.sort().reverse(); // más reciente primero
+    sel.innerHTML = '<option value="">Todos los meses</option>' +
+        clavesUnicas.map(clave => {
+            const [anio, mes] = clave.split("-");
+            const nombreMes = MESES_HISTORIAL_VENTAS[parseInt(mes, 10) - 1] || mes;
+            return `<option value="${clave}">${nombreMes} ${anio}</option>`;
+        }).join("");
+    if (clavesUnicas.includes(actual)) sel.value = actual;
 }
 
 function renderHistorialVentas() {
@@ -14690,14 +15084,19 @@ function renderHistorialVentas() {
     const busq    = (document.getElementById("hv-buscar")?.value || "").toLowerCase();
     const filtTipo = document.getElementById("hv-filtro-tipo")?.value || "";
     const filtEst  = document.getElementById("hv-filtro-estado")?.value || "";
+    const filtMes  = document.getElementById("hv-filtro-mes")?.value || "";
 
     let ventas = _historialVentas.filter(v => {
         if (filtTipo && v.tipo !== filtTipo) return false;
         if (filtEst  && v.estado !== filtEst) return false;
+        if (filtMes  && (v.fecha || "").slice(0, 7) !== filtMes) return false;
         if (busq) {
             const hayCliente = (v.cliente || "").toLowerCase().includes(busq);
             let hayItem = false;
-            try { hayItem = JSON.parse(v.items||"[]").some(i => (i.nombre||"").toLowerCase().includes(busq)); } catch(_) {}
+            // El placeholder dice "cliente o producto" pero solo comparaba
+            // nombre — buscar directo por código (ej. al revisar cuándo se
+            // vendió una pieza puntual) no encontraba nada.
+            try { hayItem = JSON.parse(v.items||"[]").some(i => (i.nombre||"").toLowerCase().includes(busq) || (i.codigo||"").toLowerCase().includes(busq)); } catch(_) {}
             if (!hayCliente && !hayItem) return false;
         }
         return true;

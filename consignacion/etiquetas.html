@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>VEREX - Etiquetado Final</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<!-- Local, no CDN: los QR son parte de la etiqueta y sin esta libreria la
+     pagina no sirve. Ver el comentario en index.html. -->
+<script src="lib/qrcode.min.js"></script>
+
+<style>
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background-color: #f4f4f9;
+    margin: 0; padding: 20px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  
+  #interfaz-usuario {
+    width: 100%; max-width: 600px;
+    text-align: center;
+    margin-bottom: 20px;
+  }
+
+  #drop-zone {
+    border: 3px dashed #888;
+    border-radius: 10px;
+    padding: 40px;
+    background-color: #fff;
+    color: #555;
+    font-size: 18px;
+    transition: background-color 0.3s;
+    cursor: pointer;
+    margin-bottom: 20px;
+  }
+  
+  #drop-zone.dragover { background-color: #e0f7fa; border-color: #00acc1; }
+
+  #btn-imprimir {
+    display: none; background-color: #000; color: #fff;
+    border: none; padding: 12px 24px; font-size: 16px;
+    border-radius: 5px; cursor: pointer; font-weight: bold;
+  }
+  
+  #btn-imprimir:hover { background-color: #333; }
+
+  @media print {
+    #interfaz-usuario { display: none !important; }
+    body { background-color: #fff; padding: 0; margin: 0; }
+    @page { size: 90.3mm 29mm; margin: 0; }
+    .mini-etiqueta { border: 1px dotted #000 !important; }
+  }
+
+  #print-area { display: flex; flex-direction: column; gap: 10mm; }
+
+  .etiqueta-brother {
+    width: 90.3mm; height: 29mm;
+    display: grid;
+    grid-template-columns: repeat(3, 19.05mm); 
+    grid-template-rows: repeat(2, 12.7mm);     
+    justify-content: center; align-content: center;
+    gap: 1mm; background-color: #fff;
+    page-break-after: always; 
+  }
+
+  .mini-etiqueta {
+    width: 19.05mm; height: 12.7mm;
+    border: 1px dashed #ccc;
+    display: flex; flex-direction: column;
+    box-sizing: border-box; padding: 0.5mm; overflow: hidden;
+  }
+
+  .mini-top {
+    display: flex; flex-direction: row;
+    align-items: center; justify-content: space-between;
+    flex: 1; min-height: 0;
+  }
+
+  .info-texto {
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: flex-start;
+    flex: 1; min-width: 0;
+  }
+
+  .precio {
+    font-size: 10px;
+    font-family: 'Arial Narrow', Arial, sans-serif;
+    font-weight: bold;
+    color: #000;
+    margin-bottom: 1px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .material {
+    font-size: 7px;
+    font-family: 'Arial Narrow', Arial, sans-serif;
+    font-weight: 700;
+    color: #000;
+    line-height: 1;
+    white-space: nowrap;
+    letter-spacing: 0.3px;
+    width: 100%;
+    text-align: center;
+  }
+
+  .qr-code { flex-shrink: 0; }
+  .qr-code canvas { display: none; }
+  .qr-code img { width: 6.5mm !important; height: 6.5mm !important; display: block; }
+
+  .sku-label {
+    font-size: 7.5px;
+    font-family: 'Arial Narrow', Arial, sans-serif;
+    font-weight: bold;
+    color: #000;
+    text-align: left;
+    line-height: 1.2;
+    white-space: normal;
+    word-break: break-all;
+    letter-spacing: 0.5px;
+    max-width: 100%;
+  }
+</style>
+</head>
+<body>
+
+  <div id="interfaz-usuario">
+    <h2>Generador de Etiquetas Mini (VEREX)</h2>
+    <div id="drop-zone">Arrastra y suelta tu archivo PDF aquí</div>
+    <button id="btn-imprimir">🖨️ Imprimir Etiquetas</button>
+  </div>
+
+  <div id="print-area"></div>
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+    const dropZone = document.getElementById('drop-zone');
+    const printArea = document.getElementById('print-area');
+    const btnImprimir = document.getElementById('btn-imprimir');
+
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
+
+    btnImprimir.addEventListener('click', () => { window.print(); });
+
+    dropZone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      dropZone.innerText = "Procesando...";
+      btnImprimir.style.display = "none";
+
+      const file = e.dataTransfer.files[0];
+      if (file.type !== "application/pdf") {
+        alert("Sube un PDF válido.");
+        dropZone.innerText = "Arrastra y suelta tu archivo PDF aquí";
+        return;
+      }
+
+      const fileReader = new FileReader();
+      fileReader.onload = async function() {
+        const typedarray = new Uint8Array(this.result);
+        const pdf = await pdfjsLib.getDocument(typedarray).promise;
+        let productos = [];
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const lineas = textContent.items.map(item => item.str.trim()).filter(str => str !== "");
+          
+          let precio = "$ 0.00", sku = "N/A", material = "";
+          const indexPrecio = lineas.findIndex(l => l.includes('$'));
+          if (indexPrecio !== -1) {
+            precio = lineas[indexPrecio];
+            if (lineas.length > indexPrecio + 1) sku = lineas[indexPrecio + 1];
+            if (lineas.length > indexPrecio + 2) material = lineas[indexPrecio + 2];
+          }
+          productos.push({ sku, precio, material });
+        }
+
+        renderizarEtiquetas(productos);
+        dropZone.innerText = "¡Etiquetas generadas con éxito!";
+        setTimeout(() => { btnImprimir.style.display = "inline-block"; }, 500);
+      };
+      fileReader.readAsArrayBuffer(file);
+    });
+
+    function renderizarEtiquetas(productos) {
+      printArea.innerHTML = '';
+      for(let i = 0; i < productos.length; i += 6) {
+        const grupo = productos.slice(i, i + 6);
+        const etiquetaBrother = document.createElement('div');
+        etiquetaBrother.className = 'etiqueta-brother';
+
+        grupo.forEach(prod => {
+          const mini = document.createElement('div');
+          mini.className = 'mini-etiqueta';
+          
+          mini.innerHTML = `
+            <div class="mini-top">
+              <div class="info-texto">
+                <span class="precio">${prod.precio}</span>
+                <span class="sku-label">${prod.sku}</span>
+              </div>
+              <div class="qr-code" data-sku="${prod.sku}"></div>
+            </div>
+            <span class="material">${prod.material}</span>
+          `;
+          etiquetaBrother.appendChild(mini);
+        });
+        printArea.appendChild(etiquetaBrother);
+      }
+
+      document.querySelectorAll('.qr-code').forEach(container => {
+        new QRCode(container, {
+          text: container.getAttribute('data-sku'),
+          width: 100, height: 100,
+          colorDark: "#000000", colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      });
+    }
+  </script>
+</body>
+</html>

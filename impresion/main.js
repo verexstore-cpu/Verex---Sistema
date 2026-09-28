@@ -4,7 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const http = require('http')
 const net = require('net')
-const { exec } = require('child_process')
+const { exec, execFile } = require('child_process')
 
 let mainWindow
 let tray = null
@@ -392,10 +392,11 @@ function startPrintServer() {
           const labelId = fm.label
 
           const pyScript = path.join(__dirname, 'verex_print.py')
-          const cmd = `python "${pyScript}" --png "${tmpPng}" --ip "${printerIp}" --label "${labelId}" --target-w ${fm.w} --target-h ${fm.h} --rotate ${fm.rotate}`
-          const { exec: execCb } = require('child_process')
           const r = await new Promise(resolve => {
-            execCb(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
+            execFile('python', [
+              pyScript, '--png', tmpPng, '--ip', printerIp, '--label', labelId,
+              '--target-w', String(fm.w), '--target-h', String(fm.h), '--rotate', String(fm.rotate)
+            ], { timeout: 30000 }, (err, stdout, stderr) => {
               if (err) resolve({ ok: false, error: parsePrintError(stderr, err.message) })
               else     resolve({ ok: true, ip: printerIp })
             })
@@ -661,7 +662,11 @@ const url='file:///${pdfPath.replace(/\\/g,'/')}';
                   // 'mini' también va sin crop: su PDF ya mide exacto 20×12mm
                   // (_generarPDFMini), igual que dk1204 — recortar cambia la
                   // proporción de forma impredecible en vez de respetar el diseño.
-                  const noCrop = (formato === 'dk1204' || formato === 'mini') ? ' --no-crop' : ''
+                  const args = [
+                    pyScript, '--png', tmpPng, '--ip', printerIp, '--label', labelId,
+                    '--target-w', String(px.w), '--target-h', String(px.h), '--rotate', String(rotateDeg)
+                  ]
+                  if (formato === 'dk1204' || formato === 'mini') args.push('--no-crop')
 
                   // Cada página del PDF es una etiqueta física distinta. El PNG las
                   // trae apiladas (pdfjs las dibuja en un solo canvas), así que hay
@@ -677,9 +682,8 @@ const url='file:///${pdfPath.replace(/\\/g,'/')}';
                   // separar — salvo que el cliente lo pida explícito con
                   // separar:true (notas de texto libre en formato Mini con varias
                   // copias, donde sí deben salir como etiquetas sueltas).
-                  const argPages = (pages > 1 && (px.h > 0 || body.separar)) ? ` --pages ${pages}` : ''
-                  const cmd = `python "${pyScript}" --png "${tmpPng}" --ip "${printerIp}" --label "${labelId}" --target-w ${px.w} --target-h ${px.h} --rotate ${rotateDeg}${noCrop}${argPages}`
-                  exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
+                  if (pages > 1 && (px.h > 0 || body.separar)) args.push('--pages', String(pages))
+                  execFile('python', args, { timeout: 30000 }, (err, stdout, stderr) => {
                     if (err) resolve({ ok: false, error: parsePrintError(stderr, err.message) })
                     else     resolve({ ok: true, ip: printerIp })
                   })

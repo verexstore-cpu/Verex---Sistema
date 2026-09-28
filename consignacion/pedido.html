@@ -57,6 +57,7 @@
     const token   = params.get("token") || "";
     let _leads = [];
     let _seleccionados = new Set();
+    let _pin = "";
 
     const DEPARTAMENTOS = ["Ahuachapán","Cabañas","Chalatenango","Cuscatlán","La Libertad","La Paz","La Unión","Morazán","San Miguel","San Salvador","San Vicente","Santa Ana","Sonsonate","Usulután"];
 
@@ -92,6 +93,15 @@
         if (btn) btn.disabled = items.length === 0;
     }
 
+    function _datosClienteCatalogo(){
+        // Busca datos pre-llenados por el cliente en el catálogo — usa el primer
+        // lead que los tenga (todos los del mismo pedido suelen ser del mismo cliente).
+        for (const l of _leads) {
+            if (l.nombreCliente || l.telefonoCliente) return l;
+        }
+        return null;
+    }
+
     function render(){
         const itemsHtml = _leads.map(l => `
             <div class="item ${_seleccionados.has(l.id)?'checked':''}" onclick="window.__toggle('${l.id}')">
@@ -103,6 +113,13 @@
                 </div>
             </div>`).join('');
 
+        const dc = _datosClienteCatalogo();
+        const bannerPreLlenado = dc
+            ? `<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#166534;">
+                ✅ <strong>El cliente ya llenó sus datos en el catálogo.</strong> Revísalos y confirma si son correctos.
+               </div>`
+            : '';
+
         document.getElementById("app").innerHTML = `
             <div class="card">
                 <h2>📦 Completar pedido</h2>
@@ -112,10 +129,11 @@
             <div class="card">
                 <div class="badge-pago">💵 Pago: Contra entrega, en efectivo</div>
                 <h2 style="margin-bottom:6px;">Datos del cliente</h2>
+                ${bannerPreLlenado}
                 <label>Nombre completo</label>
-                <input type="text" id="p-nombre" placeholder="Nombre y apellidos">
+                <input type="text" id="p-nombre" placeholder="Nombre y apellidos" value="${dc ? esc(dc.nombreCliente||'') : ''}">
                 <label>Teléfono de llamada directa</label>
-                <input type="tel" id="p-telefono" placeholder="Ej: 7000-0000" inputmode="numeric">
+                <input type="tel" id="p-telefono" placeholder="Ej: 7000-0000" inputmode="numeric" value="${dc ? esc(dc.telefonoCliente||'') : ''}">
                 <label>Departamento</label>
                 <select id="p-depto">
                     <option value="">— Selecciona —</option>
@@ -124,7 +142,7 @@
                 <label>Municipio</label>
                 <input type="text" id="p-municipio" placeholder="Ej: Santa Tecla">
                 <label>Dirección completa</label>
-                <textarea id="p-direccion" rows="3" placeholder="Calle, número de casa, colonia, referencia..."></textarea>
+                <textarea id="p-direccion" rows="3" placeholder="Calle, número de casa, colonia, referencia...">${dc ? esc(dc.direccionCliente||'') : ''}</textarea>
                 <div class="resumen" id="resumen"></div>
                 <button class="btn btn-dorado" id="btn-enviar" onclick="window.__enviar()" disabled>✅ Registrar pedido</button>
             </div>`;
@@ -153,7 +171,7 @@
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     accion: "COMPLETAR_PEDIDO_LEADS",
-                    vendedor: vCodigo, token,
+                    vendedor: vCodigo, token, pin: _pin,
                     leadIds: [..._seleccionados],
                     cliente: { nombre, telefono, departamento, municipio, direccion }
                 })
@@ -167,26 +185,174 @@
         }
     };
 
-    async function cargar(){
+    function mostrarPantallaPIN(onOk) {
+        document.getElementById("app").innerHTML = `
+            <div class="card" style="max-width:320px;margin:40px auto;text-align:center;">
+                <div style="font-size:40px;margin-bottom:12px;">🔒</div>
+                <h2 style="font-size:17px;margin-bottom:6px;">Portal VEREX</h2>
+                <p style="font-size:12px;color:#666;margin-bottom:20px;">Ingresa tu PIN de 4 dígitos para continuar</p>
+                <input type="tel" id="pin-input" inputmode="numeric" maxlength="4"
+                    placeholder="— — — —"
+                    style="width:100%;text-align:center;font-size:28px;letter-spacing:10px;padding:14px;border:2px solid #e2e2e2;border-radius:10px;margin-bottom:12px;font-family:inherit;">
+                <div id="pin-error" style="color:#e74c3c;font-size:12px;min-height:16px;margin-bottom:8px;"></div>
+                <button onclick="window.__pinOk()" class="btn btn-dorado" style="width:100%;">Ingresar</button>
+            </div>`;
+        window.__pinOk = async function() {
+            const val = document.getElementById("pin-input").value.trim();
+            if (val.length !== 4) { document.getElementById("pin-error").textContent = "El PIN debe tener 4 dígitos"; return; }
+            _pin = val;
+            document.getElementById("pin-error").textContent = "";
+            await onOk();
+        };
+        document.getElementById("pin-input").addEventListener("keydown", e => { if (e.key === "Enter") window.__pinOk(); });
+    }
+
+    async function cargarPortal() {
         if (!vCodigo || !token) { estado("⚠️", "Link inválido", "Falta información en el link. Pide a VEREX que te lo reenvíe."); return; }
+        document.getElementById("app").innerHTML = '<div class="estado"><p>⏳ Cargando...</p></div>';
         try {
-            const res = await fetch(API_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ accion: "GET_LEADS_PORTAL_AFILIADO", vendedor: vCodigo, token })
-            });
-            const data = await res.json();
-            if (!data.ok) { estado("⚠️", "Link inválido o vencido", data.error||""); return; }
-            _leads = data.leads || [];
-            if (!_leads.length) {
-                estado("✅", "Todo al día", "No tienes pedidos pendientes de completar en este momento.");
-                return;
+            // Cargar pendientes e historial en paralelo
+            const [resPend, resHist] = await Promise.all([
+                fetch(API_URL, { method:"POST", headers:{"Content-Type":"application/json"},
+                    body: JSON.stringify({ accion:"GET_LEADS_PORTAL_AFILIADO", vendedor:vCodigo, token, pin:_pin }) }),
+                fetch(API_URL, { method:"POST", headers:{"Content-Type":"application/json"},
+                    body: JSON.stringify({ accion:"GET_HISTORIAL_AFILIADO", vendedor:vCodigo, token, pin:_pin }) })
+            ]);
+            const dataPend = await resPend.json();
+            const dataHist = await resHist.json();
+
+            if (!dataPend.ok) {
+                if (dataPend.pinRequerido) { mostrarPantallaPIN(cargarPortal); return; }
+                estado("⚠️", "Link inválido o vencido", dataPend.error||""); return;
             }
+            if (dataHist.pinRequerido) { mostrarPantallaPIN(cargarPortal); return; }
+
+            _leads = dataPend.leads || [];
             _seleccionados = new Set(_leads.map(l => l.id));
-            render();
+
+            const enCamino = dataHist.enCamino || [];
+            const vendidos = dataHist.vendidos || [];
+            const pct      = dataHist.comisionPct || 0;
+            const nombre   = dataPend.vendedorNombre || "";
+
+            renderPortal(_leads, enCamino, vendidos, pct, nombre);
         } catch(e) {
             estado("⚠️", "Error de conexión", "Intenta de nuevo en unos minutos.");
         }
+    }
+
+    function renderPortal(pendientes, enCamino, vendidos, pct, nombreVend) {
+        const fmtFecha = f => f ? new Date(f).toLocaleDateString("es-SV",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}) : "—";
+
+        // ── Sección 1: pendientes ──
+        const dc = _datosClienteCatalogo();
+        const bannerPreLlenado = dc
+            ? `<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#166534;">
+                ✅ <strong>El cliente ya llenó sus datos en el catálogo.</strong> Revísalos y confirma si son correctos.
+               </div>` : '';
+
+        const itemsHtml = pendientes.map(l => `
+            <div class="item ${_seleccionados.has(l.id)?'checked':''}" onclick="window.__toggle('${l.id}')">
+                <input type="checkbox" ${_seleccionados.has(l.id)?'checked':''} onclick="event.stopPropagation();window.__toggle('${l.id}')">
+                ${l.foto ? `<img src="${esc(l.foto)}" onerror="this.style.display='none'">` : ''}
+                <div style="flex:1;min-width:0;">
+                    <div class="nom">${esc(l.nombre||l.codigo)}</div>
+                    <div class="prc">$${parseFloat(l.precio||0).toFixed(2)}</div>
+                </div>
+            </div>`).join('');
+
+        const secPendientes = pendientes.length ? `
+            <div class="card">
+                <h2>📦 Completar pedido</h2>
+                <p style="font-size:12px;color:#666;margin-bottom:10px;">Marca los productos que le pertenecen al MISMO cliente y llena sus datos abajo.</p>
+                ${itemsHtml}
+            </div>
+            <div class="card">
+                <div class="badge-pago">💵 Pago: Contra entrega, en efectivo</div>
+                <h2 style="margin-bottom:6px;">Datos del cliente</h2>
+                ${bannerPreLlenado}
+                <label>Nombre completo</label>
+                <input type="text" id="p-nombre" placeholder="Nombre y apellidos" value="${dc ? esc(dc.nombreCliente||'') : ''}">
+                <label>Teléfono de llamada directa</label>
+                <input type="tel" id="p-telefono" placeholder="Ej: 7000-0000" inputmode="numeric" value="${dc ? esc(dc.telefonoCliente||'') : ''}">
+                <label>Departamento</label>
+                <select id="p-depto">
+                    <option value="">— Selecciona —</option>
+                    ${DEPARTAMENTOS.map(d=>`<option value="${d}">${d}</option>`).join('')}
+                </select>
+                <label>Municipio</label>
+                <input type="text" id="p-municipio" placeholder="Ej: Santa Tecla">
+                <label>Dirección completa</label>
+                <textarea id="p-direccion" rows="3" placeholder="Calle, número de casa, colonia, referencia...">${dc ? esc(dc.direccionCliente||'') : ''}</textarea>
+                <div class="resumen" id="resumen"></div>
+                <button class="btn btn-dorado" id="btn-enviar" onclick="window.__enviar()" disabled>✅ Registrar pedido</button>
+            </div>` : `
+            <div class="card" style="text-align:center;padding:24px;">
+                <div style="font-size:36px;margin-bottom:8px;">✅</div>
+                <div style="font-weight:700;">Sin pedidos pendientes</div>
+                <div style="font-size:12px;color:#888;margin-top:4px;">No tienes pedidos que completar en este momento.</div>
+            </div>`;
+
+        // ── Sección 2: en camino ──
+        const secEnCamino = enCamino.length ? `
+            <div class="card">
+                <h2 style="color:#f97316;">🚚 En Camino (${enCamino.length})</h2>
+                <p style="font-size:12px;color:#888;margin-bottom:10px;">VEREX ya empacó y envió estos pedidos — están en ruta al cliente.</p>
+                ${enCamino.map(l => `
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f0f0f0;">
+                    ${l.foto ? `<img src="${esc(l.foto)}" style="width:44px;height:44px;object-fit:cover;border-radius:8px;flex-shrink:0;" onerror="this.style.display='none'">` : ''}
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:13px;font-weight:700;">${esc(l.nombre||l.codigo)}</div>
+                        <div style="font-size:11px;color:#888;">${fmtFecha(l.fecha)} · $${parseFloat(l.precio||0).toFixed(2)}</div>
+                        ${l.cliente ? `<div style="font-size:11px;color:#555;margin-top:2px;">👤 ${esc(l.cliente.nombre||"")} · ${esc(l.cliente.municipio||"")}${l.cliente.municipio?", ":""}${esc(l.cliente.departamento||"")}</div>` : ''}
+                    </div>
+                    <span style="font-size:18px;">📦</span>
+                </div>`).join('')}
+            </div>` : '';
+
+        // ── Sección 3: historial ──
+        const totalComision = vendidos.reduce((s,l) => s + (l.comision||0), 0);
+        const totalVentas   = vendidos.reduce((s,l) => s + (parseFloat(l.precio)||0), 0);
+        const secHistorial = vendidos.length ? `
+            <div class="card">
+                <h2 style="color:#16a34a;">🏆 Historial de Ventas</h2>
+                <div style="display:flex;gap:10px;margin-bottom:14px;">
+                    <div style="flex:1;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px;text-align:center;">
+                        <div style="font-size:18px;font-weight:800;color:#16a34a;">$${totalVentas.toFixed(2)}</div>
+                        <div style="font-size:10px;color:#555;margin-top:2px;">Total vendido</div>
+                    </div>
+                    <div style="flex:1;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:12px;text-align:center;">
+                        <div style="font-size:18px;font-weight:800;color:#92400e;">$${totalComision.toFixed(2)}</div>
+                        <div style="font-size:10px;color:#555;margin-top:2px;">Tu comisión (${pct}%)</div>
+                    </div>
+                </div>
+                ${vendidos.map(l => `
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f0f0f0;">
+                    ${l.foto ? `<img src="${esc(l.foto)}" style="width:44px;height:44px;object-fit:cover;border-radius:8px;flex-shrink:0;" onerror="this.style.display='none'">` : ''}
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:13px;font-weight:700;">${esc(l.nombre||l.codigo)}</div>
+                        <div style="font-size:11px;color:#888;">${fmtFecha(l.fecha)} · $${parseFloat(l.precio||0).toFixed(2)}</div>
+                    </div>
+                    <div style="text-align:right;flex-shrink:0;">
+                        <div style="font-size:12px;font-weight:700;color:#16a34a;">+$${(l.comision||0).toFixed(2)}</div>
+                        <div style="font-size:9px;color:#888;">comisión</div>
+                    </div>
+                </div>`).join('')}
+            </div>` : '';
+
+        document.getElementById("app").innerHTML = `
+            <div style="text-align:center;padding:12px 0 4px;">
+                <div style="font-size:13px;font-weight:700;color:#C9A84C;">Hola, ${esc(nombreVend)} 👋</div>
+            </div>
+            ${secPendientes}${secEnCamino}${secHistorial}`;
+
+        if (pendientes.length) actualizarResumen();
+    }
+
+    async function cargar(){
+        if (!vCodigo || !token) { estado("⚠️", "Link inválido", "Falta información en el link. Pide a VEREX que te lo reenvíe."); return; }
+        // Intentar sin PIN primero — si el worker responde pinRequerido, mostrar pantalla
+        await cargarPortal();
     }
     cargar();
 })();

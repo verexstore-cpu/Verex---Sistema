@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>VEREX — Subir Fotos</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #111; color: #fff; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 32px 20px;
+  }
+  .logo { font-size: 22px; font-weight: 800; letter-spacing: 3px; color: #C9A84C; margin-bottom: 6px; }
+  .sub  { font-size: 13px; color: #888; margin-bottom: 24px; }
+
+  .zona-foto {
+    width: 100%; max-width: 360px;
+    background: #1a1a1a; border: 2px dashed #333;
+    border-radius: 16px; padding: 28px 20px;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    cursor: pointer; transition: border-color .2s; margin-bottom: 12px;
+  }
+  .zona-foto:hover, .zona-foto.drag { border-color: #C9A84C; }
+  .zona-foto input { display: none; }
+  .icono-camara { font-size: 48px; }
+  .txt-camara   { font-size: 14px; color: #888; text-align: center; line-height: 1.6; }
+
+  /* Grid de previews seleccionadas */
+  .preview-grid {
+    width: 100%; max-width: 360px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    margin-bottom: 12px;
+  }
+  .preview-item { position: relative; }
+  .preview-item img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; }
+  .preview-item .badge {
+    position: absolute; top: 4px; right: 4px;
+    background: rgba(0,0,0,.7); border-radius: 50%;
+    width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; cursor: pointer; color: #fff;
+  }
+  .preview-item .badge.ok   { background: #22c55e; }
+  .preview-item .badge.err  { background: #ef4444; }
+  .preview-item .badge.spin { background: #C9A84C; animation: spin .8s linear infinite; }
+  .preview-item .overlay {
+    position: absolute; inset: 0; border-radius: 10px;
+    background: rgba(0,0,0,.5); display: flex; align-items: center;
+    justify-content: center; font-size: 20px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .btn {
+    width: 100%; max-width: 360px; padding: 16px;
+    border: none; border-radius: 12px; font-size: 16px;
+    font-weight: 700; cursor: pointer; transition: opacity .2s; margin-bottom: 8px;
+  }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-gold { background: #C9A84C; color: #111; }
+  .btn-gris { background: #222; color: #888; border: 1px solid #333; }
+
+  .estado {
+    width: 100%; max-width: 360px; padding: 14px 18px;
+    border-radius: 12px; font-size: 14px; font-weight: 600;
+    text-align: center; display: none; margin-bottom: 8px;
+  }
+  .estado.ok    { background: rgba(34,197,94,.15); color: #22c55e; border: 1px solid rgba(34,197,94,.3); }
+  .estado.error { background: rgba(239,68,68,.15);  color: #ef4444; border: 1px solid rgba(239,68,68,.3); }
+  .estado.carga { background: rgba(201,168,76,.1);  color: #C9A84C; border: 1px solid rgba(201,168,76,.3); }
+
+  .historial { width: 100%; max-width: 360px; margin-top: 16px; }
+  .hist-titulo { font-size: 12px; color: #555; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+  .hist-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .hist-img  { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+</style>
+</head>
+<body>
+
+<div class="logo">VEREX</div>
+<div class="sub">Subir fotos de productos</div>
+
+<div class="zona-foto" id="zona-foto" onclick="document.getElementById('inp-foto').click()">
+  <input type="file" id="inp-foto" accept="image/*" multiple onchange="onFotosSeleccionadas(this)">
+  <div id="zona-icono">
+    <div class="icono-camara">📷</div>
+    <div class="txt-camara">Toca para elegir fotos<br><span style="font-size:12px;color:#555;">Puedes seleccionar varias a la vez</span></div>
+  </div>
+</div>
+
+<div class="preview-grid" id="preview-grid" style="display:none;"></div>
+
+<button class="btn btn-gold" id="btn-subir" disabled onclick="subirTodas()">Subir fotos</button>
+<button class="btn btn-gris" onclick="document.getElementById('inp-foto').click()">Agregar más fotos</button>
+
+<div class="estado" id="estado"></div>
+
+<div class="historial" id="historial" style="display:none;">
+  <div class="hist-titulo">Subidas esta sesión</div>
+  <div class="hist-grid" id="hist-grid"></div>
+</div>
+
+<script>
+const API_URL = "https://verex-api.verexstore.workers.dev/";
+let fotos = []; // { file, base64, estado: 'pending'|'uploading'|'ok'|'error' }
+const sesionUrls = [];
+
+async function onFotosSeleccionadas(input) {
+  const files = Array.from(input.files);
+  if (!files.length) return;
+  mostrarEstado("carga", `⏳ Procesando ${files.length} foto(s)...`);
+
+  for (const file of files) {
+    const base64 = await leerYComprimir(file);
+    fotos.push({ file, base64, estado: "pending" });
+  }
+
+  input.value = ""; // Limpiar para permitir seleccionar más
+  document.getElementById("zona-icono").style.display = "none";
+  renderPreviews();
+  document.getElementById("btn-subir").disabled = false;
+  mostrarEstado("", "");
+}
+
+function leerYComprimir(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = async e => resolve(await comprimirFoto(e.target.result));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function comprimirFoto(base64) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 1400;
+      let w = img.width, h = img.height;
+      if (w > h) { if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; } }
+      else        { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", 0.97));
+    };
+    img.src = base64;
+  });
+}
+
+function renderPreviews() {
+  const grid = document.getElementById("preview-grid");
+  if (!fotos.length) { grid.style.display = "none"; return; }
+  grid.style.display = "grid";
+  grid.innerHTML = fotos.map((f, i) => {
+    let badge = "", overlay = "";
+    if (f.estado === "uploading") {
+      badge   = `<div class="badge spin">↻</div>`;
+      overlay = `<div class="overlay">⏳</div>`;
+    } else if (f.estado === "ok") {
+      badge = `<div class="badge ok">✓</div>`;
+    } else if (f.estado === "error") {
+      badge   = `<div class="badge err">!</div>`;
+      overlay = `<div class="overlay" style="color:#ef4444;">❌</div>`;
+    } else {
+      badge = `<div class="badge" onclick="quitarFoto(${i});event.stopPropagation()">✕</div>`;
+    }
+    return `<div class="preview-item">
+      <img src="${f.base64}">
+      ${badge}${overlay}
+    </div>`;
+  }).join("");
+}
+
+function quitarFoto(i) {
+  fotos.splice(i, 1);
+  if (!fotos.length) {
+    document.getElementById("zona-icono").style.display = "flex";
+    document.getElementById("btn-subir").disabled = true;
+  }
+  renderPreviews();
+}
+
+async function subirTodas() {
+  const pendientes = fotos.filter(f => f.estado === "pending");
+  if (!pendientes.length) return;
+
+  const btn = document.getElementById("btn-subir");
+  btn.disabled = true;
+  mostrarEstado("carga", `⏳ Subiendo ${pendientes.length} foto(s)...`);
+
+  let ok = 0, errores = 0;
+
+  for (let i = 0; i < fotos.length; i++) {
+    if (fotos[i].estado !== "pending") continue;
+    fotos[i].estado = "uploading";
+    renderPreviews();
+
+    try {
+      const nombre = "celular_" + Date.now();
+
+      // Fetch con timeout de 25 segundos
+      const fetchConTimeout = (url, opciones, ms = 25000) => {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), ms);
+        return fetch(url, { ...opciones, signal: ctrl.signal })
+          .finally(() => clearTimeout(timer));
+      };
+
+      const res  = await fetchConTimeout(API_URL, {
+        method: "POST",
+        body: JSON.stringify({ accion: "SUBIR_FOTO", key: "VEREX_2026_PRO", imagen: fotos[i].base64, nombre })
+      });
+      const data = await res.json();
+      if (!data.ok || !data.url) throw new Error(data.error || "Error");
+
+      // GUARDAR_FOTO_PENDIENTE también con timeout (más corto, es solo metadata)
+      await fetchConTimeout(API_URL, {
+        method: "POST",
+        body: JSON.stringify({ accion: "GUARDAR_FOTO_PENDIENTE", url: data.url })
+      }, 10000);
+
+      sesionUrls.push(data.url);
+      fotos[i].estado = "ok";
+      ok++;
+    } catch(e) {
+      fotos[i].estado = "error";
+      fotos[i].errorMsg = e.name === "AbortError" ? "Timeout" : "Error de red";
+      errores++;
+    }
+    renderPreviews();
+  }
+
+  renderHistorial();
+
+  if (errores === 0) {
+    mostrarEstado("ok", `✅ ${ok} foto(s) subidas — ya aparecen en el sistema`);
+  } else {
+    mostrarEstado("error", `⚠️ ${ok} subidas, ${errores} con error — intenta de nuevo`);
+    btn.disabled = false; // Permitir reintentar las que fallaron
+  }
+
+  // Limpiar las exitosas después de 2 seg
+  setTimeout(() => {
+    fotos = fotos.filter(f => f.estado !== "ok");
+    if (!fotos.length) {
+      document.getElementById("zona-icono").style.display = "flex";
+      document.getElementById("preview-grid").style.display = "none";
+    } else {
+      renderPreviews();
+      btn.disabled = false;
+    }
+  }, 2000);
+}
+
+function mostrarEstado(tipo, msg) {
+  const el = document.getElementById("estado");
+  el.className = "estado " + tipo;
+  el.textContent = msg;
+  el.style.display = msg ? "block" : "none";
+}
+
+function renderHistorial() {
+  if (!sesionUrls.length) return;
+  document.getElementById("historial").style.display = "block";
+  document.getElementById("hist-grid").innerHTML = sesionUrls.map(url =>
+    `<img src="${url}" class="hist-img">`
+  ).join("");
+}
+</script>
+</body>
+</html>
