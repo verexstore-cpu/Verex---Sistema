@@ -3053,6 +3053,18 @@ async function enviar(){
           const lead = await sb.get("leads", d.id);
           if (!lead) { result = { ok: false, error: "Lead no encontrado" }; break; }
           if (lead.afiliado !== d.vendedor) { result = { ok: false, error: "No autorizado" }; break; }
+          // Mismo token+PIN que GET_LEADS_AFILIADO: antes solo se comparaba
+          // el codigo de vendedor (no es secreto), asi que cualquiera que lo
+          // conociera podia marcar leads ajenos como vendidos.
+          if (!esAdmin) {
+            const vendMLV = await sb.get("vendedores", d.vendedor);
+            if (!vendMLV || !vendMLV.tokenPedidos || String(vendMLV.tokenPedidos) !== String(d.token)) {
+              result = { ok: false, error: "Link inválido" }; break;
+            }
+            if (vendMLV.pin && String(vendMLV.pin) !== String(d.pin || "")) {
+              result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
+            }
+          }
           const historial = [...(lead.historial || []), { estado: "reportado", fecha: new Date().toISOString() }];
           await sb.update("leads", d.id, { estado: "reportado", historial });
           result = { ok: true };

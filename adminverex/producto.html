@@ -229,8 +229,18 @@
     }
 
     function cardHtml(idxs, gi){
+        // Tallas agotadas no se ofrecen como chip — el cliente solo debe ver
+        // lo que de verdad se le puede surtir. Si TODAS las tallas de este
+        // diseño están agotadas, se muestran igual (para no dejar la tarjeta
+        // sin ninguna talla) y el botón de pedido queda bloqueado como AGOTADO.
+        const disponibles = idxs.filter(i => {
+            const it = encontrados[i];
+            const total = (parseInt(it.stock_bodega)||0) + (parseInt(it.stock_tienda)||0);
+            return !it.reservado && total > 0;
+        });
+        const idxsChips = disponibles.length ? disponibles : idxs;
         const selPos  = _grupoSel[gi] || 0;
-        const flatIdx = idxs[selPos];
+        const flatIdx = idxsChips[selPos] ?? idxsChips[0];
         const p = encontrados[flatIdx];
         // stock_consignacion son piezas que YA están en mano de un vendedor —
         // no algo que VEREX pueda entregarle de inmediato a quien pida por
@@ -243,9 +253,9 @@
         const nota = notaEspecial(p);
         // Chips de talla solo si hay más de una y todas traen talla — si no,
         // se mantiene el badge simple de siempre.
-        const tieneTallas = idxs.length > 1 && idxs.every(i => encontrados[i].talla);
+        const tieneTallas = idxsChips.length > 1 && idxsChips.every(i => encontrados[i].talla);
         const tallaHtml = tieneTallas
-            ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin:5px 0;">${idxs.map((fi, pos) => {
+            ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin:5px 0;">${idxsChips.map((fi, pos) => {
                 const activa = pos === selPos;
                 return `<button type="button" onclick="seleccionarTallaGrupo(${gi},${pos},event)"
                     style="padding:3px 9px;border-radius:14px;border:1.5px solid ${activa?'#0277bd':'#ccc'};background:${activa?'#0277bd':'#fff'};color:${activa?'#fff':'#333'};font-size:10.5px;font-weight:700;cursor:pointer;">T${esc(encontrados[fi].talla)}</button>`;
@@ -371,6 +381,7 @@
     window.abrirConfirm = abrirConfirm;
     window.cerrarConfirm = cerrarConfirm;
     window.actualizarBotonConfirm = actualizarBotonConfirm;
+    window.seleccionarTallaGrupo = seleccionarTallaGrupo;
 })();
 </script>
 </body>
