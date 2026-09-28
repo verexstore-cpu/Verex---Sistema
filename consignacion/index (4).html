@@ -13691,9 +13691,9 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
     }
     y += 4;
 
-    // Historial de abonos
+    // Historial de abonos — fecha a la par del monto, en la misma línea
     if (abonos.length > 0) {
-        checkPage(14 + abonos.length * 8.5);
+        checkPage(14 + abonos.length * 5);
         doc.setFont('courier', 'bold');
         doc.setFontSize(10);
         doc.setTextColor(201, 168, 76);
@@ -13703,22 +13703,17 @@ async function generarPDFVentaDirectaA5(venta, abonos) {
         doc.line(pad, y, W - pad, y);
         y += 4;
         abonos.forEach((ab, i) => {
-            checkPage(8.5);
+            checkPage(5);
             const fa = ab.fecha ? new Date(ab.fecha).toLocaleDateString('es-SV', { day:'2-digit', month:'short', year:'numeric' }) : '';
             doc.setFont('courier', 'bold');
             doc.setFontSize(9.5);
             doc.setTextColor(30, 30, 30);
-            doc.text(`Abono ${i+1}`, pad, y);
+            doc.text(`Abono ${i+1}${fa ? '  ·  ' + fa : ''}`, pad, y);
             doc.setTextColor(39, 174, 96);
             doc.text(`+$${parseFloat(ab.monto).toFixed(2)}`, W - pad, y, { align: 'right' });
-            y += 4;
-            doc.setFont('courier', 'normal');
-            doc.setFontSize(8);
-            doc.setTextColor(150, 150, 150);
-            doc.text(fa, pad, y);
-            y += 4.5;
+            y += 5;
         });
-        y += 2;
+        y += 1;
     }
 
     // Notas — cada cambio/pieza agregada quedó como su propia línea (separadas
@@ -13839,7 +13834,7 @@ async function generarPDFVentaDirecta58mm(venta, abonos) {
     const alturaEstim = 26                                    // header
         + 10 + (venta.departamentoEnvio ? 4 : 0)               // cliente
         + 6 + lineasItems*4                                    // productos
-        + 6 + (descuento>0?8:0) + (costoEnvio>0?4:0) + 4 + (venta.tipo==='credito' ? 8+(abonos.length*6.6) : 0) // totales
+        + 6 + (descuento>0?8:0) + (costoEnvio>0?4:0) + 4 + (venta.tipo==='credito' ? 8+(abonos.length*3.6) : 0) // totales
         + 10 + 14;                                             // footer + margen
     const H = Math.max(70, Math.ceil(alturaEstim));
     const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'portrait' });
@@ -13907,12 +13902,11 @@ async function generarPDFVentaDirecta58mm(venta, abonos) {
         doc.setFont('courier','normal'); doc.setFontSize(7);
         doc.text('Enganche: $'+enganche.toFixed(2), pad, y); y += 3.6;
         abonos.forEach((ab,i) => {
-            doc.setFont('courier','normal'); doc.setFontSize(7);
-            doc.text(`Abono ${i+1}: $${parseFloat(ab.monto).toFixed(2)}`, pad, y); y += 3.2;
             const faTerm = ab.fecha ? new Date(ab.fecha).toLocaleDateString('es-SV', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
-            doc.setFontSize(6); doc.setTextColor(150,150,150);
-            doc.text(faTerm, pad + 2, y); y += 3.4;
-            doc.setTextColor(30,30,30);
+            doc.setFont('courier','normal'); doc.setFontSize(7); doc.setTextColor(30,30,30);
+            doc.text(`Abono ${i+1}${faTerm ? ' ('+faTerm+')' : ''}`, pad, y);
+            doc.text(`$${parseFloat(ab.monto).toFixed(2)}`, W-pad, y, {align:'right'});
+            y += 3.6;
         });
         doc.setFont('courier','bold'); doc.setTextColor(saldo>0?200:0,saldo>0?0:120,0);
         doc.text('SALDO: $'+saldo.toFixed(2), pad, y); y += 5;
