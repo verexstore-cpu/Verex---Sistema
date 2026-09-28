@@ -3965,7 +3965,7 @@ async function enviar(){
 
         case "SUBIR_FOTO": {
           // Permitir subida con key pública (desde celular) o con pass admin
-          const keyOk = d.key === "VEREX_2026_PRO" || esAdmin;
+          const keyOk = d.key === "vx_upload_7c4406c55f0f10174b0cb08da23cae88" || esAdmin;
           if (!keyOk) return forbidden();
           const ikKey = env.IMAGEKIT_PRIVATE_KEY;
           if (!ikKey) { result = { ok: false, error: "ImageKit no configurado en secrets" }; break; }
