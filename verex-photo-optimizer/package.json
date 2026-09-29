@@ -1,0 +1,73 @@
+{
+  "name": "verex-photo-optimizer",
+  "productName": "VEREX PHOTO OPTIMIZER",
+  "version": "1.0.0",
+  "description": "Optimizador local de fotografías de joyería para web y ecommerce. Edición controlada de píxeles: sin IA generativa.",
+  "author": "VEREX Store",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "node test/pipeline.test.js",
+    "dist": "electron-builder --win nsis --x64",
+    "dist:portable": "electron-builder --win portable --x64",
+    "icon": "node scripts/make-icon.js"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.verexstore.photooptimizer",
+    "productName": "VEREX PHOTO OPTIMIZER",
+    "copyright": "VEREX Store",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "VEREX-PHOTO-OPTIMIZER-Setup-${version}.${ext}",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "VEREX PHOTO OPTIMIZER",
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "jpg",
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "name": "Imagen",
+        "role": "Editor"
+      }
+    ]
+  }
+}

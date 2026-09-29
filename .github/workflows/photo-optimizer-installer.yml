@@ -1,0 +1,33 @@
+name: VEREX PHOTO OPTIMIZER — instalador de Windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['photo-optimizer-v*']
+    paths: ['verex-photo-optimizer/**']
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: verex-photo-optimizer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: verex-photo-optimizer/package-lock.json
+      - run: npm ci
+      - name: Pruebas del motor de imagen
+        run: npm test
+      - name: Crear instalador (.exe)
+        run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VEREX-PHOTO-OPTIMIZER-Setup
+          path: verex-photo-optimizer/dist/*.exe
+          if-no-files-found: error

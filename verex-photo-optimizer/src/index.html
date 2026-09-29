@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; connect-src 'self' blob:">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VEREX PHOTO OPTIMIZER</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">V</span><div><b>VEREX</b><small>PHOTO OPTIMIZER</small></div></div>
+    <div class="group">
+      <button id="btn-open" class="btn primary">Abrir fotos…</button>
+      <button id="btn-undo" class="btn icon" title="Deshacer (Ctrl+Z)" disabled><svg viewBox="0 0 24 24"><path d="M9 7H15a5 5 0 010 10H8M9 7l-4 4m4-4L5 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button id="btn-redo" class="btn icon" title="Rehacer (Ctrl+Y)" disabled><svg viewBox="0 0 24 24"><path d="M15 7H9a5 5 0 000 10h7M15 7l4 4m-4-4l4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button id="btn-restore" class="btn" title="Quita todos los ajustes: vuelve a la foto original">Restaurar original</button>
+    </div>
+    <div class="group center">
+      <div class="seg" id="seg-view">
+        <button data-mode="split-h" class="on" title="Comparación con divisor vertical">ANTES ┃ DESPUÉS</button>
+        <button data-mode="split-v" title="Comparación con divisor horizontal">ANTES ━ DESPUÉS</button>
+        <button data-mode="before">Antes</button>
+        <button data-mode="after">Después</button>
+      </div>
+      <button id="btn-flip" class="btn" title="Alterna Antes / Después (mantén \ para ver el original)">ANTES / DESPUÉS</button>
+    </div>
+    <div class="group">
+      <div class="seg" id="seg-zoom">
+        <button data-zoom="0.25">25%</button><button data-zoom="0.5">50%</button>
+        <button data-zoom="1">100%</button><button data-zoom="2">200%</button>
+        <button data-zoom="fit" class="on">Ajustar</button>
+      </div>
+      <button id="btn-settings" class="btn icon" title="Configuración"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 00-2-1.2L14.2 3h-4l-.4 2.6a7 7 0 00-2 1.2l-2.3-.9-2 3.4 2 1.5A7 7 0 005 12a7 7 0 00.1 1.2l-2 1.5 2 3.4 2.3-.9a7 7 0 002 1.2l.4 2.6h4l.4-2.6a7 7 0 002-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button>
+      <button id="btn-export" class="btn gold" disabled>Exportar…</button>
+    </div>
+  </header>
+
+  <aside class="files">
+    <div class="panel-head"><span>FOTOGRAFÍAS</span><span id="file-count" class="muted">0</span></div>
+    <div id="file-list" class="file-list"></div>
+    <div class="file-actions">
+      <button id="btn-add-folder" class="btn small">Agregar carpeta…</button>
+      <button id="btn-remove" class="btn small" disabled>Quitar</button>
+      <button id="btn-clear" class="btn small" disabled>Vaciar</button>
+    </div>
+  </aside>
+
+  <main class="stage-wrap">
+    <div id="viewer" class="viewer">
+      <div id="empty" class="empty">
+        <div class="empty-mark">V</div>
+        <h2>Arrastra tus fotografías aquí</h2>
+        <p>JPG · JPEG · PNG · WEBP — una sola foto o cientos en lote</p>
+        <p class="fine">Todo se procesa en este equipo. Ninguna foto sale de tu computadora.<br>Los archivos originales nunca se modifican.</p>
+        <button id="btn-open2" class="btn primary big">Abrir fotos…</button>
+      </div>
+      <div id="stage" class="stage" hidden>
+        <canvas id="cv-before"></canvas>
+        <canvas id="cv-after"></canvas>
+        <div id="lbl-before" class="tag tag-l">ANTES</div>
+        <div id="lbl-after" class="tag tag-r">DESPUÉS</div>
+        <div id="divider" class="divider"><div class="knob"></div></div>
+      </div>
+      <div id="busy" class="busy" hidden><span class="spin"></span><span id="busy-text">Procesando…</span></div>
+      <div id="badge" class="badge" hidden></div>
+    </div>
+    <div class="statusbar">
+      <span id="st-name">—</span>
+      <span id="st-dims" class="muted"></span>
+      <span class="grow"></span>
+      <span id="st-ms" class="muted"></span>
+    </div>
+  </main>
+
+  <aside class="controls" id="controls"></aside>
+</div>
+
+<div id="drop-overlay" class="drop-overlay" hidden><div>Suelta las fotos para agregarlas</div></div>
+<div id="toast" class="toast" hidden></div>
+
+<!-- Exportar / Lote -->
+<div id="dlg-export" class="modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head"><h3>Exportar</h3><button class="x" data-close>×</button></div>
+    <div class="modal-body" id="export-body">
+      <div class="row"><label>Alcance</label>
+        <div class="radios">
+          <label><input type="radio" name="scope" value="current" checked> Imagen actual</label>
+          <label><input type="radio" name="scope" value="all"> Todas las imágenes (<b id="ex-count">0</b>) — lote</label>
+        </div></div>
+      <div class="row"><label>Formatos</label>
+        <div class="radios">
+          <label><input type="checkbox" id="ex-jpg"> JPG</label>
+          <label><input type="checkbox" id="ex-png"> PNG</label>
+          <label><input type="checkbox" id="ex-webp"> WEBP</label>
+          <span class="muted small-t" id="ex-hint">Calidad, tamaño y fondo se toman del panel «Salida».</span>
+        </div></div>
+      <div class="row"><label>Guardar como</label>
+        <div class="radios col">
+          <label><input type="radio" name="dest" value="copy" checked> Crear copia junto al original
+            <input id="ex-suffix" class="txt" value="_verex" size="9" title="Sufijo del nombre"></label>
+          <label><input type="radio" name="dest" value="folder"> Seleccionar carpeta
+            <button id="ex-choose" class="btn small">Elegir…</button> <span id="ex-folder" class="muted path"></span></label>
+          <label><input type="radio" name="dest" value="overwrite"> Sobrescribir original <span class="muted small-t">(se guarda antes una copia en «_originales_verex»)</span></label>
+        </div></div>
+      <div id="ex-summary" class="summary"></div>
+      <div id="ex-progress" class="progress" hidden>
+        <div class="bar"><i id="pg-bar"></i></div>
+        <div class="pg-grid">
+          <div><small>Imagen actual</small><b id="pg-cur">—</b></div>
+          <div><small>Progreso</small><b id="pg-num">0 / 0</b></div>
+          <div><small>Completadas</small><b id="pg-ok">0</b></div>
+          <div><small>Errores</small><b id="pg-err">0</b></div>
+          <div><small>Avisos de calidad</small><b id="pg-warn">0</b></div>
+          <div><small>Tiempo restante</small><b id="pg-eta">—</b></div>
+        </div>
+        <div id="pg-log" class="log"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button id="ex-open" class="btn" hidden>Abrir carpeta</button>
+      <span class="grow"></span>
+      <button id="ex-cancel" class="btn" data-close>Cerrar</button>
+      <button id="ex-go" class="btn gold">Exportar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Configuración -->
+<div id="dlg-settings" class="modal" hidden>
+  <div class="modal-card narrow">
+    <div class="modal-head"><h3>Configuración</h3><button class="x" data-close>×</button></div>
+    <div class="modal-body">
+      <div class="row"><label>Resolución de vista previa</label>
+        <select id="set-preview" class="sel">
+          <option value="1600">1600 px (rápida)</option><option value="2400">2400 px</option>
+          <option value="3600">3600 px</option><option value="0">Completa (lenta en fotos grandes)</option>
+        </select></div>
+      <div class="row"><label>Procesos en lote</label>
+        <select id="set-threads" class="sel"></select></div>
+      <div class="row"><label>Confirmar antes de sobrescribir</label><input type="checkbox" id="set-confirm"></div>
+      <div class="row"><label>Avisar de problemas al exportar</label><input type="checkbox" id="set-qcwarn"></div>
+      <p class="fine">VEREX PHOTO OPTIMIZER <span id="set-ver"></span> · Procesamiento 100 % local, sin conexión a internet.<br>
+      El motor solo edita los píxeles existentes (denoise, tono, color, contraste y nitidez). No usa IA generativa.</p>
+    </div>
+    <div class="modal-foot"><span class="grow"></span><button class="btn gold" data-close>Listo</button></div>
+  </div>
+</div>
+
+<script src="core/presets.js"></script>
+<script src="core/pipeline.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
