@@ -559,7 +559,13 @@
             const y = 0.299 * baseR[i] + 0.587 * baseG[i] + 0.114 * baseB[i];
             if (y > 25) { s += (baseR[i] - baseB[i]) / y; c++; }
           }
-          metal = c && s / c > 0.12 ? 'gold' : 'silver';
+          // El oro es cálido RESPECTO A LA ESCENA: una foto con tinte amarillento/verdoso (luz mal balanceada)
+          // calienta también el fondo y la plata, y eso no la convierte en oro.
+          const bc = det.bgColor, yb = 0.299 * bc[0] + 0.587 * bc[1] + 0.114 * bc[2];
+          const warmBg = yb > 25 ? (bc[0] - bc[2]) / yb : 0;
+          const warm = c ? s / c : 0;
+          metal = c && warm > 0.12 && warm - warmBg > 0.08 ? 'gold' : 'silver';
+          info.warm = { producto: warm, fondo: warmBg };
         }
         info.metal = metal;
         const p = clamp(P.jewelry.protect, 0, 100) / 100;

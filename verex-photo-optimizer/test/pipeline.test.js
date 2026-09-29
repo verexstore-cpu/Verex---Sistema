@@ -106,6 +106,16 @@ t('JOYERÍA VEREX oro: la temperatura extrema no vuelve el oro naranja', () => {
   assert(Math.abs(ratio(a) - ratio(o)) < Math.abs(ratio(b) - ratio(o)) * 0.6);
 });
 
+t('metal automático: plata con tinte amarillento en toda la foto NO se detecta como oro', () => {
+  const cast = (im, r, g, b) => { const c = clone(im); for (let i = 0; i < c.data.length; i += 4) { c.data[i] = Math.min(255, c.data[i] * r); c.data[i + 1] = Math.min(255, c.data[i + 1] * g); c.data[i + 2] = Math.min(255, c.data[i + 2] * b); } return c; };
+  const auto = PR.merge(PR.NEUTRAL, { sharpness: 30, jewelry: { on: true, metal: 'auto', protect: 75 } });
+  const det = (im) => VXP.process(im, auto, {}).info.metal;
+  const silverWarm = cast(img, 1.07, 1.05, 0.80), goldWhite = make(W, H, { gold: true }), goldWarm = cast(make(W, H, { gold: true }), 1.07, 1.05, 0.80);
+  const r = [det(clone(img)), det(silverWarm), det(clone(goldWhite)), det(goldWarm)];
+  console.log('      plata neutra → ' + r[0] + ' · plata con tinte → ' + r[1] + ' · oro neutro → ' + r[2] + ' · oro con tinte → ' + r[3]);
+  assert.deepStrictEqual(r, ['silver', 'silver', 'gold', 'gold']);
+});
+
 t('plata: con guarda la plata no pasa a blanco puro/gris', () => {
   const p = PR.merge(PR.NEUTRAL, { saturation: -100, jewelry: { on: true, metal: 'silver', protect: 90 } });
   const r = VXP.process(clone(img), p, {});
