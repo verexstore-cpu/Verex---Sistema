@@ -1,0 +1,17 @@
+{
+  "name": "verex-mejora-fotos",
+  "version": "1.0.0",
+  "description": "VEREX - Mejora de nitidez en lote para fotos de catálogo (IA local, estilo Topaz Photo AI)",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.10",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0"
+  }
+}

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>VEREX · Mejora de fotos</title>
+<style>
+    :root {
+        --dorado: #C9A84C;
+        --dorado-claro: #E4C978;
+        --fondo: #0e0e18;
+        --panel: #1c1c1e;
+        --borde: #333338;
+        --texto: #eee;
+        --gris: #999;
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0; padding: 24px;
+        background: var(--fondo); color: var(--texto);
+        font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    h1 { font-size: 18px; margin: 0 0 4px; color: var(--dorado-claro); }
+    .subt { color: var(--gris); font-size: 13px; margin-bottom: 20px; }
+    .panel {
+        background: var(--panel); border: 1px solid var(--borde); border-radius: 12px;
+        padding: 16px 18px; margin-bottom: 14px;
+    }
+    .panel h2 { font-size: 14px; margin: 0 0 10px; color: var(--dorado); }
+    .fila { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    button {
+        background: var(--dorado); color: #14130f; border: none; border-radius: 8px;
+        padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    button.secundario { background: #333; color: #ddd; }
+    .estado { font-size: 13px; color: var(--gris); }
+    .estado.ok { color: #6fd68a; }
+    .estado.err { color: #e06868; }
+    .barra { height: 8px; border-radius: 4px; background: #333; overflow: hidden; margin-top: 8px; display: none; }
+    .barra .relleno { height: 100%; background: var(--dorado); width: 0%; transition: width .2s; }
+    .slider-fila { display: flex; align-items: center; gap: 12px; }
+    .slider-fila input[type=range] { flex: 1; }
+    select { background: #222; color: #ddd; border: 1px solid var(--borde); border-radius: 6px; padding: 7px 10px; font-size: 13px; }
+    label.chk { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--gris); }
+    .grid-preview {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-top: 14px;
+    }
+    .par { background: #141414; border-radius: 10px; overflow: hidden; border: 1px solid var(--borde); }
+    .par .imgs { display: flex; }
+    .par .imgs > div { flex: 1; position: relative; }
+    .par img { width: 100%; height: 140px; object-fit: cover; display: block; }
+    .par .etq { position: absolute; top: 4px; left: 6px; font-size: 10px; background: rgba(0,0,0,.6); padding: 2px 6px; border-radius: 4px; }
+    .par .nombre { font-size: 11px; color: var(--gris); padding: 6px 8px; }
+    .archivos-count { font-size: 13px; color: var(--dorado-claro); }
+    .lista-fallas { font-size: 12px; color: #e06868; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>💍 VEREX · Mejora de fotos</h1>
+<div class="subt">Nitidez y denoise por IA local (Real-ESRGAN) — probá antes de correr el lote completo.</div>
+
+<div class="panel">
+    <h2>1. Motor de IA</h2>
+    <div class="fila">
+        <span id="estado-motor" class="estado">Verificando...</span>
+        <button id="btn-instalar-motor" style="display:none;" onclick="instalarMotor()">⬇️ Instalar motor (~70MB, una sola vez)</button>
+    </div>
+    <div class="barra" id="barra-motor"><div class="relleno" id="relleno-motor"></div></div>
+</div>
+
+<div class="panel">
+    <h2>2. Carpeta con las fotos</h2>
+    <div class="fila">
+        <button onclick="elegirCarpeta()">📁 Elegir carpeta</button>
+        <span class="archivos-count" id="txt-carpeta">Ninguna carpeta elegida</span>
+    </div>
+</div>
+
+<div class="panel">
+    <h2>3. Ajustes</h2>
+    <div class="slider-fila">
+        <span style="font-size:13px;min-width:90px;">Intensidad</span>
+        <input type="range" id="sl-intensidad" min="0" max="100" value="55" oninput="txtIntensidad.textContent = this.value + '%'">
+        <span id="txtIntensidad" style="font-size:13px;color:var(--dorado);min-width:36px;">55%</span>
+    </div>
+    <div class="fila" style="margin-top:12px;">
+        <select id="sel-modo">
+            <option value="mismo-tamano">Solo nitidez (mismo tamaño)</option>
+            <option value="ampliar">Ampliar 4x (más grande)</option>
+        </select>
+        <label class="chk"><input type="checkbox" id="chk-cpu"> Forzar CPU (más lento, si falla la GPU)</label>
+    </div>
+</div>
+
+<div class="panel">
+    <h2>4. Probar antes de procesar todo</h2>
+    <div class="fila">
+        <button id="btn-preview" onclick="correrPreview()" disabled>🔍 Probar con 3 fotos</button>
+        <span class="estado" id="estado-preview"></span>
+    </div>
+    <div class="barra" id="barra-preview"><div class="relleno" id="relleno-preview"></div></div>
+    <div class="grid-preview" id="grid-preview"></div>
+</div>
+
+<div class="panel">
+    <h2>5. Procesar el lote completo</h2>
+    <div class="fila">
+        <button id="btn-lote" onclick="correrLote()" disabled>⚙️ Procesar todas las fotos</button>
+        <button id="btn-abrir-salida" class="secundario" style="display:none;" onclick="abrirSalida()">📂 Abrir carpeta de salida</button>
+        <span class="estado" id="estado-lote"></span>
+    </div>
+    <div class="barra" id="barra-lote"><div class="relleno" id="relleno-lote"></div></div>
+    <div class="lista-fallas" id="lista-fallas"></div>
+</div>
+
+<script>
+let carpetaActual = null;
+let archivosActuales = [];
+let carpetaSalidaActual = null;
+
+function opts() {
+    return {
+        intensidad: parseInt(document.getElementById('sl-intensidad').value, 10),
+        modo: document.getElementById('sel-modo').value,
+        useCpu: document.getElementById('chk-cpu').checked,
+        scale: 4,
+    };
+}
+
+async function refrescarEstadoMotor() {
+    const r = await window.electronAPI.estadoMotor();
+    const el = document.getElementById('estado-motor');
+    const btn = document.getElementById('btn-instalar-motor');
+    if (r.instalado) {
+        el.textContent = '✅ Motor instalado y listo';
+        el.className = 'estado ok';
+        btn.style.display = 'none';
+    } else {
+        el.textContent = '⚠️ Motor no instalado todavía';
+        el.className = 'estado';
+        btn.style.display = 'inline-block';
+    }
+}
+
+async function instalarMotor() {
+    const btn = document.getElementById('btn-instalar-motor');
+    const barra = document.getElementById('barra-motor');
+    const relleno = document.getElementById('relleno-motor');
+    const el = document.getElementById('estado-motor');
+    btn.disabled = true;
+    barra.style.display = 'block';
+    const r = await window.electronAPI.instalarMotor();
+    barra.style.display = 'none';
+    btn.disabled = false;
+    if (r.ok) {
+        el.textContent = '✅ Motor instalado y listo';
+        el.className = 'estado ok';
+        btn.style.display = 'none';
+    } else {
+        el.textContent = '❌ ' + r.error;
+        el.className = 'estado err';
+    }
+}
+
+window.electronAPI.onProgresoMotor((info) => {
+    const relleno = document.getElementById('relleno-motor');
+    const el = document.getElementById('estado-motor');
+    const etapas = { buscando: 'Buscando última versión...', descargando: 'Descargando...', extrayendo: 'Instalando...', listo: 'Listo' };
+    el.textContent = etapas[info.etapa] || info.etapa;
+    if (info.pct != null) relleno.style.width = info.pct + '%';
+});
+
+async function elegirCarpeta() {
+    const r = await window.electronAPI.elegirCarpeta();
+    if (!r.ok) return;
+    carpetaActual = r.carpeta;
+    archivosActuales = r.archivos;
+    document.getElementById('txt-carpeta').textContent =
+        `${r.carpeta} — ${r.archivos.length} foto(s) encontradas`;
+    document.getElementById('btn-preview').disabled = archivosActuales.length === 0;
+    document.getElementById('btn-lote').disabled = true;
+    document.getElementById('grid-preview').innerHTML = '';
+    document.getElementById('estado-preview').textContent = '';
+}
+
+function nombreCarpetaSalida() {
+    return carpetaActual + '/mejoradas';
+}
+
+async function correrPreview() {
+    const muestra = archivosActuales.slice(0, 3).map(a => a.ruta);
+    const barra = document.getElementById('barra-preview');
+    const relleno = document.getElementById('relleno-preview');
+    const estado = document.getElementById('estado-preview');
+    const grid = document.getElementById('grid-preview');
+    grid.innerHTML = '';
+    barra.style.display = 'block';
+    relleno.style.width = '0%';
+    estado.textContent = 'Procesando muestra...';
+    estado.className = 'estado';
+    document.getElementById('btn-preview').disabled = true;
+
+    const carpetaSalida = nombreCarpetaSalida() + '-preview';
+    const r = await window.electronAPI.procesarFotos(muestra, carpetaSalida, opts());
+    barra.style.display = 'none';
+    document.getElementById('btn-preview').disabled = false;
+
+    const fallidas = r.resultados.filter(x => !x.ok);
+    const ok = r.resultados.filter(x => x.ok);
+    estado.textContent = fallidas.length
+        ? `⚠️ ${ok.length} ok, ${fallidas.length} fallaron — revisá el detalle abajo`
+        : `✅ ${ok.length} listas — revisá el antes/después`;
+    estado.className = fallidas.length ? 'estado err' : 'estado ok';
+
+    ok.forEach(res => {
+        const original = archivosActuales.find(a => a.ruta === res.ruta);
+        const div = document.createElement('div');
+        div.className = 'par';
+        div.innerHTML = `
+            <div class="imgs">
+                <div><span class="etq">Antes</span><img src="${original.url}"></div>
+                <div><span class="etq">Después</span><img src="${res.url}?t=${Date.now()}"></div>
+            </div>
+            <div class="nombre">${original.nombre}</div>`;
+        grid.appendChild(div);
+    });
+
+    if (fallidas.length) {
+        const lista = document.getElementById('lista-fallas');
+        lista.textContent = 'Fallaron: ' + fallidas.map(f => f.error).join(' · ');
+    }
+
+    document.getElementById('btn-lote').disabled = ok.length === 0;
+}
+
+window.electronAPI.onProgresoLote((info) => {
+    const activo = document.getElementById('barra-lote').style.display === 'block'
+        ? { barra: 'barra-lote', relleno: 'relleno-lote', estado: 'estado-lote' }
+        : { barra: 'barra-preview', relleno: 'relleno-preview', estado: 'estado-preview' };
+    const relleno = document.getElementById(activo.relleno);
+    const estado = document.getElementById(activo.estado);
+    const pct = Math.round((info.actual / info.total) * 100);
+    relleno.style.width = pct + '%';
+    estado.textContent = `Procesando ${info.actual}/${info.total} — ${info.nombre}`;
+});
+
+async function correrLote() {
+    const rutas = archivosActuales.map(a => a.ruta);
+    const barra = document.getElementById('barra-lote');
+    const relleno = document.getElementById('relleno-lote');
+    const estado = document.getElementById('estado-lote');
+    barra.style.display = 'block';
+    relleno.style.width = '0%';
+    estado.textContent = `Procesando 0/${rutas.length}...`;
+    estado.className = 'estado';
+    document.getElementById('btn-lote').disabled = true;
+    document.getElementById('lista-fallas').textContent = '';
+
+    carpetaSalidaActual = nombreCarpetaSalida();
+    const r = await window.electronAPI.procesarFotos(rutas, carpetaSalidaActual, opts());
+    barra.style.display = 'none';
+    document.getElementById('btn-lote').disabled = false;
+
+    const fallidas = r.resultados.filter(x => !x.ok);
+    const ok = r.resultados.filter(x => x.ok);
+    estado.textContent = fallidas.length
+        ? `⚠️ ${ok.length} listas, ${fallidas.length} fallaron`
+        : `✅ ${ok.length} fotos listas en "mejoradas"`;
+    estado.className = fallidas.length ? 'estado err' : 'estado ok';
+
+    if (fallidas.length) {
+        document.getElementById('lista-fallas').textContent =
+            'Fallaron: ' + fallidas.map(f => (f.ruta.split(/[\\/]/).pop()) + ' (' + f.error + ')').join(' · ');
+    }
+
+    if (ok.length) document.getElementById('btn-abrir-salida').style.display = 'inline-block';
+}
+
+async function abrirSalida() {
+    if (carpetaSalidaActual) await window.electronAPI.abrirCarpeta(carpetaSalidaActual);
+}
+
+refrescarEstadoMotor();
+</script>
+</body>
+</html>
