@@ -4805,15 +4805,20 @@ function tooMany(until) {
   }), { status: 429, headers: { ...CORS, "Retry-After": String(sec) } });
 }
 
-// CORS con lista blanca (env.ALLOWED_ORIGINS, separada por comas). Sin la variable: comportamiento
-// anterior (*). OJO: CORS solo protege a navegadores; no sustituye la autenticación.
+// CORS con lista blanca (env.ALLOWED_ORIGINS). Sin la variable: comportamiento anterior (*).
+// Tolerante al pegar la lista: separa por coma, punto y coma, espacios o saltos de línea, y compara sin
+// distinguir mayúsculas, sin barra final y sin comillas (el navegador envía el origen sin barra: "https://x.com").
+// OJO: CORS solo protege a navegadores; no sustituye la autenticación.
+function normalizarOrigen(o) {
+  return String(o || "").trim().replace(/^["']+|["']+$/g, "").replace(/\/+$/, "").toLowerCase();
+}
 function aplicarCors(request, env, res) {
-  const lista = String(env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim()).filter(Boolean);
+  const lista = String(env.ALLOWED_ORIGINS || "").split(/[\s,;]+/).map(normalizarOrigen).filter(Boolean);
   if (!lista.length) return res;
   const origin = request.headers.get("Origin");
   const h = new Headers(res.headers);
   h.append("Vary", "Origin");
-  if (origin && lista.includes(origin)) h.set("Access-Control-Allow-Origin", origin);
+  if (origin && lista.includes(normalizarOrigen(origin))) h.set("Access-Control-Allow-Origin", origin);
   else h.delete("Access-Control-Allow-Origin");
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
 }

@@ -138,6 +138,17 @@ console.log('Seguridad del Worker — pruebas\n');
   const pre = await worker.fetch(new Request('https://api.test/', { method: 'OPTIONS', headers: { Origin: 'https://evil.com' } }), { ...env, ...cfg });
   ok(pre.headers.get('Access-Control-Allow-Origin') === null, 'preflight de origen no permitido sin CORS'); }
 
+// 10a. CORS tolerante al formato de la lista
+{ const ip = newIp(); const o = 'https://us.verexstore.com';
+  const con = async (valor, origin) => (await call({ accion: 'GET_TIENDA' }, ip, { ALLOWED_ORIGINS: valor }, { Origin: origin })).headers.get('Access-Control-Allow-Origin');
+  ok(await con('https://us.verexstore.com/', o) === o, 'barra final en la lista no rompe el origen');
+  ok(await con('HTTPS://US.VEREXSTORE.COM', o) === o, 'mayúsculas en la lista no rompen el origen');
+  ok(await con('"https://us.verexstore.com"', o) === o, 'comillas alrededor no rompen el origen');
+  ok(await con('https://verexstore.com\nhttps://us.verexstore.com', o) === o, 'saltos de línea como separador');
+  ok(await con('https://verexstore.com; https://us.verexstore.com ', o) === o, 'punto y coma y espacios como separador');
+  ok(await con('https://verexstore.com,https://us.verexstore.com.evil.com', o) === null, 'no acepta dominios parecidos (us.verexstore.com.evil.com)');
+  ok(await con('https://verexstore.com', o) === null, 'origen ausente de la lista sigue bloqueado'); }
+
 // 10b. IP reenviada por las Functions de Pages (solo con secreto interno válido)
 { const cfg = { INTERNAL_SECRET: 's3creto' }; const shared = newIp();          // IP compartida de Cloudflare
   const viaFn = (pass, client, secret) => call({ accion: 'VERIFICAR_PASS', _pass: pass }, shared, cfg, { 'X-Verex-Client-IP': client, ...(secret ? { 'X-Verex-Internal': secret } : {}) });
