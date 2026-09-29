@@ -5990,8 +5990,14 @@ function ikFoto(url, size) {
     if (!url || !url.includes("imagekit.io")) return url;
     const s = size || 900;
     const base = url.split("?")[0];
-    const tr   = url.includes("?tr=") ? url.split("?tr=")[1] : null;
-    // Tamaño explícito en el mismo transform (no encadenado)
+    let tr = url.includes("?tr=") ? url.split("?tr=")[1] : "";
+    // Si la URL ya trae una transformación (ej. de ikMejorar), sacamos
+    // cualquier w-/e-sharpen previo para no duplicar el parámetro y que
+    // ImageKit no responda 400 por un transform mal formado.
+    tr = tr
+        .split(",")
+        .filter(p => p && !/^w-\d+$/.test(p) && !/^e-sharpen(-\d+)?$/.test(p))
+        .join(",");
     return tr ? `${base}?tr=${tr},w-${s},e-sharpen` : `${base}?tr=w-${s},e-sharpen`;
 }
 
