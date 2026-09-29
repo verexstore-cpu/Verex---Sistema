@@ -3,6 +3,14 @@ const path = require('path')
 const fs = require('fs')
 const engine = require('./engine.js')
 
+// Log de depuración a archivo — para diagnosticar sin depender de que el
+// usuario pueda abrir/leer las DevTools en su PC.
+const LOG_FILE = path.join(app.getPath('desktop'), 'verex-mejora-fotos-debug.log')
+function logDebug(msg) {
+  try { fs.appendFileSync(LOG_FILE, `[${new Date().toLocaleTimeString('es-SV')}] ${msg}\n`) } catch (_) {}
+}
+process.on('uncaughtException', (err) => logDebug('uncaughtException (main): ' + (err && err.stack || err)))
+
 let mainWindow
 
 const EXTENSIONES_VALIDAS = new Set(['.jpg', '.jpeg', '.png', '.webp'])
@@ -27,6 +35,23 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.center()
     mainWindow.show()
+    mainWindow.webContents.openDevTools({ mode: 'bottom' })
+  })
+
+  // Si el preload.js falla al cargar, window.electronAPI nunca aparece y
+  // todos los botones quedan sin reaccionar — esto lo hace visible en vez
+  // de fallar en silencio.
+  mainWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
+    logDebug('preload-error: ' + preloadPath + ' -> ' + (error && error.stack || error))
+    dialog.showErrorBox('Error cargando preload.js', preloadPath + '\n\n' + (error && error.stack || error))
+  })
+
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    logDebug(`console[${level}] ${sourceId}:${line} ${message}`)
+  })
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    logDebug('render-process-gone: ' + JSON.stringify(details))
   })
 }
 
