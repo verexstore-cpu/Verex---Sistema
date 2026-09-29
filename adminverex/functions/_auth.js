@@ -9,12 +9,12 @@
 // cualquiera con la URL podía leer notas internas y teléfonos de clientes,
 // desactivar o editar cualquier catálogo ajeno, o inyectar productos, sin
 // ninguna credencial.
-export async function esAdminValido(pass) {
+export async function esAdminValido(pass, context) {
   if (!pass) return false;
   try {
     const r = await fetch("https://verex-api.verexstore.workers.dev/", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...cabecerasInternas(context) },
       body: JSON.stringify({ accion: "VERIFICAR_PASS", _pass: pass }),
     });
     const data = await r.json();
@@ -22,6 +22,20 @@ export async function esAdminValido(pass) {
   } catch (e) {
     return false;
   }
+}
+
+// El Worker limita los intentos fallidos por IP. Desde una Function, la IP que ve el Worker es la de
+// Cloudflare (compartida por todos), así que reenviamos la IP real del cliente; el Worker solo la
+// acepta si además llega INTERNAL_SECRET (definido igual en el Worker y en este proyecto de Pages).
+// Sin la variable configurada no se envía nada y todo sigue funcionando como antes.
+function cabecerasInternas(context) {
+  const h = {};
+  try {
+    const ip = context?.request?.headers?.get("CF-Connecting-IP");
+    const secreto = context?.env?.INTERNAL_SECRET;
+    if (ip && secreto) { h["X-Verex-Client-IP"] = ip; h["X-Verex-Internal"] = secreto; }
+  } catch (_) { /* sin cabeceras internas */ }
+  return h;
 }
 
 export function noAutorizado(cors) {

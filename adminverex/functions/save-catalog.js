@@ -17,7 +17,7 @@ export async function onRequest(context) {
 
     try {
         const body = await context.request.json();
-        if (!(await esAdminValido(body?._pass))) return noAutorizado(cors);
+        if (!(await esAdminValido(body?._pass, context))) return noAutorizado(cors);
         if (!body || !body.prods) {
             return new Response(JSON.stringify({ error: "Invalid payload" }), { status: 400, headers });
         }

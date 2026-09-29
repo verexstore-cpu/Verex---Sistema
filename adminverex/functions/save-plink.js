@@ -24,7 +24,7 @@ export async function onRequest(context) {
 
     try {
         const body = await context.request.json();
-        if (!(await esAdminValido(body?._pass))) return noAutorizado(cors);
+        if (!(await esAdminValido(body?._pass, context))) return noAutorizado(cors);
         if (!body || !body.codigo) {
             return new Response(JSON.stringify({ error: "Falta el código" }), { status: 400, headers });
         }

@@ -7,6 +7,12 @@
 //    SUPABASE_SERVICE_KEY → service_role key (Settings → API en Supabase)
 //    SECRET_PASS          → contraseña del admin
 //    SECRET_KEY           → clave legacy de vendedores
+//    INTERNAL_SECRET      → (recomendado) secreto compartido con las Functions de Pages de Admin
+//                           (variable INTERNAL_SECRET del proyecto admin-tienda, mismo valor). Permite
+//                           que el límite de intentos use la IP real del cliente y no la de Cloudflare.
+//    ALLOWED_ORIGINS      → (opcional) orígenes CORS permitidos, separados por coma, p. ej.
+//                           https://verexstore.com,https://admin.ejemplo.pages.dev,null
+//                           ("null" = archivos locales/Hub). Sin definir → CORS abierto (*), como antes.
 //    IMAGEKIT_PRIVATE_KEY → clave privada de ImageKit
 //    RESEND_KEY           → API key de Resend (correos)
 //    WOMPI_CLIENT_ID       → App ID del negocio en Wompi (checkout USA)
@@ -158,10 +164,21 @@ export default {
     }
   },
 
+  // Envoltorio: aplica la lista blanca de CORS (si hay ALLOWED_ORIGINS) a TODA respuesta.
   async fetch(request, env) {
+    const res = await this.handle(request, env);
+    return aplicarCors(request, env, res);
+  },
+
+  async handle(request, env) {
     if (request.method === "OPTIONS") return new Response("", { headers: CORS });
 
     const sb = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+    let ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    // Las Functions de Pages llaman desde servidores de Cloudflare (IP compartida). Reenvían la IP real
+    // del cliente y solo se les cree si presentan el secreto interno; sin él, cualquiera podría falsificarla.
+    const ipReenviada = request.headers.get("X-Verex-Client-IP");
+    if (ipReenviada && env.INTERNAL_SECRET && safeEq(request.headers.get("X-Verex-Internal") || "", env.INTERNAL_SECRET)) ip = ipReenviada.slice(0, 64);
 
     // ── GET: rutas ────────────────────────────────────────────────
     if (request.method === "GET") {
@@ -306,7 +323,10 @@ async function enviar(){
       // si mostrar "ingresa tu código" o la pantalla de configuración
       // inicial (QR + secreto).
       if (d.accion === "VERIFICAR_PASS") {
-        const ok = await verificarPassword(d._pass, env, sb);
+        const bloq = await rlBlocked(sb, "login:" + ip);
+        if (bloq) return tooMany(bloq);
+        const ok = await verificarPassword(d._pass, env, sb, ip, "login");
+        if (!ok && d._pass && await rlBlocked(sb, "login:" + ip)) return tooMany(await rlBlocked(sb, "login:" + ip));
         let totpConfigurado = false;
         if (ok) {
           const cfg = await sb.get("config", "settings");
@@ -323,7 +343,7 @@ async function enviar(){
       // se pierde, volver a correr esto (con la contraseña) es el mismo
       // nivel de recuperación que ya existía.
       if (d.accion === "TOTP_INICIAR_SETUP") {
-        const ok = await verificarPassword(d._pass, env, sb);
+        const ok = await verificarPassword(d._pass, env, sb, ip, "login");
         if (!ok) return json({ ok: false, error: "No autorizado" }, 403);
         const secret = base32Encode(crypto.getRandomValues(new Uint8Array(20)));
         await sb.update("config", "settings", { totpSecret: secret });
@@ -334,12 +354,20 @@ async function enviar(){
       // ── 2FA: verificar código TOTP (login normal, y también confirma
       // que la configuración recién hecha quedó bien escaneada) ──────
       if (d.accion === "TOTP_VERIFICAR") {
-        const ok = await verificarPassword(d._pass, env, sb);
+        const ok = await verificarPassword(d._pass, env, sb, ip, "login");
         if (!ok) return json({ ok: false, error: "No autorizado" }, 403);
+        // Límite propio del código de 6 dígitos: por IP y global (una botnet no lo evita)
+        const bTotp = (await rlBlocked(sb, "totp:" + ip)) || (await rlBlocked(sb, "totp:all"));
+        if (bTotp) return tooMany(bTotp);
         const cfg = await sb.get("config", "settings");
         if (!cfg || !cfg.totpSecret) return json({ ok: false, error: "TOTP no configurado" });
         const valido = await totpVerificar(cfg.totpSecret, d.codigo);
-        if (!valido) return json({ ok: false, error: "Código incorrecto" });
+        if (!valido) {
+          await rlFail(sb, "totp:" + ip, RL_LOGIN);
+          await rlFail(sb, "totp:all", RL_TOTP_ALL);
+          return json({ ok: false, error: "Código incorrecto" });
+        }
+        await rlReset(sb, "totp:" + ip);
         return json({ ok: true });
       }
 
@@ -348,7 +376,7 @@ async function enviar(){
       // código TOTP — el login normal de Admin (password + TOTP) sigue
       // intacto si se entra directo a su URL sin pasar por el Hub. ──
       if (d.accion === "SSO_CREAR_TOKEN") {
-        const ok = await verificarPassword(d._pass, env, sb);
+        const ok = await verificarPassword(d._pass, env, sb, ip, "login");
         if (!ok) return json({ ok: false, error: "No autorizado" }, 403);
         const token = crypto.randomUUID();
         const cfgSso = (await sb.get("config", "settings")) || {};
@@ -377,8 +405,8 @@ async function enviar(){
       }
 
       // esAdmin: acepta SECRET_PASS (env var) O el hash guardado en Supabase
-      const esAdmin = (await verificarPassword(d._pass, env, sb)) ||
-                      (d.key && d.key === env.SECRET_KEY);
+      const esAdmin = (await verificarPassword(d._pass, env, sb, ip, "api")) ||
+                      (await claveLegacyValida(d.key, env, sb, ip));
 
       let result;
 
@@ -630,11 +658,11 @@ async function enviar(){
         case "GET_LEADS_PORTAL_AFILIADO": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
-          if (!vend.tokenPedidos || String(vend.tokenPedidos) !== String(d.token)) {
+          if (!vend.tokenPedidos || !safeEq(vend.tokenPedidos, d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
           }
           // Si el afiliado tiene PIN configurado, validarlo
-          if (vend.pin && String(vend.pin) !== String(d.pin || "")) {
+          if (await pinIncorrecto(sb, vend, d.pin, d.vendedor)) {
             result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
           }
           const todos = await sb.getAll("leads");
@@ -647,10 +675,10 @@ async function enviar(){
         case "GET_HISTORIAL_AFILIADO": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
-          if (!vend.tokenPedidos || String(vend.tokenPedidos) !== String(d.token)) {
+          if (!vend.tokenPedidos || !safeEq(vend.tokenPedidos, d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
           }
-          if (vend.pin && String(vend.pin) !== String(d.pin || "")) {
+          if (await pinIncorrecto(sb, vend, d.pin, d.vendedor)) {
             result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
           }
           const todosH = await sb.getAll("leads");
@@ -686,10 +714,10 @@ async function enviar(){
         case "COMPLETAR_PEDIDO_LEADS": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
-          if (!vend.tokenPedidos || String(vend.tokenPedidos) !== String(d.token)) {
+          if (!vend.tokenPedidos || !safeEq(vend.tokenPedidos, d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
           }
-          if (vend.pin && String(vend.pin) !== String(d.pin || "")) {
+          if (await pinIncorrecto(sb, vend, d.pin, d.vendedor)) {
             result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
           }
           const cliente = d.cliente || {};
@@ -736,7 +764,7 @@ async function enviar(){
         case "GET_VENDEDOR_FIRMA": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
-          if (!vend.tokenFirma || String(vend.tokenFirma) !== String(d.token)) {
+          if (!vend.tokenFirma || !safeEq(vend.tokenFirma, d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
           }
           result = { ok: true, vendedor: {
@@ -753,7 +781,7 @@ async function enviar(){
         case "FIRMAR_CONTRATO_REMOTO": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
-          if (!vend.tokenFirma || String(vend.tokenFirma) !== String(d.token)) {
+          if (!vend.tokenFirma || !safeEq(vend.tokenFirma, d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
           }
           if (vend.firmaContrato) { result = { ok: false, error: "Este contrato ya fue firmado" }; break; }
@@ -787,10 +815,10 @@ async function enviar(){
         case "GET_INVENTARIO_VENDEDOR": {
           if (!d.vendedor || !d.token) return json({ ok: false, error: "vendedor y token requeridos" });
           const vendInv = await sb.get("vendedores", d.vendedor);
-          if (!vendInv || !vendInv.tokenInventario || String(vendInv.tokenInventario) !== String(d.token)) {
+          if (!vendInv || !vendInv.tokenInventario || !safeEq(vendInv.tokenInventario, d.token)) {
             return json({ ok: false, error: "Token inválido" });
           }
-          if (vendInv.pin && String(vendInv.pin) !== String(d.pin || "")) {
+          if (await pinIncorrecto(sb, vendInv, d.pin, d.vendedor)) {
             return json({ ok: false, error: "PIN incorrecto" });
           }
           const consV2 = await sb.query("consignacion", "vendedor", "==", d.vendedor);
@@ -3034,10 +3062,10 @@ async function enviar(){
           // del afiliado, que no es secreto).
           if (!esAdmin) {
             const vendGLA = await sb.get("vendedores", d.vendedor);
-            if (!vendGLA || !vendGLA.tokenPedidos || String(vendGLA.tokenPedidos) !== String(d.token)) {
+            if (!vendGLA || !vendGLA.tokenPedidos || !safeEq(vendGLA.tokenPedidos, d.token)) {
               result = { ok: false, error: "Link inválido" }; break;
             }
-            if (vendGLA.pin && String(vendGLA.pin) !== String(d.pin || "")) {
+            if (await pinIncorrecto(sb, vendGLA, d.pin, d.vendedor)) {
               result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
             }
           }
@@ -3058,10 +3086,10 @@ async function enviar(){
           // conociera podia marcar leads ajenos como vendidos.
           if (!esAdmin) {
             const vendMLV = await sb.get("vendedores", d.vendedor);
-            if (!vendMLV || !vendMLV.tokenPedidos || String(vendMLV.tokenPedidos) !== String(d.token)) {
+            if (!vendMLV || !vendMLV.tokenPedidos || !safeEq(vendMLV.tokenPedidos, d.token)) {
               result = { ok: false, error: "Link inválido" }; break;
             }
-            if (vendMLV.pin && String(vendMLV.pin) !== String(d.pin || "")) {
+            if (await pinIncorrecto(sb, vendMLV, d.pin, d.vendedor)) {
               result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
             }
           }
@@ -3377,13 +3405,13 @@ async function enviar(){
           if (!vend) { result = { ok: false, razon: "no_encontrado" }; break; }
           // Sin token guardado (nunca tuvo link, o se cerró) nadie entra: antes,
           // String(undefined) === "undefined" dejaba pasar a quien mandara ese texto.
-          if (!vend.tokenInventario || String(vend.tokenInventario) !== String(d.token)) {
+          if (!vend.tokenInventario || !safeEq(vend.tokenInventario, d.token)) {
             result = { ok: false, razon: "token_invalido" }; break;
           }
           // Segunda capa: si el vendedor tiene PIN configurado, también se
           // exige — así, aunque el link (con token) se comparta por error,
           // no basta para entrar a ver ventas ni tocar el inventario.
-          if (vend.pin && String(vend.pin) !== String(d.pin || "")) {
+          if (await pinIncorrecto(sb, vend, d.pin, d.vendedor)) {
             result = { ok: false, razon: "pin_requerido", tienePin: true }; break;
           }
           // Validar 30 días desde último corte
@@ -4601,24 +4629,60 @@ async function hashStr(str) {
 // Verifica la contraseña: primero contra SECRET_PASS (env var),
 // si no coincide intenta con el hash guardado en Supabase
 // (permite cambiar contraseña sin editar el env var de Cloudflare).
-async function verificarPassword(pass, env, sb) {
+//
+// Protegida contra fuerza bruta: se comprueba el bloqueo ANTES de comparar
+// (si no, el intento correcto tras el bloqueo seguiría entrando) y cada fallo
+// se cuenta por IP. scope "login" (endpoints de acceso, 5 fallos) o "api"
+// (acciones con _pass, 15 fallos: tolera pestañas viejas con clave antigua).
+async function verificarPassword(pass, env, sb, ip, scope) {
   if (!pass) return false;
+  const key = (scope === "login" ? "login:" : "api:") + (ip || "unknown");
+  if (await rlBlocked(sb, key)) return false;
+  const ok = await compararPassword(pass, env, sb);
+  if (ok) await rlReset(sb, key);
+  else await rlFail(sb, key, scope === "login" ? RL_LOGIN : RL_API);
+  return ok;
+}
+
+async function compararPassword(pass, env, sb) {
+  const secret = env.SECRET_PASS || "";
   // Aceptar texto plano (SECRET_PASS del env) o su hash SHA-256
-  if (pass === env.SECRET_PASS) return true;
-  const hashDeSecret = await hashStr(env.SECRET_PASS || "");
-  if (pass === hashDeSecret) return true;
+  let ok = secret ? safeEq(pass, secret) : false;
+  if (secret && safeEq(pass, await hashStr(secret))) ok = true;
+  if (ok) return true;
   // También verificar contra passHash guardado en Supabase
   try {
     const cfg = await sb.get("config", "settings");
     if (cfg && cfg.passHash) {
       // Aceptar el hash directamente (frontend ya lo hasheó)
-      if (pass === cfg.passHash) return true;
+      let okDb = safeEq(pass, cfg.passHash);
       // O hashear lo que llegó (compatibilidad con texto plano)
-      const hash = await hashStr(pass);
-      if (hash === cfg.passHash) return true;
+      if (safeEq(await hashStr(pass), cfg.passHash)) okDb = true;
+      if (okDb) return true;
     }
   } catch(_) {}
   return false;
+}
+
+// Clave legacy de vendedores (d.key): mismo trato — comparación segura y límite de intentos.
+async function claveLegacyValida(key, env, sb, ip) {
+  if (!key || !env.SECRET_KEY) return false;
+  const rk = "api:" + (ip || "unknown");
+  if (await rlBlocked(sb, rk)) return false;
+  if (safeEq(key, env.SECRET_KEY)) return true;
+  await rlFail(sb, rk, RL_API);
+  return false;
+}
+
+// PIN de vendedor: true si es incorrecto O si está bloqueado por demasiados fallos.
+// El token ya se validó antes, así que el contador es por vendedor (no por IP).
+async function pinIncorrecto(sb, vend, pin, vendedorId) {
+  if (!vend || !vend.pin) return false;
+  const key = "pin:" + String(vendedorId || vend.id || "?");
+  if (await rlBlocked(sb, key)) return true;
+  if (safeEq(vend.pin, pin || "")) { await rlReset(sb, key); return false; }
+  await rlFail(sb, key, RL_PIN);
+  return true;
 }
 
 // ── TOTP (RFC 6238) — 2FA del Admin sin depender de ningún token de
@@ -4669,6 +4733,89 @@ async function totpVerificar(secretBase32, codigo) {
     if (await totpGenerar(secretBase32, offset) === codigoNorm) return true;
   }
   return false;
+}
+
+// ── SEGURIDAD: comparación segura, límite de intentos, CORS ───────
+// Comparación en tiempo constante (no revela cuántos caracteres coinciden).
+function safeEq(a, b) {
+  const x = new TextEncoder().encode(String(a ?? "")), y = new TextEncoder().encode(String(b ?? ""));
+  let r = x.length ^ y.length;
+  const n = Math.max(x.length, y.length);
+  for (let i = 0; i < n; i++) r |= (x[i] || 0) ^ (y[i] || 0);
+  return r === 0;
+}
+
+// Límite de intentos. Estado en Supabase config/rl_<clave> ({n, start, until, strikes}).
+// Cada bloqueo dura el doble que el anterior (hasta 24 h). Si Supabase falla, NO se bloquea
+// (mejor abierto que dejar al admin fuera por una caída). Caché local 20 s para no leer
+// la base en cada petición.
+const MIN = 60 * 1000;
+const RL_LOGIN     = { max: 5,  windowMs: 15 * MIN, baseLockMs: 15 * MIN };
+const RL_API       = { max: 15, windowMs: 15 * MIN, baseLockMs: 15 * MIN };
+const RL_TOTP_ALL  = { max: 10, windowMs: 15 * MIN, baseLockMs: 15 * MIN };
+const RL_PIN       = { max: 8,  windowMs: 15 * MIN, baseLockMs: 15 * MIN };
+const RL_CACHE = new Map();
+const RL_TTL = 20 * 1000;
+
+/** Devuelve el instante (ms) hasta el que está bloqueada la clave, o 0 si no lo está. */
+async function rlBlocked(sb, key) {
+  const now = Date.now(), c = RL_CACHE.get(key);
+  if (c && c.exp > now) return c.until > now ? c.until : 0;
+  let rec = null;
+  try { rec = await sb.get("config", "rl_" + key); } catch (_) { /* fail-open */ }
+  const until = rec && rec.until > now ? rec.until : 0;
+  RL_CACHE.set(key, { until, n: rec ? rec.n || 0 : 0, exp: now + RL_TTL });
+  return until;
+}
+
+async function rlFail(sb, key, cfg) {
+  const now = Date.now();
+  let rec = null;
+  try { rec = await sb.get("config", "rl_" + key); } catch (_) { /* fail-open */ }
+  rec = rec ? { n: rec.n || 0, start: rec.start || now, until: rec.until || 0, strikes: rec.strikes || 0 } : { n: 0, start: now, until: 0, strikes: 0 };
+  if (rec.until && now - rec.until > 24 * 60 * MIN) rec.strikes = 0;      // el historial se olvida tras 24 h limpio
+  if (now - rec.start > cfg.windowMs) { rec.n = 0; rec.start = now; }
+  rec.n++;
+  if (rec.n >= cfg.max) {
+    rec.strikes++;
+    rec.until = now + Math.min(cfg.baseLockMs * Math.pow(2, rec.strikes - 1), 24 * 60 * MIN);
+    rec.n = 0; rec.start = now;
+  }
+  try { await sb.set("config", "rl_" + key, rec); } catch (_) { /* fail-open */ }
+  RL_CACHE.set(key, { until: rec.until > now ? rec.until : 0, n: rec.n, exp: now + RL_TTL });
+}
+
+/** Tras un acceso correcto: borra los fallos pendientes (solo escribe si había alguno). */
+async function rlReset(sb, key) {
+  const c = RL_CACHE.get(key), now = Date.now();
+  if (c && c.exp > now && !c.n && !c.until) return;
+  let rec = null;
+  try { rec = await sb.get("config", "rl_" + key); } catch (_) { return; }
+  if (rec && (rec.n || 0) > 0 && !(rec.until > now)) {
+    try { await sb.set("config", "rl_" + key, { n: 0, start: now, until: rec.until || 0, strikes: rec.strikes || 0 }); } catch (_) {}
+  }
+  RL_CACHE.set(key, { until: rec && rec.until > now ? rec.until : 0, n: 0, exp: now + RL_TTL });
+}
+
+function tooMany(until) {
+  const sec = Math.max(1, Math.ceil((until - Date.now()) / 1000));
+  return new Response(JSON.stringify({
+    ok: false, bloqueado: true, retryAfter: sec,
+    error: "Demasiados intentos. Intenta de nuevo en " + Math.ceil(sec / 60) + " min."
+  }), { status: 429, headers: { ...CORS, "Retry-After": String(sec) } });
+}
+
+// CORS con lista blanca (env.ALLOWED_ORIGINS, separada por comas). Sin la variable: comportamiento
+// anterior (*). OJO: CORS solo protege a navegadores; no sustituye la autenticación.
+function aplicarCors(request, env, res) {
+  const lista = String(env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim()).filter(Boolean);
+  if (!lista.length) return res;
+  const origin = request.headers.get("Origin");
+  const h = new Headers(res.headers);
+  h.append("Vary", "Origin");
+  if (origin && lista.includes(origin)) h.set("Access-Control-Allow-Origin", origin);
+  else h.delete("Access-Control-Allow-Origin");
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
 }
 
 // ── HELPERS HTTP ──────────────────────────────────────────────────
@@ -5071,10 +5218,10 @@ function sanearConfigPublico(cfg) {
 async function validarVendedorToken(sb, vendedor, token, pin) {
   if (!vendedor || !token) return { ok: false, error: "vendedor y token requeridos" };
   const vend = await sb.get("vendedores", vendedor);
-  if (!vend || !vend.tokenInventario || String(vend.tokenInventario) !== String(token)) {
+  if (!vend || !vend.tokenInventario || !safeEq(vend.tokenInventario, token)) {
     return { ok: false, error: "Token inválido" };
   }
-  if (vend.pin && String(vend.pin) !== String(pin || "")) {
+  if (await pinIncorrecto(sb, vend, pin, vendedor)) {
     return { ok: false, error: "PIN incorrecto" };
   }
   return { ok: true, vend };

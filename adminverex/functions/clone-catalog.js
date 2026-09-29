@@ -17,7 +17,7 @@ export async function onRequest(context) {
 
     try {
         const { id, dias: diasRaw, expiresAt: expiresAtRaw, stripDescuento, stripPromos, _pass } = await context.request.json();
-        if (!(await esAdminValido(_pass))) return noAutorizado(cors);
+        if (!(await esAdminValido(_pass, context))) return noAutorizado(cors);
         if (!id) return new Response(JSON.stringify({ error: "id requerido" }), { status: 400, headers });
 
         const rawHist = await context.env.CATALOGS.get("__hist__" + id);

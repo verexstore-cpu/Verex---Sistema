@@ -14,7 +14,7 @@ export async function onRequest(context) {
 
     try {
         const { ids, _pass } = await context.request.json();
-        if (!(await esAdminValido(_pass))) return noAutorizado(cors);
+        if (!(await esAdminValido(_pass, context))) return noAutorizado(cors);
         if (!Array.isArray(ids) || !ids.length) {
             return new Response(JSON.stringify({ views: {} }), { headers });
         }

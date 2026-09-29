@@ -26,7 +26,7 @@ export async function onRequest(context) {
     if (context.request.method === "POST") {
         try {
             const body = await context.request.json();
-            if (!(await esAdminValido(body?._pass))) return noAutorizado(cors);
+            if (!(await esAdminValido(body?._pass, context))) return noAutorizado(cors);
 
             if (body?._leer) {
                 const raw = await context.env.CATALOGS.get(KEY);
