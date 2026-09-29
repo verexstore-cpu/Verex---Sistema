@@ -71,6 +71,22 @@ const ok = (c, m) => { console.log(c ? '  ✓' : '  ✗', m); c ? pass++ : fail+
   await page.screenshot({ path: SHOTS + '/5-zoom200.png' });
   await page.click('#seg-zoom [data-zoom="fit"]');
 
+  // Corrección automática del tinte
+  await page.evaluate(() => __vx.addPaths(['anillo-tinte.png']));
+  await page.waitForFunction(() => __vx.S.items.length === 4); await page.evaluate(() => document.querySelectorAll('.file')[3].click());
+  await page.waitForFunction(() => document.querySelector('#st-name').textContent === 'anillo-tinte.png'); await waitIdle();
+  await page.click('.preset[data-name="VEREX PROFESSIONAL"]'); await waitIdle();
+  ok(await page.locator('#st-ms').innerText().then((t) => /tinte corregido/.test(t)), 'barra de estado: «tinte corregido» con foto de tinte amarillo-verdoso (' + (await page.locator('#st-ms').innerText()) + ')');
+  const spreadOf = (sel) => page.locator(sel).evaluate((c) => { const d = c.getContext('2d').getImageData(20, 20, 60, 60).data; let r = 0, g = 0, b = 0, n = 0; for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; } const m = [r / n, g / n, b / n]; return (Math.max(...m) - Math.min(...m)) / Math.max(...m); });
+  const sb = await spreadOf('#cv-before'), sa = await spreadOf('#cv-after');
+  ok(sb > 0.12 && sa < sb / 3, 'fondo (corrección al 80 %): dispersión de color ' + (sb * 100).toFixed(1) + ' % antes → ' + (sa * 100).toFixed(1) + ' % después');
+  await page.locator('#seg-view [data-mode="split-h"]').click(); await page.screenshot({ path: SHOTS + '/8-tinte.png' });
+  await page.evaluate(() => { const c = [...document.querySelectorAll('details')].find((d) => d.querySelector('summary').textContent === 'COLOR'); c.open = true; });
+  const chk = page.locator('label.chk', { hasText: 'CORREGIR TINTE' }).locator('input'); ok(await chk.isChecked(), 'casilla «Corregir tinte» activa en el preset PROFESSIONAL');
+  await chk.uncheck(); const quitada = await page.waitForFunction(() => !/tinte corregido/.test(document.querySelector('#st-ms').textContent), null, { timeout: 60000 }).then(() => true).catch(() => false); ok(quitada, 'al desmarcar la casilla se quita la corrección');
+  await chk.check(); await page.waitForFunction(() => /tinte corregido/.test(document.querySelector('#st-ms').textContent), null, { timeout: 60000 }); await waitIdle();
+  await page.evaluate(() => document.querySelectorAll('.file')[0].click()); await page.waitForFunction(() => document.querySelector('#st-name').textContent === 'anillo-plata.png'); await waitIdle();
+
   // Sliders + advertencia + historial
   await page.evaluate(() => { const s = document.querySelector('.sl input[type=range]'); s.value = 92; s.dispatchEvent(new Event('input', { bubbles: true })); s.dispatchEvent(new Event('change', { bubbles: true })); });
   await waitIdle();
@@ -79,7 +95,8 @@ const ok = (c, m) => { console.log(c ? '  ✓' : '  ✗', m); c ? pass++ : fail+
   ok(!(await page.locator('#btn-undo').isDisabled()), 'deshacer disponible'); await page.click('#btn-undo'); await waitIdle();
   ok(!(await page.locator('.warn-box').isVisible()), 'deshacer revierte la intensidad');
   await page.click('#btn-redo'); await page.click('#btn-undo');
-  await page.click('#btn-restore'); await waitIdle();
+  await page.evaluate(() => { window.__prev = __vx.S.result; });
+  await page.click('#btn-restore'); await page.waitForFunction(() => __vx.S.result !== window.__prev, null, { timeout: 60000 }); await waitIdle();
   const neutral = await page.evaluate(() => __vx.S.params.sharpness === 0 && !__vx.S.params.bg.optimize);
   ok(neutral, 'Restaurar original quita todos los ajustes');
   const identical = await page.evaluate(() => { const a = document.querySelector('#cv-after').getContext('2d'), b = document.querySelector('#cv-before').getContext('2d'); const W = 400, H = 300; const x = a.getImageData(0, 0, W, H).data, y = b.getImageData(0, 0, W, H).data; for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return false; return true; });
@@ -90,12 +107,12 @@ const ok = (c, m) => { console.log(c ? '  ✓' : '  ✗', m); c ? pass++ : fail+
   await page.click('.preset[data-name="VEREX ECOMMERCE"]'); await waitIdle();
   await page.click('#btn-export'); await page.check('input[name=scope][value=all]'); await page.check('#ex-jpg'); await page.check('#ex-webp');
   await page.check('input[name=dest][value=folder]'); await page.click('#ex-choose');
-  const summary = await page.locator('#ex-summary').innerText(); ok(/3 fotos × 2 formatos = 6 archivos/.test(summary), 'resumen de lote: ' + summary.split('\n')[0]);
+  const summary = await page.locator('#ex-summary').innerText(); ok(/4 fotos × 2 formatos = 8 archivos/.test(summary), 'resumen de lote: ' + summary.split('\n')[0]);
   await page.screenshot({ path: SHOTS + '/6-exportar.png' });
   await page.click('#ex-go');
   await page.waitForFunction(() => /Terminado/.test(document.querySelector('#pg-cur').textContent), null, { timeout: 120000 });
   const w = await page.evaluate(() => window.__written); const prog = await page.locator('.pg-grid').innerText();
-  ok(w.length === 6, 'lote escribió 6 archivos (' + w.map((x) => x.src.replace('.png', '') + x.ext).join(', ') + ')');
+  ok(w.length === 8, 'lote escribió 8 archivos (' + w.map((x) => x.src.replace('.png', '') + x.ext).join(', ') + ')');
   const jpg = w.find((x) => x.ext === '.jpg'), webp = w.find((x) => x.ext === '.webp');
   ok(jpg.head[0] === 0xff && jpg.head[1] === 0xd8, 'JPG válido (cabecera FFD8)'); ok(String.fromCharCode(...webp.head.slice(0, 4)) === 'RIFF' && String.fromCharCode(...webp.head.slice(8, 12)) === 'WEBP', 'WEBP válido (RIFF/WEBP)');
   ok(w.every((x) => x.mode === 'folder'), 'modo carpeta enviado al proceso principal');

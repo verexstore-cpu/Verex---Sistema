@@ -15,6 +15,7 @@
     contrast: 0,       // CONTRASTE
     exposure: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0,
     temperature: 0, tint: 0, saturation: 0, vibrance: 0,
+    whiteBalance: { auto: false, strength: 80 },         // CORRECCIÓN AUTOMÁTICA DEL TINTE (usa el fondo como blanco)
     jewelry: { on: false, metal: 'auto', protect: 75 }, // JOYERÍA VEREX
     bg: { optimize: false, pureWhite: false, clean: 60, uniform: 60, whiten: 50 },
     output: { mode: 'original', size: 1600, noUpscale: true, format: 'jpg', quality: 92 },
@@ -41,11 +42,13 @@
     'VEREX PROFESSIONAL': {
       desc: 'Mayor nitidez y limpieza, con tono y contraste de estudio.',
       p: { intensity: 75, sharpness: 72, denoise: 35, contrast: 40, shadows: 15, highlights: -15, whites: 6, blacks: -4, vibrance: 8,
+           whiteBalance: { auto: true, strength: 80 },
            jewelry: { on: true, metal: 'auto', protect: 75 } },
     },
     'VEREX ECOMMERCE': {
       desc: '1600×1600 px · WEBP 88 · sRGB · fondo #FFFFFF · nitidez para pantalla.',
       p: { intensity: 70, sharpness: 68, denoise: 30, contrast: 32, shadows: 10, highlights: -10, whites: 5,
+           whiteBalance: { auto: true, strength: 80 },
            jewelry: { on: true, metal: 'auto', protect: 75 },
            bg: { optimize: true, pureWhite: true, clean: 80, uniform: 100, whiten: 100 },
            output: { mode: 'fit', size: 1600, noUpscale: true, format: 'webp', quality: 88 } },
@@ -53,6 +56,7 @@
     'VEREX PRODUCT CARD': {
       desc: 'Tarjeta de producto: 800×800 px · WEBP 82 · fondo #FFFFFF · nitidez algo mayor por la reducción.',
       p: { intensity: 70, sharpness: 74, denoise: 30, contrast: 32, shadows: 10, highlights: -10, whites: 5,
+           whiteBalance: { auto: true, strength: 80 },
            jewelry: { on: true, metal: 'auto', protect: 75 },
            bg: { optimize: true, pureWhite: true, clean: 80, uniform: 100, whiten: 100 },
            output: { mode: 'fit', size: 800, noUpscale: true, format: 'webp', quality: 82 } },
@@ -60,16 +64,19 @@
     'VEREX SILVER': {
       desc: 'Plata 925: plateado natural, sin blanquear ni verse plástico.',
       p: { intensity: 70, sharpness: 66, denoise: 30, contrast: 30, shadows: 12, highlights: -14, whites: 3,
+           whiteBalance: { auto: true, strength: 80 },
            jewelry: { on: true, metal: 'silver', protect: 85 } },
     },
     'VEREX GOLD': {
       desc: 'Oro laminado: dorado elegante y realista, sin exceso de amarillo/naranja.',
       p: { intensity: 70, sharpness: 62, denoise: 30, contrast: 28, shadows: 10, highlights: -12, saturation: -2,
+           whiteBalance: { auto: true, strength: 80 },
            jewelry: { on: true, metal: 'gold', protect: 85 } },
     },
     'VEREX STEEL': {
       desc: 'Acero 316L: aspecto metálico natural, neutro y limpio.',
       p: { intensity: 70, sharpness: 70, denoise: 30, contrast: 34, shadows: 10, highlights: -14, whites: 3,
+           whiteBalance: { auto: true, strength: 80 },
            jewelry: { on: true, metal: 'steel', protect: 85 } },
     },
   };

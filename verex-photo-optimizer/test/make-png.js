@@ -17,5 +17,8 @@ if (require.main === module) {
   fs.writeFileSync(path.join(dir, 'anillo-plata.png'), png(make(1800, 1500, { seed: 11 })));
   fs.writeFileSync(path.join(dir, 'anillo-oro.png'), png(make(1200, 1200, { gold: true, seed: 5, noise: 12 })));
   fs.writeFileSync(path.join(dir, 'producto03.png'), png(make(900, 700, { seed: 21 })));
+  const tinte = make(1400, 1400, { seed: 33 });
+  for (let i = 0; i < tinte.data.length; i += 4) { tinte.data[i] = Math.min(255, tinte.data[i] * 1.04); tinte.data[i + 1] = Math.min(255, tinte.data[i + 1] * 1.06); tinte.data[i + 2] = Math.min(255, tinte.data[i + 2] * 0.84); }
+  fs.writeFileSync(path.join(dir, 'anillo-tinte.png'), png(tinte));
   console.log('fixtures listos en', dir);
 }

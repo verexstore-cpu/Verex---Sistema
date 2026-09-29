@@ -93,7 +93,7 @@
       if (sec.id === 'opt') {
         warnBox = el('div', 'warn-box', 'Valores elevados pueden producir una apariencia poco natural.'); warnBox.hidden = true; body.append(warnBox);
       }
-      if (sec.custom === 'jewelry') buildJewelry(body);
+      if (sec.custom === 'jewelry') { buildWB(body); buildJewelry(body); }
       if (sec.custom === 'bg') buildBg(body);
       if (sec.custom === 'out') buildOut(body);
       root.append(d);
@@ -136,6 +136,22 @@
   function applyPreset(name) {
     S.params = PR.presetParams(name, S.settings.userPresets); S.presetName = name;
     commit('Preset ' + name); refreshAll(); afterParamsChanged();
+  }
+
+  // Corrección automática del tinte
+  let wbChk, wbSl;
+  function buildWB(host) {
+    const lab = el('label', 'chk'); wbChk = el('input'); wbChk.type = 'checkbox';
+    lab.append(wbChk, el('span', '', '<b style="letter-spacing:.06em">CORREGIR TINTE</b> — automático'));
+    lab.title = 'Usa el fondo de la foto como referencia de blanco y neutraliza el tinte (luz amarillenta, verdosa…) en toda la imagen.';
+    wbChk.addEventListener('change', () => { S.params.whiteBalance.auto = wbChk.checked; commit('Corregir tinte'); refreshWB(); afterParamsChanged(); });
+    host.append(lab);
+    wbSl = makeSlider({ k: 'whiteBalance.strength', label: 'Intensidad de la corrección' }, host);
+    host.append(el('p', 'fine', 'Solo actúa con fondo claro y tinte moderado; con fondo oscuro o de color no toca nada.'));
+  }
+  function refreshWB() {
+    wbChk.checked = !!S.params.whiteBalance.auto;
+    wbSl.rng.disabled = !S.params.whiteBalance.auto; wbSl.num.disabled = !S.params.whiteBalance.auto; wbSl.wrap.style.opacity = S.params.whiteBalance.auto ? 1 : .4;
   }
 
   // Joyería
@@ -206,7 +222,7 @@
   }
 
   function refreshAll() {
-    sliders.forEach((s) => s.sync()); refreshPresetUI(); refreshJewelry(); refreshBg(); refreshOut(); updateWarnBox(); updateHistButtons();
+    sliders.forEach((s) => s.sync()); refreshPresetUI(); refreshWB(); refreshJewelry(); refreshBg(); refreshOut(); updateWarnBox(); updateHistButtons();
   }
 
   function liveChanged(spec) {
@@ -410,7 +426,8 @@
     S.result = { w: W, h: H, qc: m.qc, info: m.info, ms: m.ms };
     const first = dims.w !== W || dims.h !== H; dims = { w: W, h: H };
     applyZoom(first); updateCompare();
-    $('#st-ms').textContent = (m.info.ms.total / 1000).toFixed(2) + ' s' + (m.info.metal ? ' · metal: ' + ({ gold: 'oro', silver: 'plata', steel: 'acero' }[m.info.metal] || m.info.metal) : '');
+    $('#st-ms').textContent = (m.info.ms.total / 1000).toFixed(2) + ' s' + (m.info.metal ? ' · metal: ' + ({ gold: 'oro', silver: 'plata', steel: 'acero' }[m.info.metal] || m.info.metal) : '') +
+      (m.info.wb ? (m.info.wb.applied ? ' · tinte corregido' : ' · tinte: sin corregir (' + (m.info.wb.reason || 'ya neutro') + ')') : '');
     const badge = $('#badge');
     if (S.src && S.src.scale < 0.999) { badge.hidden = false; badge.textContent = 'Vista previa al ' + Math.round(S.src.scale * 100) + ' % de la resolución final (ver Configuración)'; } else badge.hidden = true;
     renderQC(m.qc); scheduleSizeEstimate();

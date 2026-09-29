@@ -39,6 +39,7 @@ Aplicación de escritorio (Windows) para optimizar fotografías de joyería para
 - Arrastrar y soltar JPG/JPEG/PNG/WEBP, una foto o carpetas enteras; vista previa inmediata.
 - **Nitidez**, **Reducción de ruido**, **Contraste** (0–100); **Exposición, Altas luces, Sombras, Blancos, Negros**; **Temperatura, Tinte, Saturación, Vibrancia**.
 - **Fidelidad del producto** (95) e **Intensidad de optimización** (70), con la advertencia «Valores elevados pueden producir una apariencia poco natural.» (intensidad o nitidez > 85).
+- **Corregir tinte (automático):** usa el fondo como referencia de blanco y neutraliza el tinte de la foto (luz amarillenta o verdosa). Solo actúa con fondo claro y tinte moderado; con fondo oscuro o de color deliberado no toca nada, y la barra de estado lo indica. Ganancia máxima ±25–30 %; intensidad ajustable (80 % por defecto). Activo en todos los presets salvo NATURAL.
 - **Comparación ANTES | DESPUÉS** con divisor vertical u horizontal, botón **ANTES / DESPUÉS** (alterna) y tecla `\` (mantener para ver el original).
 - **Zoom** 25 / 50 / 100 / 200 % y Ajustar; `Ctrl + rueda` para zoom libre; arrastrar para desplazarse. A ≥ 150 % se ven los píxeles reales.
 - **Presets:** NATURAL, PROFESSIONAL, ECOMMERCE (1600×1600 · WEBP 88 · sRGB · #FFFFFF), PRODUCT CARD (800×800 · WEBP 82), SILVER, GOLD, STEEL. Editables: *Guardar cambios en el preset* / *Restablecer preset*.
@@ -117,8 +118,8 @@ npm test                 # pruebas del motor (rápidas, sin dependencias)
 
 | Qué | Resultado |
 |---|---|
-| `test/pipeline.test.js` — motor sobre joyas sintéticas (plata y oro, ruido, motas, gradiente) | **21/21**: neutral = idéntico byte a byte; determinista; no muta la entrada; detección del producto; con «solo fondo» ≥ 99,4 % de los píxeles del producto idénticos; fondo `#FFFFFF`; los 7 presets con integridad estructural > 97 %, 0 halos, 0 clipping, ΔC < 1; oro/plata bajo ajustes extremos; advertencias con valores extremos; rendimiento |
-| `test/ui.test.js` — interfaz en Chromium | **28/28**: presets, comparación (arrastre, vertical/horizontal), zoom, historial, restaurar original (DESPUÉS = ANTES píxel a píxel), advertencia de intensidad, lote de 3 fotos × 2 formatos con JPG/WEBP válidos |
+| `test/pipeline.test.js` — motor sobre joyas sintéticas (plata y oro, ruido, motas, gradiente, tinte de color) | **28/28**: neutral = idéntico byte a byte; determinista; no muta la entrada; detección del producto; con «solo fondo» ≥ 99,4 % de los píxeles del producto idénticos; fondo `#FFFFFF`; los 7 presets con integridad estructural > 97 %, 0 halos, 0 clipping, ΔC < 1; oro/plata bajo ajustes extremos; advertencias con valores extremos; rendimiento |
+| `test/ui.test.js` — interfaz en Chromium | **32/32**: presets, comparación (arrastre, vertical/horizontal), zoom, historial, restaurar original (DESPUÉS = ANTES píxel a píxel), advertencia de intensidad, lote de 3 fotos × 2 formatos con JPG/WEBP válidos |
 | `test/electron.test.js` — Electron real bajo Xvfb | **16/16**: aislamiento de contexto, worker bajo `file://`, expansión de carpetas, exportar a carpeta / copia numerada / sobrescribir con respaldo idéntico, originales intactos por hash |
 | Empaquetado `electron-builder` (Linux) | Genera `win-unpacked`; el NSIS `.exe` requiere Windows o Wine → se construye con el `.bat` o la GitHub Action |
 

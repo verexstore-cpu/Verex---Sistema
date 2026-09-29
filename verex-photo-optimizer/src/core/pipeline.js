@@ -389,7 +389,8 @@
 
   function isNeutral(p) {
     return !p.sharpness && !p.denoise && !p.contrast && !p.exposure && !p.highlights && !p.shadows &&
-      !p.whites && !p.blacks && !p.temperature && !p.tint && !p.saturation && !p.vibrance && !p.bg.optimize;
+      !p.whites && !p.blacks && !p.temperature && !p.tint && !p.saturation && !p.vibrance && !p.bg.optimize &&
+      !(p.whiteBalance && p.whiteBalance.auto);
   }
 
   /**
@@ -412,10 +413,13 @@
     const d = src.data;
     for (let i = 0, j = 0; i < n; i++, j += 4) { R[i] = d[j]; G[i] = d[j + 1]; B[i] = d[j + 2]; }
     const baseR = Float32Array.from(R), baseG = Float32Array.from(G), baseB = Float32Array.from(B);
+    // Referencia del original para la guarda de color y el control de calidad. Si se corrige el tinte,
+    // pasa a ser el original YA corregido (así esas etapas no pelean contra la corrección).
+    let refR = baseR, refG = baseG, refB = baseB;
 
     const neutral = isNeutral(P) && !P.jewelry.on;
     let det = null, metal = null;
-    const needDet = !neutral && (P.sharpness || P.contrast || P.bg.optimize || P.jewelry.on) || opts.analyze;
+    const needDet = !neutral && (P.sharpness || P.contrast || P.bg.optimize || P.jewelry.on || (P.whiteBalance && P.whiteBalance.auto)) || opts.analyze;
     if (needDet) det = detectProduct(R, G, B, w, h);
     const M = det ? det.mask : null;
 
@@ -451,6 +455,32 @@
         denoisedY = luma(R, G, B, n);
       }
       tick('denoise', t);
+
+      // 1b ── BALANCE DE BLANCOS AUTOMÁTICO: el fondo de estudio debe ser blanco/gris neutro; si tiene tinte
+      //       (luz amarillenta, verdosa…) esa desviación afecta a toda la foto. Se calcula la ganancia por canal
+      //       que neutraliza el fondo y se aplica global (como el balance de blancos de la cámara).
+      //       Solo con fondo claro y tinte moderado: un fondo oscuro o de color deliberado no se toca.
+      if (P.whiteBalance && P.whiteBalance.auto && det) {
+        const bc = det.bgColor, yb = 0.299 * bc[0] + 0.587 * bc[1] + 0.114 * bc[2];
+        const mxc = Math.max(bc[0], bc[1], bc[2]), mnc = Math.max(1, Math.min(bc[0], bc[1], bc[2]));
+        if (yb < 110) info.wb = { applied: false, reason: 'fondo oscuro' };
+        else if (mxc / mnc > 1.35) info.wb = { applied: false, reason: 'fondo con color' };
+        else {
+          const st = clamp(P.whiteBalance.strength == null ? 80 : P.whiteBalance.strength, 0, 100) / 100;
+          const g = bc.map((c) => clamp(1 + (yb / Math.max(c, 1) - 1) * st, 0.75, 1.3));
+          const dev = Math.max(Math.abs(g[0] - 1), Math.abs(g[1] - 1), Math.abs(g[2] - 1));
+          info.wb = { applied: dev > 0.005, gains: g.map((v) => +v.toFixed(3)), bgBefore: bc.map((v) => Math.round(v)) };
+          if (dev > 0.005) {
+            refR = new Float32Array(n); refG = new Float32Array(n); refB = new Float32Array(n);
+            for (let i = 0; i < n; i++) {
+              R[i] = Math.min(255, R[i] * g[0]); G[i] = Math.min(255, G[i] * g[1]); B[i] = Math.min(255, B[i] * g[2]);
+              refR[i] = Math.min(255, baseR[i] * g[0]); refG[i] = Math.min(255, baseG[i] * g[1]); refB[i] = Math.min(255, baseB[i] * g[2]);
+              det.bgR[i] *= g[0]; det.bgG[i] *= g[1]; det.bgB[i] *= g[2];   // el modelo de fondo sigue a la foto
+            }
+            det.bgColor = [bc[0] * g[0], bc[1] * g[1], bc[2] * g[2]];
+          }
+        }
+      }
 
       // 2 ── ILUMINACIÓN: exposición, altas luces, sombras, blancos, negros (sobre luma, matiz intacto).
       t = Date.now();
@@ -556,8 +586,8 @@
         if (metal === 'auto') {
           let s = 0, c = 0;
           for (let i = 0; i < n; i += 3) if (M[i] > 0.99) {
-            const y = 0.299 * baseR[i] + 0.587 * baseG[i] + 0.114 * baseB[i];
-            if (y > 25) { s += (baseR[i] - baseB[i]) / y; c++; }
+            const y = 0.299 * refR[i] + 0.587 * refG[i] + 0.114 * refB[i];
+            if (y > 25) { s += (refR[i] - refB[i]) / y; c++; }
           }
           // El oro es cálido RESPECTO A LA ESCENA: una foto con tinte amarillento/verdoso (luz mal balanceada)
           // calienta también el fondo y la plata, y eso no la convierte en oro.
@@ -575,10 +605,10 @@
         const maxR = metal === 'gold' ? 1 + 0.35 * loosen + 0.04 : 1 + 0.6 * loosen + 0.06;
         for (let i = 0; i < n; i++) {
           const m = M[i]; if (m < 0.01) continue;
-          const yo = 0.299 * baseR[i] + 0.587 * baseG[i] + 0.114 * baseB[i];
+          const yo = 0.299 * refR[i] + 0.587 * refG[i] + 0.114 * refB[i];
           const yn = 0.299 * R[i] + 0.587 * G[i] + 0.114 * B[i];
           if (yo < 12 || yn < 12) continue;
-          const ob = ((baseB[i] - yo) * 0.564) / yo, or_ = ((baseR[i] - yo) * 0.713) / yo;
+          const ob = ((refB[i] - yo) * 0.564) / yo, or_ = ((refR[i] - yo) * 0.713) / yo;
           const nb = ((B[i] - yn) * 0.564) / yn, nr_ = ((R[i] - yn) * 0.713) / yn;
           const mo = Math.hypot(ob, or_), mn = Math.hypot(nb, nr_);
           if (mo < 0.012 && mn < 0.012) continue;
@@ -641,7 +671,7 @@
     let qc = null;
     if (opts.analyze && M) {
       const t = Date.now();
-      qc = analyze({ baseR, baseG, baseB, R, G, B, preSharpY, denoisedY, M, w, h, P });
+      qc = analyze({ baseR: refR, baseG: refG, baseB: refB, R, G, B, preSharpY, denoisedY, M, w, h, P });
       tick('qc', t);
     }
     info.ms.total = Date.now() - t0;

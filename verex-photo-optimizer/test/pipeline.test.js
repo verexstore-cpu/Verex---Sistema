@@ -116,6 +116,62 @@ t('metal automático: plata con tinte amarillento en toda la foto NO se detecta 
   assert.deepStrictEqual(r, ['silver', 'silver', 'gold', 'gold']);
 });
 
+// ── Corrección automática del tinte (fondo como referencia de blanco)
+const castImg = (im, r, g, b) => { const c = clone(im); for (let i = 0; i < c.data.length; i += 4) { c.data[i] = Math.min(255, c.data[i] * r); c.data[i + 1] = Math.min(255, c.data[i + 1] * g); c.data[i + 2] = Math.min(255, c.data[i + 2] * b); } return c; };
+const bgMean = (buf) => { let r = 0, g = 0, b = 0, n = 0; for (let y = 10; y < 90; y++) for (let x = 10; x < 90; x++) { const i = (y * W + x) * 4; r += buf[i]; g += buf[i + 1]; b += buf[i + 2]; n++; } return [r / n, g / n, b / n]; };
+const spread = (m) => (Math.max(...m) - Math.min(...m)) / Math.max(...m);
+const wbOn = (extra) => PR.merge(PR.NEUTRAL, Object.assign({ sharpness: 20, whiteBalance: { auto: true, strength: 100 } }, extra || {}));
+const wbOff = (extra) => PR.merge(PR.NEUTRAL, Object.assign({ sharpness: 20, whiteBalance: { auto: false, strength: 100 } }, extra || {}));
+
+t('tinte: un fondo amarillo-verdoso queda neutro y la corrección se aplica', () => {
+  const cast = castImg(img, 1.04, 1.06, 0.84);
+  const before = bgMean(cast.data), r = VXP.process(clone(cast), wbOn(), {}), after = bgMean(r.data);
+  console.log(`      dispersión de canales del fondo: ${(spread(before) * 100).toFixed(1)} % → ${(spread(after) * 100).toFixed(1)} % · ganancias ${r.info.wb.gains}`);
+  assert(r.info.wb.applied === true); assert(spread(before) > 0.12); assert(spread(after) < 0.025);
+});
+
+t('tinte: una foto ya neutra apenas cambia', () => {
+  const a = VXP.process(clone(img), wbOn(), {}), b = VXP.process(clone(img), wbOff(), {});
+  let s = 0, n = 0; for (let i = 0; i < a.data.length; i += 4) { s += Math.abs(a.data[i] - b.data[i]) + Math.abs(a.data[i + 2] - b.data[i + 2]); n += 2; }
+  console.log(`      cambio medio por canal: ${(s / n).toFixed(2)} niveles · ganancias ${a.info.wb.gains}`);
+  assert(s / n < 3);
+});
+
+t('tinte: fondo oscuro o de color deliberado NO se corrige (y la foto queda idéntica a sin corrección)', () => {
+  const dark = castImg(img, 0.18, 0.18, 0.18), pink = castImg(img, 1, 0.55, 0.85);
+  for (const [nombre, im, motivo] of [['oscuro', dark, 'fondo oscuro'], ['rosa', pink, 'fondo con color']]) {
+    const a = VXP.process(clone(im), wbOn(), {}), b = VXP.process(clone(im), wbOff(), {});
+    assert(a.info.wb.applied === false && a.info.wb.reason === motivo, nombre + ': ' + JSON.stringify(a.info.wb));
+    assert(Buffer.compare(Buffer.from(a.data), Buffer.from(b.data)) === 0, nombre + ': la salida cambió');
+  }
+});
+
+t('tinte: fuerza 0 no cambia nada', () => {
+  const cast = castImg(img, 1.04, 1.06, 0.84);
+  const a = VXP.process(clone(cast), wbOn({ whiteBalance: { auto: true, strength: 0 } }), {}), b = VXP.process(clone(cast), wbOff(), {});
+  assert(Buffer.compare(Buffer.from(a.data), Buffer.from(b.data)) === 0);
+});
+
+t('tinte: el oro sigue siendo oro tras corregir (color del producto coherente, sin aviso de color)', () => {
+  const gold = make(W, H, { gold: true }), castGold = castImg(gold, 1.04, 1.06, 0.84);
+  const p = PR.merge(PR.NEUTRAL, { sharpness: 20, whiteBalance: { auto: true, strength: 100 }, jewelry: { on: true, metal: 'auto', protect: 75 } });
+  const r = VXP.process(clone(castGold), p, { analyze: true });
+  const ratio = (buf) => { let rr = 0, gg = 0, n = 0; for (let i = 0; i < W * H; i++) if (gold.isProduct[i]) { rr += buf[i * 4]; gg += buf[i * 4 + 1]; n++; } return gg / rr; };
+  console.log(`      metal ${r.info.metal} · G/R oro original ${ratio(gold.data).toFixed(3)} · con tinte ${ratio(castGold.data).toFixed(3)} · corregido ${ratio(r.data).toFixed(3)}`);
+  assert(r.info.metal === 'gold');
+  assert(Math.abs(ratio(r.data) - ratio(gold.data)) < Math.abs(ratio(castGold.data) - ratio(gold.data)));
+  assert(!r.qc.warnings.some((w) => w.id === 'color'), 'aviso de color: ' + r.qc.warnings.map((w) => w.text));
+});
+
+t('tinte + fondo blanco: con tinte, el fondo llega igualmente a #FFFFFF y el producto se conserva', () => {
+  const cast = castImg(img, 1.04, 1.06, 0.84);
+  const r = VXP.process(clone(cast), PR.presetParams('VEREX ECOMMERCE'), { analyze: true });
+  let bad = 0, n = 0;
+  for (let i = 0; i < W * H; i++) { const x = i % W, y = (i / W) | 0; if (Math.hypot(x - W / 2, y - H / 2) > W * 0.42) { n++; if (r.data[i * 4] < 253 || r.data[i * 4 + 1] < 253 || r.data[i * 4 + 2] < 253) bad++; } }
+  console.log(`      fondo no blanco: ${bad}/${n} · estructura ${(r.qc.metrics.structure * 100).toFixed(1)} % · avisos: ${r.qc.warnings.map((w) => w.id).join(',') || 'ninguno'}`);
+  assert(bad / n < 0.003); assert(r.qc.metrics.structure > 0.97); assert(r.qc.warnings.length === 0);
+});
+
 t('plata: con guarda la plata no pasa a blanco puro/gris', () => {
   const p = PR.merge(PR.NEUTRAL, { saturation: -100, jewelry: { on: true, metal: 'silver', protect: 90 } });
   const r = VXP.process(clone(img), p, {});
