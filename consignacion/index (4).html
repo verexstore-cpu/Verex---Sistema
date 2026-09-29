@@ -15,6 +15,7 @@
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <script src="lib/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="tahomabd.js"></script>
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -628,6 +629,11 @@
                     <select id="fil-stock-categoria" onchange="filtrarStock()" style="flex:1;min-width:100px;">
                         <option value="">Todo tipo</option>
                     </select>
+                    <select id="fil-stock-orden" onchange="filtrarStock()" style="flex:1;min-width:140px;">
+                        <option value="">Orden normal</option>
+                        <option value="cantidad-desc">📈 Más cantidad primero</option>
+                        <option value="cantidad-asc">📉 Menos cantidad primero</option>
+                    </select>
                     <button class="btn btn-dorado" onclick="abrirStockNuevoProd()" style="padding:8px 14px;font-size:13px;">+ Agregar</button>
                     <button class="btn" style="background:#4a6fa5;color:#fff;padding:8px 14px;font-size:13px;" onclick="abrirStockNuevoLote()">📦 Lote</button>
                     <button class="btn" style="background:#27ae60;color:#fff;padding:8px 14px;font-size:13px;" onclick="abrirImportarExcel()">📥 Importar</button>
@@ -644,6 +650,7 @@
                     <button class="btn" style="background:#4a6fa5;color:#fff;padding:8px 14px;font-size:12px;" onclick="asignarAVendedor()">👤 Asignar a Vendedor</button>
                     <button class="btn btn-dorado" style="padding:8px 14px;font-size:12px;" onclick="asignarATienda()">🛍️ Enviar a Tienda</button>
                     <button class="btn btn-gris" style="padding:8px 14px;font-size:12px;" onclick="devolverABodega()">📦 Devolver a Bodega</button>
+                    <button class="btn" id="btn-descargar-fotos-stock" style="background:#5AC8FA;color:#111;padding:8px 14px;font-size:12px;" onclick="descargarFotosSeleccionadas()">📥 Descargar fotos (ZIP)</button>
                     <button class="btn" style="background:#c0392b;color:#fff;padding:8px 14px;font-size:12px;" onclick="limpiarSeleccion()">✕ Cancelar</button>
                 </div>
 
@@ -8773,6 +8780,11 @@ function filtrarStock() {
         }
         return coincideEstado && coincideMaterial && coincideCategoria && coincideBusq;
     });
+    const orden = document.getElementById("fil-stock-orden")?.value || "";
+    if (orden === "cantidad-desc" || orden === "cantidad-asc") {
+        const disp = i => Math.max(0, parseInt(i.cantidad||0) - parseInt(i.vendido||0));
+        filtrados.sort((a, b) => orden === "cantidad-desc" ? disp(b) - disp(a) : disp(a) - disp(b));
+    }
     renderStock(filtrados);
 }
 
@@ -8815,6 +8827,65 @@ function limpiarSeleccion() {
     stockSeleccionados = [];
     document.getElementById("stock-acciones").style.display = "none";
     renderStock(stockData);
+}
+
+// Descarga en un solo ZIP las fotos originales (sin transformar) de los
+// productos seleccionados en Stock — para procesarlas en una app externa
+// de nitidez/mejora y luego resubirlas por "Editar producto".
+async function descargarFotosSeleccionadas() {
+    if (!stockSeleccionados.length) return;
+    const items = stockSeleccionados
+        .map(cod => stockData.find(p => String(p.codigo) === String(cod)))
+        .filter(Boolean);
+    const conFoto = items.filter(i => i.foto || i.img);
+    if (!conFoto.length) { toast("⚠️ Ninguno de los seleccionados tiene foto"); return; }
+
+    const btn = document.getElementById("btn-descargar-fotos-stock");
+    const textoOriginal = btn.textContent;
+    btn.disabled = true;
+
+    const zip = new JSZip();
+    let ok = 0;
+    const fallidas = [];
+    for (let i = 0; i < conFoto.length; i++) {
+        const item = conFoto[i];
+        btn.textContent = `📥 ${i + 1}/${conFoto.length}...`;
+        const url = item.foto || item.img;
+        try {
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(String(resp.status));
+            const blob = await resp.blob();
+            const ext = (url.split("?")[0].split(".").pop() || "jpg").slice(0, 4);
+            zip.file(`${item.codigo || ("item" + i)}.${ext}`, blob);
+            ok++;
+        } catch (e) {
+            fallidas.push(item.codigo || "?");
+        }
+    }
+
+    if (ok === 0) {
+        toast("⚠️ No se pudo descargar ninguna foto (revisá conexión)");
+        btn.disabled = false;
+        btn.textContent = textoOriginal;
+        return;
+    }
+
+    btn.textContent = "🗜️ Comprimiendo...";
+    const contenido = await zip.generateAsync({ type: "blob" });
+    const nombreZip = `fotos-stock-${new Date().toISOString().slice(0, 10)}.zip`;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(contenido);
+    a.download = nombreZip;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    toast(fallidas.length
+        ? `✅ ${ok} fotos descargadas · ⚠️ ${fallidas.length} fallaron (${fallidas.slice(0, 5).join(", ")}${fallidas.length > 5 ? "…" : ""})`
+        : `✅ ${ok} fotos descargadas en ${nombreZip}`);
+
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
 }
 
 // ── EDITAR PRODUCTO DESDE STOCK ──────────────────────────────────────
