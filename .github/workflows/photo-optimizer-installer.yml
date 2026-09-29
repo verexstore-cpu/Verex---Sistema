@@ -5,7 +5,7 @@ on:
   push:
     tags: ['photo-optimizer-v*']
     branches: ['claude/serene-noether-7g99ef']
-    paths: ['verex-photo-optimizer/**']
+    paths: ['verex-photo-optimizer/**', '.github/workflows/photo-optimizer-installer.yml']
 
 jobs:
   build:
