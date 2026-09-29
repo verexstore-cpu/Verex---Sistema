@@ -20,15 +20,21 @@
 Un acceso correcto reinicia el contador. Durante un bloqueo **ni la contraseña correcta entra**. Si Supabase falla, el límite no bloquea (fail-open). Respuesta: HTTP 429 + `Retry-After` + `{ok:false, bloqueado:true}`.
 Los contadores viven en Supabase, tabla `config`, ids `rl_*`.
 
-## Orden de despliegue (importante)
-1. **Elegir un secreto largo** (p. ej. `openssl rand -hex 32`).
-2. **Proyecto de Pages `admin-tienda`** → Settings → Variables and Secrets → `INTERNAL_SECRET` = ese valor (Production).
-3. **Worker:** `cd consignacion && npx wrangler secret put INTERNAL_SECRET` (mismo valor).
-4. `npx wrangler deploy`.
-5. **Functions:** copiar `adminverex/functions/*` a `_admin-repo/functions/` y hacer push al repo `admin-tienda` (auto-deploy).
-6. Verificar: login en Admin y Consignación (con TOTP), una acción de catálogo (p. ej. listar catálogos) y el acceso de un vendedor con PIN.
+## Estado del despliegue (actualizado)
+| Pieza | Estado |
+|---|---|
+| Functions en repo `admin-tienda` (`main`, commit a6d2cfc) | **Subidas.** No cambian el comportamiento hasta que exista `INTERNAL_SECRET` |
+| Worker en repo `verex-consignacion`, rama **`fase1-seguridad`** (commit a41b221) | **Preparado, NO en `main`.** Un push a `main` lo despliega solo a producción (Action `deploy-worker.yml`) |
+| Secreto `INTERNAL_SECRET` | **Pendiente (manual):** requiere el panel de Cloudflare |
 
-> Si despliegas el Worker **sin** `INTERNAL_SECRET` (o antes que las Functions), las Functions se ven como una sola IP compartida y 5 contraseñas malas enviadas a una Function pública bloquearían a las demás llamadas de Functions durante 15 min. Sigue el orden de arriba.
+## Lo que falta (orden)
+1. **Elegir un secreto largo** (p. ej. `openssl rand -hex 32`, o el generador del panel). No lo compartas por chat.
+2. **Worker:** Cloudflare → Workers & Pages → `verex-api` → Settings → Variables and Secrets → Add → tipo **Secret**, nombre `INTERNAL_SECRET`. (Los secretos del panel se conservan en cada despliegue.)
+3. **Solo si `admin-tienda` corre en Cloudflare Pages** (las Functions no se ejecutan en GitHub Pages, que es lo que publica el workflow del repo): en ese proyecto → Settings → Variables and Secrets → `INTERNAL_SECRET` = **el mismo valor**. Si no existe proyecto de Cloudflare Pages, se omite este paso: las Functions no están en uso.
+4. **Desplegar el Worker:** fusionar `fase1-seguridad` en `main` de `verex-consignacion` (o pedírselo a Claude). El Action lo despliega.
+5. **Verificar:** login en Admin y Consignación (con TOTP), una acción de catálogo y el acceso de un vendedor con PIN. Rollback: `npx wrangler rollback` o revertir el commit en `main`.
+
+> Si el Worker se despliega **sin** `INTERNAL_SECRET` y las Functions están en uso, se ven como una IP compartida: 5 contraseñas malas enviadas a una Function pública bloquearían a las demás llamadas de Functions durante 15 min.
 
 ### CORS (opcional, activar después de probar)
 Sin `ALLOWED_ORIGINS` el comportamiento es el de antes (`*`). Para restringir: `npx wrangler secret put ALLOWED_ORIGINS` con, p. ej.,
