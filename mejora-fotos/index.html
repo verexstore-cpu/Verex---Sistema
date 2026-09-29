@@ -60,6 +60,8 @@
 <h1>💍 VEREX · Mejora de fotos</h1>
 <div class="subt">Nitidez y denoise por IA local (Real-ESRGAN) — probá antes de correr el lote completo.</div>
 
+<div id="banner-error" style="display:none;background:#3a1414;border:1px solid #c0392b;border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:13px;line-height:1.6;color:#ffb3b3;white-space:pre-wrap;"></div>
+
 <div class="panel">
     <h2>1. Motor de IA</h2>
     <div class="fila">
@@ -115,6 +117,30 @@
 </div>
 
 <script>
+function mostrarError(titulo, detalle) {
+    const banner = document.getElementById('banner-error');
+    banner.style.display = 'block';
+    banner.textContent = '❌ ' + titulo + (detalle ? '\n\n' + detalle : '');
+}
+
+window.addEventListener('error', (e) => {
+    mostrarError('Error en la app', (e.message || '') + (e.filename ? `\n(${e.filename}:${e.lineno})` : ''));
+});
+window.addEventListener('unhandledrejection', (e) => {
+    mostrarError('Error en la app', String(e.reason && e.reason.stack || e.reason));
+});
+
+if (!window.electronAPI) {
+    mostrarError(
+        'No se pudo conectar con la app (window.electronAPI no existe)',
+        'Esto normalmente significa que preload.js no cargó. Posibles causas:\n' +
+        '· Un antivirus bloqueó o borró silenciosamente algún archivo de la carpeta.\n' +
+        '· La carpeta se extrajo de forma incompleta del ZIP.\n' +
+        '· Node/Electron no coinciden con lo esperado.\n\n' +
+        'Sacale una foto a este mensaje y mandaselo a soporte tal cual.'
+    );
+}
+
 let carpetaActual = null;
 let archivosActuales = [];
 let carpetaSalidaActual = null;
@@ -163,7 +189,7 @@ async function instalarMotor() {
     }
 }
 
-window.electronAPI.onProgresoMotor((info) => {
+if (window.electronAPI) window.electronAPI.onProgresoMotor((info) => {
     const relleno = document.getElementById('relleno-motor');
     const el = document.getElementById('estado-motor');
     const etapas = { buscando: 'Buscando última versión...', descargando: 'Descargando...', extrayendo: 'Instalando...', listo: 'Listo' };
@@ -234,7 +260,7 @@ async function correrPreview() {
     document.getElementById('btn-lote').disabled = ok.length === 0;
 }
 
-window.electronAPI.onProgresoLote((info) => {
+if (window.electronAPI) window.electronAPI.onProgresoLote((info) => {
     const activo = document.getElementById('barra-lote').style.display === 'block'
         ? { barra: 'barra-lote', relleno: 'relleno-lote', estado: 'estado-lote' }
         : { barra: 'barra-preview', relleno: 'relleno-preview', estado: 'estado-preview' };
@@ -281,7 +307,7 @@ async function abrirSalida() {
     if (carpetaSalidaActual) await window.electronAPI.abrirCarpeta(carpetaSalidaActual);
 }
 
-refrescarEstadoMotor();
+if (window.electronAPI) refrescarEstadoMotor();
 </script>
 </body>
 </html>
