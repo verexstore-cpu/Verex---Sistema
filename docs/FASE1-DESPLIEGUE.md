@@ -1,5 +1,9 @@
 # Fase 1 (enfoque A) — qué cambió y cómo desplegarlo
 
+> **ESTADO FINAL: completada y desplegada.** Worker en producción (verex-consignacion `main`, commits a41b221 y fd9551e), Functions en `admin-tienda`, `INTERNAL_SECRET` definido en ambos sitios y pruebas manuales de login (Admin y Consignación con TOTP, acción de catálogo, vendedor con PIN) confirmadas por el propietario.
+> **Pendiente opcional:** activar `ALLOWED_ORIGINS` (CORS restringido). Se probó una vez y falló por un valor mal pegado (catálogo USA); el Worker ya tolera barra final, mayúsculas, comillas y separadores. Reactivar con la lista de la sección CORS y probar cada página con la consola abierta.
+> **Fase 2 (Cloudflare):** MFA de la cuenta, Bot Fight Mode, Always Use HTTPS, HSTS (6 meses, sin subdominios ni preload), regla contra escáneres (Managed Challenge) y DMARC Management activados. Pendiente: revisar informes DMARC en 2–3 semanas y subir a `p=quarantine`.
+
 **Estado: implementado y probado con Supabase simulado (34/34). NO desplegado.** El Worker se despliega a mano.
 
 ## Qué cambió
