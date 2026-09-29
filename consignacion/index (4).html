@@ -6007,7 +6007,11 @@ function ikFoto(url, size) {
 // ni IA generativa — la pieza debe verse exactamente igual, solo más nítida.
 // Es una transformación por URL de ImageKit (mismo servicio ya en uso, sin
 // nueva integración ni archivo adicional).
-const NIVELES_MEJORA_IMG_STOCK = { natural: "e-sharpen-3", mejorado: "e-sharpen-8" };
+// Antes: natural=e-sharpen-3, mejorado=e-sharpen-8 — el nivel "mejorado" se
+// veía muy artificial (halos duros de unsharp mask, agravados por no fijar
+// calidad de salida). Se baja la intensidad de ambos y se sube la calidad,
+// para que se note más nítido sin el look "sobre-procesado".
+const NIVELES_MEJORA_IMG_STOCK = { natural: "e-sharpen-1,q-90", mejorado: "e-sharpen-3,q-90" };
 function ikMejorar(url, nivel, size) {
     if (!url || !url.includes("imagekit.io")) return url;
     const s = size || 900;
