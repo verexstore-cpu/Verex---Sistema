@@ -6056,7 +6056,7 @@ function ikFoto(url, size) {
     // Una foto YA mejorada (fotoMejorada) trae su propia nitidez elegida (e-sharpen-N). No se le suma otro e-sharpen:
     // apilar los dos es lo que la hacía verse exagerada y poco natural frente a la vista previa del panel.
     // Solo se ajusta el ancho (el 1600 con el que se guardó) al tamaño pedido.
-    if (url.includes("e-sharpen")) {
+    if (esUrlMejorada(url)) {
         return /,w-1600(?=,|$)/.test(url) ? url.replace(/,w-1600(?=,|$)/, ",w-" + s) : (url.includes("?tr=") ? `${url},w-${s}` : url);
     }
     const base = url.split("?")[0];
@@ -6084,7 +6084,12 @@ function ikOriginalSinNitidez(url, size) {
 // veía muy artificial (halos duros de unsharp mask, agravados por no fijar
 // calidad de salida). Se baja la intensidad de ambos y se sube la calidad,
 // para que se note más nítido sin el look "sobre-procesado".
-const NIVELES_MEJORA_IMG_STOCK = { natural: "e-sharpen-1,q-90", mejorado: "e-sharpen-3,q-90" };
+// suave = sin nitidez (solo recorte, tamaño y calidad 90); natural 1; intermedio 2; mejorado 3.
+// q-90 es la marca que identifica una foto "mejorada" (las originales no la llevan): así ikFoto sabe que NO debe
+// sumarle la nitidez automática, tampoco al nivel Suave, que no lleva e-sharpen.
+const NIVELES_MEJORA_IMG_STOCK = { suave: "q-90", natural: "e-sharpen-1,q-90", intermedio: "e-sharpen-2,q-90", mejorado: "e-sharpen-3,q-90" };
+const NIVELES_MEJORA_ORDEN = ["suave", "natural", "intermedio", "mejorado"];
+function esUrlMejorada(url) { const u = String(url || ""); return /e-sharpen/.test(u) || /,q-90(?=,|$)/.test(u); }
 // Valor numérico de nitidez de un nivel ("e-sharpen-3" -> 3) o de una dirección ImageKit guardada.
 function nitidezDeNivel(nivel) { const m = /e-sharpen-(\d+)/.exec((NIVELES_MEJORA_IMG_STOCK[nivel] || "")); return m ? +m[1] : 0; }
 function nitidezDeUrl(url) { const m = /e-sharpen-(\d+)/.exec(String(url || "")); return m ? +m[1] : (/e-sharpen/.test(String(url || "")) ? "automática" : 0); }
@@ -6104,14 +6109,14 @@ function ikMejorar(url, nivel, size) {
 const MEJORA_STOCK_I18N = {
     es: {
         titulo: "✨ Mejorar imagen", original: "Original", preview: "Vista previa mejorada",
-        nivel: "Nivel", natural: "Natural", mejorado: "Mejorado",
+        nivel: "Nivel", suave: "Suave", natural: "Natural", intermedio: "Intermedio", mejorado: "Mejorado",
         cancelar: "Cancelar", aplicar: "Aplicar mejora", aplicando: "Aplicando...",
         toggleIdioma: "EN", okMsg: "✨ Mejora aplicada — el original se conserva intacto",
         errMsg: "⚠️ No se pudo aplicar la mejora"
     },
     en: {
         titulo: "✨ Enhance image", original: "Original", preview: "Enhanced preview",
-        nivel: "Level", natural: "Natural", mejorado: "Enhanced",
+        nivel: "Level", suave: "Soft", natural: "Natural", intermedio: "Medium", mejorado: "Enhanced",
         cancelar: "Cancel", aplicar: "Apply enhancement", aplicando: "Applying...",
         toggleIdioma: "ES", okMsg: "✨ Enhancement applied — the original is kept untouched",
         errMsg: "⚠️ Could not apply the enhancement"
@@ -6128,8 +6133,7 @@ function renderTextosMejoraStock() {
     document.getElementById("mjs-label-preview").textContent  = L.preview;
     document.getElementById("mjs-label-nivel").textContent    = L.nivel;
     const sh = (n) => (_mjsIdioma === "en" ? "sharpen " : "nitidez ") + nitidezDeNivel(n);
-    document.getElementById("mjs-btn-natural").textContent    = L.natural + " · " + sh("natural");
-    document.getElementById("mjs-btn-mejorado").textContent   = L.mejorado + " · " + sh("mejorado");
+    NIVELES_MEJORA_ORDEN.forEach(n => { document.getElementById("mjs-btn-" + n).textContent = L[n] + " · " + sh(n); });
     document.getElementById("mjs-btn-cancelar").textContent   = L.cancelar;
     document.getElementById("mjs-btn-aplicar").textContent    = L.aplicar;
     document.getElementById("mjs-btn-idioma").textContent     = L.toggleIdioma;
@@ -6154,7 +6158,7 @@ function abrirMejorarFotoStock() {
         if (item.fotoMejorada) {
             const nit = nitidezDeUrl(item.fotoMejorada);
             gd.textContent = "Mejora guardada: nivel " + (item.fotoMejoraNivel || "?") + " · nitidez " + nit
-                + (nit === 0 ? " (¡la dirección guardada NO trae nitidez!)" : "");
+                + (nit === 0 ? (item.fotoMejoraNivel === "suave" ? " (sin nitidez)" : " (¡la dirección guardada NO trae nitidez!)") : "");
             gd.title = item.fotoMejorada;
         } else {
             gd.textContent = "Sin mejora guardada (se muestra la foto original con la nitidez automática)";
@@ -6181,15 +6185,12 @@ function actualizarNivelMejoraStock() {
     if (!_mjsItem) return;
     const foto = _mjsItem.foto || _mjsItem.img || "";
     document.getElementById("mjs-img-preview").src = ikMejorar(foto, _mjsNivel, 700);
-    const natActivo = _mjsNivel === "natural";
-    const btnNat = document.getElementById("mjs-btn-natural");
-    const btnMej = document.getElementById("mjs-btn-mejorado");
-    btnNat.className = natActivo ? "btn" : "btn btn-gris";
-    btnNat.style.background = natActivo ? "var(--dorado)" : "";
-    btnNat.style.color = natActivo ? "#111" : "";
-    btnMej.className = !natActivo ? "btn" : "btn btn-gris";
-    btnMej.style.background = !natActivo ? "var(--dorado)" : "";
-    btnMej.style.color = !natActivo ? "#111" : "";
+    NIVELES_MEJORA_ORDEN.forEach(n => {
+        const btn = document.getElementById("mjs-btn-" + n), act = _mjsNivel === n;
+        btn.className = act ? "btn" : "btn btn-gris";
+        btn.style.background = act ? "var(--dorado)" : "";
+        btn.style.color = act ? "#111" : "";
+    });
 }
 
 async function aplicarMejoraFotoStock() {
@@ -14630,9 +14631,11 @@ function enviarRecordatorioAbono(ventaId) {
 
         <div style="margin-top:14px;">
             <div id="mjs-label-nivel" style="font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--plateado);text-transform:uppercase;margin-bottom:5px;">Nivel</div>
-            <div style="display:flex;gap:8px;">
-                <button class="btn" id="mjs-btn-natural" style="flex:1;background:var(--dorado);color:#111;" onclick="setNivelMejoraStock('natural')">Natural</button>
-                <button class="btn btn-gris" id="mjs-btn-mejorado" style="flex:1;" onclick="setNivelMejoraStock('mejorado')">Mejorado</button>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                <button class="btn btn-gris" id="mjs-btn-suave" style="flex:1 1 calc(50% - 8px);" onclick="setNivelMejoraStock('suave')">Suave</button>
+                <button class="btn" id="mjs-btn-natural" style="flex:1 1 calc(50% - 8px);background:var(--dorado);color:#111;" onclick="setNivelMejoraStock('natural')">Natural</button>
+                <button class="btn btn-gris" id="mjs-btn-intermedio" style="flex:1 1 calc(50% - 8px);" onclick="setNivelMejoraStock('intermedio')">Intermedio</button>
+                <button class="btn btn-gris" id="mjs-btn-mejorado" style="flex:1 1 calc(50% - 8px);" onclick="setNivelMejoraStock('mejorado')">Mejorado</button>
             </div>
         </div>
 
@@ -15518,7 +15521,7 @@ async function confirmarVDManual() {
 function abrirFotoZoom(url, nombre) {
     const modal = document.getElementById("modal-foto-zoom");
     document.getElementById("foto-zoom-img").src = ikFoto(url, 1500);
-    const vista = String(url || "").includes("e-sharpen-") ? "✨ versión mejorada" : "foto original";
+    const vista = esUrlMejorada(url) ? "✨ versión mejorada" : "foto original";
     document.getElementById("foto-zoom-nombre").textContent = (nombre || "") + " · " + vista;
     modal.style.display = "flex";
     document.body.style.overflow = "hidden";
