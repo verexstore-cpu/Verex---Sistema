@@ -1084,30 +1084,7 @@ async function enviar(){
 
         case "REGISTRAR_DEVOLUCION": {
           if (!esAdmin) return forbidden();
-          const items = d.items || [];
-          const devId = `DEV_${Date.now()}`;
-          await sb.set("devoluciones", devId, {
-            id: devId, vendedor: d.vendedor,
-            fecha: new Date().toISOString(), items: JSON.stringify(items)
-          });
-          for (const item of items) {
-            const cons = await sb.get("consignacion", item.id);
-            if (cons) {
-              const nuevaCant = Math.max(0, (parseInt(cons.cantidad)||0) - (item.cantidad||1));
-              await sb.update("consignacion", item.id, {
-                cantidad: nuevaCant,
-                estado: nuevaCant <= parseInt(cons.vendido||0) ? "devuelto" : "activo"
-              });
-            }
-            const s = await sb.get("stock", item.codigo);
-            if (s) {
-              await sb.update("stock", item.codigo, {
-                stock_bodega:       (parseInt(s.stock_bodega)||0) + (item.cantidad||1),
-                stock_consignacion: Math.max(0, (parseInt(s.stock_consignacion)||0) - (item.cantidad||1))
-              });
-            }
-          }
-          result = { ok: true, devolucionId: devId, fecha: new Date().toISOString() };
+          result = await registrarDevolucionEnBloque(sb, d);
           break;
         }
 
@@ -4458,6 +4435,45 @@ class Supabase {
     }
   }
 
+  // Lee VARIOS documentos por id con una sola petición (en bloques de 60 ids).
+  // Sirve para no gastar el límite de 50 subrequests por invocación del plan gratuito.
+  async getMany(table, ids) {
+    const uniq = Array.from(new Set((ids || []).map(String).filter(Boolean)));
+    const out = [];
+    for (let i = 0; i < uniq.length; i += 60) {
+      const lista = uniq.slice(i, i + 60).map(x => '"' + encodeURIComponent(x) + '"').join(",");
+      const res = await fetch(
+        `${this.url}/rest/v1/${table}?id=in.(${lista})&select=id,data`,
+        { headers: this._headers(), cf: { cacheTtl: 0, cacheEverything: false } }
+      );
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`SB getMany ${table}: ${res.status} ${txt}`);
+      }
+      const rows = await res.json();
+      if (Array.isArray(rows)) for (const r of rows) out.push({ id: r.id, ...r.data });
+    }
+    return out;
+  }
+
+  // Guarda VARIOS documentos COMPLETOS con una sola petición por bloque de 100 (upsert).
+  // Cada doc debe traer todos sus campos: reemplaza el JSON de datos, igual que set().
+  async setMany(table, docs) {
+    for (let i = 0; i < docs.length; i += 100) {
+      const rows = docs.slice(i, i + 100).map(({ id, ...data }) => ({ id, data }));
+      const res = await fetch(`${this.url}/rest/v1/${table}`, {
+        method:  "POST",
+        headers: this._headers("resolution=merge-duplicates"),
+        body:    JSON.stringify(rows),
+        cf: { cacheTtl: 0, cacheEverything: false }
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`SB setMany ${table}: ${res.status} ${txt}`);
+      }
+    }
+  }
+
   // stock_total es un DERIVADO de las unidades reales: bodega + tienda +
   // consignación (misma fórmula que _stockTotalProd() en el admin).
   //
@@ -4821,6 +4837,95 @@ function aplicarCors(request, env, res) {
   if (origin && lista.includes(normalizarOrigen(origin))) h.set("Access-Control-Allow-Origin", origin);
   else h.delete("Access-Control-Allow-Origin");
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
+}
+
+// ── DEVOLUCIÓN EN BLOQUE ───────────────────────────────────────────
+// Antes: 5 peticiones a Supabase POR PRODUCTO (leer/actualizar consignación, leer/actualizar stock y
+// una lectura extra del total) → con más de ~9 productos se pasaba del límite de 50 subrequests del
+// plan gratuito ("Too many subrequests by single Worker invocation"). Ahora son ~8 peticiones sin
+// importar cuántos productos: 2 lecturas en bloque, 2 escrituras en bloque y el registro.
+//
+// Garantías: (1) todo lo devuelto sube a stock_bodega y baja de stock_consignacion, con stock_total
+// recalculado; (2) todo o nada: si falta un producto en Stock no se toca nada; si falla la escritura del
+// stock se deshace la de consignación; (3) idempotente: reenviar el mismo devId no aplica dos veces.
+async function registrarDevolucionEnBloque(sb, d) {
+  const itemsRaw = Array.isArray(d.items) ? d.items : [];
+  const int = (v) => parseInt(v) || 0;
+  const devIdOk = /^DEV_[A-Za-z0-9_-]{6,60}$/.test(String(d.devId || ""));
+  const devId = devIdOk ? String(d.devId) : `DEV_${Date.now()}`;
+
+  if (devIdOk) {
+    const previo = await sb.get("devoluciones", devId);
+    if (previo) return { ok: true, duplicado: true, devolucionId: devId, fecha: previo.fecha };
+  }
+
+  // Une líneas repetidas del mismo registro de consignación
+  const lineas = new Map();
+  for (const it of itemsRaw) {
+    const id = String(it && it.id != null ? it.id : "");
+    const cant = Math.max(0, int(it && it.cantidad));
+    if (!id || cant <= 0) continue;
+    const l = lineas.get(id) || { id, codigo: it.codigo, cantidad: 0 };
+    l.cantidad += cant; lineas.set(id, l);
+  }
+  if (!lineas.size) return { ok: false, error: "No hay productos con cantidad para devolver" };
+
+  const consDocs = new Map((await sb.getMany("consignacion", [...lineas.keys()])).map(c => [String(c.id), c]));
+  const advertencias = [];
+  const consNuevas = [], consOriginales = [], deltaPorCodigo = new Map();
+  for (const l of lineas.values()) {
+    const cons = consDocs.get(l.id);
+    const codigo = String((cons && cons.codigo) || l.codigo || "");
+    if (!codigo) return { ok: false, error: "Falta el código de un producto (id " + l.id + "). No se registró nada." };
+    let efectivo = l.cantidad;
+    if (cons) {
+      const disponible = Math.max(0, int(cons.cantidad) - int(cons.vendido));
+      if (efectivo > disponible) {
+        advertencias.push(`${codigo}: se pidieron ${l.cantidad} pero solo había ${disponible} disponibles; se devolvieron ${disponible}`);
+        efectivo = disponible;
+      }
+      const nuevaCant = int(cons.cantidad) - efectivo;
+      consOriginales.push(cons);
+      consNuevas.push({ ...cons, cantidad: nuevaCant, estado: nuevaCant <= int(cons.vendido) ? "devuelto" : "activo" });
+    } else {
+      advertencias.push(`${codigo}: no se encontró su registro de consignación; se devolvió igual a bodega`);
+    }
+    if (efectivo > 0) deltaPorCodigo.set(codigo, (deltaPorCodigo.get(codigo) || 0) + efectivo);
+  }
+
+  const stockDocs = new Map((await sb.getMany("stock", [...deltaPorCodigo.keys()])).map(s => [String(s.id), s]));
+  const sinStock = [...deltaPorCodigo.keys()].filter(c => !stockDocs.has(c));
+  if (sinStock.length) {
+    return { ok: false, error: "Estos productos no existen en Stock, así que no se pueden regresar a bodega: " + sinStock.join(", ") + ". No se registró nada; desmárcalos e inténtalo de nuevo." };
+  }
+  const stockNuevos = [], stockOriginales = [], devuelto = [];
+  for (const [codigo, delta] of deltaPorCodigo) {
+    const st = stockDocs.get(codigo);
+    const nuevo = { ...st,
+      stock_bodega:       int(st.stock_bodega) + delta,
+      stock_consignacion: Math.max(0, int(st.stock_consignacion) - delta) };
+    nuevo.stock_total = Supabase.COMPONENTES_STOCK.reduce((a, c) => a + int(nuevo[c]), 0);
+    stockOriginales.push(st); stockNuevos.push(nuevo);
+    devuelto.push({ codigo, cantidad: delta, stock_bodega: nuevo.stock_bodega });
+  }
+
+  await sb.setMany("consignacion", consNuevas);
+  try {
+    await sb.setMany("stock", stockNuevos);
+  } catch (e) {
+    // Deshacer lo de consignación para no dejar piezas "devueltas" que no llegaron a bodega
+    try { await sb.setMany("consignacion", consOriginales); }
+    catch (e2) { console.error("REGISTRAR_DEVOLUCION: no se pudo deshacer consignación", e2); }
+    return { ok: false, error: "No se pudo actualizar el stock; no se registró la devolución. Inténtalo de nuevo. (" + e.message + ")" };
+  }
+
+  const fecha = new Date().toISOString();
+  try {
+    await sb.set("devoluciones", devId, { id: devId, vendedor: d.vendedor, fecha, items: JSON.stringify(itemsRaw) });
+  } catch (e) {
+    advertencias.push("La devolución se aplicó, pero no se pudo guardar en el historial: " + e.message);
+  }
+  return { ok: true, devolucionId: devId, fecha, devuelto, advertencias };
 }
 
 // ── HELPERS HTTP ──────────────────────────────────────────────────

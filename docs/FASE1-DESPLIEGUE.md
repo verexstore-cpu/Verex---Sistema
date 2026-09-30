@@ -54,3 +54,6 @@ Sin `ALLOWED_ORIGINS` el comportamiento es el de antes (`*`). Para restringir: `
 - **`_pass` en cada petición** y el hash como credencial: se resuelve con sesiones (Fase 3).
 - **Botnets:** el límite es por IP; contra muchas IPs solo el TOTP tiene tope global. La Fase 2 (WAF/rate limiting de Cloudflare) lo complementa.
 - **Sin probar en real:** solo se probó contra Supabase simulado; los HTML no cambian, pero no se ejecutaron contra el Worker desplegado.
+
+## Nota posterior: devoluciones en bloque
+`REGISTRAR_DEVOLUCION` hacía 5 peticiones a Supabase por producto y fallaba con más de ~9 productos («Too many subrequests», límite de 50 del plan gratuito). Ahora usa lectura/escritura en bloque (~8 peticiones sin importar el número de productos), suma todo lo devuelto a `stock_bodega`, recalcula `stock_total`, es todo-o-nada e idempotente por `devId`. Pruebas: `consignacion/test-devolucion.mjs` (20). Otras acciones del Worker que recorren listas con una petición por elemento tienen el mismo riesgo con el plan gratuito.

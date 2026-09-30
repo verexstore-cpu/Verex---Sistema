@@ -4455,6 +4455,8 @@ function abrirDevolucion() {
     // cuanto se escanea la primera pieza, _onScanDevolucion() pone todo en 0
     // y pasa a modo "conteo por escaneo" — ver ese comentario para el porqué.
     window._devEscaneoIniciado = false;
+    // Identificador único de ESTA devolución: si se reenvía (doble clic, corte de red), el servidor no la aplica dos veces.
+    window._devIdActual = "DEV_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
     renderResumenDevolucion();
     abrirModal("modal-devolucion");
 }
@@ -4548,7 +4550,7 @@ async function confirmarDevolucion() {
     const btn = document.querySelector("#modal-devolucion .btn-dorado");
     btn.textContent = "Guardando..."; btn.disabled = true;
     try {
-        const resp = await apiPost({ accion: "REGISTRAR_DEVOLUCION", vendedor: vendedorActual.codigo, items });
+        const resp = await apiPost({ accion: "REGISTRAR_DEVOLUCION", vendedor: vendedorActual.codigo, items, devId: window._devIdActual });
         if (!resp.ok) throw new Error(resp.error || "Error del servidor");
 
         // Pausar auto-sync 60s para que no revierta los cambios locales
@@ -4578,7 +4580,10 @@ async function confirmarDevolucion() {
         renderVentasPerfil();
         renderStock(stockData);
         cargarDevolucionesPerfil(); // Refrescar historial de devoluciones
-        toast("✅ Devolución registrada — stock devuelto a bodega");
+        window._devIdActual = null;
+        const advDev = resp.advertencias || [];
+        if (advDev.length) toast("✅ Devolución registrada — ⚠️ " + advDev.join(" · "), "#e67e22", 10000);
+        else toast("✅ Devolución registrada — stock devuelto a bodega");
     } catch(e) {
         toast("⚠️ " + (e.message || "Error al registrar devolución"));
     }
