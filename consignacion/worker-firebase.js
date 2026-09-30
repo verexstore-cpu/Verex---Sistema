@@ -188,6 +188,18 @@ export default {
     if (request.method === "GET") {
       const url = new URL(request.url);
 
+      // Estado (y ejecución bajo demanda, idempotente) de la corrección única de la devolución fallida.
+      // Solo devuelve el resumen (sin copias de datos). Abrir esta dirección en el navegador la ejecuta si aún no corrió.
+      if (url.searchParams.get("fix") === "devolucion") {
+        try {
+          await reconciliarDevolucionFallida(sb, env);
+          const mk = await sb.get("config", FIX_ID);
+          if (!mk) return json({ ok: true, estado: "pendiente", nota: "Aún no se ha ejecutado (otra ejecución puede estar en curso); vuelve a abrir en un minuto." });
+          return json({ ok: true, estado: mk.estado, fecha: mk.fecha, correo: mk.correo || null,
+            cambios: mk.cambios || [], omitidos: mk.omitidos || [], notas: mk.notas || [] });
+        } catch (e) { return json({ ok: false, error: e.message }, 500); }
+      }
+
       // Página del celular para tomar foto
       if (url.pathname === "/foto-upload") {
         const session = url.searchParams.get("s") || "";
@@ -4439,6 +4451,24 @@ class Supabase {
     }
   }
 
+  // Inserta SOLO si el id no existe (atómico: ON CONFLICT DO NOTHING). Devuelve true si este llamado lo creó.
+  // Sirve de candado para que una tarea de una sola vez no se ejecute dos veces a la vez.
+  async insertIfAbsent(table, id, obj) {
+    const { id: _id, ...data } = obj;
+    const res = await fetch(`${this.url}/rest/v1/${table}`, {
+      method:  "POST",
+      headers: this._headers("resolution=ignore-duplicates,return=representation"),
+      body:    JSON.stringify({ id, data }),
+      cf: { cacheTtl: 0, cacheEverything: false }
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`SB insertIfAbsent ${table}: ${res.status} ${txt}`);
+    }
+    const rows = await res.json().catch(() => []);
+    return Array.isArray(rows) && rows.length > 0;
+  }
+
   // Lee VARIOS documentos por id con una sola petición (en bloques de 60 ids).
   // Sirve para no gastar el límite de 50 subrequests por invocación del plan gratuito.
   async getMany(table, ids) {
@@ -4950,12 +4980,24 @@ const FIX_CODIGOS_VISTOS = ["ANP254T6", "ANP268T7"];   // duplicados que el usua
 
 async function reconciliarDevolucionFallida(sb, env) {
   if (await sb.get("config", FIX_ID)) return;                       // ya se ejecutó (o se descartó)
+  // Candado atómico: solo UNA ejecución (cron o dirección abierta a la vez) puede seguir. Si quedó un candado viejo
+  // sin marcador (la ejecución murió antes de empezar a cambiar datos), a los 30 min se puede reclamar de nuevo.
+  const candado = FIX_ID + "_lock";
+  if (!(await sb.insertIfAbsent("config", candado, { fecha: new Date().toISOString() }))) {
+    const viejo = await sb.get("config", candado);
+    const antiguo = viejo && Date.now() - new Date(viejo.fecha).getTime() > 30 * 60 * 1000;
+    if (!antiguo || (await sb.get("config", FIX_ID))) return;
+    await sb.delete("config", candado);
+    if (!(await sb.insertIfAbsent("config", candado, { fecha: new Date().toISOString() }))) return;
+  }
+  if (await sb.get("config", FIX_ID)) return;                       // doble comprobación tras tomar el candado
   const int = (v) => parseInt(v) || 0;
   const informe = { cambios: [], omitidos: [], notas: [] };
   const cerrar = async (estado, extra) => {
     const doc = { estado, fecha: new Date().toISOString(), ...informe, ...(extra || {}) };
     await sb.set("config", FIX_ID, doc);
-    await avisarCorreccionDevolucion(env, doc);
+    doc.correo = await avisarCorreccionDevolucion(env, doc);          // el resultado del correo también queda guardado
+    await sb.set("config", FIX_ID, doc);
   };
 
   const regs = new Map((await sb.getMany("devoluciones", Object.values(FIX_DEV))).map(r => [String(r.id), r]));
@@ -5019,6 +5061,9 @@ async function reconciliarDevolucionFallida(sb, env) {
     }
   }
 
+  // Marcador PREVIO con copia de lo anterior: si la ejecución muriera a mitad, no se reintenta (evita restar dos veces)
+  // y la copia queda disponible para deshacer.
+  await sb.set("config", FIX_ID, { estado: "aplicando", fecha: new Date().toISOString(), ...informe, antes, respaldoRegistros: [r1, r2] });
   if (nuevos.length) await sb.setMany("stock", nuevos);
   // Historial: se deja UN registro (el 3.º) con su total; los dos intentos fallidos se guardan en el marcador y se borran.
   try {
@@ -5030,11 +5075,12 @@ async function reconciliarDevolucionFallida(sb, env) {
 }
 
 async function avisarCorreccionDevolucion(env, doc) {
-  if (!env.RESEND_KEY) return;
+  if (!env.RESEND_KEY) return { ok: false, error: "Falta RESEND_KEY en el Worker" };
   const filas = (doc.cambios || []).map(c => `<tr><td>${c.codigo}</td><td>${c.nombre}</td><td>${c.bodega[0]} → <b>${c.bodega[1]}</b></td><td>${c.consignacion[0]} → <b>${c.consignacion[1]}</b></td><td>${c.motivo}</td></tr>`).join("");
   const omit = (doc.omitidos || []).map(o => `<li>${o.codigo}: ${o.motivo}</li>`).join("");
   const notas = (doc.notas || []).map(n => `<li>${n}</li>`).join("");
-  await fetch("https://api.resend.com/emails", {
+  try {
+  const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.RESEND_KEY}` },
     body: JSON.stringify({
@@ -5047,7 +5093,10 @@ async function avisarCorreccionDevolucion(env, doc) {
         ${notas ? `<h3>Notas</h3><ul>${notas}</ul>` : ""}
         <p style="font-size:12px;color:#777;">Los valores anteriores están guardados en la tabla config, documento ${FIX_ID}, por si hay que deshacerlo.</p></div>`
     })
-  }).catch(() => {});
+  });
+  const txt = await r.text().catch(() => "");
+  return r.ok ? { ok: true } : { ok: false, error: r.status + " " + txt.slice(0, 200) };
+  } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 }
 
 // ── HELPERS HTTP ──────────────────────────────────────────────────

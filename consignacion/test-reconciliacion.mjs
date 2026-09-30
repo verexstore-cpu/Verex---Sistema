@@ -7,13 +7,13 @@ const nuevo = await load(path.join(here, 'worker-firebase.js'), 'wk-nuevo.mjs');
 const viejo = await load(process.env.OLD_WORKER || '/tmp/claude-0/worker-viejo.js', 'wk-viejo.mjs');      // Worker de los 2 intentos fallidos (commit fd9551e)
 const tercero = await load(process.env.THIRD_WORKER || '/tmp/claude-0/worker-tercero.js', 'wk-tercero.mjs'); // Worker del 3.er intento (commit f04dbb9: ya en bloque, aún guardaba lo pedido)
 
-const db = new Map(), emails = []; let sub = 0;
+const db = new Map(), emails = []; let sub = 0, LIM = 50, resendStatus = 200;
 const k = (t, id) => t + '/' + id;
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, opts = {}) => {
   const u = new URL(url);
-  if (++sub > 50) throw new Error('Too many subrequests by single Worker invocation.');
-  if (u.hostname === 'api.resend.com') { emails.push(JSON.parse(opts.body)); return new Response('{}'); }
+  if (++sub > LIM) throw new Error('Too many subrequests by single Worker invocation.');
+  if (u.hostname === 'api.resend.com') { emails.push(JSON.parse(opts.body)); return new Response(resendStatus === 200 ? '{}' : '{"message":"domain not verified"}', { status: resendStatus }); }
   if (!u.hostname.endsWith('sb.test')) return realFetch(url, opts);
   const ok = (b) => new Response(JSON.stringify(b), { status: 200, headers: { 'content-type': 'application/json' } });
   const body = opts.body ? JSON.parse(opts.body) : null, method = opts.method || 'GET';
@@ -26,7 +26,11 @@ globalThis.fetch = async (url, opts = {}) => {
     const all = [...db.keys()].filter((x) => x.startsWith(table + '/')).sort().map((x) => ({ id: x.slice(table.length + 1), data: db.get(x) }));
     const off = parseInt(u.searchParams.get('offset') || '0'), lim = parseInt(u.searchParams.get('limit') || '1000'); return ok(all.slice(off, off + lim));
   }
-  if (method === 'POST') { for (const r of (Array.isArray(body) ? body : [body])) db.set(k(table, r.id), r.data); return ok({}); }
+  if (method === 'POST') {
+    const prefer = (opts.headers && (opts.headers.Prefer || opts.headers.prefer)) || '';
+    if (prefer.includes('ignore-duplicates')) { if (db.has(k(table, body.id))) return ok([]); db.set(k(table, body.id), body.data); return ok([{ id: body.id, data: body.data }]); }
+    for (const r of (Array.isArray(body) ? body : [body])) db.set(k(table, r.id), r.data); return ok({});
+  }
   if (method === 'DELETE') { db.delete(k(table, idq.slice(3))); return ok({}); }
   return ok({});
 };
@@ -39,7 +43,7 @@ const qDe = (i) => (i === 5 || i === 20 ? 2 : 1);
 const otroVendedor = (i) => (i === 2 || i === 12 ? 2 : 0);            // otro vendedor (V2) con piezas pendientes del mismo producto
 
 function escenario(opts = {}) {
-  db.clear(); emails.length = 0;
+  db.clear(); emails.length = 0; LIM = 50; resendStatus = 200;
   const items = [];
   for (let i = 1; i <= N; i++) {
     const c = opts.codigos ? opts.codigos(i) : codigoDe(i), q = qDe(i);
@@ -121,5 +125,41 @@ for (const v of ['A', 'B', 'C']) {
   await corregir('A'); const marca = db.get(k('config', 'fix_devolucion_20260930'));
   ok(marca.omitidos.some((o) => o.codigo === c) && estado(c).stock_bodega === 0, 'guarda: un producto cuya bodega ya bajó (se vendió) NO se toca y se marca «revisar a mano»');
   ok(marca.cambios.length >= 7, 'y los demás productos sí se corrigen (' + marca.cambios.length + ')'); }
+
+
+{ // Concurrencia: cron + dirección abierta a la vez => se aplica UNA sola vez
+  const items = escenario(); await historia('A', items); LIM = 500;
+  const get = () => nuevo.fetch(new Request('https://api.test/?fix=devolucion'), envBase('A'));
+  await Promise.all([corregir('A'), corregir('A'), get(), get()]);
+  ok(comparar().length === 0, 'concurrencia: 2 crons + 2 aperturas de la dirección a la vez dejan los 30 productos EXACTOS (aplicado una sola vez)');
+  ok(emails.length === 1, 'concurrencia: un solo correo'); }
+
+{ // Dirección de consulta: ejecuta si no corrió y devuelve el resumen (sin copias de datos)
+  const items = escenario(); await historia('A', items); sub = 0;
+  const r = await nuevo.fetch(new Request('https://api.test/?fix=devolucion'), envBase('A')); const j = await r.json();
+  ok(r.status === 200 && j.estado === 'aplicado' && j.cambios.length === 10 && j.correo && j.correo.ok === true, 'dirección ?fix=devolucion: ejecuta la corrección y responde el resumen (estado «' + j.estado + '», ' + j.cambios.length + ' cambios, correo ok)');
+  ok(!('antes' in j) && !('respaldoRegistros' in j), 'la respuesta pública NO incluye las copias de datos');
+  ok(comparar().length === 0, 'y el stock queda exacto');
+  const r2 = await nuevo.fetch(new Request('https://api.test/?fix=devolucion'), envBase('A')); const j2 = await r2.json();
+  ok(j2.estado === 'aplicado' && emails.length === 1, 'abrirla otra vez solo consulta (no repite ni manda otro correo)'); }
+
+{ // Si el correo falla, queda anotado por qué (y el stock igual se corrige)
+  const items = escenario(); await historia('A', items); resendStatus = 403; await corregir('A');
+  const mk = db.get(k('config', 'fix_devolucion_20260930'));
+  ok(mk.estado === 'aplicado' && mk.correo && mk.correo.ok === false && /403/.test(mk.correo.error) && comparar().length === 0, 'correo rechazado (403): el stock se corrige igual y el motivo queda guardado («' + (mk.correo && mk.correo.error || '').slice(0, 40) + '…»)'); }
+
+{ // Candado viejo sin marcador se reclama; uno reciente no
+  let items = escenario(); await historia('A', items);
+  db.set(k('config', 'fix_devolucion_20260930_lock'), { fecha: new Date().toISOString() }); const snap = JSON.stringify([...db.entries()].filter(([z]) => z.startsWith('stock/')));
+  await corregir('A');
+  ok(JSON.stringify([...db.entries()].filter(([z]) => z.startsWith('stock/'))) === snap && !db.has(k('config', 'fix_devolucion_20260930')), 'candado reciente sin marcador: otra ejecución está en curso, no hace nada');
+  db.set(k('config', 'fix_devolucion_20260930_lock'), { fecha: new Date(Date.now() - 40 * 60000).toISOString() }); await corregir('A');
+  ok(comparar().length === 0 && db.get(k('config', 'fix_devolucion_20260930')).estado === 'aplicado', 'candado de hace 40 min sin marcador: se reclama y se aplica'); }
+
+{ // Marcador 'aplicando' (ejecución que murió a mitad): NO se reintenta
+  const items = escenario(); await historia('A', items);
+  db.set(k('config', 'fix_devolucion_20260930'), { estado: 'aplicando', fecha: new Date().toISOString(), antes: [] }); const snap = JSON.stringify([...db.entries()].filter(([z]) => z.startsWith('stock/')));
+  await corregir('A');
+  ok(JSON.stringify([...db.entries()].filter(([z]) => z.startsWith('stock/'))) === snap, 'marcador «aplicando»: no se reintenta (evita restar dos veces)'); }
 
 console.log(`\n${pass} correctas, ${fail} con fallo`); process.exit(fail ? 1 : 0);
