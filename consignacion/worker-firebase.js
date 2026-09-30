@@ -940,40 +940,7 @@ async function enviar(){
 
         case "REGISTRAR_ENTREGA": {
           if (!esAdmin) return forbidden();
-          const items = d.items || [];
-          // Borrador: se descuenta stock y queda respaldado en BD, pero invisible
-          // en el link del vendedor y demás vistas hasta FINALIZAR_ENTREGA_VENDEDOR.
-          const estadoInicial = d.borrador ? "borrador" : "activo";
-          // A prueba de fallos: un item con datos raros NO debe abortar el lote
-          // entero silenciosamente (causaba items "escaneados" que nunca se
-          // guardaban sin ningún aviso). Se procesan todos y se reporta cuáles
-          // fallaron para que el frontend pueda avisar exactamente qué faltó.
-          const guardados = [];
-          const fallidos = [];
-          for (const item of items) {
-            try {
-              const id = item.id || `CONS_${Date.now()}_${item.codigo}`;
-              await sb.set("consignacion", id, {
-                id, vendedor: d.vendedor, codigo: item.codigo,
-                nombre: item.nombre, codigoBase: item.codigoBase || item.codigo,
-                talla: item.talla || "", nombre_base: item.nombre_base || item.nombre,
-                categoria: item.categoria || "", precio: item.precio || 0,
-                cantidad: item.cantidad || 1, vendido: 0,
-                foto: item.foto || "", fecha: new Date().toISOString(), estado: estadoInicial
-              });
-              const s = await sb.get("stock", item.codigo);
-              if (s) {
-                await sb.update("stock", item.codigo, {
-                  stock_bodega:       Math.max(0, (parseInt(s.stock_bodega)||0) - (item.cantidad||1)),
-                  stock_consignacion: (parseInt(s.stock_consignacion)||0) + (item.cantidad||1)
-                });
-              }
-              guardados.push(item.codigo);
-            } catch (errItem) {
-              fallidos.push({ codigo: item.codigo, error: errItem.message || String(errItem) });
-            }
-          }
-          result = { ok: fallidos.length === 0, guardados, fallidos };
+          result = await registrarEntregaEnBloque(sb, d);
           break;
         }
 
@@ -3530,100 +3497,22 @@ async function enviar(){
         // ══ STOCK MOVIMIENTOS ════════════════════════════════════
         case "STOCK_ASIGNAR_TIENDA": {
           if (!esAdmin) return forbidden();
-          for (const codigo of (d.codigos || [])) {
-            const s = await sb.get("stock", codigo);
-            if (s) {
-              const disponible = parseInt(s.stock_bodega) || 0;
-              const cant = Math.min(d.cantidad || 1, disponible); // no mover más de lo que hay
-              if (cant <= 0) continue;
-              await sb.update("stock", codigo, {
-                stock_bodega: disponible - cant,
-                stock_tienda: (parseInt(s.stock_tienda)||0) + cant,
-                enCatalogo:   true,
-                estado:       "tienda"
-              });
-            }
-          }
-          result = { ok: true };
+          result = await stockAsignarTiendaEnBloque(sb, d);
           break;
         }
 
         case "STOCK_ASIGNAR_VENDEDOR": {
           if (!esAdmin) return forbidden();
           if (!d.vendedor) return json({ ok: false, error: "vendedor requerido" });
-          // Antes solo movía el contador stock_bodega -> stock_consignacion y
-          // marcaba estado:"consignacion", pero nunca creaba el registro en
-          // la colección "consignacion" que liga la pieza a d.vendedor — el
-          // campo vendedor que manda el frontend se ignoraba por completo.
-          // Resultado: la pieza quedaba en un contador sin dueño, invisible
-          // en el perfil de cualquier vendedor, en sus ventas o en su corte
-          // (caso real: PUP105 "asignado" a Jaime Solórzano nunca apareció
-          // en su inventario). Ahora crea el mismo tipo de registro que ya
-          // genera REGISTRAR_ENTREGA (Nueva Entrega), para que ambos caminos
-          // dejen la pieza igual de rastreable.
-          const asignados = [];
-          const sinStock = [];
-          for (const codigo of (d.codigos || [])) {
-            try {
-              const s = await sb.get("stock", codigo);
-              if (!s) { sinStock.push(codigo); continue; }
-              const disponible = parseInt(s.stock_bodega) || 0;
-              const cant = Math.min(d.cantidad || 1, disponible);
-              if (cant <= 0) { sinStock.push(codigo); continue; }
-              const id = `CONS_${Date.now()}_${codigo}`;
-              await sb.set("consignacion", id, {
-                id, vendedor: d.vendedor, codigo,
-                codigoBase:  s.codigoBase || codigo,
-                talla:       s.talla || "",
-                nombre:      s.nombre || "",
-                nombre_base: s.nombre_base || s.nombre || "",
-                categoria:   s.categoria || "",
-                precio:      s.precio || 0,
-                cantidad:    cant, vendido: 0,
-                foto:        s.foto || "",
-                fecha:       new Date().toISOString(),
-                estado:      "activo"
-              });
-              await sb.update("stock", codigo, {
-                stock_bodega:       disponible - cant,
-                stock_consignacion: (parseInt(s.stock_consignacion)||0) + cant,
-                estado:             "consignacion"
-              });
-              asignados.push(codigo);
-            } catch (errAsig) {
-              sinStock.push(codigo);
-            }
-          }
-          result = { ok: true, asignados, sinStock };
+          // Crea el registro de consignación del vendedor (para que la pieza sea rastreable en su inventario, ventas y
+          // corte) y mueve el stock bodega -> consignación. En bloque: ~4 peticiones sin importar cuántos códigos.
+          result = await stockAsignarVendedorEnBloque(sb, d);
           break;
         }
 
         case "STOCK_DEVOLVER_BODEGA": {
           if (!esAdmin) return forbidden();
-          for (const codigo of (d.codigos || [])) {
-            const s = await sb.get("stock", codigo);
-            if (s) {
-              const origen = d.origen || "tienda";
-              // Determinar cuánto hay realmente en el origen para no inventar stock
-              const enOrigen = origen === "tienda"
-                ? (parseInt(s.stock_tienda)||0)
-                : (parseInt(s.stock_consignacion)||0);
-              const cant = Math.min(d.cantidad || 1, enOrigen);
-              if (cant <= 0) continue; // ya no hay nada que devolver
-              const updates = {
-                stock_bodega: (parseInt(s.stock_bodega)||0) + cant,
-                estado: "bodega"
-              };
-              if (origen === "tienda") {
-                updates.stock_tienda  = enOrigen - cant;
-                updates.enCatalogo    = false;
-              } else {
-                updates.stock_consignacion = enOrigen - cant;
-              }
-              await sb.update("stock", codigo, updates);
-            }
-          }
-          result = { ok: true };
+          result = await stockDevolverBodegaEnBloque(sb, d);
           break;
         }
 
@@ -4474,6 +4363,19 @@ class Supabase {
     return out;
   }
 
+  // Borra VARIOS documentos por id con una sola petición por bloque de 60.
+  async deleteMany(table, ids) {
+    const uniq = Array.from(new Set((ids || []).map(String).filter(Boolean)));
+    for (let i = 0; i < uniq.length; i += 60) {
+      const lista = uniq.slice(i, i + 60).map(x => '"' + encodeURIComponent(x) + '"').join(",");
+      const res = await fetch(`${this.url}/rest/v1/${table}?id=in.(${lista})`, { method: "DELETE", headers: this._headers() });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`SB deleteMany ${table}: ${res.status} ${txt}`);
+      }
+    }
+  }
+
   // Guarda VARIOS documentos COMPLETOS con una sola petición por bloque de 100 (upsert).
   // Cada doc debe traer todos sus campos: reemplaza el JSON de datos, igual que set().
   async setMany(table, docs) {
@@ -4948,6 +4850,127 @@ async function registrarDevolucionEnBloque(sb, d) {
     advertencias.push("La devolución se aplicó, pero no se pudo guardar en el historial: " + e.message);
   }
   return { ok: true, devolucionId: devId, fecha, devuelto, registro, advertencias };
+}
+
+// ── MOVIMIENTOS DE STOCK EN BLOQUE ─────────────────────────────────
+// Antes cada código/producto hacía de 2 a 4 peticiones a Supabase y el plan gratuito de Cloudflare limita a 50 por
+// operación (~11-15 productos). Ahora: lectura en bloque + cálculo en memoria (en el mismo orden y con las mismas
+// reglas que antes) + escritura en bloque. ~4 peticiones sin importar cuántos productos.
+const _int = (v) => parseInt(v) || 0;
+function conPatchStock(st, patch) {
+  const n = { ...st, ...patch };
+  if (Supabase.COMPONENTES_STOCK.some(c => patch[c] !== undefined)) n.stock_total = Supabase.COMPONENTES_STOCK.reduce((a, c) => a + _int(n[c]), 0);
+  return n;
+}
+async function cargarStockMap(sb, codigos) {
+  return new Map((await sb.getMany("stock", (codigos || []).map(String))).map(x => [String(x.id), x]));
+}
+
+async function stockAsignarTiendaEnBloque(sb, d) {
+  const codigos = Array.isArray(d.codigos) ? d.codigos.map(String) : [];
+  const stock = await cargarStockMap(sb, codigos), tocados = new Set();
+  for (const codigo of codigos) {
+    const s = stock.get(codigo); if (!s) continue;
+    const disponible = _int(s.stock_bodega);
+    const cant = Math.min(d.cantidad || 1, disponible);                       // no mover más de lo que hay
+    if (cant <= 0) continue;
+    stock.set(codigo, conPatchStock(s, { stock_bodega: disponible - cant, stock_tienda: _int(s.stock_tienda) + cant, enCatalogo: true, estado: "tienda" }));
+    tocados.add(codigo);
+  }
+  if (tocados.size) await sb.setMany("stock", [...tocados].map(c => stock.get(c)));
+  return { ok: true };
+}
+
+async function stockDevolverBodegaEnBloque(sb, d) {
+  const codigos = Array.isArray(d.codigos) ? d.codigos.map(String) : [];
+  const origen = d.origen || "tienda";
+  const stock = await cargarStockMap(sb, codigos), tocados = new Set();
+  for (const codigo of codigos) {
+    const s = stock.get(codigo); if (!s) continue;
+    const enOrigen = origen === "tienda" ? _int(s.stock_tienda) : _int(s.stock_consignacion);   // no inventar stock
+    const cant = Math.min(d.cantidad || 1, enOrigen);
+    if (cant <= 0) continue;                                                   // ya no hay nada que devolver
+    const patch = { stock_bodega: _int(s.stock_bodega) + cant, estado: "bodega" };
+    if (origen === "tienda") { patch.stock_tienda = enOrigen - cant; patch.enCatalogo = false; }
+    else patch.stock_consignacion = enOrigen - cant;
+    stock.set(codigo, conPatchStock(s, patch)); tocados.add(codigo);
+  }
+  if (tocados.size) await sb.setMany("stock", [...tocados].map(c => stock.get(c)));
+  return { ok: true };
+}
+
+/** Escribe consignación y stock "todo o nada": si el stock falla, se restauran/borran las filas de consignación. */
+async function guardarConsignacionYStock(sb, consNuevos, stockDocs) {
+  const prev = new Map((await sb.getMany("consignacion", consNuevos.map(c => c.id))).map(c => [String(c.id), c]));
+  await sb.setMany("consignacion", consNuevos);
+  try {
+    if (stockDocs.length) await sb.setMany("stock", stockDocs);
+  } catch (e) {
+    try {
+      const restaurar = consNuevos.map(c => prev.get(String(c.id))).filter(Boolean);
+      if (restaurar.length) await sb.setMany("consignacion", restaurar);
+      const borrar = consNuevos.filter(c => !prev.has(String(c.id))).map(c => c.id);
+      if (borrar.length) await sb.deleteMany("consignacion", borrar);
+    } catch (e2) { console.error("guardarConsignacionYStock: no se pudo deshacer", e2); }
+    throw e;
+  }
+}
+
+async function stockAsignarVendedorEnBloque(sb, d) {
+  const codigos = Array.isArray(d.codigos) ? d.codigos.map(String) : [];
+  const stock = await cargarStockMap(sb, codigos), tocados = new Set();
+  const asignados = [], sinStock = [], consNuevos = [], ids = new Set();
+  const ahora = Date.now(), fecha = new Date().toISOString();
+  for (const codigo of codigos) {
+    const s = stock.get(codigo);
+    if (!s) { sinStock.push(codigo); continue; }
+    const disponible = _int(s.stock_bodega);
+    const cant = Math.min(d.cantidad || 1, disponible);
+    if (cant <= 0) { sinStock.push(codigo); continue; }
+    let id = `CONS_${ahora}_${codigo}`; for (let n = 2; ids.has(id); n++) id = `CONS_${ahora}_${codigo}_${n}`; ids.add(id);
+    consNuevos.push({ id, vendedor: d.vendedor, codigo, codigoBase: s.codigoBase || codigo, talla: s.talla || "", nombre: s.nombre || "",
+      nombre_base: s.nombre_base || s.nombre || "", categoria: s.categoria || "", precio: s.precio || 0, cantidad: cant, vendido: 0,
+      foto: s.foto || "", fecha, estado: "activo" });
+    stock.set(codigo, conPatchStock(s, { stock_bodega: disponible - cant, stock_consignacion: _int(s.stock_consignacion) + cant, estado: "consignacion" }));
+    tocados.add(codigo); asignados.push(codigo);
+  }
+  if (!consNuevos.length) return { ok: true, asignados, sinStock };
+  try { await guardarConsignacionYStock(sb, consNuevos, [...tocados].map(c => stock.get(c))); }
+  catch (e) { return { ok: false, error: "No se pudo asignar (no se guardó nada): " + e.message, asignados: [], sinStock: codigos }; }
+  return { ok: true, asignados, sinStock };
+}
+
+async function registrarEntregaEnBloque(sb, d) {
+  const items = Array.isArray(d.items) ? d.items : [];
+  const estadoInicial = d.borrador ? "borrador" : "activo";          // borrador: descuenta stock pero invisible hasta FINALIZAR_ENTREGA_VENDEDOR
+  const fallidos = [], validos = [], usados = new Set();
+  const ahora = Date.now(), fecha = new Date().toISOString();
+  for (const item of items) {
+    const codigo = item && item.codigo != null ? String(item.codigo) : "";
+    if (!codigo) { fallidos.push({ codigo: "(sin código)", error: "falta el código del producto" }); continue; }
+    const cant = _int(item.cantidad) || 1;
+    if (cant < 1) { fallidos.push({ codigo, error: "cantidad inválida" }); continue; }
+    const id = item.id || `CONS_${ahora}_${codigo}`;
+    if (usados.has(String(id))) { fallidos.push({ codigo, error: "registro repetido en la misma entrega" }); continue; }
+    usados.add(String(id)); validos.push({ item, codigo, cant, id });
+  }
+  if (!validos.length) return { ok: fallidos.length === 0, guardados: [], fallidos };
+  const stock = await cargarStockMap(sb, validos.map(v => v.codigo)), tocados = new Set();
+  const consNuevos = [], guardados = [];
+  for (const { item, codigo, cant, id } of validos) {
+    consNuevos.push({ id, vendedor: d.vendedor, codigo, nombre: item.nombre, codigoBase: item.codigoBase || codigo, talla: item.talla || "",
+      nombre_base: item.nombre_base || item.nombre, categoria: item.categoria || "", precio: item.precio || 0, cantidad: cant, vendido: 0,
+      foto: item.foto || "", fecha, estado: estadoInicial });
+    const s = stock.get(codigo);
+    if (s) { stock.set(codigo, conPatchStock(s, { stock_bodega: Math.max(0, _int(s.stock_bodega) - cant), stock_consignacion: _int(s.stock_consignacion) + cant })); tocados.add(codigo); }
+    guardados.push(codigo);
+  }
+  try { await guardarConsignacionYStock(sb, consNuevos, [...tocados].map(c => stock.get(c))); }
+  catch (e) {
+    const motivo = "No se pudo guardar la entrega (no se guardó nada): " + e.message;
+    return { ok: false, guardados: [], fallidos: [...validos.map(v => ({ codigo: v.codigo, error: motivo })), ...fallidos] };
+  }
+  return { ok: fallidos.length === 0, guardados, fallidos };
 }
 
 // ── HELPERS HTTP ──────────────────────────────────────────────────
