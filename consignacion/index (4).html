@@ -6085,6 +6085,9 @@ function ikOriginalSinNitidez(url, size) {
 // calidad de salida). Se baja la intensidad de ambos y se sube la calidad,
 // para que se note más nítido sin el look "sobre-procesado".
 const NIVELES_MEJORA_IMG_STOCK = { natural: "e-sharpen-1,q-90", mejorado: "e-sharpen-3,q-90" };
+// Valor numérico de nitidez de un nivel ("e-sharpen-3" -> 3) o de una dirección ImageKit guardada.
+function nitidezDeNivel(nivel) { const m = /e-sharpen-(\d+)/.exec((NIVELES_MEJORA_IMG_STOCK[nivel] || "")); return m ? +m[1] : 0; }
+function nitidezDeUrl(url) { const m = /e-sharpen-(\d+)/.exec(String(url || "")); return m ? +m[1] : (/e-sharpen/.test(String(url || "")) ? "automática" : 0); }
 function ikMejorar(url, nivel, size) {
     if (!url || !url.includes("imagekit.io")) return url;
     const s = size || 900;
@@ -6124,8 +6127,9 @@ function renderTextosMejoraStock() {
     document.getElementById("mjs-label-original").textContent = L.original;
     document.getElementById("mjs-label-preview").textContent  = L.preview;
     document.getElementById("mjs-label-nivel").textContent    = L.nivel;
-    document.getElementById("mjs-btn-natural").textContent    = L.natural;
-    document.getElementById("mjs-btn-mejorado").textContent   = L.mejorado;
+    const sh = (n) => (_mjsIdioma === "en" ? "sharpen " : "nitidez ") + nitidezDeNivel(n);
+    document.getElementById("mjs-btn-natural").textContent    = L.natural + " · " + sh("natural");
+    document.getElementById("mjs-btn-mejorado").textContent   = L.mejorado + " · " + sh("mejorado");
     document.getElementById("mjs-btn-cancelar").textContent   = L.cancelar;
     document.getElementById("mjs-btn-aplicar").textContent    = L.aplicar;
     document.getElementById("mjs-btn-idioma").textContent     = L.toggleIdioma;
@@ -6146,9 +6150,17 @@ function abrirMejorarFotoStock() {
     _mjsNivel = "natural"; // Natural es siempre el nivel predeterminado
     document.getElementById("mjs-nombre").textContent = `${item.nombre || "—"} · ${item.codigo || "—"}`;
     const gd = document.getElementById("mjs-guardada");
-    if (gd) gd.textContent = item.fotoMejorada
-        ? "Mejora guardada: nivel " + (item.fotoMejoraNivel || "?") + " · " + (item.fotoMejorada.split("?tr=")[1] || "").split(",").filter(x => /^(e-|q-)/.test(x)).join(", ")
-        : "Sin mejora guardada (se muestra la foto original con la nitidez automática)";
+    if (gd) {
+        if (item.fotoMejorada) {
+            const nit = nitidezDeUrl(item.fotoMejorada);
+            gd.textContent = "Mejora guardada: nivel " + (item.fotoMejoraNivel || "?") + " · nitidez " + nit
+                + (nit === 0 ? " (¡la dirección guardada NO trae nitidez!)" : "");
+            gd.title = item.fotoMejorada;
+        } else {
+            gd.textContent = "Sin mejora guardada (se muestra la foto original con la nitidez automática)";
+            gd.title = "";
+        }
+    }
     document.getElementById("mjs-img-original").src   = ikOriginalSinNitidez(foto, 700);
     renderTextosMejoraStock();
     actualizarNivelMejoraStock();
