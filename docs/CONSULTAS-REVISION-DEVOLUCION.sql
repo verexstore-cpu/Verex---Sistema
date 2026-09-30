@@ -113,3 +113,25 @@ order by c.data->>'codigo';
 --    where id in ('ANP254T6','ANP268T7');
 --
 --  Para el producto que NO llegó a bodega (el ~10 de la lista) se hace al revés: cambia "- 1" por "+ 1".
+
+
+-- ── 7) ¿QUÉ PRODUCTOS TOCÓ CADA INTENTO? (huella por hora de modificación) ─────────────
+--  Si la tabla stock guarda fecha de modificación (columna updated_at o similar), la columna
+--  ultima_modificacion sale con hora (UTC) y permite ver:
+--    · ~04:38–04:39  → solo lo tocaron los intentos FALLIDOS  → bodega con 1 unidad de MÁS
+--    · ~04:51        → lo tocó el intento BUENO                → bodega correcta
+--    · fecha antigua → no llegó a subir a bodega                → falta 1 (caso del producto ~10)
+--  Si sale NULL en todas las filas, esa tabla no guarda la fecha: usa el conteo físico.
+with reg as (
+  select t.n, t.it->>'codigo' as codigo
+  from devoluciones d,
+       jsonb_array_elements((d.data->>'items')::jsonb) with ordinality as t(it, n)
+  where d.id = 'DEV_1790743111454'
+)
+select reg.n                                   as orden_en_lista,
+       reg.codigo,
+       to_jsonb(s)->>'updated_at'              as ultima_modificacion,
+       nullif(s.data->>'stock_bodega','')::int as bodega_sistema
+from reg
+left join stock s on s.id = reg.codigo
+order by reg.n;
