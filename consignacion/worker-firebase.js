@@ -35,10 +35,6 @@ export default {
   async scheduled(event, env, ctx) {
     const sb = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
 
-    // Corrección ÚNICA de la devolución del 29-30 sept 2026 (ver reconciliarDevolucionFallida). Se ejecuta sola
-    // una vez (deja un marcador en config) y después solo cuesta una lectura. Se puede borrar tras aplicarse.
-    try { await reconciliarDevolucionFallida(sb, env); } catch (e) { console.error("reconciliarDevolucionFallida:", e); }
-
     // ── CRON CADA 5 MIN: liberar reservas de stock vencidas ──
     // Pedidos que reservaron pieza al crearse (REGISTRAR_LEAD) pero nadie
     // confirmó en 30 min (cliente no completó el pago, etc.) — se liberan
@@ -187,18 +183,6 @@ export default {
     // ── GET: rutas ────────────────────────────────────────────────
     if (request.method === "GET") {
       const url = new URL(request.url);
-
-      // Estado (y ejecución bajo demanda, idempotente) de la corrección única de la devolución fallida.
-      // Solo devuelve el resumen (sin copias de datos). Abrir esta dirección en el navegador la ejecuta si aún no corrió.
-      if (url.searchParams.get("fix") === "devolucion") {
-        try {
-          await reconciliarDevolucionFallida(sb, env);
-          const mk = await sb.get("config", FIX_ID);
-          if (!mk) return json({ ok: true, estado: "pendiente", nota: "Aún no se ha ejecutado (otra ejecución puede estar en curso); vuelve a abrir en un minuto." });
-          return json({ ok: true, estado: mk.estado, fecha: mk.fecha, correo: mk.correo || null,
-            cambios: mk.cambios || [], omitidos: mk.omitidos || [], notas: mk.notas || [] });
-        } catch (e) { return json({ ok: false, error: e.message }, 500); }
-      }
 
       // Página del celular para tomar foto
       if (url.pathname === "/foto-upload") {
@@ -4964,139 +4948,6 @@ async function registrarDevolucionEnBloque(sb, d) {
     advertencias.push("La devolución se aplicó, pero no se pudo guardar en el historial: " + e.message);
   }
   return { ok: true, devolucionId: devId, fecha, devuelto, registro, advertencias };
-}
-
-// ── CORRECCIÓN ÚNICA: devolución fallida del 29-30 sept 2026 ────────────────────────────────
-// Los dos primeros intentos (código anterior, límite de 50 subrequests) procesaron cada uno EXACTAMENTE los
-// 9 primeros productos de la lista (5 peticiones por producto): sumaron su cantidad a bodega y restaron de
-// consignación DOS veces, y el 3.er intento (ya con el arreglo) los saltó por estar ya en 0. El producto nº 10
-// pudo quedar a medias (consignación en 0 pero SIN subir a bodega) y por eso tampoco se sumó en el 3.er intento.
-// Esta función lo compensa UNA sola vez, con guardas; si algo no cuadra NO toca nada y lo informa por correo.
-// Guarda copia completa de lo anterior en config/fix_devolucion_20260930 (para deshacer) y avisa a VEREX.
-const FIX_ID = "fix_devolucion_20260930";
-const FIX_DEV = { primero: "DEV_1790743111454", segundo: "DEV_1790743149436", tercero: "DEV_1790743887815" };
-const FIX_PROCESADOS = 9;
-const FIX_CODIGOS_VISTOS = ["ANP254T6", "ANP268T7"];   // duplicados que el usuario vio en Stock: deben estar entre los 9
-
-async function reconciliarDevolucionFallida(sb, env) {
-  if (await sb.get("config", FIX_ID)) return;                       // ya se ejecutó (o se descartó)
-  // Candado atómico: solo UNA ejecución (cron o dirección abierta a la vez) puede seguir. Si quedó un candado viejo
-  // sin marcador (la ejecución murió antes de empezar a cambiar datos), a los 30 min se puede reclamar de nuevo.
-  const candado = FIX_ID + "_lock";
-  if (!(await sb.insertIfAbsent("config", candado, { fecha: new Date().toISOString() }))) {
-    const viejo = await sb.get("config", candado);
-    const antiguo = viejo && Date.now() - new Date(viejo.fecha).getTime() > 30 * 60 * 1000;
-    if (!antiguo || (await sb.get("config", FIX_ID))) return;
-    await sb.delete("config", candado);
-    if (!(await sb.insertIfAbsent("config", candado, { fecha: new Date().toISOString() }))) return;
-  }
-  if (await sb.get("config", FIX_ID)) return;                       // doble comprobación tras tomar el candado
-  const int = (v) => parseInt(v) || 0;
-  const informe = { cambios: [], omitidos: [], notas: [] };
-  const cerrar = async (estado, extra) => {
-    const doc = { estado, fecha: new Date().toISOString(), ...informe, ...(extra || {}) };
-    await sb.set("config", FIX_ID, doc);
-    doc.correo = await avisarCorreccionDevolucion(env, doc);          // el resultado del correo también queda guardado
-    await sb.set("config", FIX_ID, doc);
-  };
-
-  const regs = new Map((await sb.getMany("devoluciones", Object.values(FIX_DEV))).map(r => [String(r.id), r]));
-  const r1 = regs.get(FIX_DEV.primero), r2 = regs.get(FIX_DEV.segundo), r3 = regs.get(FIX_DEV.tercero);
-  if (!r1 || !r2) { informe.notas.push("No están los registros de los dos intentos fallidos; no se pudo saber qué productos se movieron. No se cambió nada."); return cerrar("omitido"); }
-  let it1, it2;
-  try { it1 = JSON.parse(r1.items); it2 = JSON.parse(r2.items); } catch (_) { informe.notas.push("Los registros no se pudieron leer. No se cambió nada."); return cerrar("omitido"); }
-  const cod = (x) => String((x && x.codigo) || "");
-  const primeros = it1.slice(0, FIX_PROCESADOS);
-  if (it1.length < FIX_PROCESADOS || it1.length !== it2.length || primeros.some((x, i) => cod(x) !== cod(it2[i]) || cod(x) === "")) {
-    informe.notas.push("Los dos intentos fallidos no tienen la misma lista de productos. No se cambió nada."); return cerrar("omitido");
-  }
-  const codigos9 = primeros.map(cod);
-  const faltanVistos = FIX_CODIGOS_VISTOS.filter(c => !codigos9.includes(c));
-  if (faltanVistos.length) {
-    informe.notas.push("Los códigos que se vieron duplicados (" + faltanVistos.join(", ") + ") no están entre los 9 primeros de la lista: la hipótesis no cuadra. No se cambió nada.");
-    return cerrar("omitido");
-  }
-
-  const decimo = it1[FIX_PROCESADOS] || null;
-  const involucrados = decimo ? [...primeros, decimo] : primeros;
-  const consMap = new Map((await sb.getMany("consignacion", involucrados.map(x => x.id))).map(c => [String(c.id), c]));
-  const stockMap = new Map((await sb.getMany("stock", involucrados.map(cod))).map(x => [String(x.id), x]));
-  // Los dos códigos vistos eran piezas únicas y aparecían con 2 en bodega. Si ya no están en 2, alguien los corrigió
-  // (o se movieron): no se aplica nada para no restar dos veces.
-  const yaTocados = FIX_CODIGOS_VISTOS.filter(c => { const st = stockMap.get(c); return !st || int(st.stock_bodega) !== 2; });
-  if (yaTocados.length) {
-    informe.notas.push("Los códigos " + yaTocados.join(", ") + " ya no tienen 2 en bodega (se corrigieron a mano o se movieron). Para no restar dos veces, NO se aplicó la corrección automática. Revisa esos productos con las consultas de docs/CONSULTAS-REVISION-DEVOLUCION.sql.");
-    return cerrar("omitido");
-  }
-  const todasCons = await sb.getAll("consignacion");
-  const pendienteReal = (codigo) => todasCons
-    .filter(c => String(c.codigo) === codigo && (c.estado || "activo") === "activo")
-    .reduce((a, c) => a + Math.max(0, int(c.cantidad) - int(c.vendido)), 0);
-
-  const antes = [], nuevos = [];
-  const mover = (item, deltaBodega, consigNueva, motivo) => {
-    const st = stockMap.get(cod(item));
-    const nuevo = { ...st, stock_bodega: int(st.stock_bodega) + deltaBodega, stock_consignacion: consigNueva };
-    nuevo.stock_total = Supabase.COMPONENTES_STOCK.reduce((a, c) => a + int(nuevo[c]), 0);
-    antes.push(st); nuevos.push(nuevo);
-    informe.cambios.push({ codigo: cod(item), nombre: item.nombre || "", motivo,
-      bodega: [int(st.stock_bodega), nuevo.stock_bodega], consignacion: [int(st.stock_consignacion), nuevo.stock_consignacion] });
-  };
-
-  for (const item of primeros) {                                        // procesados DOS veces: quitar 1 vez de bodega
-    const q = Math.max(0, int(item.cantidad)), c = cod(item), cons = consMap.get(String(item.id)), st = stockMap.get(c);
-    if (!st) { informe.omitidos.push({ codigo: c, motivo: "no existe en Stock" }); continue; }
-    if (!cons || int(cons.cantidad) !== 0) { informe.omitidos.push({ codigo: c, motivo: "su consignación ya no está en 0 (hubo otro movimiento); revisar a mano" }); continue; }
-    if (q <= 0 || int(st.stock_bodega) < q) { informe.omitidos.push({ codigo: c, motivo: "bodega (" + int(st.stock_bodega) + ") menor que el sobrante (" + q + "); ya hubo salidas, revisar a mano" }); continue; }
-    const real = pendienteReal(c), consig = int(st.stock_consignacion);
-    mover(item, -q, consig < real ? Math.min(real, consig + q) : consig, "procesado dos veces por los intentos fallidos");
-  }
-  if (decimo) {                                                         // posible producto a medias: subir a bodega solo si hay evidencia
-    const q = Math.max(0, int(decimo.cantidad)), c = cod(decimo), cons = consMap.get(String(decimo.id)), st = stockMap.get(c);
-    if (!st || !cons || int(cons.cantidad) !== 0 || q <= 0) informe.notas.push("Producto " + (c || "nº 10") + ": sin evidencia para corregirlo; no se tocó.");
-    else {
-      const real = pendienteReal(c), consig = int(st.stock_consignacion);
-      if (consig - real >= q) mover(decimo, q, consig - q, "quedó a medias: salió de consignación pero no llegó a bodega");
-      else informe.notas.push("Producto " + c + ": su stock cuadra con la consignación, se devolvió bien; no se tocó.");
-    }
-  }
-
-  // Marcador PREVIO con copia de lo anterior: si la ejecución muriera a mitad, no se reintenta (evita restar dos veces)
-  // y la copia queda disponible para deshacer.
-  await sb.set("config", FIX_ID, { estado: "aplicando", fecha: new Date().toISOString(), ...informe, antes, respaldoRegistros: [r1, r2] });
-  if (nuevos.length) await sb.setMany("stock", nuevos);
-  // Historial: se deja UN registro (el 3.º) con su total; los dos intentos fallidos se guardan en el marcador y se borran.
-  try {
-    if (r3) { const its = JSON.parse(r3.items || "[]"); await sb.set("devoluciones", FIX_DEV.tercero, { ...Object.fromEntries(Object.entries(r3).filter(([k]) => k !== "id")), total_unidades: its.reduce((a, x) => a + Math.max(0, int(x.cantidad)), 0) }); }
-    await sb.delete("devoluciones", FIX_DEV.primero); await sb.delete("devoluciones", FIX_DEV.segundo);
-    informe.notas.push("Se borraron del historial los 2 registros de los intentos fallidos (copia en este marcador) y el tercero quedó con su total de unidades.");
-  } catch (e) { informe.notas.push("No se pudo limpiar el historial: " + e.message); }
-  return cerrar("aplicado", { antes, respaldoRegistros: [r1, r2] });
-}
-
-async function avisarCorreccionDevolucion(env, doc) {
-  if (!env.RESEND_KEY) return { ok: false, error: "Falta RESEND_KEY en el Worker" };
-  const filas = (doc.cambios || []).map(c => `<tr><td>${c.codigo}</td><td>${c.nombre}</td><td>${c.bodega[0]} → <b>${c.bodega[1]}</b></td><td>${c.consignacion[0]} → <b>${c.consignacion[1]}</b></td><td>${c.motivo}</td></tr>`).join("");
-  const omit = (doc.omitidos || []).map(o => `<li>${o.codigo}: ${o.motivo}</li>`).join("");
-  const notas = (doc.notas || []).map(n => `<li>${n}</li>`).join("");
-  try {
-  const r = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.RESEND_KEY}` },
-    body: JSON.stringify({
-      from: "VEREX Store <hola@notificaciones.verexstore.com>", to: ["hola@verexstore.com"],
-      subject: `🔧 Corrección de la devolución del 29-30 sept — ${doc.estado}`,
-      html: `<div style="font-family:Arial,sans-serif;max-width:720px;margin:0 auto;padding:16px;">
-        <h2 style="color:#C9A84C;">Corrección automática de la devolución fallida — <i>${doc.estado}</i></h2>
-        ${filas ? `<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px;"><tr><th>Código</th><th>Producto</th><th>Bodega</th><th>Consignación (stock)</th><th>Motivo</th></tr>${filas}</table>` : "<p>No se cambió ningún producto.</p>"}
-        ${omit ? `<h3>Revisar a mano</h3><ul>${omit}</ul>` : ""}
-        ${notas ? `<h3>Notas</h3><ul>${notas}</ul>` : ""}
-        <p style="font-size:12px;color:#777;">Los valores anteriores están guardados en la tabla config, documento ${FIX_ID}, por si hay que deshacerlo.</p></div>`
-    })
-  });
-  const txt = await r.text().catch(() => "");
-  return r.ok ? { ok: true } : { ok: false, error: r.status + " " + txt.slice(0, 200) };
-  } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 }
 
 // ── HELPERS HTTP ──────────────────────────────────────────────────
