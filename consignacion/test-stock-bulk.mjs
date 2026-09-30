@@ -8,7 +8,7 @@ const nuevo = await cargar(process.env.WORKER_FILE || path.join(here, 'worker-fi
 const viejo = process.env.WORKER_ANTERIOR ? await cargar(process.env.WORKER_ANTERIOR, 'verex-w-viejo.mjs') : null;
 
 let LIMITE = 50;
-const db = new Map(); let sub = 0, failStock = false;
+const db = new Map(); let sub = 0, failStock = false, failNth = 0, failTabla = '', nStock = 0;
 const k = (t, id) => t + '/' + id;
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, opts = {}) => {
@@ -28,6 +28,8 @@ globalThis.fetch = async (url, opts = {}) => {
   if (method === 'DELETE') { if (idq.startsWith('in.(')) ids().forEach((i) => db.delete(k(table, i))); else if (idq.startsWith('eq.')) db.delete(k(table, idq.slice(3))); return ok({}); }
   if (method === 'POST') {
     if (failStock && table === 'stock') return new Response('boom', { status: 500 });
+    if (table === 'stock' && failNth && ++nStock === failNth) return new Response('boom', { status: 500 });
+    if (failTabla && table === failTabla) return new Response('boom', { status: 500 });
     for (const r of (Array.isArray(body) ? body : [body])) db.set(k(table, r.id), r.data); return ok({});
   }
   return ok({});
@@ -102,5 +104,37 @@ for (const [acc, p] of [['STOCK_ASIGNAR_VENDEDOR', { codigos: ['P1', 'P2'], vend
   const consIds = [...db.keys()].filter((x) => x.startsWith('consignacion/'));
   ok(r.body.ok === false && snap() === antes, `${acc}: si falla el stock, el stock queda intacto y se avisa «no se guardó nada»`);
   ok(consIds.length === 1 && JSON.stringify(db.get(k('consignacion', 'N1'))) === previo, `${acc}: la consignación se deshace (se borra lo nuevo y se restaura lo previo)`); }
+
+// ── Correcciones tras la simulación independiente
+{ // 1) más de 100 productos: si falla el 2.º bloque de stock se deshace todo (antes quedaban 100 a medias)
+  for (const [acc, p, chk] of [
+    ['STOCK_ASIGNAR_TIENDA', { codigos: cods(110), cantidad: 1 }, null],
+    ['STOCK_ASIGNAR_VENDEDOR', { codigos: cods(110), vendedor: 'V1', cantidad: 1 }, 'cons'],
+    ['REGISTRAR_ENTREGA', { vendedor: 'V1', items: cods(110).map((c) => ({ codigo: c, nombre: 'x', cantidad: 1 })) }, 'cons'],
+  ]) {
+    db.clear(); cods(110).forEach((c, i) => mkStock(i + 1, 5, 0, 0)); const antes = snap();
+    nStock = 0; failNth = 2; const r = await llamar(nuevo, acc, p); failNth = 0;
+    ok(r.body.ok === false && snap() === antes, `${acc} con 110 productos y fallo en el 2.º bloque: error claro y stock intacto (antes quedaban 100 movidos)`);
+    if (chk) ok(![...db.keys()].some((x) => x.startsWith('consignacion/')), `  …y sin registros de consignación sueltos`);
+    const r2 = await llamar(nuevo, acc, p); ok(r2.body.ok === true && db.get(k('stock', 'P110')).stock_bodega === 4 && db.get(k('stock', 'P1')).stock_bodega === 4, `  …y el reintento funciona (110/110)`);
+  } }
+{ // 2) ids únicos aunque dos asignaciones caigan en el mismo milisegundo
+  const fijo = Date.now; Date.now = () => 1700000000000;
+  try { db.clear(); mkStock(1, 6, 0, 0); await llamar(nuevo, 'STOCK_ASIGNAR_VENDEDOR', { codigos: ['P1'], vendedor: 'V1', cantidad: 1 }); await llamar(nuevo, 'STOCK_ASIGNAR_VENDEDOR', { codigos: ['P1'], vendedor: 'V2', cantidad: 1 });
+    const cons = [...db.entries()].filter(([x]) => x.startsWith('consignacion/')).map(([, v]) => v);
+    ok(cons.length === 2 && new Set(cons.map((c) => c.vendedor)).size === 2 && db.get(k('stock', 'P1')).stock_consignacion === 2, 'dos asignaciones del mismo código en el mismo milisegundo: 2 registros (V1 y V2), ninguno se pisa'); }
+  finally { Date.now = fijo; } }
+{ // 3) devolución: si el historial no se puede guardar, NO se aplica nada y el reintento funciona
+  db.clear(); db.set(k('consignacion', 'C1'), { codigo: 'P1', vendedor: 'V1', cantidad: 4, vendido: 0, estado: 'activo' }); mkStock(1, 5, 0, 4);
+  const antes = snap(), antesC = JSON.stringify(db.get(k('consignacion', 'C1')));
+  const p = { vendedor: 'V1', devId: 'DEV_1700000000000_zzz111', items: [{ id: 'C1', codigo: 'P1', cantidad: 2 }] };
+  failTabla = 'devoluciones'; const r = await llamar(nuevo, 'REGISTRAR_DEVOLUCION', p); failTabla = '';
+  ok(r.body.ok === false && snap() === antes && JSON.stringify(db.get(k('consignacion', 'C1'))) === antesC, 'devolución con fallo al guardar el historial: error y NADA aplicado');
+  const r2 = await llamar(nuevo, 'REGISTRAR_DEVOLUCION', p); const r3 = await llamar(nuevo, 'REGISTRAR_DEVOLUCION', p);
+  ok(r2.body.ok && db.get(k('stock', 'P1')).stock_bodega === 7 && r3.body.duplicado === true && db.get(k('stock', 'P1')).stock_bodega === 7, 'el reintento aplica 2 (bodega 5→7) y un reenvío posterior se detecta como duplicado');
+  db.clear(); db.set(k('consignacion', 'C1'), { codigo: 'P1', vendedor: 'V1', cantidad: 4, vendido: 0, estado: 'activo' }); mkStock(1, 5, 0, 4);
+  failStock = true; const r4 = await llamar(nuevo, 'REGISTRAR_DEVOLUCION', p); failStock = false;
+  ok(r4.body.ok === false && ![...db.keys()].some((x) => x.startsWith('devoluciones/')) && db.get(k('consignacion', 'C1')).cantidad === 4, 'devolución con fallo de stock: se deshace todo, incluido el registro del historial (el reintento no sale como duplicado)');
+  const r5 = await llamar(nuevo, 'REGISTRAR_DEVOLUCION', p); ok(r5.body.ok === true && !r5.body.duplicado && db.get(k('stock', 'P1')).stock_bodega === 7, 'y el reintento posterior sí se aplica'); }
 
 console.log(`\n${pass} correctas, ${fail} fallidas`); process.exit(fail ? 1 : 0);
