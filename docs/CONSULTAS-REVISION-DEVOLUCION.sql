@@ -92,3 +92,24 @@ order by c.data->>'codigo';
 --    select * from devoluciones where id in ('DEV_1790743111454','DEV_1790743149436');
 --  Solo entonces:
 --    delete from devoluciones where id in ('DEV_1790743111454','DEV_1790743149436');
+
+
+-- ── 6) CORREGIR bodega de productos con 1 unidad de más (tras los intentos fallidos) ────
+--  Úsala SOLO para los códigos que hayas comprobado (físicamente) que tienen 1 unidad de más en bodega.
+--  Cambia la lista de códigos en las DOS sentencias. Ejecuta primero la vista previa.
+--
+--  (a) VISTA PREVIA — no cambia nada:
+--    select id, data->>'stock_bodega' as bodega_actual,
+--           greatest(0, coalesce(nullif(data->>'stock_bodega','')::int,0) - 1) as bodega_nueva
+--    from stock where id in ('ANP254T6','ANP268T7') order by id;
+--
+--  (b) APLICAR — resta 1 a stock_bodega y recalcula stock_total (bodega + tienda + consignación):
+--    update stock
+--    set data = jsonb_set(
+--          jsonb_set(data, '{stock_bodega}', to_jsonb(greatest(0, coalesce(nullif(data->>'stock_bodega','')::int,0) - 1))),
+--          '{stock_total}', to_jsonb( greatest(0, coalesce(nullif(data->>'stock_bodega','')::int,0) - 1)
+--                                   + coalesce(nullif(data->>'stock_tienda','')::int,0)
+--                                   + coalesce(nullif(data->>'stock_consignacion','')::int,0)))
+--    where id in ('ANP254T6','ANP268T7');
+--
+--  Para el producto que NO llegó a bodega (el ~10 de la lista) se hace al revés: cambia "- 1" por "+ 1".
