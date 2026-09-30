@@ -1446,7 +1446,7 @@
             <h3>↩️ Registrar Devolución</h3>
             <button class="modal-close" onclick="cerrarModal('modal-devolucion')">×</button>
         </div>
-        <p style="font-size:13px;color:var(--plateado);margin-bottom:14px;">Productos que el vendedor devuelve a bodega. Solo aparecen los disponibles. Escaneá cada pieza a medida que el vendedor te la entrega — la cantidad sube sola y abajo ves si algo no cuadra.</p>
+        <p style="font-size:13px;color:var(--plateado);margin-bottom:14px;">Productos que el vendedor devuelve a bodega. Solo aparecen los disponibles. Escaneá cada pieza a medida que el vendedor te la entrega (con el lector de códigos o con la cámara) — la cantidad sube sola y abajo ves si algo no cuadra.</p>
         <button class="btn" style="background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1,#38bdf8,#0a4a6b);color:#e0f7ff;font-weight:700;width:100%;margin-bottom:14px;" onclick="abrirScannerQR(_onScanDevolucion, '📷 Escanear devolución')">📷 Escanear producto devuelto</button>
         <div id="resumen-devolucion" style="margin-bottom:14px;"></div>
         <div id="lista-devolucion"></div>
@@ -6007,7 +6007,11 @@ function ikFoto(url, size) {
 // ni IA generativa — la pieza debe verse exactamente igual, solo más nítida.
 // Es una transformación por URL de ImageKit (mismo servicio ya en uso, sin
 // nueva integración ni archivo adicional).
-const NIVELES_MEJORA_IMG_STOCK = { natural: "e-sharpen-3", mejorado: "e-sharpen-8" };
+// Antes: natural=e-sharpen-3, mejorado=e-sharpen-8 — el nivel "mejorado" se
+// veía muy artificial (halos duros de unsharp mask, agravados por no fijar
+// calidad de salida). Se baja la intensidad de ambos y se sube la calidad,
+// para que se note más nítido sin el look "sobre-procesado".
+const NIVELES_MEJORA_IMG_STOCK = { natural: "e-sharpen-1,q-90", mejorado: "e-sharpen-3,q-90" };
 function ikMejorar(url, nivel, size) {
     if (!url || !url.includes("imagekit.io")) return url;
     const s = size || 900;
@@ -8636,7 +8640,12 @@ async function abrirScannerQR(onResult, titulo) {
             }
         }, 3000);
     } catch (e) {
-        toast("⚠️ No se pudo acceder a la cámara: " + e.name + " — " + e.message, "#ef4444");
+        const msgCam = e.name === "NotAllowedError"
+            ? "⚠️ La cámara está bloqueada para este sitio. Toca el candado junto a la dirección → Permisos → Cámara → Permitir. Si usas lector físico, escanea sin abrir la cámara."
+            : e.name === "NotFoundError"
+                ? "⚠️ Este equipo no tiene cámara. Usa el lector físico: escanea directamente, sin abrir la cámara."
+                : "⚠️ No se pudo acceder a la cámara: " + e.name + " — " + e.message;
+        toast(msgCam, "#ef4444", 8000);
         cerrarScannerQR();
     }
 }
@@ -11746,11 +11755,12 @@ function abrirStockNuevoLote() {
 function abrirModal(id) { document.getElementById(id).classList.add("active"); }
 function cerrarModal(id) { document.getElementById(id).classList.remove("active"); }
 
-function toast(msg, bg) {
+function toast(msg, bg, ms) {
     const t = document.getElementById("toast");
     t.textContent = msg; t.style.background = bg || "var(--gris2)";
     t.classList.add("show");
-    setTimeout(() => t.classList.remove("show"), 2800);
+    clearTimeout(window._toastT);
+    window._toastT = setTimeout(() => t.classList.remove("show"), ms || 2800);
 }
 
 // ── DETECTOR GLOBAL DE SCANNER ───────────────────────────────────────
@@ -11766,6 +11776,9 @@ function toast(msg, bg) {
         // antes de cualquier exclusión pensada para las pantallas de Stock/Etiquetas.
         const entregaVis = document.getElementById("pantalla-entrega")?.style.display === "block";
         const verificandoBorrador = typeof _modoVerificarBorrador !== "undefined" && _modoVerificarBorrador;
+        // Registrar Devolución abierto: el lector físico (USB/Bluetooth) cuenta cada pieza igual que la
+        // cámara. Sin esto el escaneo caía en la búsqueda de Stock/Etiquetas que está detrás del modal.
+        const devolucionVis = !!document.getElementById("modal-devolucion")?.classList.contains("active");
 
         if (!entregaVis && !verificandoBorrador) {
             const activeId = document.activeElement?.id || "";
@@ -11791,7 +11804,7 @@ function toast(msg, bg) {
             // (ej. justo después de tocar "Verificar conteo"), el navegador
             // lo trata como un click en ese botón. Bloquearlo evita que se
             // reactive/reinicie el modo de verificación a mitad de escaneo.
-            if (verificandoBorrador || entregaVis) e.preventDefault();
+            if (verificandoBorrador || entregaVis || devolucionVis) e.preventDefault();
             const cod = _scanBuf.trim().toUpperCase();
             _scanBuf = "";
             if (cod.length < 3) {
@@ -11801,6 +11814,12 @@ function toast(msg, bg) {
                 if (entregaVis && cod.length > 0 && typeof _registrarEscaneoFallido === "function") {
                     _registrarEscaneoFallido((cod || "(vacío)") + " (lectura muy corta/corrupta)");
                 }
+                return;
+            }
+
+            if (devolucionVis) {
+                e.preventDefault();          // que el Enter del lector no "toque" el botón que tenga el foco
+                _onScanDevolucion(cod);
                 return;
             }
 
@@ -14470,7 +14489,7 @@ function enviarRecordatorioAbono(ventaId) {
 
 <!-- Modal Mejorar Imagen (nitidez vía ImageKit) -->
 <div class="modal-overlay" id="modal-mejorar-foto-stock">
-    <div class="modal-box">
+    <div class="modal-box" style="max-width:900px;">
         <div class="modal-header">
             <h3 id="mjs-titulo">✨ Mejorar imagen</h3>
             <button class="modal-close" onclick="cerrarMejorarFotoStock()">×</button>
