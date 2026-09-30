@@ -399,6 +399,18 @@
         padding: 28px 24px; max-width: 480px; width: 100%; max-height: 90vh; overflow-y: auto;
         animation: modalIn 0.3s cubic-bezier(.34,1.56,.64,1);
     }
+    /* Registrar Devolución: modal ancho, productos en columnas, acciones siempre visibles */
+    #modal-devolucion .modal-box { max-width: 1180px; width: 96vw; }
+    .dev-top { display: grid; grid-template-columns: minmax(240px, 320px) 1fr; gap: 14px; align-items: start; margin-bottom: 14px; }
+    .dev-top > .btn { margin-bottom: 0 !important; height: 100%; min-height: 52px; }
+    .dev-top #resumen-devolucion { margin-bottom: 0 !important; }
+    #lista-devolucion { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+    #lista-devolucion > div { margin-bottom: 0 !important; }
+    .dev-acciones { position: sticky; bottom: -28px; margin: 16px -24px -28px !important; padding: 14px 24px 28px; background: linear-gradient(to bottom, transparent, var(--gris) 28%); }
+    @media (max-width: 820px) {
+        .dev-top { grid-template-columns: 1fr; }
+        .dev-top > .btn { height: auto; }
+    }
     @keyframes slideUpIn {
         from { transform: translateX(-50%) translateY(20px); opacity: 0; }
         to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
@@ -1441,16 +1453,18 @@
 <style>@keyframes scanConfirmIn { from{transform:scale(.85);opacity:0;} to{transform:scale(1);opacity:1;} }</style>
 
 <div class="modal-overlay" id="modal-devolucion">
-    <div class="modal-box" style="max-width:540px;">
+    <div class="modal-box">
         <div class="modal-header">
             <h3>↩️ Registrar Devolución</h3>
             <button class="modal-close" onclick="cerrarModal('modal-devolucion')">×</button>
         </div>
         <p style="font-size:13px;color:var(--plateado);margin-bottom:14px;">Productos que el vendedor devuelve a bodega. Solo aparecen los disponibles. Escaneá cada pieza a medida que el vendedor te la entrega (con el lector de códigos o con la cámara) — la cantidad sube sola y abajo ves si algo no cuadra.</p>
+        <div class="dev-top">
         <button class="btn" style="background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1,#38bdf8,#0a4a6b);color:#e0f7ff;font-weight:700;width:100%;margin-bottom:14px;" onclick="abrirScannerQR(_onScanDevolucion, '📷 Escanear devolución')">📷 Escanear producto devuelto</button>
         <div id="resumen-devolucion" style="margin-bottom:14px;"></div>
+        </div>
         <div id="lista-devolucion"></div>
-        <div style="margin-top:16px;display:flex;gap:10px;">
+        <div class="dev-acciones" style="display:flex;gap:10px;">
             <button class="btn btn-gris" style="flex:1;" onclick="cerrarModal('modal-devolucion')">Cancelar</button>
             <button class="btn btn-dorado" style="flex:1;" onclick="confirmarDevolucion()">✅ Confirmar Devolución</button>
         </div>
