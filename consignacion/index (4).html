@@ -5541,17 +5541,24 @@ function generarReciboPDF(vendedor, items, firmaImg, codigoFirma, esMensajeria) 
     const headers = ["Código", "Producto", "Cant.", "Precio", "Subtotal"];
     const rowH = 8;
 
-    doc.setFillColor(30, 30, 30);
-    doc.rect(mL, y, textW, rowH, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
+    const dibujarEncabezadoTabla = () => {
+        doc.setFillColor(30, 30, 30);
+        doc.rect(mL, y, textW, rowH, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        let xh = mL;
+        headers.forEach((h, i) => { doc.text(h, xh + 2, y + 5); xh += colWidths[i]; });
+        y += rowH;
+    };
+    dibujarEncabezadoTabla();
     let x = mL;
-    headers.forEach((h, i) => { doc.text(h, x + 2, y + 5); x += colWidths[i]; });
-    y += rowH;
 
+    // Con muchas piezas la tabla sigue en otra hoja (antes las filas pasadas del borde, el total y la firma se perdían)
+    const limiteY = 272;
     let total = 0;
     items.forEach((item, idx) => {
+        if (y + rowH > limiteY) { doc.addPage(); y = 20; dibujarEncabezadoTabla(); }
         const subtotal = parseFloat(item.precio) * parseInt(item.cantidad);
         total += subtotal;
         doc.setFillColor(idx % 2 === 0 ? 248 : 255, idx % 2 === 0 ? 248 : 255, idx % 2 === 0 ? 248 : 255);
@@ -5565,6 +5572,9 @@ function generarReciboPDF(vendedor, items, firmaImg, codigoFirma, esMensajeria) 
         });
         y += rowH;
     });
+
+    // Total + nota + firmas se mantienen juntos: si no caben en la hoja actual, pasan a una nueva
+    if (y + rowH + 10 + 25 + 26 + 18 + (codigoFirma ? 24 : 0) > limiteY + 8) { doc.addPage(); y = 20; }
 
     // Total
     doc.setFillColor(201, 168, 76);
@@ -5619,10 +5629,14 @@ function generarReciboPDF(vendedor, items, firmaImg, codigoFirma, esMensajeria) 
         y += 12;
     }
 
-    // Footer
-    doc.setFontSize(8);
-    doc.setTextColor(180, 180, 180);
-    doc.text("VEREX Nexus • " + fecha, pageW / 2, 285, { align: "center" });
+    // Footer en cada página
+    const nPagRec = doc.getNumberOfPages();
+    for (let pg = 1; pg <= nPagRec; pg++) {
+        doc.setPage(pg);
+        doc.setFontSize(8);
+        doc.setTextColor(180, 180, 180);
+        doc.text("VEREX Nexus • " + fecha + (nPagRec > 1 ? "  ·  Página " + pg + " de " + nPagRec : ""), pageW / 2, 285, { align: "center" });
+    }
 
     doc.save("Recibo_Entrega_" + vendedor.nombre.replace(/ /g, "_") + "_" + new Date().toLocaleDateString("es-SV").replace(/\//g, "-") + ".pdf");
     toast("📄 Recibo generado");
