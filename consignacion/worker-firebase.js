@@ -3461,6 +3461,12 @@ async function enviar(){
           if (d.nombre_base     !== undefined) upd.nombre_base       = d.nombre_base;
           if (d.precio          !== undefined) upd.precio            = Math.round((parseFloat(d.precio) || 0) * 100) / 100;
           if (d.img             !== undefined) upd.foto              = d.img;
+          // Si la foto CAMBIA, la versión mejorada guardada es de la foto anterior y las pantallas la muestran antes que
+          // `foto`: el cambio parecía no aplicarse. Se borra salvo que la petición traiga una mejorada nueva.
+          if (d.img !== undefined && d.fotoMejorada === undefined) {
+            const actual = await sb.get("stock", d.codigo);
+            if (actual && actual.fotoMejorada && String(actual.foto || "") !== String(d.img || "")) { upd.fotoMejorada = ""; upd.fotoMejoraNivel = ""; }
+          }
           // Foto "Mejorada" (nitidez vía ImageKit, desde el botón ✨ del
           // admin) — nunca toca `foto` (la original), se guarda aparte.
           if (d.fotoMejorada    !== undefined) upd.fotoMejorada      = d.fotoMejorada;

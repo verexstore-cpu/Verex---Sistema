@@ -137,4 +137,13 @@ for (const [acc, p] of [['STOCK_ASIGNAR_VENDEDOR', { codigos: ['P1', 'P2'], vend
   ok(r4.body.ok === false && ![...db.keys()].some((x) => x.startsWith('devoluciones/')) && db.get(k('consignacion', 'C1')).cantidad === 4, 'devolución con fallo de stock: se deshace todo, incluido el registro del historial (el reintento no sale como duplicado)');
   const r5 = await llamar(nuevo, 'REGISTRAR_DEVOLUCION', p); ok(r5.body.ok === true && !r5.body.duplicado && db.get(k('stock', 'P1')).stock_bodega === 7, 'y el reintento posterior sí se aplica'); }
 
+{ // Cambiar la foto de un producto borra la "mejorada" vieja (si no, la pantalla seguía mostrando la foto anterior)
+  db.clear(); db.set(k('stock', 'F1'), { codigo: 'F1', nombre: 'N', foto: 'https://ik.test/a.webp', fotoMejorada: 'https://ik.test/a.webp?tr=w-1600,e-sharpen-1', fotoMejoraNivel: 'natural', stock_bodega: 1 });
+  await llamar(nuevo, 'EDITAR_PRODUCTO', { codigo: 'F1', nombre: 'N', img: 'https://ik.test/a.webp' });
+  ok(db.get(k('stock', 'F1')).fotoMejorada.includes('e-sharpen-1'), 'editar SIN cambiar la foto conserva la mejorada');
+  await llamar(nuevo, 'EDITAR_PRODUCTO', { codigo: 'F1', img: 'https://ik.test/NUEVA.webp' });
+  const f = db.get(k('stock', 'F1')); ok(f.foto.endsWith('NUEVA.webp') && f.fotoMejorada === '' && f.fotoMejoraNivel === '', 'cambiar la foto guarda la nueva y borra la mejorada anterior');
+  await llamar(nuevo, 'EDITAR_PRODUCTO', { codigo: 'F1', img: 'https://ik.test/OTRA.webp', fotoMejorada: 'https://ik.test/OTRA.webp?tr=w-1600,e-sharpen-3', fotoMejoraNivel: 'mejorado' });
+  ok(db.get(k('stock', 'F1')).fotoMejorada.includes('OTRA') , 'si la misma petición trae una mejorada nueva, se respeta'); }
+
 console.log(`\n${pass} correctas, ${fail} fallidas`); process.exit(fail ? 1 : 0);

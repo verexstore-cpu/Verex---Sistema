@@ -7406,11 +7406,20 @@ async function guardarEdicionProducto() {
     if (!nombre || !precio) { toast("⚠️ Completa nombre y precio"); btn.textContent = "💾 Guardar"; btn.disabled = false; return; }
     if (esSetEP && !esUnisexEP && !precioCaballeroEP) { toast("⚠️ Completa el precio de caballero"); btn.textContent = "💾 Guardar"; btn.disabled = false; return; }
     let img = productoEditando.p.img || "";
-    if (productoEditando.nuevaFoto) {
+    // Si se CAMBIA la foto, la versión "mejorada" guardada es de la foto anterior: hay que borrarla, porque la pantalla
+    // muestra fotoMejorada antes que foto y seguiría enseñando la foto vieja (el cambio parecía no aplicarse).
+    const cambioFoto = !!productoEditando.nuevaFoto;
+    if (cambioFoto) {
         const url = await subirFotoImageKit(productoEditando.nuevaFotoFile || productoEditando.nuevaFotoOriginal || productoEditando.nuevaFoto, codigo, productoEditando.nuevaFotoCrop);
-        if (url) img = url;
-        else img = productoEditando.nuevaFoto;
+        if (!url) {
+            // Sin URL no se guarda nada de la foto (antes se guardaba la imagen completa en base64 como si fuera la URL).
+            toast("⚠️ No se pudo subir la foto nueva — no se cambió la foto. Inténtalo de nuevo.", "#ef4444");
+            btn.textContent = "💾 Guardar"; btn.disabled = false;
+            return;
+        }
+        img = url;
     }
+    const limpiaMejora = cambioFoto ? { fotoMejorada: "", fotoMejoraNivel: "" } : {};
     const matSelBtn = document.querySelector(".ep-mat-btn[style*='solid var(--dorado)']");
     const material  = matSelBtn ? matSelBtn.dataset.mat : (productoEditando.p.material || "");
     const caracterEspecial = (document.getElementById("ep-caract")?.value || "").trim();
@@ -7420,7 +7429,7 @@ async function guardarEdicionProducto() {
     // y el catálogo, así que hay que mantenerlo sincronizado con el nombre.
     const nombreBaseEP = nombre.replace(/\s+T?\d+(\.\d+)?\s*$/i, "").trim() || nombre;
     // Update en servidor
-    await apiPost({ accion: "EDITAR_PRODUCTO", codigo: codigoViejo, nuevo_codigo: codigo !== codigoViejo ? codigo : undefined, nombre, nombre_base: nombreBaseEP, descripcion: desc, precio, img, material, caracterEspecial, set_config: setConfigEP || undefined, precio_caballero: precioCaballeroEP });
+    await apiPost({ accion: "EDITAR_PRODUCTO", codigo: codigoViejo, nuevo_codigo: codigo !== codigoViejo ? codigo : undefined, nombre, nombre_base: nombreBaseEP, descripcion: desc, precio, img, material, caracterEspecial, set_config: setConfigEP || undefined, precio_caballero: precioCaballeroEP, ...limpiaMejora });
     // Propagar nombre_base, foto, material, descripción y caracterEspecial al
     // resto de tallas del mismo diseño — así editar cualquier talla actualiza
     // todo el grupo sin tener que hacerlo una por una.
@@ -7429,12 +7438,13 @@ async function guardarEdicionProducto() {
     for (const h of hermanos) {
         const tallaH = getTallaFromCodigo(h.codigo);
         const nombreH = tallaH ? `${nombreBaseEP} T${tallaH}` : nombreBaseEP;
-        await apiPost({ accion: "EDITAR_PRODUCTO", codigo: h.codigo, nombre: nombreH, nombre_base: nombreBaseEP, descripcion: desc, img, material, caracterEspecial });
+        await apiPost({ accion: "EDITAR_PRODUCTO", codigo: h.codigo, nombre: nombreH, nombre_base: nombreBaseEP, descripcion: desc, img, material, caracterEspecial, ...limpiaMejora });
         // h es la misma referencia que el objeto dentro de stockData — reflejar
         // el cambio ahí también para que sus tarjetas se vean actualizadas sin
         // esperar a un cargarStock().
         h.nombre = nombreH; h.nombre_base = nombreBaseEP; h.descripcion = desc;
         h.img = img; h.foto = img; h.material = material; h.caracterEspecial = caracterEspecial;
+        if (cambioFoto) { h.fotoMejorada = ""; h.fotoMejoraNivel = ""; }
     }
     // Sumar existencia a bodega si se ingresó cantidad
     const existencia = parseInt(document.getElementById("ep-existencia")?.value) || 0;
@@ -7477,6 +7487,7 @@ async function guardarEdicionProducto() {
     const idx = productosDisponibles.findIndex(x => x.codigo === codigoViejo);
     p.codigo = codigo; p.nombre = nombre; p.nombre_base = nombreBaseEP; p.descripcion = desc;
     p.precio = precio; p.precioNum = precio; p.img = img; p.foto = img; p.material = material; p.caracterEspecial = caracterEspecial;
+    if (cambioFoto) { p.fotoMejorada = ""; p.fotoMejoraNivel = ""; productoEditando.nuevaFoto = null; }
     if (idx >= 0) productosDisponibles[idx] = p;
     // productoEditando.p es una COPIA (no la misma referencia que stockData),
     // así que hay que reflejar el cambio ahí también — si no, la pestaña de
