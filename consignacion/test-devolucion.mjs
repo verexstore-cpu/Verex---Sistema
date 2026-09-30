@@ -63,7 +63,14 @@ console.log('Registrar devolución en bloque — pruebas\n');
   const reg = db.get(k('devoluciones', r.body.devolucionId));
   ok(!!reg, 'queda UN registro en el historial de devoluciones');
   ok(reg.total_unidades === items.reduce((a, x) => a + x.cantidad, 0) && JSON.parse(reg.items).length === 30, 'el registro guarda total_unidades (' + reg.total_unidades + ') y los 30 productos');
-  ok(r.body.devuelto.reduce((a, x) => a + x.cantidad, 0) === items.reduce((a, x) => a + x.cantidad, 0), 'el detalle devuelto suma lo pedido'); }
+  ok(r.body.devuelto.reduce((a, x) => a + x.cantidad, 0) === items.reduce((a, x) => a + x.cantidad, 0), 'el detalle devuelto suma lo pedido');
+  ok(Array.isArray(r.body.registro) && r.body.registro.length === 30 && r.body.registro.every((x) => x.cantidad > 0), 'la respuesta trae el detalle exacto aplicado (para que la pantalla no duplique cifras)'); }
+
+{ // Piezas que YA estaban devueltas (intentos anteriores fallidos): no se vuelven a sumar a bodega
+  reset(); mk(1, 0, 0, 7, 0); db.set(k('consignacion', 'C1'), { ...db.get(k('consignacion', 'C1')), estado: 'devuelto' }); mk(2, 1, 0, 5, 4);
+  const r = await devolver({ vendedor: 'V1', items: [{ id: 'C1', codigo: 'COD1', cantidad: 1 }, { id: 'C2', codigo: 'COD2', cantidad: 1 }] });
+  ok(r.body.ok && db.get(k('stock', 'COD1')).stock_bodega === 7 && db.get(k('stock', 'COD2')).stock_bodega === 6, 'una pieza ya devuelta antes NO se suma otra vez (bodega 7 se queda en 7); la pendiente sí (5→6)');
+  ok(r.body.registro.length === 1 && r.body.registro[0].codigo === 'COD2' && r.body.advertencias.length === 1, 'el registro solo lista lo aplicado y avisa de la ya devuelta'); }
 
 { reset(); mk(1, 3, 1, 10, 3, 4);
   const r = await devolver({ vendedor: 'V1', items: [{ id: 'C1', codigo: 'COD1', cantidad: 1 }] });

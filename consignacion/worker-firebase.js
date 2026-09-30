@@ -4929,7 +4929,7 @@ async function registrarDevolucionEnBloque(sb, d) {
   } catch (e) {
     advertencias.push("La devolución se aplicó, pero no se pudo guardar en el historial: " + e.message);
   }
-  return { ok: true, devolucionId: devId, fecha, devuelto, advertencias };
+  return { ok: true, devolucionId: devId, fecha, devuelto, registro, advertencias };
 }
 
 // ── HELPERS HTTP ──────────────────────────────────────────────────

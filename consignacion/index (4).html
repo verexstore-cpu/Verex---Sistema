@@ -4557,8 +4557,12 @@ async function confirmarDevolucion() {
         // Pausar auto-sync 60s para que no revierta los cambios locales
         _pausarSyncHasta = Date.now() + 60000;
 
+        // Lo que el SERVIDOR aplicó de verdad (puede ser menos que lo pedido si alguna pieza ya estaba devuelta).
+        // Con un Worker antiguo que no lo manda, se usa lo pedido.
+        const aplicados = Array.isArray(resp.registro) ? resp.registro : items;
+
         // Actualizar consignacion local
-        items.forEach(item => {
+        aplicados.forEach(item => {
             const c = consignacion.find(c => String(c.id) === String(item.id));
             if (c) {
                 c.cantidad = Math.max(parseInt(c.vendido||0), parseInt(c.cantidad||0) - item.cantidad);
@@ -4566,11 +4570,20 @@ async function confirmarDevolucion() {
             }
         });
 
-        // Actualizar stockData local (stock_bodega + stock_consignacion)
-        items.forEach(item => {
+        // Actualizar stockData local (stock_bodega + stock_consignacion): la bodega toma el valor exacto del servidor
+        const bodegaServidor = new Map((resp.devuelto || []).map(x => [String(x.codigo), x]));
+        const yaAplicado = new Set();
+        aplicados.forEach(item => {
             const s = stockData.find(s => s.codigo === item.codigo);
-            if (s) {
-                s.stock_bodega      = (parseInt(s.stock_bodega)      || 0) + item.cantidad;
+            if (!s) return;
+            const srv = bodegaServidor.get(String(item.codigo));
+            if (srv) {
+                if (yaAplicado.has(item.codigo)) return;              // varias líneas del mismo código: el servidor ya las sumó
+                yaAplicado.add(item.codigo);
+                s.stock_bodega       = srv.stock_bodega;
+                s.stock_consignacion = Math.max(0, (parseInt(s.stock_consignacion) || 0) - srv.cantidad);
+            } else {
+                s.stock_bodega       = (parseInt(s.stock_bodega)       || 0) + item.cantidad;
                 s.stock_consignacion = Math.max(0, (parseInt(s.stock_consignacion) || 0) - item.cantidad);
             }
         });
