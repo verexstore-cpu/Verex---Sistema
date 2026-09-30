@@ -4040,25 +4040,35 @@ function descargarPDFDevolucion(idx) {
     doc.setFont("helvetica","normal"); doc.text(String(devId), 62, 60);
     // Línea
     doc.setDrawColor(201,168,76); doc.setLineWidth(0.5); doc.line(20,65,pageW-20,65);
-    // Tabla
-    doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(80,80,80);
-    doc.text("Producto", 22, 74); doc.text("Código", 120, 74); doc.text("Cant.", 175, 74);
-    doc.setDrawColor(200,200,200); doc.line(20,77,pageW-20,77);
+    // Tabla (con salto de página: antes las filas pasadas de ~24 se dibujaban fuera de la hoja y se perdían, igual que el total)
+    const encabezadoTabla = (yy) => {
+        doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(80,80,80);
+        doc.text("Producto", 22, yy); doc.text("Código", 120, yy); doc.text("Cant.", 175, yy);
+        doc.setDrawColor(200,200,200); doc.line(20,yy+3,pageW-20,yy+3);
+    };
+    encabezadoTabla(74);
+    const limiteY = 272;                       // deja espacio para el pie de página
     let y = 84;
     items.forEach(item => {
+        if (y > limiteY) { doc.addPage(); encabezadoTabla(20); y = 30; }
         doc.setFont("helvetica","normal"); doc.setTextColor(30,30,30); doc.setFontSize(10);
         doc.text(String(item.nombre||"").slice(0,45), 22, y);
         doc.text(String(item.codigo||""), 120, y);
         doc.text(String(item.cantidad||0), 178, y);
         y += 9;
     });
-    doc.setDrawColor(201,168,76); doc.line(20,y,pageW-20,y);
-    doc.setFont("helvetica","normal"); doc.setFontSize(11);
     const totalUnidades = items.reduce((s,i) => s + (parseInt(i.cantidad)||0), 0);
-    doc.text("Total unidades devueltas: " + totalUnidades, 22, y+9);
-    // Pie
-    doc.setFontSize(8); doc.setTextColor(150,150,150); doc.setFont("helvetica","normal");
-    doc.text("VEREX Store — Documento generado automáticamente", pageW/2, 285, {align:"center"});
+    if (y + 16 > limiteY + 9) { doc.addPage(); y = 24; }
+    doc.setDrawColor(201,168,76); doc.line(20,y,pageW-20,y);
+    doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.setTextColor(30,30,30);
+    doc.text("Total productos: " + items.length + "   |   Total unidades devueltas: " + totalUnidades, 22, y+9);
+    // Pie en cada página
+    const nPag = doc.getNumberOfPages();
+    for (let pg = 1; pg <= nPag; pg++) {
+        doc.setPage(pg);
+        doc.setFontSize(8); doc.setTextColor(150,150,150); doc.setFont("helvetica","normal");
+        doc.text("VEREX Store — Documento generado automáticamente  ·  Página " + pg + " de " + nPag, pageW/2, 285, {align:"center"});
+    }
     doc.save("Devolucion-" + devId + ".pdf");
 }
 
