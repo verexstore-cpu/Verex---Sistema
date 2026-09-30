@@ -6174,9 +6174,19 @@ async function aplicarMejoraFotoStock() {
             fotoMejoraNivel: _mjsNivel
         });
         if (data.ok) {
+            // Aplicación inmediata: se actualiza el dato local y todo lo que está en pantalla, sin recargar la página.
+            const nuevaFoto = ikMejorar(foto, _mjsNivel, 1600);
+            const codigo = _mjsItem.codigo;
+            const enStock = stockData.find(p => p.codigo === codigo);
+            if (enStock) { enStock.fotoMejorada = nuevaFoto; enStock.fotoMejoraNivel = _mjsNivel; }
+            if (productoEditando && productoEditando.p && productoEditando.p.codigo === codigo) {
+                productoEditando.p.fotoMejorada = nuevaFoto; productoEditando.p.fotoMejoraNivel = _mjsNivel;
+            }
+            const fotoModal = document.getElementById("modal-prod-foto");
+            if (fotoModal) { fotoModal.src = ikFoto(nuevaFoto, 900); fotoModal.style.display = "block"; }
+            try { filtrarStock(); } catch (_) { renderStock(stockData); }   // lista/grid con la foto mejorada ya puesta
             toast(L.okMsg, "#22c55e");
             cerrarMejorarFotoStock();
-            cerrarModal("modal-ver-producto");
         } else {
             toast(L.errMsg, "#ef4444");
         }
