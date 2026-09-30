@@ -6074,7 +6074,10 @@ function ikMejorar(url, nivel, size) {
     const s = size || 900;
     const base = url.split("?")[0];
     const tr = NIVELES_MEJORA_IMG_STOCK[nivel] || NIVELES_MEJORA_IMG_STOCK.natural;
-    return `${base}?tr=w-${s},${tr}`;
+    // Conserva el recorte con el que se subió la foto (?tr=cm-extract,…) — igual que ikFoto. Antes se descartaba y la
+    // versión mejorada mostraba la foto completa sin recortar: la pieza se veía pequeña y "lejana".
+    const previo = url.includes("?tr=") ? url.split("?tr=")[1] : null;
+    return previo ? `${base}?tr=${previo},w-${s},${tr}` : `${base}?tr=w-${s},${tr}`;
 }
 
 // Textos del panel en ES/EN — autocontenido, no depende de ningún sistema
