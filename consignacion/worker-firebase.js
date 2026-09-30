@@ -96,6 +96,27 @@ export default {
       secciones.push(`📦 Reposiciones pendientes (venta bajo pedido):\n${reposicionesCron.join("\n")}`);
     }
 
+    // ── AUDITORÍA DIARIA DE STOCK: detecta descuadres (total, negativos, consignación vs. registros, huérfanos) antes
+    // de que se acumulen. Solo avisa si hay algo; si la propia auditoría falla, también avisa (no falla en silencio). ──
+    try {
+      const aud = await auditarStock(sb);
+      const r = aud.resumen, n = r.discrepancias + r.negativos + r.huerfanas + r.totalDescuadrado;
+      await sb.set("config", "auditoria_stock", { fecha: aud.generadoEn, ok: n === 0, resumen: r,
+        muestra: { discrepancias: aud.discrepanciasConsignacion.slice(0, 20), negativos: aud.negativos.slice(0, 20), totalDescuadrado: aud.totalDescuadrado.slice(0, 20), huerfanas: aud.consHuerfanas.slice(0, 20) } }).catch(() => {});
+      if (n > 0) {
+        const top = (arr, f) => arr.slice(0, 8).map(f).join("\n") + (arr.length > 8 ? `\n… y ${arr.length - 8} más` : "");
+        const partes = [];
+        if (aud.totalDescuadrado.length) partes.push(`• ${aud.totalDescuadrado.length} con stock_total que no suma:\n${top(aud.totalDescuadrado, x => `   ${x.codigo}: total ${x.stock_total}, suma ${x.suma}`)}`);
+        if (aud.negativos.length) partes.push(`• ${aud.negativos.length} con cantidades negativas:\n${top(aud.negativos, x => `   ${x.codigo}`)}`);
+        if (aud.discrepanciasConsignacion.length) partes.push(`• ${aud.discrepanciasConsignacion.length} donde Stock no coincide con lo que tienen los vendedores:\n${top(aud.discrepanciasConsignacion, x => `   ${x.codigo}: Stock ${x.stock_consignacion_registrado}, vendedores ${x.consignacion_real}`)}`);
+        if (aud.consHuerfanas.length) partes.push(`• ${aud.consHuerfanas.length} consignaciones de códigos que ya no existen en Stock`);
+        secciones.push(`🔎 Auditoría de stock: ${n} producto(s) con descuadre\n${partes.join("\n")}\nDetalle: Consignación → Stock → 🔍 Auditoría`);
+      }
+    } catch (audErr) {
+      console.error("Auditoría diaria de stock falló:", audErr);
+      secciones.push("🔎 La auditoría diaria de stock NO pudo ejecutarse (" + String(audErr && audErr.message || audErr).slice(0, 120) + "). Revisa el Worker.");
+    }
+
     if (secciones.length) {
       const msg = encodeURIComponent(
         `VEREX — avisos del día:\n\n${secciones.join("\n\n")}\n\n📋 Revisa todo en: https://admin-tienda.pages.dev`
@@ -1693,94 +1714,7 @@ async function enviar(){
         // Ese drift fue exactamente la causa del caso Jaime/PUP035.
         case "AUDITORIA_STOCK": {
           if (!esAdmin) return forbidden();
-          const [stockAud, consAud, vendAud] = await Promise.all([
-            sb.getAll("stock"), sb.getAll("consignacion"), sb.getAll("vendedores")
-          ]);
-          const vendMapAud = new Map(vendAud.map(v => [v.codigo, v.nombre || v.codigo]));
-
-          // Consignación real por código: suma de (cantidad - vendido) de
-          // items activos, más el detalle de qué vendedor tiene cuánto.
-          const consRealPorCodigo = new Map();
-          for (const c of consAud) {
-            if (c.estado !== "activo") continue;
-            const restante = Math.max(0, (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0));
-            if (restante <= 0) continue;
-            const cod = String(c.codigo||"").toUpperCase();
-            if (!consRealPorCodigo.has(cod)) consRealPorCodigo.set(cod, { total: 0, detalle: [] });
-            const entry = consRealPorCodigo.get(cod);
-            entry.total += restante;
-            entry.detalle.push({
-              id: c.id, vendedor: c.vendedor,
-              vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor,
-              vendedorExiste: vendMapAud.has(c.vendedor),
-              cantidad: restante
-            });
-          }
-
-          const discrepanciasConsignacion = [];
-          for (const s of stockAud) {
-            const cod = String(s.codigo||"").toUpperCase();
-            const registrado = parseInt(s.stock_consignacion) || 0;
-            const real = consRealPorCodigo.get(cod)?.total || 0;
-            if (registrado !== real) {
-              discrepanciasConsignacion.push({
-                codigo: s.codigo, nombre: s.nombre || "",
-                stock_consignacion_registrado: registrado,
-                consignacion_real: real,
-                diferencia: registrado - real,
-                detalleVendedores: consRealPorCodigo.get(cod)?.detalle || []
-              });
-            }
-          }
-
-          // Chequeos de sanidad básicos: negativos no deberían existir nunca.
-          const negativos = stockAud.filter(s =>
-            (parseInt(s.stock_bodega)||0) < 0 || (parseInt(s.stock_tienda)||0) < 0 ||
-            (parseInt(s.stock_consignacion)||0) < 0 || (parseInt(s.stock_reservado)||0) < 0
-          ).map(s => ({
-            codigo: s.codigo, nombre: s.nombre || "",
-            stock_bodega: parseInt(s.stock_bodega)||0, stock_tienda: parseInt(s.stock_tienda)||0,
-            stock_consignacion: parseInt(s.stock_consignacion)||0, stock_reservado: parseInt(s.stock_reservado)||0
-          }));
-
-          // Consignación "activa" pero cuyo código ya no existe en stock —
-          // huérfanos que pueden confundir reportes futuros.
-          const codigosStock = new Set(stockAud.map(s => String(s.codigo||"").toUpperCase()));
-          const consHuerfanas = consAud.filter(c =>
-            c.estado === "activo" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0 &&
-            !codigosStock.has(String(c.codigo||"").toUpperCase())
-          ).map(c => ({ id: c.id, codigo: c.codigo, vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor, cantidad: c.cantidad, vendido: c.vendido }));
-
-          // Piezas cerradas con "Ya vendida" (MARCAR_CONSIGNACION_VENDIDA) que
-          // en realidad nunca llegaron a contarse como venta real — típico de
-          // confundir esa opción (pensada solo para piezas YA liquidadas
-          // antes) con una venta nueva. Quedan invisibles para siempre: ya no
-          // aparecen en el inventario activo del vendedor (por eso "no
-          // aparece"), pero el stock nunca se movió y la comisión nunca se
-          // contó, y sin este chequeo no hay ninguna pantalla en la app para
-          // volver a encontrarlas.
-          const cerradosSinContar = consAud.filter(c =>
-            c.estado === "vendido" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0
-          ).map(c => ({
-            id: c.id, codigo: c.codigo, nombre: c.nombre || "",
-            vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor,
-            precio: c.precio || 0,
-            cantidad: parseInt(c.cantidad)||0, vendido: parseInt(c.vendido)||0,
-            pendiente: (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0)
-          }));
-
-          result = {
-            ok: true,
-            generadoEn: new Date().toISOString(),
-            discrepanciasConsignacion, negativos, consHuerfanas, cerradosSinContar,
-            resumen: {
-              productosRevisados: stockAud.length,
-              discrepancias: discrepanciasConsignacion.length,
-              negativos: negativos.length,
-              huerfanas: consHuerfanas.length,
-              cerradosSinContar: cerradosSinContar.length
-            }
-          };
+          result = await auditarStock(sb);
           break;
         }
 
@@ -4994,6 +4928,103 @@ async function registrarEntregaEnBloque(sb, d) {
     return { ok: false, guardados: [], fallidos: [...validos.map(v => ({ codigo: v.codigo, error: motivo })), ...fallidos] };
   }
   return { ok: fallidos.length === 0, guardados, fallidos };
+}
+
+// Auditoría de consistencia del stock (solo lectura). La usan la acción AUDITORIA_STOCK y el cron diario.
+async function auditarStock(sb) {
+  const [stockAud, consAud, vendAud] = await Promise.all([
+    sb.getAll("stock"), sb.getAll("consignacion"), sb.getAll("vendedores")
+  ]);
+  const vendMapAud = new Map(vendAud.map(v => [v.codigo, v.nombre || v.codigo]));
+
+  // Consignación real por código: suma de (cantidad - vendido) de
+  // items activos, más el detalle de qué vendedor tiene cuánto.
+  const consRealPorCodigo = new Map();
+  for (const c of consAud) {
+    if (c.estado !== "activo") continue;
+    const restante = Math.max(0, (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0));
+    if (restante <= 0) continue;
+    const cod = String(c.codigo||"").toUpperCase();
+    if (!consRealPorCodigo.has(cod)) consRealPorCodigo.set(cod, { total: 0, detalle: [] });
+    const entry = consRealPorCodigo.get(cod);
+    entry.total += restante;
+    entry.detalle.push({
+      id: c.id, vendedor: c.vendedor,
+      vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor,
+      vendedorExiste: vendMapAud.has(c.vendedor),
+      cantidad: restante
+    });
+  }
+
+  const discrepanciasConsignacion = [];
+  for (const s of stockAud) {
+    const cod = String(s.codigo||"").toUpperCase();
+    const registrado = parseInt(s.stock_consignacion) || 0;
+    const real = consRealPorCodigo.get(cod)?.total || 0;
+    if (registrado !== real) {
+      discrepanciasConsignacion.push({
+        codigo: s.codigo, nombre: s.nombre || "",
+        stock_consignacion_registrado: registrado,
+        consignacion_real: real,
+        diferencia: registrado - real,
+        detalleVendedores: consRealPorCodigo.get(cod)?.detalle || []
+      });
+    }
+  }
+
+  // Chequeos de sanidad básicos: negativos no deberían existir nunca.
+  const negativos = stockAud.filter(s =>
+    (parseInt(s.stock_bodega)||0) < 0 || (parseInt(s.stock_tienda)||0) < 0 ||
+    (parseInt(s.stock_consignacion)||0) < 0 || (parseInt(s.stock_reservado)||0) < 0
+  ).map(s => ({
+    codigo: s.codigo, nombre: s.nombre || "",
+    stock_bodega: parseInt(s.stock_bodega)||0, stock_tienda: parseInt(s.stock_tienda)||0,
+    stock_consignacion: parseInt(s.stock_consignacion)||0, stock_reservado: parseInt(s.stock_reservado)||0
+  }));
+
+  // Consignación "activa" pero cuyo código ya no existe en stock —
+  // huérfanos que pueden confundir reportes futuros.
+  const codigosStock = new Set(stockAud.map(s => String(s.codigo||"").toUpperCase()));
+  const consHuerfanas = consAud.filter(c =>
+    c.estado === "activo" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0 &&
+    !codigosStock.has(String(c.codigo||"").toUpperCase())
+  ).map(c => ({ id: c.id, codigo: c.codigo, vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor, cantidad: c.cantidad, vendido: c.vendido }));
+
+  // Piezas cerradas con "Ya vendida" (MARCAR_CONSIGNACION_VENDIDA) que
+  // en realidad nunca llegaron a contarse como venta real — típico de
+  // confundir esa opción (pensada solo para piezas YA liquidadas
+  // antes) con una venta nueva. Quedan invisibles para siempre: ya no
+  // aparecen en el inventario activo del vendedor (por eso "no
+  // aparece"), pero el stock nunca se movió y la comisión nunca se
+  // contó, y sin este chequeo no hay ninguna pantalla en la app para
+  // volver a encontrarlas.
+  const cerradosSinContar = consAud.filter(c =>
+    c.estado === "vendido" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0
+  ).map(c => ({
+    id: c.id, codigo: c.codigo, nombre: c.nombre || "",
+    vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor,
+    precio: c.precio || 0,
+    cantidad: parseInt(c.cantidad)||0, vendido: parseInt(c.vendido)||0,
+    pendiente: (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0)
+  }));
+
+  // stock_total debe ser bodega + tienda + consignación (así lo recalculan todas las operaciones)
+  const totalDescuadrado = stockAud.filter(s => (parseInt(s.stock_total)||0) !== Supabase.COMPONENTES_STOCK.reduce((a, c) => a + (parseInt(s[c])||0), 0))
+    .map(s => ({ codigo: s.codigo, nombre: s.nombre || "", stock_total: parseInt(s.stock_total)||0, suma: Supabase.COMPONENTES_STOCK.reduce((a, c) => a + (parseInt(s[c])||0), 0) }));
+
+  return {
+    ok: true,
+    generadoEn: new Date().toISOString(),
+    discrepanciasConsignacion, negativos, consHuerfanas, cerradosSinContar, totalDescuadrado,
+    resumen: {
+      productosRevisados: stockAud.length,
+      discrepancias: discrepanciasConsignacion.length,
+      negativos: negativos.length,
+      huerfanas: consHuerfanas.length,
+      cerradosSinContar: cerradosSinContar.length,
+      totalDescuadrado: totalDescuadrado.length
+    }
+  };
 }
 
 // ── HELPERS HTTP ──────────────────────────────────────────────────
