@@ -6065,6 +6065,16 @@ function ikFoto(url, size) {
     return tr ? `${base}?tr=${tr},w-${s},e-sharpen` : `${base}?tr=w-${s},e-sharpen`;
 }
 
+// Foto tal cual se subió (con su recorte), SIN ninguna nitidez — solo tamaño y la misma calidad que la vista previa
+// mejorada, para que el "antes" del panel ✨ sea de verdad el antes.
+function ikOriginalSinNitidez(url, size) {
+    if (!url || !url.includes("imagekit.io")) return url;
+    const base = url.split("?")[0];
+    // Se conserva TODO el recorte original (cm-extract,x,y,w,h…); solo se quita cualquier e-sharpen.
+    const previo = url.includes("?tr=") ? url.split("?tr=")[1].split(",").filter(x => !x.startsWith("e-sharpen")).join(",") : "";
+    return `${base}?tr=${previo ? previo + "," : ""}w-${size || 700},q-90`;
+}
+
 // ── MEJORAR IMAGEN (nitidez vía ImageKit) ──────────────────────────
 // Solo transformaciones de nitidez (sharpen), nunca color/contraste/brillo
 // ni IA generativa — la pieza debe verse exactamente igual, solo más nítida.
@@ -6139,7 +6149,7 @@ function abrirMejorarFotoStock() {
     if (gd) gd.textContent = item.fotoMejorada
         ? "Mejora guardada: nivel " + (item.fotoMejoraNivel || "?") + " · " + (item.fotoMejorada.split("?tr=")[1] || "").split(",").filter(x => /^(e-|q-)/.test(x)).join(", ")
         : "Sin mejora guardada (se muestra la foto original con la nitidez automática)";
-    document.getElementById("mjs-img-original").src   = ikFoto(foto, 700);
+    document.getElementById("mjs-img-original").src   = ikOriginalSinNitidez(foto, 700);
     renderTextosMejoraStock();
     actualizarNivelMejoraStock();
     abrirModal("modal-mejorar-foto-stock");
