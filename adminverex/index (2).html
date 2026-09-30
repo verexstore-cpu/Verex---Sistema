@@ -6350,6 +6350,7 @@ async function autoSeleccionarVariado(evitarCodigos) {
 // tocar la foto guardada.
 function ikSharp(url) {
     if (!url || !url.includes("imagekit.io")) return url;
+    if (url.includes("e-sharpen")) return url;   // foto ya mejorada: trae su nitidez; sumar otra la hacía verse exagerada
     return url.includes("?tr=") ? url + ",e-sharpen" : url + "?tr=e-sharpen";
 }
 

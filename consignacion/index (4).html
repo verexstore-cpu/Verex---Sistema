@@ -6053,6 +6053,12 @@ function comprimirParaIA(base64) {
 function ikFoto(url, size) {
     if (!url || !url.includes("imagekit.io")) return url;
     const s = size || 900;
+    // Una foto YA mejorada (fotoMejorada) trae su propia nitidez elegida (e-sharpen-N). No se le suma otro e-sharpen:
+    // apilar los dos es lo que la hacía verse exagerada y poco natural frente a la vista previa del panel.
+    // Solo se ajusta el ancho (el 1600 con el que se guardó) al tamaño pedido.
+    if (url.includes("e-sharpen")) {
+        return /,w-1600(?=,|$)/.test(url) ? url.replace(/,w-1600(?=,|$)/, ",w-" + s) : (url.includes("?tr=") ? `${url},w-${s}` : url);
+    }
     const base = url.split("?")[0];
     const tr   = url.includes("?tr=") ? url.split("?tr=")[1] : null;
     // Tamaño explícito en el mismo transform (no encadenado)
