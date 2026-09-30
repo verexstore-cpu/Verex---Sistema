@@ -6135,6 +6135,10 @@ function abrirMejorarFotoStock() {
     _mjsItem  = item;
     _mjsNivel = "natural"; // Natural es siempre el nivel predeterminado
     document.getElementById("mjs-nombre").textContent = `${item.nombre || "—"} · ${item.codigo || "—"}`;
+    const gd = document.getElementById("mjs-guardada");
+    if (gd) gd.textContent = item.fotoMejorada
+        ? "Mejora guardada: nivel " + (item.fotoMejoraNivel || "?") + " · " + (item.fotoMejorada.split("?tr=")[1] || "").split(",").filter(x => /^(e-|q-)/.test(x)).join(", ")
+        : "Sin mejora guardada (se muestra la foto original con la nitidez automática)";
     document.getElementById("mjs-img-original").src   = ikFoto(foto, 700);
     renderTextosMejoraStock();
     actualizarNivelMejoraStock();
@@ -14583,6 +14587,7 @@ function enviarRecordatorioAbono(ventaId) {
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
             <p id="mjs-nombre" style="margin:0;color:var(--plateado);font-size:12px;"></p>
+            <p id="mjs-guardada" style="margin:2px 0 0;color:var(--plateado);font-size:11px;opacity:.8;"></p>
             <button class="btn btn-gris" style="padding:4px 10px;font-size:11px;flex-shrink:0;" onclick="toggleIdiomaMejoraStock()" id="mjs-btn-idioma">EN</button>
         </div>
 
@@ -15491,7 +15496,8 @@ async function confirmarVDManual() {
 function abrirFotoZoom(url, nombre) {
     const modal = document.getElementById("modal-foto-zoom");
     document.getElementById("foto-zoom-img").src = ikFoto(url, 1500);
-    document.getElementById("foto-zoom-nombre").textContent = nombre || "";
+    const vista = String(url || "").includes("e-sharpen-") ? "✨ versión mejorada" : "foto original";
+    document.getElementById("foto-zoom-nombre").textContent = (nombre || "") + " · " + vista;
     modal.style.display = "flex";
     document.body.style.overflow = "hidden";
 }
