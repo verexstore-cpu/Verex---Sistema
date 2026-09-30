@@ -60,7 +60,9 @@ console.log('Registrar devolución en bloque — pruebas\n');
   ok(bien === 30, 'TODO lo devuelto regresó a bodega: 30/30 productos con stock_bodega + cantidad y stock_consignacion − cantidad');
   ok(total === 30, 'stock_total recalculado en los 30');
   ok(estados === 30, 'consignaciones quedan en 0 y estado «devuelto»: 30/30');
-  ok(!!db.get(k('devoluciones', r.body.devolucionId)), 'queda UN registro en el historial de devoluciones');
+  const reg = db.get(k('devoluciones', r.body.devolucionId));
+  ok(!!reg, 'queda UN registro en el historial de devoluciones');
+  ok(reg.total_unidades === items.reduce((a, x) => a + x.cantidad, 0) && JSON.parse(reg.items).length === 30, 'el registro guarda total_unidades (' + reg.total_unidades + ') y los 30 productos');
   ok(r.body.devuelto.reduce((a, x) => a + x.cantidad, 0) === items.reduce((a, x) => a + x.cantidad, 0), 'el detalle devuelto suma lo pedido'); }
 
 { reset(); mk(1, 3, 1, 10, 3, 4);
@@ -77,6 +79,8 @@ console.log('Registrar devolución en bloque — pruebas\n');
 { reset(); mk(1, 2, 0, 5, 4);
   const r = await devolver({ vendedor: 'V1', items: [{ id: 'C1', codigo: 'COD1', cantidad: 5 }] });
   const s = db.get(k('stock', 'COD1'));
+  const regCl = JSON.parse(db.get(k('devoluciones', r.body.devolucionId)).items);
+  ok(regCl.length === 1 && regCl[0].cantidad === 2 && db.get(k('devoluciones', r.body.devolucionId)).total_unidades === 2, 'el historial guarda lo realmente devuelto (2), no lo pedido (5)');
   ok(r.body.ok && s.stock_bodega === 7 && r.body.advertencias.length === 1, 'pedir más de lo disponible se recorta (solo 2) y avisa; el stock no se infla (5→7)'); }
 
 { reset(); mk(1, 1); mk(2, 1); db.delete(k('stock', 'COD2'));

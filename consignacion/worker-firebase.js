@@ -4865,7 +4865,7 @@ async function registrarDevolucionEnBloque(sb, d) {
     const id = String(it && it.id != null ? it.id : "");
     const cant = Math.max(0, int(it && it.cantidad));
     if (!id || cant <= 0) continue;
-    const l = lineas.get(id) || { id, codigo: it.codigo, cantidad: 0 };
+    const l = lineas.get(id) || { id, codigo: it.codigo, nombre: it.nombre, cantidad: 0, efectivo: 0 };
     l.cantidad += cant; lineas.set(id, l);
   }
   if (!lineas.size) return { ok: false, error: "No hay productos con cantidad para devolver" };
@@ -4890,6 +4890,7 @@ async function registrarDevolucionEnBloque(sb, d) {
     } else {
       advertencias.push(`${codigo}: no se encontró su registro de consignación; se devolvió igual a bodega`);
     }
+    l.efectivo = efectivo; l.codigoFinal = codigo; if (!l.nombre && cons) l.nombre = cons.nombre;
     if (efectivo > 0) deltaPorCodigo.set(codigo, (deltaPorCodigo.get(codigo) || 0) + efectivo);
   }
 
@@ -4920,8 +4921,11 @@ async function registrarDevolucionEnBloque(sb, d) {
   }
 
   const fecha = new Date().toISOString();
+  // El historial guarda lo REALMENTE devuelto (no lo pedido) y su total de unidades.
+  const registro = [...lineas.values()].filter(l => l.efectivo > 0).map(l => ({ id: l.id, codigo: l.codigoFinal, nombre: l.nombre || "", cantidad: l.efectivo }));
+  const totalUnidades = registro.reduce((a, x) => a + x.cantidad, 0);
   try {
-    await sb.set("devoluciones", devId, { id: devId, vendedor: d.vendedor, fecha, items: JSON.stringify(itemsRaw) });
+    await sb.set("devoluciones", devId, { id: devId, vendedor: d.vendedor, fecha, total_unidades: totalUnidades, items: JSON.stringify(registro) });
   } catch (e) {
     advertencias.push("La devolución se aplicó, pero no se pudo guardar en el historial: " + e.message);
   }

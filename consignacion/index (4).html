@@ -3994,8 +3994,9 @@ async function cargarDevolucionesPerfil() {
             const fechaRaw = dev.fecha || dev.date || dev.createdAt || "";
             const fechaObj = fechaRaw ? new Date(fechaRaw) : null;
             const fecha = fechaObj && !isNaN(fechaObj) ? fechaObj.toLocaleDateString("es-SV", { year:"numeric", month:"short", day:"numeric" }) : "Sin fecha";
-            const total = parseInt(dev.total_unidades) || 0;
             const items = typeof dev.items === "string" ? (JSON.parse(dev.items) || []) : (dev.items || []);
+            // Los registros viejos no traían total_unidades (salía "0 unidades"): se calcula desde los items.
+            const total = parseInt(dev.total_unidades) || items.reduce((a, i) => a + (parseInt(i.cantidad) || 0), 0);
             return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--gris2);border:1px solid var(--borde);border-radius:10px;margin-bottom:8px;">
                 <div>
                     <div style="font-size:12px;font-weight:700;color:var(--dorado);">${sanitizar(dev.id || "DEV-" + (idx+1))}</div>
