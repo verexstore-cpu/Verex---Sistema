@@ -8,7 +8,7 @@ const nuevo = await cargar(process.env.WORKER_FILE || path.join(here, 'worker-fi
 const viejo = process.env.WORKER_ANTERIOR ? await cargar(process.env.WORKER_ANTERIOR, 'verex-w-viejo.mjs') : null;
 
 let LIMITE = 50;
-const db = new Map(); let sub = 0, failStock = false, failNth = 0, failTabla = '', nStock = 0;
+const db = new Map(); let sub = 0, failRpc = false, failStock = false, failNth = 0, failTabla = '', nStock = 0;
 const k = (t, id) => t + '/' + id;
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, opts = {}) => {
@@ -17,6 +17,14 @@ globalThis.fetch = async (url, opts = {}) => {
   const ok = (b) => new Response(JSON.stringify(b), { status: 200, headers: { 'content-type': 'application/json' } });
   const body = opts.body ? JSON.parse(opts.body) : null, method = opts.method || 'GET';
   if (u.pathname === '/rest/v1/rpc/update_doc') { const kk = k(body.p_table, body.p_id); db.set(kk, { ...(db.get(kk) || {}), ...body.p_patch }); return ok({}); }
+  if (u.pathname === '/rest/v1/rpc/reservar_stock_pedido') {
+    if (failRpc) return new Response('rpc caída', { status: 500 });          // reserva atómica: primero tienda, luego bodega (como en Supabase)
+    const kk = k('stock', body.p_id), dd = db.get(kk); if (!dd) return ok({ ok: false, error: 'no_existe' });
+    const t = parseInt(dd.stock_tienda) || 0, b = parseInt(dd.stock_bodega) || 0, c = body.p_cantidad;
+    if (t + b < c) return ok({ ok: false, error: 'sin_stock' });
+    const dT = Math.min(t, c), dB = c - dT;
+    db.set(kk, { ...dd, stock_tienda: t - dT, stock_bodega: b - dB, stock_reservado: (parseInt(dd.stock_reservado) || 0) + c }); return ok({ ok: true, desc_tienda: dT, desc_bodega: dB });
+  }
   const m = u.pathname.match(/^\/rest\/v1\/(\w+)$/); if (!m) return ok([]);
   const table = m[1], idq = u.searchParams.get('id') || '';
   const ids = () => [...idq.slice(4, -1).matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((x) => decodeURIComponent(x[1]));
@@ -159,5 +167,32 @@ for (const [acc, p] of [['STOCK_ASIGNAR_VENDEDOR', { codigos: ['P1', 'P2'], vend
   const o = await llamar(nuevo, 'STOCK_PUBLICAR_VISIBLE', { codigos: ['P1'], visible: false }); ok(o.body.ok && db.get(k('stock', 'P1')).enCatalogo === false, 'visible:false lo oculta de la tienda');
   const g = await llamar(nuevo, 'STOCK_PUBLICAR_VISIBLE', { codigos: cods(300).map((c, i) => c) }); ok(g.body.ok && g.sub <= 12, '300 códigos en una sola operación: ' + g.sub + ' peticiones');
   const m = await llamar(nuevo, 'STOCK_PUBLICAR_VISIBLE', { codigos: ['P1'] }, 'mala'); ok(m.status === 403, 'sin clave de admin: 403'); }
+
+// ── Venta directa: descuento atómico
+{ const vd = (items, extra = {}) => llamar(nuevo, 'REGISTRAR_VENTA_DIRECTA', { id: 'VD_' + Math.random().toString(36).slice(2), cliente: 'C', items: items.map(([codigo, cantidad]) => ({ codigo, nombre: 'n', precio: 5, cantidad })), total: 5, ...extra });
+  const S = (c) => db.get(k('stock', c));
+  db.clear(); mkStock(1, 5, 2, 0); mkStock(2, 4, 0, 1); mkStock(3, 1, 0, 0); mkStock(4, 0, 0, 0);
+  let r = await vd([['P1', 3]]);
+  ok(r.body.ok && S('P1').stock_tienda === 0 && S('P1').stock_bodega === 4 && S('P1').stock_vendido === 3 && (S('P1').stock_reservado || 0) === 0 && S('P1').stock_total === 4, 'venta de 3 con tienda 2 + bodega 5: sale primero de tienda (2) y luego de bodega (1); vendido +3, reservado en 0, total recalculado (4)');
+  r = await vd([['P2', 1]]); ok(S('P2').stock_bodega === 3 && S('P2').stock_total === 4 && S('P2').stock_consignacion === 1, 'solo bodega: descuenta de bodega y NO toca consignación');
+  r = await vd([['P3', 3]]);
+  ok(r.body.ok && S('P3').stock_bodega === 0 && S('P3').stock_vendido === 3 && r.body.faltantes.length === 1 && r.body.faltantes[0].descontado === 1 && r.body.faltantes[0].vendido === 3, 'se vendió 3 con 1 en stock: descuenta solo 1, nunca negativo, y avisa en «faltantes» (vendido 3, descontado 1)');
+  r = await vd([['P4', 1]]); ok(r.body.ok && r.body.faltantes[0].descontado === 0 && S('P4').stock_bodega === 0 && S('P4').stock_vendido === 1, 'sin stock: la venta se registra igual y se avisa (descontado 0)');
+  r = await vd([['NOEXISTE', 1], ['P2', 1], ['P2', 1], ['', 1]]);
+  ok(r.body.ok && r.body.itemsSinStock.includes('NOEXISTE') && r.body.itemsSinStock.includes('SIN_CODIGO') && S('P2').stock_bodega === 1 && S('P2').stock_vendido === 3, 'ficha inexistente y sin código se informan; el mismo código repetido se suma (2 más → bodega 1)');
+  db.clear(); mkStock(1, 1, 0, 0);
+  const [a, b] = await Promise.all([vd([['P1', 1]]), vd([['P1', 1]])]);
+  const descTot = [a, b].reduce((n, x) => n + (x.body.faltantes.some(f => f.descontado === 0) ? 0 : 1), 0);
+  ok(a.body.ok && b.body.ok && S('P1').stock_bodega === 0 && S('P1').stock_vendido === 2 && descTot === 1 && [a, b].filter(x => x.body.faltantes.length).length === 1, 'DOS ventas simultáneas de la última unidad: solo una descuenta, la otra queda avisada como «faltante»; stock 0 (nunca negativo) y vendido 2');
+  LIMITE = 1000;                                        // el contador del simulador es global: con ventas simultáneas sumaría las peticiones de todas
+  const rr = await Promise.all(Array.from({ length: 8 }, () => vd([['P1', 1]]))); LIMITE = 50;
+  ok(S('P1').stock_bodega === 0 && rr.every(x => x.body.ok), '8 ventas simultáneas sobre stock 0: todas registradas, ninguna negativa');
+  db.clear(); for (let i = 1; i <= 12; i++) mkStock(i, 5, 0, 0);
+  r = await vd(Array.from({ length: 12 }, (_, i) => ['P' + (i + 1), 1]));
+  ok(r.body.ok && r.sub < 50 && Array.from({ length: 12 }, (_, i) => S('P' + (i + 1)).stock_bodega).every(v => v === 4), 'venta de 12 productos distintos: todos descontados con ' + r.sub + ' peticiones (límite 50)');
+  db.clear(); mkStock(1, 3, 0, 0); const m = await llamar(nuevo, 'REGISTRAR_VENTA_DIRECTA', { id: 'X', items: [{ codigo: 'P1', cantidad: 1 }] }, 'mala'); ok(m.status === 403 && S('P1').stock_bodega === 3, 'sin clave de admin: 403 y no se descuenta nada'); }
+{ // si la reserva atómica falla por un error de Supabase, la venta NO se queda sin descontar (respaldo clásico)
+  db.clear(); mkStock(1, 3, 1, 0); failRpc = true; const r = await llamar(nuevo, 'REGISTRAR_VENTA_DIRECTA', { id: 'VDX', cliente: 'C', items: [{ codigo: 'P1', cantidad: 3, nombre: 'n', precio: 5 }], total: 15 }); failRpc = false;
+  const s1 = db.get(k('stock', 'P1')); ok(r.body.ok && (r.body.faltantes || []).length === 0 && s1.stock_tienda === 0 && s1.stock_bodega === 1 && s1.stock_vendido === 3 && (s1.stock_reservado || 0) === 0, 'si la reserva atómica falla por error de Supabase: descuenta con el método clásico (tienda 1 + bodega 2), sin dejar reservado'); }
 
 console.log(`\n${pass} correctas, ${fail} fallidas`); process.exit(fail ? 1 : 0);

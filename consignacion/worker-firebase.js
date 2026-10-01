@@ -1353,33 +1353,10 @@ async function enviar(){
               });
             }
           }
-          const itemsSinStock = [];
-          for (const item of (d.items || [])) {
-            if (!item.codigo) { itemsSinStock.push("SIN_CODIGO"); continue; }
-            const s = await sb.get("stock", item.codigo);
-            if (s) {
-              const cant     = parseInt(item.cantidad) || 1;
-              const bodega   = parseInt(s.stock_bodega)   || 0;
-              const tienda   = parseInt(s.stock_tienda)   || 0;
-              const vendido  = parseInt(s.stock_vendido)  || 0;
-              // Descontar primero de tienda si hay, luego de bodega
-              let descBodega = 0, descTienda = 0;
-              if (tienda >= cant) {
-                descTienda = cant;
-              } else {
-                descTienda = tienda;
-                descBodega = cant - tienda;
-              }
-              await sb.update("stock", item.codigo, {
-                stock_tienda:  Math.max(0, tienda  - descTienda),
-                stock_bodega:  Math.max(0, bodega  - descBodega),
-                stock_vendido: vendido + cant
-              });
-            } else {
-              itemsSinStock.push(item.codigo);
-            }
-          }
-          result = { ok: true, itemsSinStock };
+          // Descuento de inventario ATÓMICO (misma reserva que la tienda online): dos ventas simultáneas de la última unidad
+          // ya no pueden vender de más. Ver descontarStockVentaDirecta.
+          const { itemsSinStock, faltantes } = await descontarStockVentaDirecta(sb, d.items || []);
+          result = { ok: true, itemsSinStock, faltantes };
           break;
         }
 
@@ -4819,6 +4796,59 @@ async function registrarDevolucionEnBloque(sb, d) {
     return { ok: false, error: "No se pudo actualizar el stock; no se registró la devolución. Inténtalo de nuevo. (" + e.message + ")" };
   }
   return { ok: true, devolucionId: devId, fecha, devuelto, registro, advertencias };
+}
+
+// ── VENTA DIRECTA: descuento atómico de inventario ─────────────────────────────────────────────────
+// La venta física ya ocurrió, así que SIEMPRE se registra; lo que cambia es que el descuento de stock sale de la misma reserva
+// atómica de la tienda online (reservar_stock_pedido: primero tienda, luego bodega, con bloqueo de fila). Si hay menos stock del
+// vendido, se descuenta lo que haya y se informa en `faltantes` para que se revise el inventario (antes se descontaba de más
+// sin aviso o, con dos ventas simultáneas, ambas "vendían" la misma unidad).
+// La reserva suma a stock_reservado; aquí se pasa a stock_vendido y se recalcula stock_total.
+async function descontarStockVentaDirecta(sb, items) {
+  const itemsSinStock = [], faltantes = [], pedido = new Map();
+  for (const it of items) {
+    if (!it || !it.codigo) { itemsSinStock.push("SIN_CODIGO"); continue; }
+    const c = String(it.codigo); pedido.set(c, (pedido.get(c) || 0) + (parseInt(it.cantidad) || 1));
+  }
+  if (!pedido.size) return { itemsSinStock, faltantes };
+  const fichas = new Map((await sb.getMany("stock", [...pedido.keys()])).map(x => [String(x.id), x]));
+  const descontado = new Map(), clasico = new Set();
+  for (const [codigo, cant] of pedido) {
+    const f = fichas.get(codigo);
+    if (!f) { itemsSinStock.push(codigo); continue; }
+    let desc = 0;
+    try {
+      let r = await sb.reservar(codigo, cant);
+      if (r && r.ok) desc = cant;
+      else {                                                  // no alcanza: tomar lo que haya (máx. 2 intentos por carreras)
+        for (let intento = 0; intento < 2 && !desc; intento++) {
+          const fr = await sb.get("stock", codigo), disp = Math.max(0, _int(fr && fr.stock_tienda) + _int(fr && fr.stock_bodega));
+          const parcial = Math.min(cant, disp); if (parcial <= 0) break;
+          r = await sb.reservar(codigo, parcial); if (r && r.ok) desc = parcial;
+        }
+      }
+    } catch (e) {
+      // Si la reserva atómica falla por un error de comunicación/Supabase (no por falta de stock), no se deja la venta sin
+      // descontar: se usa el descuento anterior (lee y escribe: primero tienda, luego bodega) para ESTE producto.
+      console.error("descontarStockVentaDirecta: reservar falló, descuento clásico", codigo, e);
+      try {
+        const fr = await sb.get("stock", codigo), tienda = _int(fr && fr.stock_tienda), bodega = _int(fr && fr.stock_bodega);
+        const dT = Math.min(tienda, cant), dB = Math.min(bodega, cant - dT);
+        await sb.update("stock", codigo, { stock_tienda: tienda - dT, stock_bodega: bodega - dB });
+        desc = dT + dB; clasico.add(codigo);
+      } catch (e2) { console.error("descontarStockVentaDirecta: descuento clásico falló", codigo, e2); }
+    }
+    descontado.set(codigo, desc);
+    if (desc < cant) faltantes.push({ codigo, vendido: cant, descontado: desc });
+  }
+  // Pasar de reservado a vendido y recalcular el total (lectura fresca, una sola petición)
+  const frescas = new Map((await sb.getMany("stock", [...descontado.keys()])).map(x => [String(x.id), x]));
+  for (const [codigo, desc] of descontado) {
+    const fr = frescas.get(codigo); if (!fr) continue;
+    const total = Supabase.COMPONENTES_STOCK.reduce((a, c) => a + _int(fr[c]), 0);
+    await sb.update("stock", codigo, { stock_reservado: clasico.has(codigo) ? _int(fr.stock_reservado) : Math.max(0, _int(fr.stock_reservado) - desc), stock_vendido: _int(fr.stock_vendido) + (pedido.get(codigo) || 0), stock_total: total });
+  }
+  return { itemsSinStock, faltantes };
 }
 
 // ── MOVIMIENTOS DE STOCK EN BLOQUE ─────────────────────────────────

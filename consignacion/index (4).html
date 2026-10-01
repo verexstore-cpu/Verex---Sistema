@@ -14186,6 +14186,13 @@ async function confirmarVentaDirecta() {
                     alert("⚠️ AVISO — Stock NO descontado\n\nLos siguientes productos no se encontraron en la tabla de stock y su inventario NO fue actualizado:\n\n" + resp.itemsSinStock.join(", ") + "\n\nCorrige el stock manualmente desde el panel de administración.");
                 }, 500);
             }
+            if (resp.faltantes && resp.faltantes.length > 0) {
+                setTimeout(() => {
+                    alert("⚠️ AVISO — Stock insuficiente\n\nLa venta se registró, pero el sistema tenía menos unidades de las vendidas (solo se descontó lo que había):\n\n" +
+                        resp.faltantes.map(f => `• ${f.codigo}: vendidas ${f.vendido}, descontadas ${f.descontado}`).join("\n") +
+                        "\n\nRevisa el inventario de esos productos (pudo venderse a la vez por otro canal o el stock estaba desactualizado).");
+                }, 700);
+            }
             generarPDFVentaDirecta(payload, []);
             // Reflejar en memoria el mismo descuento que hace el worker
             // (REGISTRAR_VENTA_DIRECTA): primero de tienda, luego de bodega.
