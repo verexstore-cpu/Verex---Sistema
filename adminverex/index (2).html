@@ -425,7 +425,12 @@
             <div style="margin-top:14px;padding-top:14px;border-top:1px solid #333;">
                 <div style="font-size:13px;font-weight:600;margin-bottom:6px;">🇺🇸 Apariencia del home — Catálogo USA</div>
                 <div style="font-size:11px;color:#888;margin-bottom:8px;">Foto y textos del hero de us.verexstore.com. Vacío = se queda el actual.</div>
-                <input id="inp-us-hero-foto" placeholder="URL de la foto del hero (ImageKit)"
+                <div style="font-size:11px;color:#888;margin-bottom:4px;">Carrusel del hero: hasta 3 fotos (se cambian solas cada 5 s). Con una sola foto no hay carrusel.</div>
+                <input id="inp-us-hero-foto" placeholder="Foto 1 del hero — URL (ImageKit)"
+                    style="width:100%;padding:8px;margin-bottom:6px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;font-family:inherit;">
+                <input id="inp-us-hero-foto-2" placeholder="Foto 2 del hero — URL (opcional)"
+                    style="width:100%;padding:8px;margin-bottom:6px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;font-family:inherit;">
+                <input id="inp-us-hero-foto-3" placeholder="Foto 3 del hero — URL (opcional)"
                     style="width:100%;padding:8px;margin-bottom:6px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;font-family:inherit;">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
                     <input id="inp-us-hero-titulo-es" placeholder="Título del hero (ES)"
@@ -1820,7 +1825,10 @@ async function cargarDatos(silencioso=false) {
         if (inpFraseC) inpFraseC.value = cfg.fraseConfianza || "";
         const cUS = cfg.contenidoUS || {};
         const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ""; };
-        setVal("inp-us-hero-foto", cUS.heroFoto);
+        const fotosHero = Array.isArray(cUS.heroFotos) && cUS.heroFotos.length ? cUS.heroFotos : (cUS.heroFoto ? [cUS.heroFoto] : []);
+        setVal("inp-us-hero-foto", fotosHero[0]);
+        setVal("inp-us-hero-foto-2", fotosHero[1]);
+        setVal("inp-us-hero-foto-3", fotosHero[2]);
         setVal("inp-us-hero-titulo-es", cUS.heroTitulo?.es);
         setVal("inp-us-hero-titulo-en", cUS.heroTitulo?.en);
         setVal("inp-us-hero-subtitulo-es", cUS.heroSubtitulo?.es);
@@ -3258,8 +3266,10 @@ function guardarFraseConfianza() {
 // (el catálogo hace fallback a su texto por defecto si la clave no viene).
 function guardarApariciaUS() {
     const val = id => document.getElementById(id).value.trim();
+    const fotosHero = ["inp-us-hero-foto", "inp-us-hero-foto-2", "inp-us-hero-foto-3"].map(val).filter(Boolean);
     cfg.contenidoUS = {
-        heroFoto: val("inp-us-hero-foto") || undefined,
+        heroFoto: fotosHero[0] || undefined,                         // la 1.ª también va aquí por compatibilidad
+        heroFotos: fotosHero.length ? fotosHero : undefined,
         heroTitulo: {
             es: val("inp-us-hero-titulo-es") || undefined,
             en: val("inp-us-hero-titulo-en") || undefined,
