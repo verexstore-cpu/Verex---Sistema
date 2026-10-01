@@ -8,7 +8,7 @@ const nuevo = await cargar(process.env.WORKER_FILE || path.join(here, 'worker-fi
 const viejo = process.env.WORKER_ANTERIOR ? await cargar(process.env.WORKER_ANTERIOR, 'verex-w-viejo.mjs') : null;
 
 let LIMITE = 50;
-const db = new Map(); let sub = 0, failRpc = false, failStock = false, failNth = 0, failTabla = '', nStock = 0;
+const db = new Map(); let sub = 0, conflictCodes = new Set(), failRpc = false, failStock = false, failNth = 0, failTabla = '', nStock = 0;
 const k = (t, id) => t + '/' + id;
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, opts = {}) => {
@@ -38,7 +38,12 @@ globalThis.fetch = async (url, opts = {}) => {
     if (failStock && table === 'stock') return new Response('boom', { status: 500 });
     if (table === 'stock' && failNth && ++nStock === failNth) return new Response('boom', { status: 500 });
     if (failTabla && table === failTabla) return new Response('boom', { status: 500 });
-    for (const r of (Array.isArray(body) ? body : [body])) db.set(k(table, r.id), r.data); return ok({});
+    const rowsP = Array.isArray(body) ? body : [body];
+    if (String((opts.headers || {}).Prefer || '').includes('ignore-duplicates')) {   // insertIfAbsent: ON CONFLICT DO NOTHING + return=representation
+      const r = rowsP[0]; if (db.has(k(table, r.id)) || conflictCodes.has(r.id)) return ok([]);
+      db.set(k(table, r.id), r.data); return ok([r]);
+    }
+    for (const r of rowsP) db.set(k(table, r.id), r.data); return ok({});
   }
   return ok({});
 };
@@ -219,5 +224,45 @@ for (const [acc, p] of [['STOCK_ASIGNAR_VENDEDOR', { codigos: ['P1', 'P2'], vend
   ok(db.get(k('stock', 'ANP001T6')).stock_bodega === 1 && db.get(k('stock', 'ANP001T6')).enCatalogo === true, 'corregir la categoría no cambia stock ni visibilidad');
   const r2 = await llamar(nuevo, 'AUDITORIA_CATEGORIAS', {}); ok(!r2.body.dudosas.some(d => d.codigo.startsWith('ANP00')), 'tras corregir, esos anillos ya no salen como dudosos');
   const m = await llamar(nuevo, 'CORREGIR_CATEGORIAS', { cambios: [{ codigo: 'ARP010', categoria: 'AR' }] }, 'mala'); ok(m.status === 403 && db.get(k('stock', 'ARP010')).categoria === 'AN', 'sin clave de admin: 403 y nada cambia'); }
+
+// ── Cambio de código seguro
+{ const S = (c) => db.get(k('stock', c));
+  const mkDoc = (codigo, extra = {}) => db.set(k('stock', codigo), { codigo, codigoBase: codigo.replace(/T\d+$/, ''), nombre: 'Anillo Luna T' + codigo.slice(-1), nombre_base: 'Anillo Luna', categoria: 'CJ', material: 'Plata', estado: 'bodega', enCatalogo: true, stock_bodega: 2, stock_tienda: 1, stock_consignacion: 1, stock_reservado: 0, stock_vendido: 3, stock_total: 4, foto: 'https://ik/x.webp', ...extra });
+  const base = () => { db.clear(); mkDoc('CJP042T6'); mkDoc('CJP042T7'); mkDoc('ANP001T6', { categoria: 'AN' }); mkDoc('ANP005T7', { categoria: 'AN' }); mkDoc('ANP006T8', { categoria: 'AN', estado: 'inactivo' }); mkDoc('ARP010', { categoria: 'AR', codigoBase: 'ARP010' });
+    db.set(k('consignacion', 'C1'), { codigo: 'CJP042T6', codigoBase: 'CJP042', vendedor: 'V1', cantidad: 1, vendido: 0, estado: 'activo' }); db.set(k('consignacion', 'C2'), { codigo: 'ANP001T6', vendedor: 'V1', cantidad: 1, vendido: 0, estado: 'activo' }); };
+  base();
+  const sug = await llamar(nuevo, 'SUGERIR_CODIGOS', { items: [{ codigo: 'CJP042T7', categoria: 'AN' }] });
+  ok(sug.body.ok && sug.body.sugerencias[0].nuevoBase === 'ANP007' && sug.body.sugerencias[0].mapa.map(m => m.nuevo).join() === 'ANP007T6,ANP007T7', 'el sistema SUGIERE el siguiente libre mirando también los inactivos (hay hasta ANP006): ANP007 con sus 2 tallas');
+  ok(S('CJP042T6').estado === 'bodega' && !db.has(k('stock', 'ANP007T6')), 'sugerir no escribe nada');
+  const r = await llamar(nuevo, 'CAMBIAR_CODIGOS', { items: [{ codigo: 'CJP042T6', categoria: 'AN' }] });
+  const res = r.body.resultados && r.body.resultados[0];
+  ok(r.body.ok && res.ok && res.hacia === 'ANP007' && res.mapa.length === 2, 'cambia el código del diseño completo (todas las tallas) → ANP007');
+  const n6 = S('ANP007T6'), n7 = S('ANP007T7');
+  ok(n6 && n7 && n6.categoria === 'AN' && n6.codigoBase === 'ANP007' && n6.stock_bodega === 2 && n6.stock_tienda === 1 && n6.stock_consignacion === 1 && n6.stock_total === 4 && n6.enCatalogo === true && n6.foto === 'https://ik/x.webp', 'los códigos nuevos conservan stock, foto, visibilidad y datos; categoría AN');
+  ok(n6.codigoAnterior === 'CJP042T6' && n7.codigoAnterior === 'CJP042T7' && n6.etiquetaPendiente === true, 'llevan la nota: codigoAnterior + etiquetaPendiente (para cambiar la etiqueta física)');
+  ok(S('CJP042T6').estado === 'inactivo' && S('CJP042T6').stock_bodega === 0 && S('CJP042T6').stock_total === 0 && S('CJP042T6').reemplazadoPor === 'ANP007T6' && S('CJP042T6').enCatalogo === false, 'el código viejo queda inactivo, en cero (sin doble conteo) y apuntando al nuevo');
+  ok(db.get(k('consignacion', 'C1')).codigo === 'ANP007T6' && db.get(k('consignacion', 'C1')).codigoBase === 'ANP007' && db.get(k('consignacion', 'C2')).codigo === 'ANP001T6', 'la consignación del vendedor pasa al código nuevo; las demás no se tocan');
+  ok([...db.keys()].some(x => x.startsWith('cambios_codigo/')), 'queda el registro código viejo → nuevo (histórico; pedidos y ventas pasadas no se reescriben)');
+  ok(S('ANP001T6').stock_bodega === 2 && S('ARP010').categoria === 'AR' && S('ANP005T7').codigo === 'ANP005T7', 'productos ajenos intactos');
+  const aud = await llamar(nuevo, 'AUDITORIA_STOCK', {}); ok(aud.body.ok && aud.body.resumen.totalDescuadrado === 0 && !aud.body.discrepanciasConsignacion.some(x => /^(CJP042|ANP007T6)/.test(x.codigo)), 'la auditoría de stock no ve descuadres en lo cambiado (viejo en cero; la consignación de ANP007T6 cuadra con su registro)');
+  // Choque: otro creó ANP008T7 justo antes → el sistema deshace y usa ANP009; nunca pisa
+  base(); mkDoc('ANP008T7', { nombre: 'OTRO PRODUCTO', categoria: 'AN' }); conflictCodes = new Set();
+  const r2 = await llamar(nuevo, 'CAMBIAR_CODIGOS', { items: [{ codigo: 'CJP042T6', categoria: 'AN' }] });
+  ok(r2.body.resultados[0].hacia === 'ANP009' && S('ANP008T7').nombre === 'OTRO PRODUCTO' && !db.has(k('stock', 'ANP008T6')), 'si ya existe ANP008 (aunque sea otra talla) lo salta: usa ANP009 y NO pisa al otro producto');
+  base(); conflictCodes = new Set(['ANP007T7']);   // carrera: la talla 2 la toma otro al mismo tiempo
+  const r3 = await llamar(nuevo, 'CAMBIAR_CODIGOS', { items: [{ codigo: 'CJP042T6', categoria: 'AN' }] }); conflictCodes = new Set();
+  ok(r3.body.resultados[0].ok && r3.body.resultados[0].hacia === 'ANP008' && !db.has(k('stock', 'ANP007T6')) && S('ANP008T6') && S('ANP008T7'), 'carrera: si otro toma un código a la vez, deshace lo creado (borra ANP007T6) y reintenta con ANP008');
+  base(); nStock = 0; failNth = 3;        // falla al desactivar el viejo (3.ª escritura de stock): se deshace todo
+  const antes = JSON.stringify([S('CJP042T6'), S('CJP042T7'), db.get(k('consignacion', 'C1'))]);
+  const r4 = await llamar(nuevo, 'CAMBIAR_CODIGOS', { items: [{ codigo: 'CJP042T6', categoria: 'AN' }] }); failNth = 0;
+  ok(r4.body.resultados[0].ok === false && JSON.stringify([S('CJP042T6'), S('CJP042T7'), db.get(k('consignacion', 'C1'))]) === antes && !db.has(k('stock', 'ANP007T6')) && !db.has(k('stock', 'ANP007T7')), 'si falla a la mitad: todo vuelve a como estaba (viejos intactos, consignación restaurada, nuevos borrados)');
+  base(); const e1 = await llamar(nuevo, 'CAMBIAR_CODIGOS', { items: [{ codigo: 'CJP042T6', categoria: 'ZZ' }, { codigo: 'NOEXISTE9', categoria: 'AN' }] });
+  ok(e1.body.resultados.every(x => x.ok === false) && S('CJP042T6').estado === 'bodega', 'categoría inválida o producto inexistente: error claro y no se toca nada');
+  const e2 = await llamar(nuevo, 'CAMBIAR_CODIGOS', { items: ['A1', 'B1', 'C1', 'D1', 'E1'].map(c => ({ codigo: c, categoria: 'AN' })) }); ok(e2.body.ok === false, 'más de 4 diseños por llamada se rechaza (protege el límite de peticiones)');
+  base(); mkDoc('CJP050T6'); mkDoc('CJP051T6');
+  const m = await llamar(nuevo, 'CAMBIAR_CODIGOS', { items: [{ codigo: 'CJP042T6', categoria: 'AN' }, { codigo: 'CJP050T6', categoria: 'AN' }, { codigo: 'CJP051T6', categoria: 'AN' }] });
+  ok(m.body.resultados.map(x => x.hacia).join() === 'ANP007,ANP008,ANP009' && m.sub < 50, 'varios diseños en una llamada reciben códigos distintos y consecutivos (' + m.body.resultados.map(x => x.hacia).join(', ') + ') con ' + m.sub + ' peticiones');
+  const et = await llamar(nuevo, 'MARCAR_ETIQUETA_CAMBIADA', { codigos: ['ANP007T6', 'ANP007T7', 'ANP001T6'] }); ok(et.body.ok && et.body.actualizados.length === 2 && S('ANP007T6').etiquetaPendiente === false, 'marcar «etiqueta ya cambiada» apaga el aviso solo donde estaba');
+  const no = await llamar(nuevo, 'CAMBIAR_CODIGOS', { items: [{ codigo: 'ANP001T6', categoria: 'AN' }] }, 'mala'); ok(no.status === 403 && S('ANP001T6').estado === 'bodega', 'sin clave de admin: 403'); }
 
 console.log(`\n${pass} correctas, ${fail} fallidas`); process.exit(fail ? 1 : 0);

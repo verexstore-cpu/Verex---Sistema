@@ -5995,6 +5995,36 @@ function catPintar() {
             <td>${d.publicado ? "✓ publicado" : "—"}</td><td style="color:var(--plateado);">${sanitizar(d.motivo)}</td></tr>`).join("") + "</table>"
         : '<p style="padding:16px;color:#4ade80;font-size:13px;">✅ No hay productos mal clasificados.</p>';
     document.getElementById("cat-btn-corregir").disabled = !_catDud.some(d => d.marcar);
+    const bc = document.getElementById("cat-btn-codigo"); if (bc) bc.disabled = !_catDud.some(d => d.marcar);
+}
+// Cambia también el código (todas las tallas del diseño). El sistema SIEMPRE sugiere el código: el siguiente libre de la
+// categoría correcta, revisando también los inactivos. Se muestra antes y se confirma; nunca pisa un código existente.
+async function catCorregirCodigo() {
+    const porDiseno = new Map();
+    for (const d of _catDud.filter(x => x.marcar)) { const b = getCodigoBase(d.codigo).toUpperCase(); if (!porDiseno.has(b)) porDiseno.set(b, { codigo: d.codigo, categoria: d.elegida }); }
+    const items = [...porDiseno.values()]; if (!items.length) return;
+    const est = document.getElementById("cat-estado"); est.textContent = "Calculando códigos nuevos…";
+    let sug = [];
+    try { for (let i = 0; i < items.length; i += 40) { const r = await apiPost({ accion: "SUGERIR_CODIGOS", items: items.slice(i, i + 40) }); if (!r || !r.ok) throw new Error((r && r.error) || "no se pudo calcular"); sug.push(...r.sugerencias); } }
+    catch (e) { est.textContent = "⚠️ " + (e.message || e); return; }
+    const buenas = sug.filter(x => x.ok), malas = sug.filter(x => !x.ok);
+    if (!buenas.length) { est.textContent = "⚠️ " + (malas[0] ? malas[0].codigo + ": " + malas[0].error : "nada que cambiar"); return; }
+    const lista = buenas.map(x => `• ${x.codigoBase} → ${x.nuevoBase}  (${x.mapa.length} talla${x.mapa.length > 1 ? "s" : ""}, categoría ${_catNombres[x.categoria] || x.categoria})`).join("\n");
+    if (!confirm(`Se cambiará el CÓDIGO de ${buenas.length} diseño(s) (todas sus tallas):\n\n${lista}\n\n• El código viejo queda inactivo y en cero.\n• Stock, foto y visibilidad pasan al nuevo.\n• Las consignaciones con vendedores pasan al nuevo.\n• Cada producto mostrará «CÓDIGO CORREGIDO» para que cambies la etiqueta física.\n\n¿Continuar?`)) { est.textContent = ""; return; }
+    let hechos = 0; const fallos = [];
+    try {
+        for (let i = 0; i < buenas.length; i += 3) {
+            est.textContent = `Cambiando códigos… ${Math.min(i + 3, buenas.length)}/${buenas.length}`;
+            const lote = buenas.slice(i, i + 3).map(x => ({ codigo: x.mapa[0].viejo, categoria: x.categoria }));
+            const r = await apiPost({ accion: "CAMBIAR_CODIGOS", items: lote });
+            if (!r || !r.ok) throw new Error((r && r.error) || "no se pudo cambiar");
+            for (const x of r.resultados) { if (x.ok) hechos++; else fallos.push(`${x.codigo}: ${x.error}`); }
+        }
+    } catch (e) { fallos.push(e.message || String(e)); }
+    toast(fallos.length ? `⚠️ ${hechos} cambiados · ${fallos.length} con problema` : `✅ ${hechos} códigos corregidos — cambia las etiquetas físicas`, fallos.length ? "#f97316" : "#22c55e", 8000);
+    if (fallos.length) alert("No se pudo cambiar:\n\n" + fallos.join("\n"));
+    try { await cargarStock(); } catch (_) {}
+    await catCargar();
 }
 async function catCorregir() {
     const cambios = _catDud.filter(d => d.marcar).map(d => ({ codigo: d.codigo, categoria: d.elegida }));
@@ -8517,6 +8547,25 @@ async function _mcCopiarLink(btn) {
     }
 }
 
+// Nota «código corregido» en la tarjeta del producto: avisa que hay que cambiar la etiqueta física.
+function notaCodigoCorregido(g) {
+    const pend = (g.items || []).filter(i => i.etiquetaPendiente && i.codigoAnterior);
+    if (!pend.length) return "";
+    const antes = getCodigoBase(pend[0].codigoAnterior), ahora = getCodigoBase(pend[0].codigo), cods = pend.map(i => i.codigo);
+    return `<div onclick="event.stopPropagation()" style="margin:5px 0;padding:6px 8px;border-radius:8px;background:rgba(245,158,11,.14);border:1px solid #f59e0b;color:#fcd34d;font-size:11px;line-height:1.4;">
+        🏷️ <b>CÓDIGO CORREGIDO</b><br>Antes <b>${sanitizar(antes)}</b> → ahora <b>${sanitizar(ahora)}</b><br>Cambia la etiqueta física de ${pend.length > 1 ? "las " + pend.length + " tallas" : "la pieza"}.
+        <button onclick="event.stopPropagation();marcarEtiquetaCambiada(${jsArgArr(cods)})" style="display:block;margin-top:5px;padding:4px 8px;font-size:11px;font-weight:700;background:#f59e0b;color:#111;border:none;border-radius:6px;cursor:pointer;">✓ Etiqueta ya cambiada</button></div>`;
+}
+async function marcarEtiquetaCambiada(codigos) {
+    try {
+        const r = await apiPost({ accion: "MARCAR_ETIQUETA_CAMBIADA", codigos });
+        if (!r || !r.ok) throw new Error((r && r.error) || "no se pudo guardar");
+        for (const c of codigos) { const it = stockData.find(p => p.codigo === c); if (it) it.etiquetaPendiente = false; }
+        try { filtrarStock(); } catch (_) { renderStock(stockData); }
+        toast("✅ Etiqueta marcada como cambiada", "#22c55e");
+    } catch (e) { toast("⚠️ " + (e.message || e), "#ef4444"); }
+}
+
 function renderStock(items) {
     if (!items) items = stockData;
     if (!items) return;
@@ -8618,6 +8667,7 @@ function renderStock(items) {
                         <div style="color:#34D399;font-size:11px;font-weight:700;">$${precioTotal.toFixed(2)}</div>
                     </div>
                     <div style="color:#fff;font-size:11px;font-weight:600;margin:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sanitizar(g.nombre)}</div>
+                    ${notaCodigoCorregido(g)}
                     ${g.material ? `<div style="display:inline-block;font-size:9px;font-weight:700;margin-bottom:3px;background:${colorMaterial(g.material).bg};border:1px solid ${colorMaterial(g.material).border};color:${colorMaterial(g.material).color};border-radius:4px;padding:1px 6px;">${sanitizar(g.material)}</div>` : ''}
                     ${g.caracterEspecial ? `<div style="display:inline-block;font-size:9px;font-weight:700;margin-bottom:3px;margin-left:3px;background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.4);color:#c9a8ff;border-radius:4px;padding:1px 6px;" title="Característica especial">✨ ${sanitizar(g.caracterEspecial)}</div>` : ''}
                     ${agotadoGrupo
@@ -8738,6 +8788,7 @@ function renderStock(items) {
                 ${g.foto ? `<img src="${sanitizar(ikFoto(g.fotoMejorada||g.foto,200))}" onerror="this.style.display='none'" onclick="event.stopPropagation();abrirFotoZoom(${jsArg(g.fotoMejorada||g.foto)},${jsArg(g.nombre)})" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;background:#3a3a3c;">` : '<div style="width:64px;height:64px;background:#3a3a3c;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">💍</div>'}
                 <div style="flex:1;min-width:0;">
                     <div style="color:#fff;font-size:14px;font-weight:600;">${sanitizar(g.nombre)}</div>
+                    ${notaCodigoCorregido(g)}
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;">
                         ${g.material ? `<span style="font-size:10px;font-weight:700;color:${colorMaterial(g.material).color};background:${colorMaterial(g.material).bg};border:1px solid ${colorMaterial(g.material).border};border-radius:4px;padding:1px 7px;">${sanitizar(g.material)}</span>` : ''}
                         ${g.caracterEspecial ? `<span style="font-size:10px;font-weight:700;color:#c9a8ff;background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.4);border-radius:4px;padding:1px 7px;" title="Característica especial">✨ ${sanitizar(g.caracterEspecial)}</span>` : ''}
@@ -9256,9 +9307,13 @@ function filtrarStock() {
     const categoria = document.getElementById("fil-stock-categoria")?.value || "";
     const busq = document.getElementById("bus-stock").value.toLowerCase();
     const filtrados = stockData.filter(i => {
+        // También se encuentra por el CÓDIGO ANTERIOR (la etiqueta física aún trae el viejo) y, escribiendo «etiqueta»,
+        // salen solo los productos con la etiqueta por cambiar.
         const coincideBusq = !busq ||
             (i.nombre||"").toLowerCase().includes(busq) ||
-            (i.codigo||"").toLowerCase().includes(busq);
+            (i.codigo||"").toLowerCase().includes(busq) ||
+            (i.codigoAnterior||"").toLowerCase().includes(busq) ||
+            (busq === "etiqueta" && i.etiquetaPendiente === true);
         const coincideMaterial = !material || (i.material||"") === material;
         const coincideCategoria = !categoria || (i.categoria||"").toUpperCase() === categoria;
         let coincideEstado = true;
@@ -14996,6 +15051,7 @@ function enviarRecordatorioAbono(ventaId) {
             <span id="cat-estado" style="font-size:12px;color:var(--plateado);margin-right:auto;"></span>
             <button class="btn btn-gris" onclick="cerrarModal('modal-categorias')">Cerrar</button>
             <button class="btn btn-gris" onclick="catCargar()">↻ Volver a revisar</button>
+            <button class="btn btn-gris" id="cat-btn-codigo" onclick="catCorregirCodigo()" disabled title="Además de la categoría, cambia el CÓDIGO del diseño (todas sus tallas) por el siguiente libre de la categoría correcta">🔢 Corregir también el código</button>
             <button class="btn btn-dorado" id="cat-btn-corregir" onclick="catCorregir()" disabled>Corregir las marcadas</button>
         </div>
     </div>
