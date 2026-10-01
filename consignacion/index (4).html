@@ -650,6 +650,7 @@
                     <button class="btn" style="background:#4a6fa5;color:#fff;padding:8px 14px;font-size:13px;" onclick="abrirStockNuevoLote()">📦 Lote</button>
                     <button class="btn" style="background:#27ae60;color:#fff;padding:8px 14px;font-size:13px;" onclick="abrirImportarExcel()">📥 Importar</button>
                     <button class="btn" style="background:#1a3a1a;color:#4ade80;border:1px solid #166534;padding:8px 14px;font-size:13px;" onclick="abrirModalFotosCelular()">📱 Fotos</button>
+                    <button class="btn" style="background:#1a2f3a;color:#5AC8FA;border:1px solid #1f5f7a;padding:8px 14px;font-size:13px;" onclick="abrirReemplazarFotos()" title="Sube fotos editadas y la app reconoce a qué producto pertenece cada una">🔁 Reemplazar fotos</button>
                     <button class="btn" style="background:#3b2a1a;color:#f0b96a;border:1px solid #8a5a1e;padding:8px 14px;font-size:13px;" onclick="ejecutarAuditoriaStock()">🔍 Auditoría</button>
                 </div>
 
@@ -5640,6 +5641,157 @@ function generarReciboPDF(vendedor, items, firmaImg, codigoFirma, esMensajeria) 
 
     doc.save("Recibo_Entrega_" + vendedor.nombre.replace(/ /g, "_") + "_" + new Date().toLocaleDateString("es-SV").replace(/\//g, "-") + ".pdf");
     toast("📄 Recibo generado");
+}
+
+
+// ── REEMPLAZAR FOTOS: reconoce a qué producto pertenece cada foto editada ──────────────────────────
+// Sin API externa: cada foto se reduce a una "huella" (16×16 bits de claro/oscuro entre vecinos + tono medio) y se compara
+// con la huella de las fotos de Stock. Se compara contra la foto ORIGINAL completa guardada en ImageKit (sin recorte) y
+// contra la recortada, para tolerar ediciones que cambian el encuadre. Siempre propone y el usuario confirma.
+function rfHuella(img, rect) {
+    // Mapa 32×32 de "cuánto se diferencia cada punto del fondo" (mediana del borde): invariante a brillo/contraste/color de
+    // la edición y casi independiente del fondo, que en estas fotos es casi igual en todas. rect = zona a usar (zoom/recorte).
+    const N = 32, c = document.createElement("canvas"); c.width = N; c.height = N;
+    const x = c.getContext("2d", { willReadFrequently: true });
+    const r = rect || { x: 0, y: 0, w: img.width, h: img.height };
+    x.drawImage(img, r.x, r.y, r.w, r.h, 0, 0, N, N);
+    const d = x.getImageData(0, 0, N, N).data, g = new Float32Array(N * N);
+    let sr = 0, sb = 0;
+    for (let i = 0; i < N * N; i++) { g[i] = 0.299 * d[i*4] + 0.587 * d[i*4+1] + 0.114 * d[i*4+2]; sr += d[i*4]; sb += d[i*4+2]; }
+    const borde = []; for (let k = 0; k < N; k++) borde.push(g[k], g[(N-1)*N + k], g[k*N], g[k*N + N-1]);
+    borde.sort((p, q) => p - q); const fondo = borde[borde.length >> 1];
+    const v = new Float32Array(N * N); let m = 0;
+    for (let i = 0; i < N * N; i++) { v[i] = Math.abs(g[i] - fondo); m += v[i]; }
+    m /= N * N; let sd = 0; for (let i = 0; i < N * N; i++) { v[i] -= m; sd += v[i] * v[i]; }
+    sd = Math.sqrt(sd / (N * N)) || 1; for (let i = 0; i < N * N; i++) v[i] /= sd;
+    return { v, rb: (sr - sb) / (N * N) };
+}
+// Vistas de una foto de Stock: completa, y con zoom 88 % / 76 % (por si la edición recortó los bordes) y recorte cuadrado central.
+function rfVistas(img) {
+    const w = img.width, h = img.height, z = (f) => ({ x: w * (1 - f) / 2, y: h * (1 - f) / 2, w: w * f, h: h * f }), l = Math.min(w, h);
+    return [undefined, z(0.88), z(0.76), { x: (w - l) / 2, y: (h - l) / 2, w: l, h: l }].map(rc => rfHuella(img, rc));
+}
+function rfDistancia(a, b) {
+    let s = 0; for (let i = 0; i < a.v.length; i++) s += a.v[i] * b.v[i];
+    const corr = s / a.v.length;                                              // Pearson (ya normalizados)
+    return (1 - corr) / 2 + Math.min(1, Math.abs(a.rb - b.rb) / 60) * 0.05;   // 0 = idéntica
+}
+function rfCargarImagen(src) {
+    return new Promise((res, rej) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => res(im); im.onerror = () => rej(new Error("no cargó")); im.src = src; });
+}
+function rfMejores(huella, refs, n) {
+    return refs.map(r => ({ r, d: Math.min(...r.huellas.map(h => rfDistancia(huella, h))) })).sort((a, b) => a.d - b.d).slice(0, n || 3);
+}
+
+let _rfRefs = null, _rfRefsN = -1, _rfFilas = [];
+function abrirReemplazarFotos() { _rfFilas = []; document.getElementById("rf-lista").innerHTML = ""; document.getElementById("rf-estado").textContent = ""; document.getElementById("rf-btn-aplicar").disabled = true; document.getElementById("rf-input").value = ""; abrirModal("modal-reemplazar-fotos"); }
+function cerrarReemplazarFotos() { cerrarModal("modal-reemplazar-fotos"); }
+
+// Referencias: una por foto distinta de Stock (varias tallas comparten foto) — huella de la original completa y de la recortada.
+async function rfConstruirReferencias(estado) {
+    const activos = stockData.filter(p => p.estado !== "inactivo" && (p.foto || p.img) && String(p.foto || p.img).includes("imagekit.io"));
+    if (_rfRefs && _rfRefsN === activos.length) return _rfRefs;
+    const grupos = new Map();
+    for (const p of activos) {
+        const foto = p.foto || p.img, base = foto.split("?")[0];
+        if (!grupos.has(base)) grupos.set(base, { base, foto, codigos: [], nombre: p.nombre_base || p.nombre || "", cod: p.codigo });
+        grupos.get(base).codigos.push(p.codigo);
+    }
+    const lista = [...grupos.values()], refs = []; let hechos = 0, fallidas = 0;
+    const trozo = (url, tr) => `${url.split("?")[0]}?tr=${tr}`;
+    const trabajo = async (g) => {
+        try {
+            const previo = g.foto.includes("?tr=") ? g.foto.split("?tr=")[1] : "";
+            const huellas = rfVistas(await rfCargarImagen(trozo(g.foto, "w-96")));                           // original completa (+ zoom)
+            if (previo) huellas.push(...rfVistas(await rfCargarImagen(trozo(g.foto, previo + ",w-96"))).slice(0, 2));   // la recortada de Stock
+            g.huellas = huellas; g.thumb = trozo(g.foto, (previo ? previo + "," : "") + "w-120"); refs.push(g);
+        } catch (e) { fallidas++; }
+        estado(++hechos, lista.length);
+    };
+    const cola = lista.slice(); await Promise.all(Array.from({ length: 8 }, async () => { while (cola.length) await trabajo(cola.shift()); }));
+    _rfRefs = refs; _rfRefsN = activos.length; _rfRefs.fallidas = fallidas; return refs;
+}
+
+async function rfElegirArchivos(files) {
+    const archivos = [...files || []].filter(f => f.type.startsWith("image/")); if (!archivos.length) return;
+    const est = document.getElementById("rf-estado"), lista = document.getElementById("rf-lista");
+    est.textContent = "Analizando las fotos de Stock…";
+    let refs;
+    try { refs = await rfConstruirReferencias((a, b) => { est.textContent = `Analizando las fotos de Stock… ${a}/${b}`; }); }
+    catch (e) { est.textContent = "⚠️ No se pudieron analizar las fotos de Stock"; return; }
+    if (!refs.length) { est.textContent = "⚠️ No hay fotos de Stock con las que comparar"; return; }
+    _rfFilas = [];
+    for (let i = 0; i < archivos.length; i++) {
+        const f = archivos[i]; est.textContent = `Reconociendo ${i + 1}/${archivos.length}…`;
+        const url = URL.createObjectURL(f); let top = [];
+        try { top = rfMejores(rfHuella(await rfCargarImagen(url)), refs, 3); } catch (e) {}
+        const mejor = top[0], seg = top[1];
+        const segura = mejor && mejor.d < 0.22 && (!seg || seg.d - mejor.d > 0.04);
+        _rfFilas.push({ file: f, url, top, elegido: segura ? 0 : -1, estado: "" });
+    }
+    est.textContent = `${archivos.length} foto(s) · ${refs.length} fotos de Stock comparadas` + (refs.fallidas ? ` · ⚠️ ${refs.fallidas} de Stock no se pudieron leer` : "");
+    rfPintar();
+}
+
+function rfPintar() {
+    const cont = document.getElementById("rf-lista");
+    cont.innerHTML = _rfFilas.map((f, i) => {
+        const cands = f.top.map((t, j) => {
+            const sel = f.elegido === j, conf = Math.max(0, Math.round((1 - t.d / 0.5) * 100));
+            return `<button type="button" onclick="rfElegir(${i},${j})" style="display:flex;gap:8px;align-items:center;text-align:left;padding:6px;border-radius:10px;cursor:pointer;min-width:200px;flex:1;
+                    background:${sel ? "rgba(201,168,76,.18)" : "var(--gris2)"};border:2px solid ${sel ? "var(--dorado)" : "transparent"};color:var(--blanco);">
+                <img src="${sanitizar(t.r.thumb)}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;background:#222;flex-shrink:0;">
+                <span style="font-size:12px;line-height:1.35;"><b>${sanitizar(t.r.nombre)}</b><br><span style="color:var(--plateado);">${sanitizar(t.r.codigos.slice(0,4).join(", "))}${t.r.codigos.length > 4 ? " +" + (t.r.codigos.length - 4) : ""}</span><br><span style="color:${conf > 55 ? "#4ade80" : "#f0b96a"};">parecido ${conf}%</span></span></button>`;
+        }).join("");
+        return `<div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;background:#1c1c1e;border:1px solid #3a3a3c;border-radius:12px;padding:10px;">
+            <img src="${f.url}" style="width:96px;height:96px;object-fit:cover;border-radius:10px;flex-shrink:0;">
+            <div style="flex:1;min-width:240px;">
+                <div style="font-size:11px;color:var(--plateado);margin-bottom:6px;">${sanitizar(f.file.name)} ${f.estado ? " · " + f.estado : ""}</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">${cands || '<span style="color:#f0b96a;font-size:12px;">No se pudo comparar esta foto</span>'}</div>
+                <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                    <input id="rf-cod-${i}" placeholder="o escribe el código exacto" style="padding:6px 8px;font-size:12px;width:200px;" onchange="rfCodigoManual(${i}, this.value)">
+                    <button type="button" class="btn btn-gris" style="padding:4px 10px;font-size:11px;" onclick="rfElegir(${i},-1)">No reemplazar esta</button>
+                </div></div></div>`;
+    }).join("");
+    document.getElementById("rf-btn-aplicar").disabled = !_rfFilas.some(f => f.elegido !== -1);
+}
+function rfElegir(i, j) { _rfFilas[i].elegido = j; _rfFilas[i].manual = null; rfPintar(); }
+function rfCodigoManual(i, cod) {
+    cod = (cod || "").trim(); if (!cod) return;
+    const it = stockData.find(p => String(p.codigo).toLowerCase() === cod.toLowerCase());
+    if (!it) { toast("⚠️ Ese código no existe en Stock: " + cod); return; }
+    const foto = it.foto || it.img || "", base = foto.split("?")[0];
+    const grupo = stockData.filter(p => p.estado !== "inactivo" && (p.foto || p.img || "").split("?")[0] === base).map(p => p.codigo);
+    _rfFilas[i].manual = { r: { nombre: it.nombre_base || it.nombre, codigos: grupo.length ? grupo : [it.codigo], thumb: foto }, d: 0 };
+    _rfFilas[i].top = [_rfFilas[i].manual, ..._rfFilas[i].top.filter(t => t !== _rfFilas[i].manual)].slice(0, 3); _rfFilas[i].elegido = 0; rfPintar();
+}
+
+async function rfAplicar() {
+    const filas = _rfFilas.filter(f => f.elegido !== -1 && f.top[f.elegido]);
+    if (!filas.length) return;
+    const lista = filas.map(f => `• ${f.file.name} → ${f.top[f.elegido].r.nombre} (${f.top[f.elegido].r.codigos.slice(0, 3).join(", ")})`).join("\n");
+    if (!confirm(`Se reemplazará la foto de ${filas.length} producto(s) (y de todas sus tallas):\n\n${lista}\n\n¿Continuar?`)) return;
+    const btn = document.getElementById("rf-btn-aplicar"); btn.disabled = true;
+    let ok = 0;
+    for (let i = 0; i < filas.length; i++) {
+        const f = filas[i], ref = f.top[f.elegido].r;
+        btn.textContent = `Subiendo ${i + 1}/${filas.length}…`;
+        try {
+            const r = await procesarFotoJoya(f.file);
+            const url = await subirFotoImageKit(f.file, ref.codigos[0], r.crop);
+            if (!url) throw new Error("no se pudo subir");
+            for (const cod of ref.codigos) {
+                const res = await apiPost({ accion: "EDITAR_PRODUCTO", codigo: cod, img: url, fotoMejorada: "", fotoMejoraNivel: "" });
+                if (res && res.ok === false) throw new Error(res.error || "no se guardó");
+                const it = stockData.find(p => p.codigo === cod); if (it) { it.foto = url; it.img = url; it.fotoMejorada = ""; it.fotoMejoraNivel = ""; }
+            }
+            f.estado = "✅ reemplazada"; ok++;
+        } catch (e) { f.estado = "⚠️ falló: " + (e.message || e); }
+        f.elegido = -1; rfPintar();
+    }
+    btn.textContent = "Reemplazar las confirmadas"; _rfRefs = null;
+    try { filtrarStock(); } catch (_) { renderStock(stockData); }
+    toast(`✅ ${ok} de ${filas.length} fotos reemplazadas`, ok === filas.length ? "#22c55e" : "#f97316");
 }
 
 function abrirModalProductoNuevo() {
@@ -14597,6 +14749,30 @@ function enviarRecordatorioAbono(ventaId) {
                 <button class="btn btn-gris" onclick="cancelarEdicionProducto()">Cancelar</button>
                 <button class="btn btn-dorado" onclick="guardarEdicionProducto()">💾 Guardar</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Reemplazar fotos (reconoce el producto de cada foto editada) -->
+<div class="modal-overlay" id="modal-reemplazar-fotos">
+    <div class="modal-box" style="max-width:980px;">
+        <div class="modal-header">
+            <h3>🔁 Reemplazar fotos editadas</h3>
+            <button class="modal-close" onclick="cerrarReemplazarFotos()">×</button>
+        </div>
+        <p style="margin:0 0 10px;color:var(--plateado);font-size:12px;line-height:1.5;">
+            Sube las fotos que editaste (no importa el nombre del archivo). La app las compara con las fotos actuales de Stock y propone a qué producto pertenece cada una.
+            <b>Confirma cada una</b> antes de aplicar: solo se reemplaza lo que marques.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+            <label class="btn btn-dorado" for="rf-input" style="cursor:pointer;padding:8px 14px;font-size:13px;">📂 Elegir fotos</label>
+            <input type="file" id="rf-input" accept="image/*" multiple style="display:none;" onchange="rfElegirArchivos(this.files)">
+            <span id="rf-estado" style="font-size:12px;color:var(--plateado);"></span>
+        </div>
+        <div id="rf-lista" style="max-height:58vh;overflow:auto;display:flex;flex-direction:column;gap:10px;"></div>
+        <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap;">
+            <button class="btn btn-gris" onclick="cerrarReemplazarFotos()">Cerrar</button>
+            <button class="btn btn-dorado" id="rf-btn-aplicar" onclick="rfAplicar()" disabled>Reemplazar las confirmadas</button>
         </div>
     </div>
 </div>
