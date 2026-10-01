@@ -5818,9 +5818,11 @@ async function rfAplicar() {
             const url = await subirFotoImageKit(f.file, ref.codigos[0], r.crop);
             if (!url) throw new Error("no se pudo subir");
             for (const cod of ref.codigos) {
-                const res = await apiPost({ accion: "EDITAR_PRODUCTO", codigo: cod, img: url, fotoMejorada: "", fotoMejoraNivel: "" });
+                // Nivel «Suave» (sin nitidez): la tienda no le suma e-sharpen a la foto que ya viene afilada (Upscayl, etc.)
+                const suave = ikMejorar(url, "suave", 1600);
+                const res = await apiPost({ accion: "EDITAR_PRODUCTO", codigo: cod, img: url, fotoMejorada: suave, fotoMejoraNivel: "suave" });
                 if (res && res.ok === false) throw new Error(res.error || "no se guardó");
-                const it = stockData.find(p => p.codigo === cod); if (it) { it.foto = url; it.img = url; it.fotoMejorada = ""; it.fotoMejoraNivel = ""; }
+                const it = stockData.find(p => p.codigo === cod); if (it) { it.foto = url; it.img = url; it.fotoMejorada = suave; it.fotoMejoraNivel = "suave"; }
             }
             f.estado = "✅ reemplazada"; f.refAplicada = ref; ok++;
         } catch (e) { f.estado = "⚠️ falló: " + (e.message || e); }
@@ -5934,6 +5936,33 @@ async function lePublicarDesdeCsv(archivo) {
         prog.textContent = `🛍️ ${r.cambiados.length} publicados · ${r.yaEstaban.length} ya estaban visibles` + (r.inactivos.length ? ` · ${r.inactivos.length} inactivos omitidos` : "") + ((r.noExisten || []).length ? ` · ${r.noExisten.length} códigos ya no existen en Stock` : "");
         toast(prog.textContent, "#22c55e", 7000);
     } catch (e) { prog.textContent = "⚠️ " + (e.message || e); toast(prog.textContent, "#ef4444"); }
+}
+// Quita la nitidez extra de la tienda a los productos de un LISTA.csv (fotos ya reemplazadas): guarda el nivel «Suave».
+// No toca los que ya tienen una mejora guardada (esa nitidez la eligió el usuario) ni fotos que no son de ImageKit.
+async function leSinNitidezDesdeCsv(archivo) {
+    if (!archivo) return;
+    const prog = document.getElementById("le-progreso");
+    let filas; try { filas = leLeerCsv(await archivo.text()); } catch (e) { prog.textContent = "⚠️ No se pudo leer el archivo"; return; }
+    if (!filas.length || !("codigos_del_diseno" in filas[0])) { prog.textContent = "⚠️ Ese archivo no parece un LISTA.csv del lote"; toast(prog.textContent, "#ef4444"); return; }
+    const codigos = [...new Set(filas.flatMap(f => String(f.codigos_del_diseno || "").split(/\s+/).filter(Boolean)))];
+    const items = codigos.map(c => stockData.find(p => p.codigo === c)).filter(Boolean);
+    const aplicar = items.filter(p => !p.fotoMejorada && String(p.foto || p.img || "").includes("imagekit.io"));
+    const conMejora = items.filter(p => p.fotoMejorada).length;
+    if (!aplicar.length) { prog.textContent = `Nada que cambiar (${conMejora} ya tienen mejora guardada).`; toast(prog.textContent, "#f97316"); return; }
+    if (!confirm(`${aplicar.length} códigos (todas sus tallas) dejarán de recibir la nitidez extra de la tienda (nivel «Suave»).\n${conMejora ? conMejora + " con mejora ya guardada no se tocan.\n" : ""}La foto original no se modifica y se puede revertir con ✨ Mejorar imagen.\n\n¿Continuar?`)) return;
+    let ok = 0, mal = 0;
+    for (let i = 0; i < aplicar.length; i++) {
+        const p = aplicar[i]; prog.textContent = `Aplicando… ${i + 1}/${aplicar.length}`;
+        try {
+            const suave = ikMejorar(p.foto || p.img, "suave", 1600);
+            const r = await apiPost({ accion: "EDITAR_PRODUCTO", codigo: p.codigo, fotoMejorada: suave, fotoMejoraNivel: "suave" });
+            if (r && r.ok === false) throw new Error(r.error);
+            p.fotoMejorada = suave; p.fotoMejoraNivel = "suave"; ok++;
+        } catch (_) { mal++; }
+    }
+    prog.textContent = `✅ ${ok} sin nitidez extra` + (mal ? ` · ⚠️ ${mal} fallaron` : "");
+    toast(prog.textContent, mal ? "#f97316" : "#22c55e", 7000);
+    try { filtrarStock(); } catch (_) {}
 }
 function leCsv(filas) {
     const esc = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
@@ -15093,6 +15122,8 @@ function enviarRecordatorioAbono(ventaId) {
             <button class="btn btn-gris" onclick="cerrarLoteEditar()">Cerrar</button>
             <label class="btn" for="le-csv" style="background:#1a2f3a;color:#5AC8FA;border:1px solid #1f5f7a;cursor:pointer;display:inline-block;" title="Publica en la tienda los productos de un LISTA.csv que descargaste antes con el ZIP del lote">📄 Publicar desde LISTA.csv</label>
             <input type="file" id="le-csv" accept=".csv,text/csv" style="display:none;" onchange="lePublicarDesdeCsv(this.files[0]); this.value=''">
+            <label class="btn" for="le-csv2" style="background:#2a2a1a;color:#e5c76b;border:1px solid #6b5a1f;cursor:pointer;display:inline-block;" title="Quita la nitidez extra de la tienda a las fotos de un LISTA.csv (para fotos ya afiladas con Upscayl)">🔅 Quitar nitidez extra (LISTA.csv)</label>
+            <input type="file" id="le-csv2" accept=".csv,text/csv" style="display:none;" onchange="leSinNitidezDesdeCsv(this.files[0]); this.value=''">
             <button class="btn" id="le-btn-publicar" style="background:#1a3a1a;color:#4ade80;border:1px solid #166534;" onclick="lePublicar()" disabled title="Hace visibles en la tienda online estos productos (todas sus tallas) sin mover inventario">🛍️ Publicar en tienda</button>
             <button class="btn btn-dorado" id="le-btn-zip" onclick="leDescargar()" disabled>📥 Descargar ZIP</button>
         </div>
