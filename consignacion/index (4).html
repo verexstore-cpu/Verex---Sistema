@@ -5684,6 +5684,25 @@ function rfMejores(huella, refs, n) {
     return refs.map(r => ({ r, d: Math.min(...r.huellas.map(h => rfDistancia(huella, h))) })).sort((a, b) => a.d - b.d).slice(0, n || 3);
 }
 
+// Busca en el NOMBRE del archivo el código de un producto (p. ej. «ANP174_editada.jpg», «anp174t8 (1).png»). El código debe
+// aparecer completo y no pegado a otras letras/números (así «ANP20» no confunde con «ANP200»). Gana el código más largo.
+// Devuelve la referencia (diseño) o null si no hay coincidencia o hay más de un diseño posible.
+function rfPorNombre(nombreArchivo, refs) {
+    const n = String(nombreArchivo || "").replace(/\.[A-Za-z0-9]{2,5}$/, "").toUpperCase();
+    let mejorLong = 0, candidatos = [];
+    for (const r of refs) {
+        const cods = new Set(); r.codigos.forEach(c => { cods.add(String(c).toUpperCase()); const b = getCodigoBase(c).toUpperCase(); if (b) cods.add(b); });
+        for (const c of cods) {
+            if (c.length < 4) continue;
+            const i = n.indexOf(c); if (i < 0) continue;
+            const antes = i === 0 || !/[A-Z0-9]/.test(n[i - 1]), despues = i + c.length === n.length || !/[A-Z0-9]/.test(n[i + c.length]);
+            if (!antes || !despues) continue;
+            if (c.length > mejorLong) { mejorLong = c.length; candidatos = [r]; } else if (c.length === mejorLong && !candidatos.includes(r)) candidatos.push(r);
+        }
+    }
+    return candidatos.length === 1 ? candidatos[0] : null;
+}
+
 let _rfRefs = null, _rfRefsN = -1, _rfFilas = [];
 function abrirReemplazarFotos() { _rfFilas = []; document.getElementById("rf-lista").innerHTML = ""; document.getElementById("rf-estado").textContent = ""; document.getElementById("rf-btn-aplicar").disabled = true; document.getElementById("rf-input").value = ""; abrirModal("modal-reemplazar-fotos"); }
 function cerrarReemplazarFotos() { cerrarModal("modal-reemplazar-fotos"); }
@@ -5724,13 +5743,21 @@ async function rfElegirArchivos(files) {
     _rfFilas = [];
     for (let i = 0; i < archivos.length; i++) {
         const f = archivos[i]; est.textContent = `Reconociendo ${i + 1}/${archivos.length}…`;
-        const url = URL.createObjectURL(f); let top = [];
-        try { top = rfMejores(rfHuella(await rfCargarImagen(url)), refs, 3); } catch (e) {}
-        const mejor = top[0], seg = top[1];
-        const segura = mejor && mejor.d < 0.22 && (!seg || seg.d - mejor.d > 0.04);
-        _rfFilas.push({ file: f, url, top, elegido: segura ? 0 : -1, estado: "" });
+        const url = URL.createObjectURL(f); let top = [], huella = null;
+        try { huella = rfHuella(await rfCargarImagen(url)); top = rfMejores(huella, refs, 3); } catch (e) {}
+        // 1.º el nombre del archivo (si trae el código); 2.º el parecido visual
+        const rn = rfPorNombre(f.name, refs);
+        let elegido;
+        if (rn && huella) {
+            const d = Math.min(...rn.huellas.map(h => rfDistancia(huella, h)));
+            top = [{ r: rn, d, porNombre: true }, ...top.filter(t => t.r !== rn)].slice(0, 3); elegido = 0;
+        } else {
+            const mejor = top[0], seg = top[1];
+            elegido = mejor && mejor.d < 0.22 && (!seg || seg.d - mejor.d > 0.04) ? 0 : -1;
+        }
+        _rfFilas.push({ file: f, url, top, elegido, estado: "", porNombre: !!rn });
     }
-    est.textContent = `${archivos.length} foto(s) · ${refs.length} fotos de Stock comparadas` + (refs.fallidas ? ` · ⚠️ ${refs.fallidas} de Stock no se pudieron leer` : "");
+    est.textContent = `${archivos.length} foto(s) · ${_rfFilas.filter(f => f.porNombre).length} reconocidas por el nombre del archivo · ${refs.length} fotos de Stock comparadas` + (refs.fallidas ? ` · ⚠️ ${refs.fallidas} de Stock no se pudieron leer` : "");
     rfPintar();
 }
 
@@ -5743,7 +5770,9 @@ function rfPintar() {
                 <img src="${sanitizar(t.r.thumb)}" title="Clic para ampliar" onclick="abrirFotoZoom(${jsArg(t.r.foto)}, ${jsArg(t.r.nombre)})"
                      style="width:100%;aspect-ratio:1/1;object-fit:contain;border-radius:8px;background:#fff;cursor:zoom-in;display:block;">
                 <div style="font-size:13px;line-height:1.4;margin:8px 0;"><b>${sanitizar(t.r.nombre)}</b><br><span style="color:var(--plateado);font-size:12px;">${sanitizar(t.r.codigos.slice(0,4).join(", "))}${t.r.codigos.length > 4 ? " +" + (t.r.codigos.length - 4) : ""}</span>
-                    <br><span style="color:${conf > 55 ? "#4ade80" : "#f0b96a"};font-size:12px;">parecido ${conf}%</span></div>
+                    <br><span style="color:${conf > 55 ? "#4ade80" : "#f0b96a"};font-size:12px;">parecido ${conf}%</span>
+                    ${t.porNombre ? '<br><span style="color:#5AC8FA;font-size:12px;">📎 Coincide con el nombre del archivo</span>' : ""}
+                    ${t.porNombre && conf < 40 ? '<br><span style="color:#f0b96a;font-size:12px;">⚠️ La foto se ve distinta a la actual: verifica que sea ese producto</span>' : ""}</div>
                 <button type="button" class="btn ${sel ? "btn-dorado" : "btn-gris"}" style="width:100%;padding:8px;font-size:13px;" onclick="rfElegir(${i},${j})">${sel ? "✓ Elegida" : "Es esta"}</button></div>`;
         }).join("");
         return `<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;background:#1c1c1e;border:1px solid #3a3a3c;border-radius:14px;padding:14px;">
