@@ -5121,11 +5121,12 @@ async function cambiarCodigos(sb, items) {
       if (!p.ok) { resultados.push({ ok: false, codigo: it.codigo, error: p.error }); hecho = "error"; break; }
       if (p.materialSinDefinir) { resultados.push({ ok: false, codigo: it.codigo, error: "el material no está definido: elige la letra (P plata, O oro, L laminado, A acero, W reloj)" }); hecho = "error"; break; }
       const ahora = new Date().toISOString(), creados = [];
+      const matElegido = ({ P: "Plata", O: "Oro", L: "Oro laminado", A: "Acero", W: "Reloj" })[String(it.material || "").toUpperCase()] || "";   // si el usuario eligió la letra, el producto también recibe ese material
       let choque = false;
       try {
         for (const m of p.mapa) {                                                // 1) crear los nuevos (candado atómico)
           const viejo = p.skus.find(x => x.codigo === m.viejo), { id, ...datos } = viejo;
-          const nuevo = { ...datos, codigo: m.nuevo, codigoBase: p.nuevoBase, categoria: p.categoria, codigoAnterior: m.viejo, codigoCorregidoEn: ahora, etiquetaPendiente: true };
+          const nuevo = { ...datos, ...(matElegido ? { material: matElegido } : {}), codigo: m.nuevo, codigoBase: p.nuevoBase, categoria: p.categoria, codigoAnterior: m.viejo, codigoCorregidoEn: ahora, etiquetaPendiente: true };
           if (!(await sb.insertIfAbsent("stock", m.nuevo, nuevo))) { choque = true; break; }
           creados.push(m.nuevo);
         }
