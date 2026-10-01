@@ -6352,7 +6352,9 @@ function ikFoto(url, size) {
     // apilar los dos es lo que la hacía verse exagerada y poco natural frente a la vista previa del panel.
     // Solo se ajusta el ancho (el 1600 con el que se guardó) al tamaño pedido.
     if (esUrlMejorada(url)) {
-        return /,w-1600(?=,|$)/.test(url) ? url.replace(/,w-1600(?=,|$)/, ",w-" + s) : (url.includes("?tr=") ? `${url},w-${s}` : url);
+        // el w-1600 de la mejora es el ÚLTIMO w- (justo antes de e-sharpen-N / q-90); el w- del recorte no se toca
+        const reW = /(^|,)w-1600(?=(,e-sharpen-\d+)?,q-90$)/;
+        return reW.test(url) ? url.replace(reW, "$1w-" + s) : (url.includes("?tr=") ? `${url},w-${s}` : url);
     }
     const base = url.split("?")[0];
     const tr   = url.includes("?tr=") ? url.split("?tr=")[1] : null;
