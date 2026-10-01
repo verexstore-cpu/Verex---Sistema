@@ -112,6 +112,11 @@ export default {
         if (aud.consHuerfanas.length) partes.push(`• ${aud.consHuerfanas.length} consignaciones de códigos que ya no existen en Stock`);
         secciones.push(`🔎 Auditoría de stock: ${n} producto(s) con descuadre\n${partes.join("\n")}\nDetalle: Consignación → Stock → 🔍 Auditoría`);
       }
+      // Categorías de la tienda: un anillo (dúo, trío o suelto) nunca debe estar en «Conjuntos», ni nada fuera de su categoría
+      if (aud.categoriasDudosas.length) {
+        const cd = aud.categoriasDudosas, top8 = cd.slice(0, 8).map(x => `   ${x.codigo}: ${x.motivo}`).join("\n") + (cd.length > 8 ? `\n… y ${cd.length - 8} más` : "");
+        secciones.push(`🧩 ${cd.length} producto(s) en la categoría equivocada de la tienda:\n${top8}\nCorregir: Consignación → Stock → 🧩 Categorías`);
+      }
     } catch (audErr) {
       console.error("Auditoría diaria de stock falló:", audErr);
       secciones.push("🔎 La auditoría diaria de stock NO pudo ejecutarse (" + String(audErr && audErr.message || audErr).slice(0, 120) + "). Revisa el Worker.");
@@ -3444,6 +3449,27 @@ async function enviar(){
           break;
         }
 
+        // Revisa en qué categoría está cada producto y detecta los mal clasificados (solo lectura).
+        case "AUDITORIA_CATEGORIAS": {
+          if (!esAdmin) return forbidden();
+          const a = analizarCategorias(await sb.getAll("stock"));
+          result = { ok: true, categorias: CATEGORIAS_TIENDA, ...a };
+          break;
+        }
+
+        // Cambia la categoría de los productos indicados (bloque: 2 peticiones). Solo categorías válidas; el resto no se toca.
+        case "CORREGIR_CATEGORIAS": {
+          if (!esAdmin) return forbidden();
+          const cambios = (Array.isArray(d.cambios) ? d.cambios : []).filter(c => c && c.codigo && CATEGORIAS_TIENDA[String(c.categoria || "").toUpperCase()]).slice(0, 1000);
+          if (!cambios.length) { result = { ok: false, error: "cambios requeridos" }; break; }
+          const docsC = new Map((await sb.getMany("stock", cambios.map(c => String(c.codigo)))).map(x => [String(x.id), x]));
+          const nuevos = [], noExisten = [];
+          for (const c of cambios) { const x = docsC.get(String(c.codigo)); if (!x) { noExisten.push(c.codigo); continue; } nuevos.push({ ...x, categoria: String(c.categoria).toUpperCase() }); }
+          if (nuevos.length) await sb.setMany("stock", nuevos);
+          result = { ok: true, corregidos: nuevos.map(x => x.id), noExisten };
+          break;
+        }
+
         case "STOCK_DEVOLVER_BODEGA": {
           if (!esAdmin) return forbidden();
           result = await stockDevolverBodegaEnBloque(sb, d);
@@ -4989,6 +5015,27 @@ async function registrarEntregaEnBloque(sb, d) {
   return { ok: fallidos.length === 0, guardados, fallidos };
 }
 
+// ── CATEGORÍAS: detecta productos mal clasificados (p. ej. un anillo en «Conjuntos») ─────────────────────────────
+// Los anillos (sueltos, dúo o trío) son SIEMPRE «Anillos»; «Conjuntos» es otra cosa (collar + aretes, etc.). Dos reglas de alta
+// confianza: 1) el nombre es de anillo/alianza/argolla y la categoría no es AN; 2) el código empieza con una categoría conocida
+// distinta a la guardada. Solo propone: quien confirma es el usuario (CORREGIR_CATEGORIAS).
+const CATEGORIAS_TIENDA = { AN: "Anillos", CO: "Collares", AR: "Aretes", PU: "Pulseras", CJ: "Conjuntos", CD: "Cadenas", DJ: "Dijes", TB: "Tobilleras", RS: "Rosarios" };
+function analizarCategorias(items) {
+  const activos = items.filter(p => p && p.estado !== "inactivo");
+  const publicados = activos.filter(p => p.enCatalogo === true || p.enCatalogo === "true" || p.enCatalogo === "TRUE");
+  const cuenta = {}; for (const p of publicados) { const c = String(p.categoria || "").toUpperCase().trim() || "(sin categoría)"; cuenta[c] = (cuenta[c] || 0) + 1; }
+  const dudosas = [];
+  for (const p of activos) {
+    const cat = String(p.categoria || "").toUpperCase().trim(), cod = String(p.codigo || p.id || ""), pref = (cod.match(/^[A-Za-z]{2}/) || [""])[0].toUpperCase();
+    const nombre = String(p.nombre_base || p.nombre || "");
+    let propuesta = null, motivo = "";
+    if (/^\s*(anillo|alianza|argolla|sortija)s?\b/i.test(nombre) && cat !== "AN") { propuesta = "AN"; motivo = `Es un anillo («${nombre}») pero está en ${CATEGORIAS_TIENDA[cat] || cat || "sin categoría"}`; }
+    else if (CATEGORIAS_TIENDA[pref] && cat !== pref) { propuesta = pref; motivo = cat ? `El código empieza por ${pref} pero su categoría es ${CATEGORIAS_TIENDA[cat] || cat}` : "Sin categoría"; }
+    if (propuesta) dudosas.push({ codigo: cod, nombre, categoria: cat, propuesta, motivo, publicado: publicados.includes(p) });
+  }
+  return { publicados: publicados.length, porCategoria: cuenta, dudosas };
+}
+
 // Auditoría de consistencia del stock (solo lectura). La usan la acción AUDITORIA_STOCK y el cron diario.
 async function auditarStock(sb) {
   const [stockAud, consAud, vendAud] = await Promise.all([
@@ -5071,17 +5118,19 @@ async function auditarStock(sb) {
   const totalDescuadrado = stockAud.filter(s => (parseInt(s.stock_total)||0) !== Supabase.COMPONENTES_STOCK.reduce((a, c) => a + (parseInt(s[c])||0), 0))
     .map(s => ({ codigo: s.codigo, nombre: s.nombre || "", stock_total: parseInt(s.stock_total)||0, suma: Supabase.COMPONENTES_STOCK.reduce((a, c) => a + (parseInt(s[c])||0), 0) }));
 
+  const categoriasDudosas = analizarCategorias(stockAud).dudosas;
   return {
     ok: true,
     generadoEn: new Date().toISOString(),
-    discrepanciasConsignacion, negativos, consHuerfanas, cerradosSinContar, totalDescuadrado,
+    discrepanciasConsignacion, negativos, consHuerfanas, cerradosSinContar, totalDescuadrado, categoriasDudosas,
     resumen: {
       productosRevisados: stockAud.length,
       discrepancias: discrepanciasConsignacion.length,
       negativos: negativos.length,
       huerfanas: consHuerfanas.length,
       cerradosSinContar: cerradosSinContar.length,
-      totalDescuadrado: totalDescuadrado.length
+      totalDescuadrado: totalDescuadrado.length,
+      categoriasDudosas: categoriasDudosas.length
     }
   };
 }

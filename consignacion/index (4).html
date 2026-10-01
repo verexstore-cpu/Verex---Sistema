@@ -651,6 +651,7 @@
                     <button class="btn" style="background:#27ae60;color:#fff;padding:8px 14px;font-size:13px;" onclick="abrirImportarExcel()">📥 Importar</button>
                     <button class="btn" style="background:#1a3a1a;color:#4ade80;border:1px solid #166534;padding:8px 14px;font-size:13px;" onclick="abrirModalFotosCelular()">📱 Fotos</button>
                     <button class="btn" style="background:#1a2f3a;color:#5AC8FA;border:1px solid #1f5f7a;padding:8px 14px;font-size:13px;" onclick="abrirReemplazarFotos()" title="Sube fotos editadas y la app reconoce a qué producto pertenece cada una">🔁 Reemplazar fotos</button>
+                    <button class="btn" style="background:#2a1a3a;color:#c9a0ff;border:1px solid #5e3a8a;padding:8px 14px;font-size:13px;" onclick="abrirCategorias()" title="Revisa en qué categoría de la tienda está cada producto y corrige los mal clasificados (p. ej. un anillo en Conjuntos)">🧩 Categorías</button>
                     <button class="btn" style="background:#2f2a14;color:#f5d76e;border:1px solid #8a7a1e;padding:8px 14px;font-size:13px;" onclick="abrirLoteEditar()" title="Elige productos variados con más stock y descarga sus fotos en un ZIP con carpetas de 20">📦 Lote para editar</button>
                     <button class="btn" style="background:#3b2a1a;color:#f0b96a;border:1px solid #8a5a1e;padding:8px 14px;font-size:13px;" onclick="ejecutarAuditoriaStock()">🔍 Auditoría</button>
                 </div>
@@ -5967,6 +5968,47 @@ async function leDescargar() {
     prog.textContent = `✅ ${ok} fotos en ${Math.ceil(trabajos.length / por)} carpeta(s) → ${nombreZip}` + (fallidas.length ? ` · ⚠️ ${fallidas.length} fallaron (${fallidas.slice(0, 5).join(", ")})` : "");
     toast(prog.textContent, fallidas.length ? "#f97316" : "#22c55e", 6000);
     btn.disabled = false;
+}
+
+
+// ── CATEGORÍAS DE LA TIENDA: revisar y corregir productos mal clasificados ───────────────────────────────────
+let _catDud = [], _catNombres = {};
+function abrirCategorias() { abrirModal("modal-categorias"); catCargar(); }
+async function catCargar() {
+    const est = document.getElementById("cat-estado"); est.textContent = "Revisando…"; document.getElementById("cat-btn-corregir").disabled = true;
+    let res; try { res = await apiPost({ accion: "AUDITORIA_CATEGORIAS" }); } catch (e) { est.textContent = "⚠️ " + e.message; return; }
+    if (!res || !res.ok) { est.textContent = "⚠️ " + ((res && res.error) || "No se pudo revisar"); return; }
+    _catNombres = res.categorias || {}; _catDud = (res.dudosas || []).map(d => ({ ...d, elegida: d.propuesta, marcar: true }));
+    document.getElementById("cat-resumen").innerHTML = Object.entries(res.porCategoria || {}).sort((a, b) => b[1] - a[1]).map(([c, n]) =>
+        `<span style="background:#222;border:1px solid #3a3a3c;border-radius:20px;padding:5px 12px;font-size:12px;"><b>${sanitizar(_catNombres[c] || c)}</b> · ${n}</span>`).join("") +
+        `<span style="font-size:12px;color:var(--plateado);align-self:center;">publicados en la tienda: ${res.publicados}</span>`;
+    est.textContent = _catDud.length ? `⚠️ ${_catDud.length} producto(s) parecen mal clasificados` : "✅ Todo está en su categoría";
+    catPintar();
+}
+function catPintar() {
+    const opts = (sel) => Object.entries(_catNombres).map(([c, n]) => `<option value="${c}" ${c === sel ? "selected" : ""}>${sanitizar(n)}</option>`).join("");
+    document.getElementById("cat-lista").innerHTML = _catDud.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <tr style="position:sticky;top:0;background:#222;color:var(--plateado);text-align:left;"><th style="padding:6px;"></th><th>Código</th><th>Nombre</th><th>Ahora</th><th>Cambiar a</th><th>Tienda</th><th>Motivo</th></tr>` +
+        _catDud.map((d, i) => `<tr style="border-top:1px solid #2a2a2c;opacity:${d.marcar ? 1 : .45};"><td style="padding:5px 6px;"><input type="checkbox" ${d.marcar ? "checked" : ""} onchange="_catDud[${i}].marcar=this.checked;catPintar()"></td>
+            <td>${sanitizar(d.codigo)}</td><td>${sanitizar(d.nombre)}</td><td>${sanitizar(_catNombres[d.categoria] || d.categoria || "—")}</td>
+            <td><select onchange="_catDud[${i}].elegida=this.value" style="padding:4px;font-size:12px;">${opts(d.elegida)}</select></td>
+            <td>${d.publicado ? "✓ publicado" : "—"}</td><td style="color:var(--plateado);">${sanitizar(d.motivo)}</td></tr>`).join("") + "</table>"
+        : '<p style="padding:16px;color:#4ade80;font-size:13px;">✅ No hay productos mal clasificados.</p>';
+    document.getElementById("cat-btn-corregir").disabled = !_catDud.some(d => d.marcar);
+}
+async function catCorregir() {
+    const cambios = _catDud.filter(d => d.marcar).map(d => ({ codigo: d.codigo, categoria: d.elegida }));
+    if (!cambios.length) return;
+    if (!confirm(`Se cambiará la categoría de ${cambios.length} producto(s). No se toca el stock ni si están publicados.\n\n¿Continuar?`)) return;
+    const est = document.getElementById("cat-estado"); est.textContent = "Corrigiendo…";
+    try {
+        const r = await apiPost({ accion: "CORREGIR_CATEGORIAS", cambios });
+        if (!r || !r.ok) throw new Error((r && r.error) || "no se pudo corregir");
+        for (const c of r.corregidos || []) { const it = stockData.find(p => p.codigo === c), n = cambios.find(x => x.codigo === c); if (it && n) it.categoria = n.categoria; }
+        try { filtrarStock(); } catch (_) {}
+        toast(`✅ ${r.corregidos.length} categorías corregidas`, "#22c55e", 5000);
+    } catch (e) { toast("⚠️ " + (e.message || e), "#ef4444"); }
+    await catCargar();
 }
 
 function abrirModalProductoNuevo() {
@@ -14933,6 +14975,28 @@ function enviarRecordatorioAbono(ventaId) {
                 <button class="btn btn-gris" onclick="cancelarEdicionProducto()">Cancelar</button>
                 <button class="btn btn-dorado" onclick="guardarEdicionProducto()">💾 Guardar</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Categorías de la tienda: detecta y corrige productos en la categoría equivocada -->
+<div class="modal-overlay" id="modal-categorias">
+    <div class="modal-box" style="max-width:1100px;width:96vw;">
+        <div class="modal-header">
+            <h3>🧩 Categorías de la tienda</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-categorias')">×</button>
+        </div>
+        <p style="margin:0 0 10px;color:var(--plateado);font-size:12px;line-height:1.5;">
+            La tienda agrupa los productos por categoría. Los <b>anillos</b> (sueltos, dúo o trío) siempre van en <b>Anillos</b>; <b>Conjuntos</b> es solo para sets como collar + aretes.
+            Aquí ves cuántos productos publicados hay por categoría y los que parecen mal clasificados, con la categoría que propongo. <b>Revisa y confirma</b>: solo se cambia lo que dejes marcado.
+        </p>
+        <div id="cat-resumen" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"></div>
+        <div id="cat-lista" style="max-height:50vh;overflow:auto;background:#141414;border:1px solid #3a3a3c;border-radius:10px;"></div>
+        <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap;align-items:center;">
+            <span id="cat-estado" style="font-size:12px;color:var(--plateado);margin-right:auto;"></span>
+            <button class="btn btn-gris" onclick="cerrarModal('modal-categorias')">Cerrar</button>
+            <button class="btn btn-gris" onclick="catCargar()">↻ Volver a revisar</button>
+            <button class="btn btn-dorado" id="cat-btn-corregir" onclick="catCorregir()" disabled>Corregir las marcadas</button>
         </div>
     </div>
 </div>

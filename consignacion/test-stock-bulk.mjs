@@ -195,4 +195,29 @@ for (const [acc, p] of [['STOCK_ASIGNAR_VENDEDOR', { codigos: ['P1', 'P2'], vend
   db.clear(); mkStock(1, 3, 1, 0); failRpc = true; const r = await llamar(nuevo, 'REGISTRAR_VENTA_DIRECTA', { id: 'VDX', cliente: 'C', items: [{ codigo: 'P1', cantidad: 3, nombre: 'n', precio: 5 }], total: 15 }); failRpc = false;
   const s1 = db.get(k('stock', 'P1')); ok(r.body.ok && (r.body.faltantes || []).length === 0 && s1.stock_tienda === 0 && s1.stock_bodega === 1 && s1.stock_vendido === 3 && (s1.stock_reservado || 0) === 0, 'si la reserva atómica falla por error de Supabase: descuenta con el método clásico (tienda 1 + bodega 2), sin dejar reservado'); }
 
+// ── Categorías de la tienda
+{ db.clear();
+  const P = (codigo, nombre, categoria, pub = true, estado = 'bodega') => db.set(k('stock', codigo), { codigo, nombre, nombre_base: nombre, categoria, enCatalogo: pub, estado, stock_bodega: 1, stock_tienda: 0, stock_consignacion: 0, stock_total: 1 });
+  P('ANP001T6', 'Anillo Luna Dúo', 'CJ');            // anillo dúo mal puesto en Conjuntos  → AN
+  P('ANP002T7', 'Alianzas Trío Clásicas', 'CJ');      // trío en Conjuntos                  → AN
+  P('ANP003T8', 'Anillo Sol', 'AN');                  // bien
+  P('CJP001', 'Conjunto Collar y Aretes', 'CJ');      // conjunto de verdad: bien
+  P('ARP010', 'Aretes Gota', 'AN');                   // código AR en categoría AN → AR
+  P('PUP020', 'Pulsera Mar', 'PU', false);            // bien (no publicada)
+  P('COP030', 'Collar Estrella', '');                 // sin categoría, código CO → CO
+  P('CA003', 'Cadena aros', 'CD');                    // prefijo CA no está en la tabla: no se toca
+  P('ANP099', 'Anillo viejo', 'CJ', true, 'inactivo');// inactivo: se ignora
+  const r = await llamar(nuevo, 'AUDITORIA_CATEGORIAS', {});
+  const dud = Object.fromEntries(r.body.dudosas.map(d => [d.codigo, d.propuesta]));
+  ok(r.body.ok && dud.ANP001T6 === 'AN' && dud.ANP002T7 === 'AN', 'detecta anillos dúo y trío puestos en «Conjuntos» y propone «Anillos»');
+  ok(dud.ARP010 === 'AR' && dud.COP030 === 'CO', 'detecta categoría que no coincide con el código, y productos sin categoría');
+  ok(!('ANP003T8' in dud) && !('CJP001' in dud) && !('PUP020' in dud) && !('CA003' in dud) && !('ANP099' in dud), 'NO marca lo que está bien: anillo en AN, conjunto real en CJ, pulsera, prefijo desconocido ni inactivos');
+  ok(r.body.porCategoria.CJ === 3 && r.body.porCategoria.AN === 2 && r.body.publicados === 7, 'cuenta lo publicado por categoría: ' + JSON.stringify(r.body.porCategoria));
+  const c = await llamar(nuevo, 'CORREGIR_CATEGORIAS', { cambios: [{ codigo: 'ANP001T6', categoria: 'an' }, { codigo: 'ANP002T7', categoria: 'AN' }, { codigo: 'NOEXISTE', categoria: 'AN' }, { codigo: 'ARP010', categoria: 'ZZ' }] });
+  ok(c.body.ok && db.get(k('stock', 'ANP001T6')).categoria === 'AN' && db.get(k('stock', 'ANP002T7')).categoria === 'AN' && c.body.noExisten.join() === 'NOEXISTE', 'corrige las categorías pedidas (acepta minúsculas) e informa las que no existen');
+  ok(db.get(k('stock', 'ARP010')).categoria === 'AN', 'una categoría inválida (ZZ) se ignora: no se toca el producto');
+  ok(db.get(k('stock', 'ANP001T6')).stock_bodega === 1 && db.get(k('stock', 'ANP001T6')).enCatalogo === true, 'corregir la categoría no cambia stock ni visibilidad');
+  const r2 = await llamar(nuevo, 'AUDITORIA_CATEGORIAS', {}); ok(!r2.body.dudosas.some(d => d.codigo.startsWith('ANP00')), 'tras corregir, esos anillos ya no salen como dudosos');
+  const m = await llamar(nuevo, 'CORREGIR_CATEGORIAS', { cambios: [{ codigo: 'ARP010', categoria: 'AR' }] }, 'mala'); ok(m.status === 403 && db.get(k('stock', 'ARP010')).categoria === 'AN', 'sin clave de admin: 403 y nada cambia'); }
+
 console.log(`\n${pass} correctas, ${fail} fallidas`); process.exit(fail ? 1 : 0);
