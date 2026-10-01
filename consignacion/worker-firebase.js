@@ -3324,7 +3324,8 @@ async function enviar(){
             foto:               d.img || d.foto || "",
             descripcion:        d.caracteristicas || "",
             descripcionTienda:  d.caracteristicas || "",
-            categoria:          d.categoria || "",
+            categoria:          String(d.categoria || "").toUpperCase(),
+            material:           d.material || "",
             talla:              "",
             stock_bodega:       parseInt(d.cantidad) || 0,
             stock_tienda:       0,
@@ -5049,18 +5050,23 @@ async function registrarEntregaEnBloque(sb, d) {
 // confianza: 1) el nombre es de anillo/alianza/argolla y la categoría no es AN; 2) el código empieza con una categoría conocida
 // distinta a la guardada. Solo propone: quien confirma es el usuario (CORREGIR_CATEGORIAS).
 const CATEGORIAS_TIENDA = { AN: "Anillos", CO: "Collares", AR: "Aretes", PU: "Pulseras", CJ: "Conjuntos", CD: "Cadenas", DJ: "Dijes", TB: "Tobilleras", RS: "Rosarios" };
+// El Admin Tienda usaba otros códigos (CN conjunto, PL pulsera) y generaba «XX-1234» al azar; Stock usa CJ/PU y [CAT][MAT][NNN].
+const CATEGORIAS_ANTIGUAS = { CN: "CJ", PL: "PU" };
+const _codigoFormatoAdmin = (c) => /^[A-Za-z]{2}-\d+/.test(String(c || ""));
 function analizarCategorias(items) {
   const activos = items.filter(p => p && p.estado !== "inactivo");
   const publicados = activos.filter(p => p.enCatalogo === true || p.enCatalogo === "true" || p.enCatalogo === "TRUE");
   const cuenta = {}; for (const p of publicados) { const c = String(p.categoria || "").toUpperCase().trim() || "(sin categoría)"; cuenta[c] = (cuenta[c] || 0) + 1; }
   const dudosas = [];
   for (const p of activos) {
-    const cat = String(p.categoria || "").toUpperCase().trim(), cod = String(p.codigo || p.id || ""), pref = (cod.match(/^[A-Za-z]{2}/) || [""])[0].toUpperCase();
-    const nombre = String(p.nombre_base || p.nombre || "");
+    const catRaw = String(p.categoria || "").toUpperCase().trim(), cat = CATEGORIAS_ANTIGUAS[catRaw] || catRaw, cod = String(p.codigo || p.id || ""), prefRaw = (cod.match(/^[A-Za-z]{2}/) || [""])[0].toUpperCase(), pref = CATEGORIAS_ANTIGUAS[prefRaw] || prefRaw;
+    const nombre = String(p.nombre_base || p.nombre || ""), antiguo = _codigoFormatoAdmin(cod);
     let propuesta = null, motivo = "";
     if (/^\s*(anillo|alianza|argolla|sortija)s?\b/i.test(nombre) && cat !== "AN") { propuesta = "AN"; motivo = `Es un anillo («${nombre}») pero está en ${CATEGORIAS_TIENDA[cat] || cat || "sin categoría"}`; }
-    else if (CATEGORIAS_TIENDA[pref] && cat !== pref) { propuesta = pref; motivo = cat ? `El código empieza por ${pref} pero su categoría es ${CATEGORIAS_TIENDA[cat] || cat}` : "Sin categoría"; }
-    if (propuesta) dudosas.push({ codigo: cod, nombre, categoria: cat, propuesta, motivo, publicado: publicados.includes(p) });
+    else if (antiguo && pref === "CD" && /^\s*(collar|gargantilla)/i.test(nombre)) { propuesta = "CO"; motivo = `Es un collar («${nombre}») con código de cadena del Admin (${cod})`; }
+    else if (CATEGORIAS_TIENDA[pref] && cat !== pref) { propuesta = pref; motivo = catRaw ? `El código empieza por ${prefRaw} pero su categoría es ${CATEGORIAS_TIENDA[catRaw] || catRaw}` : "Sin categoría"; }
+    else if (antiguo && CATEGORIAS_TIENDA[cat]) { propuesta = cat; motivo = `Código con formato antiguo del Admin (${cod}): no coincide con el que genera Stock para la etiqueta`; }
+    if (propuesta) dudosas.push({ codigo: cod, nombre, categoria: catRaw, propuesta, motivo, publicado: publicados.includes(p), codigoAntiguo: antiguo || !!CATEGORIAS_ANTIGUAS[prefRaw] });
   }
   return { publicados: publicados.length, porCategoria: cuenta, dudosas };
 }
@@ -5080,7 +5086,7 @@ function _planCambioCodigo(ctx, codigo, categoria, matForzado) {
   const skus = ctx.stock.filter(x => x.estado !== "inactivo" && _baseDeCodigo(x.codigo).toUpperCase() === base);
   if (!skus.length) return { ok: false, codigo, error: "el producto no existe o está inactivo" };
   const mm = /^[A-Z]{2}([A-Z])\d+$/.exec(base);
-  const mat = String(skus[0].material || "").toLowerCase();
+  const mat = String(skus[0].material || skus[0].nombre_base || skus[0].nombre || "").toLowerCase();
   const delCampo = mat.includes("laminado") ? "L" : mat.includes("oro") ? "O" : mat.includes("acero") ? "A" : mat.includes("reloj") ? "W" : mat.includes("plata") ? "P" : "X";
   const forz = String(matForzado || "").toUpperCase();
   // Letra de material: la que elige el usuario > la del código (si no es X) > la del campo material > X (sin definir)

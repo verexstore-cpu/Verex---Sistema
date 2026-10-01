@@ -666,11 +666,13 @@
                     <select id="sel-tipo" onchange="actualizarNombre()">
                         <option value="AN">Anillo (AN)</option>
                         <option value="AR">Aretes (AR)</option>
+                        <option value="CO">Collar (CO)</option>
                         <option value="CD">Cadena (CD)</option>
-                        <option value="PL">Pulsera (PL)</option>
-                        <option value="CN">Conjunto (CN)</option>
-                        <option value="RL">Reloj (RL)</option>
-                        <option value="OT">Otro (OT)</option>
+                        <option value="PU">Pulsera (PU)</option>
+                        <option value="CJ">Conjunto (CJ)</option>
+                        <option value="DJ">Dije (DJ)</option>
+                        <option value="TB">Tobillera (TB)</option>
+                        <option value="RS">Rosario (RS)</option>
                     </select>
                 </div>
                 <div>
@@ -2962,10 +2964,19 @@ function actualizarNombre() {
     // Nombre: Tipo + Característica + Material  (ej: "Anillo Mariposa Plata Fina 925")
     const partes = [tipo, det, mat].filter(Boolean);
     document.getElementById("out-nom").textContent = partes.join(" ");
-    // Código único por tipo (regenera si cambia el tipo)
-    if (!window._c || !window._c.startsWith(pref+"-"))
-        window._c = `${pref}-${Math.floor(1000+Math.random()*9000)}`;
-    document.getElementById("out-cod").textContent = window._c;
+    // Código = el mismo que genera Stock (categoría + material + siguiente número libre, p. ej. ANP175), porque de ahí sale la
+    // etiqueta. Antes se inventaba uno al azar («CN-4821») que no coincidía con Stock ni con las categorías de la tienda.
+    const clave = pref + "|" + mat;
+    if (window._cClave !== clave) {
+        window._cClave = clave; window._c = null;
+        document.getElementById("out-cod").textContent = "calculando…";
+        fetch(API_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accion: "GENERAR_CODIGO", categoria: pref, material: mat }) })
+            .then(r => r.json()).then(r => {
+                if (window._cClave !== clave) return;               // cambió el tipo/material mientras tanto
+                if (r && r.ok && r.codigo) { window._c = r.codigo; document.getElementById("out-cod").textContent = r.codigo; }
+                else document.getElementById("out-cod").textContent = "⚠️ no se pudo generar";
+            }).catch(() => { if (window._cClave === clave) document.getElementById("out-cod").textContent = "⚠️ sin conexión"; });
+    }
     // Tallas solo para Anillos
     document.getElementById("sec-tallas").style.display = pref==="AN" ? "block" : "none";
 }
@@ -2974,7 +2985,8 @@ async function publicarProducto() {
     const nombre=document.getElementById("out-nom").textContent;
     const precio=document.getElementById("in-prec").value;
     const img=document.getElementById("in-img").value.trim();
-    const codigo=document.getElementById("out-cod").textContent;
+    const codigo=window._c||"";
+    if (!codigo) return toast("⚠️ Espera a que se genere el código (o revisa la conexión)","#f97316");
     if (!precio||!img) return toast("⚠️ Falta precio o imagen","#f97316");
     const esPareja = document.getElementById("chk-pareja")?.checked;
     const stocks = {};
@@ -2988,11 +3000,12 @@ async function publicarProducto() {
     const btn=document.querySelector("#tab-2 .bfull");
     btn.textContent="Publicando..."; btn.disabled=true;
     try {
-        await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accion:"CREAR_PRODUCTO",_pass:ADMIN_PASS,nombre,precio,img,codigo,caracteristicas:JSON.stringify(stocks)})});
+        const rp = await (await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accion:"CREAR_PRODUCTO",_pass:ADMIN_PASS,nombre,precio,img,codigo,categoria:document.getElementById("sel-tipo").value,material:document.getElementById("sel-mat").value,caracteristicas:JSON.stringify(stocks)})})).json();
+        if (!rp || rp.ok === false) { toast("❌ "+((rp && rp.error)||"No se pudo publicar"),"#ef4444"); window._c=null; window._cClave=null; actualizarNombre(); return; }
         toast("✅ Producto publicado","#22c55e");
         document.getElementById("in-prec").value=document.getElementById("in-img").value=document.getElementById("in-det").value="";
         document.querySelectorAll(".ts").forEach(i=>i.value=0);
-        window._c=null;
+        window._c=null; window._cClave=null;   // fuerza pedir el siguiente código libre
         const chkP = document.getElementById("chk-pareja");
         if (chkP) { chkP.checked=false; togglePareja(); }
         actualizarNombre();
