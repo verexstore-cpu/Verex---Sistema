@@ -6007,6 +6007,19 @@ async function catCorregirCodigo() {
     let sug = [];
     try { for (let i = 0; i < items.length; i += 40) { const r = await apiPost({ accion: "SUGERIR_CODIGOS", items: items.slice(i, i + 40) }); if (!r || !r.ok) throw new Error((r && r.error) || "no se pudo calcular"); sug.push(...r.sugerencias); } }
     catch (e) { est.textContent = "⚠️ " + (e.message || e); return; }
+    // Material sin definir (letra X): se pregunta la letra y se recalcula
+    const sinMat = sug.filter(x => x.ok && x.materialSinDefinir);
+    if (sinMat.length) {
+        const letras = {};
+        for (const x of sinMat) {
+            const l = (prompt(`El código ${x.codigoBase} no tiene material (letra X).\n\nEscribe la letra del material:\nP = Plata · O = Oro · L = Oro laminado · A = Acero · W = Reloj\n\n(Cancelar = no cambiar este diseño)`) || "").trim().toUpperCase();
+            if (/^[POLAW]$/.test(l)) letras[x.codigoBase] = l;
+        }
+        const pend = items.map(it => ({ ...it, material: letras[getCodigoBase(it.codigo).toUpperCase()] }));
+        try { sug = (await apiPost({ accion: "SUGERIR_CODIGOS", items: pend.slice(0, 40) })).sugerencias; } catch (e) { est.textContent = "⚠️ " + (e.message || e); return; }
+        sug = sug.map(x => x.ok && x.materialSinDefinir ? { ok: false, codigo: x.codigoBase, error: "sin material: no se cambia" } : x);
+        window._catMat = letras;
+    } else window._catMat = {};
     const buenas = sug.filter(x => x.ok), malas = sug.filter(x => !x.ok);
     if (!buenas.length) { est.textContent = "⚠️ " + (malas[0] ? malas[0].codigo + ": " + malas[0].error : "nada que cambiar"); return; }
     const lista = buenas.map(x => `• ${x.codigoBase} → ${x.nuevoBase}  (${x.mapa.length} talla${x.mapa.length > 1 ? "s" : ""}, categoría ${_catNombres[x.categoria] || x.categoria})`).join("\n");
@@ -6015,7 +6028,7 @@ async function catCorregirCodigo() {
     try {
         for (let i = 0; i < buenas.length; i += 3) {
             est.textContent = `Cambiando códigos… ${Math.min(i + 3, buenas.length)}/${buenas.length}`;
-            const lote = buenas.slice(i, i + 3).map(x => ({ codigo: x.mapa[0].viejo, categoria: x.categoria }));
+            const lote = buenas.slice(i, i + 3).map(x => ({ codigo: x.mapa[0].viejo, categoria: x.categoria, material: (window._catMat || {})[x.codigoBase] }));
             const r = await apiPost({ accion: "CAMBIAR_CODIGOS", items: lote });
             if (!r || !r.ok) throw new Error((r && r.error) || "no se pudo cambiar");
             for (const x of r.resultados) { if (x.ok) hechos++; else fallos.push(`${x.codigo}: ${x.error}`); }

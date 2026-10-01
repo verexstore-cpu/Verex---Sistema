@@ -5073,7 +5073,7 @@ function analizarCategorias(items) {
 // El producto viejo queda inactivo y en cero (reemplazadoPor) y el nuevo lleva codigoAnterior + etiquetaPendiente para que se
 // cambie la etiqueta física. Las consignaciones activas pasan al código nuevo; pedidos y ventas pasadas quedan como histórico.
 const _baseDeCodigo = (c) => String(c || "").replace(/[DCU]?T\d+(\.\d+)?$/i, "").trim();
-function _planCambioCodigo(ctx, codigo, categoria) {
+function _planCambioCodigo(ctx, codigo, categoria, matForzado) {
   const cat = String(categoria || "").toUpperCase();
   if (!CATEGORIAS_TIENDA[cat]) return { ok: false, codigo, error: "categoría inválida" };
   const base = _baseDeCodigo(codigo).toUpperCase();
@@ -5081,7 +5081,10 @@ function _planCambioCodigo(ctx, codigo, categoria) {
   if (!skus.length) return { ok: false, codigo, error: "el producto no existe o está inactivo" };
   const mm = /^[A-Z]{2}([A-Z])\d+$/.exec(base);
   const mat = String(skus[0].material || "").toLowerCase();
-  const matChar = mm ? mm[1] : mat.includes("laminado") ? "L" : mat.includes("oro") ? "O" : mat.includes("acero") ? "A" : mat.includes("reloj") ? "W" : mat.includes("plata") ? "P" : "X";
+  const delCampo = mat.includes("laminado") ? "L" : mat.includes("oro") ? "O" : mat.includes("acero") ? "A" : mat.includes("reloj") ? "W" : mat.includes("plata") ? "P" : "X";
+  const forz = String(matForzado || "").toUpperCase();
+  // Letra de material: la que elige el usuario > la del código (si no es X) > la del campo material > X (sin definir)
+  const matChar = /^[POLAW]$/.test(forz) ? forz : (mm && mm[1] !== "X") ? mm[1] : delCampo;
   const prefijo = cat + matChar;
   let maxN = 0;
   for (const code of ctx.codigos) { const b = _baseDeCodigo(code).toUpperCase(); if (b.startsWith(prefijo) && /^\d+$/.test(b.slice(prefijo.length))) maxN = Math.max(maxN, parseInt(b.slice(prefijo.length), 10)); }
@@ -5089,7 +5092,7 @@ function _planCambioCodigo(ctx, codigo, categoria) {
   for (let intento = 0; intento < 50; intento++) {
     const nuevoBase = prefijo + String(++maxN).padStart(3, "0");
     const mapa = skus.map(x => ({ viejo: x.codigo, nuevo: nuevoBase + String(x.codigo).slice(_baseDeCodigo(x.codigo).length) }));
-    if (mapa.every(m => !ctx.codigos.has(m.nuevo.toUpperCase()) && !ctx.reservados.has(m.nuevo.toUpperCase()))) return { ok: true, codigo, base, nuevoBase, categoria: cat, mapa, skus };
+    if (mapa.every(m => !ctx.codigos.has(m.nuevo.toUpperCase()) && !ctx.reservados.has(m.nuevo.toUpperCase()))) return { ok: true, codigo, base, nuevoBase, categoria: cat, mapa, skus, matChar, materialSinDefinir: matChar === "X" };
   }
   return { ok: false, codigo, error: "no se encontró un código libre" };
 }
@@ -5102,8 +5105,8 @@ async function sugerirCodigos(sb, items) {
   const ctx = await _contextoCambioCodigo(sb), out = [], vistos = new Set();
   for (const it of items) {
     const b = _baseDeCodigo(it.codigo).toUpperCase(); if (vistos.has(b)) continue; vistos.add(b);
-    const p = _planCambioCodigo(ctx, it.codigo, it.categoria);
-    if (p.ok) { p.mapa.forEach(m => ctx.reservados.add(m.nuevo.toUpperCase())); out.push({ ok: true, codigoBase: p.base, nuevoBase: p.nuevoBase, categoria: p.categoria, mapa: p.mapa }); }
+    const p = _planCambioCodigo(ctx, it.codigo, it.categoria, it.material);
+    if (p.ok) { p.mapa.forEach(m => ctx.reservados.add(m.nuevo.toUpperCase())); out.push({ ok: true, codigoBase: p.base, nuevoBase: p.nuevoBase, categoria: p.categoria, mapa: p.mapa, materialSinDefinir: p.materialSinDefinir }); }
     else out.push({ ok: false, codigo: it.codigo, error: p.error });
   }
   return out;
@@ -5114,8 +5117,9 @@ async function cambiarCodigos(sb, items) {
     const b = _baseDeCodigo(it.codigo).toUpperCase(); if (vistos.has(b)) continue; vistos.add(b);
     let hecho = null;
     for (let intento = 0; intento < 3 && !hecho; intento++) {
-      const p = _planCambioCodigo(ctx, it.codigo, it.categoria);
+      const p = _planCambioCodigo(ctx, it.codigo, it.categoria, it.material);
       if (!p.ok) { resultados.push({ ok: false, codigo: it.codigo, error: p.error }); hecho = "error"; break; }
+      if (p.materialSinDefinir) { resultados.push({ ok: false, codigo: it.codigo, error: "el material no está definido: elige la letra (P plata, O oro, L laminado, A acero, W reloj)" }); hecho = "error"; break; }
       const ahora = new Date().toISOString(), creados = [];
       let choque = false;
       try {
