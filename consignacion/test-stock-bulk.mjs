@@ -146,4 +146,18 @@ for (const [acc, p] of [['STOCK_ASIGNAR_VENDEDOR', { codigos: ['P1', 'P2'], vend
   await llamar(nuevo, 'EDITAR_PRODUCTO', { codigo: 'F1', img: 'https://ik.test/OTRA.webp', fotoMejorada: 'https://ik.test/OTRA.webp?tr=w-1600,e-sharpen-3', fotoMejoraNivel: 'mejorado' });
   ok(db.get(k('stock', 'F1')).fotoMejorada.includes('OTRA') , 'si la misma petición trae una mejorada nueva, se respeta'); }
 
+{ // Publicar en tienda SIN mover inventario
+  db.clear(); mkStock(1, 5, 0, 0); mkStock(2, 3, 2, 1); mkStock(3, 0, 0, 0); mkStock(4, 4, 0, 0);
+  db.set(k('stock', 'P2'), { ...db.get(k('stock', 'P2')), enCatalogo: true }); db.set(k('stock', 'P4'), { ...db.get(k('stock', 'P4')), estado: 'inactivo' });
+  const antes = JSON.stringify(['P1', 'P2', 'P3', 'P4'].map(c => { const { enCatalogo, ...r } = db.get(k('stock', c)); return r; }));
+  const r = await llamar(nuevo, 'STOCK_PUBLICAR_VISIBLE', { codigos: ['P1', 'P2', 'P3', 'P4', 'NOEXISTE', 'P1'] });
+  const desp = JSON.stringify(['P1', 'P2', 'P3', 'P4'].map(c => { const { enCatalogo, ...r } = db.get(k('stock', c)); return r; }));
+  ok(r.body.ok && r.body.cambiados.join() === 'P1,P3' && r.body.yaEstaban.join() === 'P2' && r.body.inactivos.join() === 'P4' && r.body.noExisten.join() === 'NOEXISTE', 'publicar: marca P1 y P3, P2 ya estaba, P4 inactivo se respeta, código inexistente se informa');
+  ok(db.get(k('stock', 'P1')).enCatalogo === true && db.get(k('stock', 'P3')).enCatalogo === true && !db.get(k('stock', 'P4')).enCatalogo, 'quedan visibles en la tienda (enCatalogo) y el inactivo no');
+  ok(antes === desp, 'el inventario NO se mueve: bodega, tienda, consignación y total idénticos');
+  ok(r.sub <= 3, 'peticiones: ' + r.sub);
+  const o = await llamar(nuevo, 'STOCK_PUBLICAR_VISIBLE', { codigos: ['P1'], visible: false }); ok(o.body.ok && db.get(k('stock', 'P1')).enCatalogo === false, 'visible:false lo oculta de la tienda');
+  const g = await llamar(nuevo, 'STOCK_PUBLICAR_VISIBLE', { codigos: cods(300).map((c, i) => c) }); ok(g.body.ok && g.sub <= 12, '300 códigos en una sola operación: ' + g.sub + ' peticiones');
+  const m = await llamar(nuevo, 'STOCK_PUBLICAR_VISIBLE', { codigos: ['P1'] }, 'mala'); ok(m.status === 403, 'sin clave de admin: 403'); }
+
 console.log(`\n${pass} correctas, ${fail} fallidas`); process.exit(fail ? 1 : 0);

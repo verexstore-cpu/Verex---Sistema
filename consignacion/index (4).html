@@ -5821,13 +5821,19 @@ async function rfAplicar() {
                 if (res && res.ok === false) throw new Error(res.error || "no se guardó");
                 const it = stockData.find(p => p.codigo === cod); if (it) { it.foto = url; it.img = url; it.fotoMejorada = ""; it.fotoMejoraNivel = ""; }
             }
-            f.estado = "✅ reemplazada"; ok++;
+            f.estado = "✅ reemplazada"; f.refAplicada = ref; ok++;
         } catch (e) { f.estado = "⚠️ falló: " + (e.message || e); }
         f.elegido = -1; rfPintar();
     }
     btn.textContent = "Reemplazar las confirmadas"; _rfRefs = null;
     try { filtrarStock(); } catch (_) { renderStock(stockData); }
     toast(`✅ ${ok} de ${filas.length} fotos reemplazadas`, ok === filas.length ? "#22c55e" : "#f97316");
+    // Ofrece publicar en la tienda exactamente los productos que se acaban de reemplazar (sin mover inventario).
+    const codigosOk = [...new Set(filas.filter(f => f.refAplicada).flatMap(f => f.refAplicada.codigos))];
+    if (codigosOk.length && confirm(`¿Publicar también en la tienda online los ${codigosOk.length} códigos de las fotos reemplazadas?\n\nNO se mueve inventario: siguen disponibles en todos los canales y el stock se descuenta igual al vender.`)) {
+        try { const r = await publicarVisibleEnTienda(codigosOk); toast(`🛍️ ${r.cambiados.length} publicados · ${r.yaEstaban.length} ya estaban visibles`, "#22c55e", 6000); }
+        catch (e) { toast("⚠️ No se pudo publicar: " + (e.message || e), "#ef4444"); }
+    }
 }
 
 
@@ -5853,6 +5859,16 @@ function leSeleccionar(items, total) {
     for (let i = 0; out.length < total && cats.some(l => i < l.length); i++) for (const l of cats) { if (i < l.length && out.length < total) out.push(l[i]); }
     return out;
 }
+// Hace visibles en la tienda online los productos indicados SIN mover inventario (solo enCatalogo). La tienda vende con
+// stock_tienda + stock_bodega y reserva primero de tienda y luego de bodega, así que el stock sigue siendo uno para todos los canales.
+async function publicarVisibleEnTienda(codigos) {
+    const res = await apiPost({ accion: "STOCK_PUBLICAR_VISIBLE", codigos, visible: true });
+    if (!res || !res.ok) throw new Error((res && res.error) || "no se pudo publicar");
+    res.cambiados = res.cambiados || []; res.yaEstaban = res.yaEstaban || []; res.inactivos = res.inactivos || [];
+    for (const c of res.cambiados) { const it = stockData.find(p => p.codigo === c); if (it) it.enCatalogo = true; }
+    try { filtrarStock(); } catch (_) {}
+    return res;
+}
 let _leSel = [];
 function abrirLoteEditar() { _leSel = []; document.getElementById("le-lista").innerHTML = ""; document.getElementById("le-resumen").textContent = ""; document.getElementById("le-progreso").textContent = ""; document.getElementById("le-btn-zip").disabled = true; abrirModal("modal-lote-editar"); leElegir(); }
 function cerrarLoteEditar() { cerrarModal("modal-lote-editar"); }
@@ -5877,6 +5893,14 @@ function lePintar() {
             <td>${sanitizar(d.nombre)}</td><td>${sanitizar(d.categoria)}</td><td style="text-align:right;padding-right:10px;">${d.stock}</td></tr>`; }).join("") + "</table>"
         : '<p style="padding:14px;color:var(--plateado);font-size:13px;">No hay productos con foto y stock para elegir.</p>';
     document.getElementById("le-btn-zip").disabled = !marcados.length;
+    const bp = document.getElementById("le-btn-publicar"); if (bp) bp.disabled = !marcados.length;
+}
+async function lePublicar() {
+    const codigos = [...new Set(_leSel.filter(d => d.incluir).flatMap(d => d.codigos))]; if (!codigos.length) return;
+    if (!confirm(`Se harán visibles en la tienda online ${codigos.length} códigos (todas las tallas de ${_leSel.filter(d => d.incluir).length} diseños).\n\nNO se mueve inventario: siguen disponibles en todos los canales y el stock se descuenta igual al vender.\n\n¿Continuar?`)) return;
+    const prog = document.getElementById("le-progreso"); prog.textContent = "Publicando…";
+    try { const r = await publicarVisibleEnTienda(codigos); prog.textContent = `🛍️ ${r.cambiados.length} publicados · ${r.yaEstaban.length} ya estaban visibles` + (r.inactivos.length ? ` · ${r.inactivos.length} inactivos omitidos` : ""); toast(prog.textContent, "#22c55e", 6000); }
+    catch (e) { prog.textContent = "⚠️ " + (e.message || e); toast(prog.textContent, "#ef4444"); }
 }
 function leCsv(filas) {
     const esc = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
@@ -14893,6 +14917,7 @@ function enviarRecordatorioAbono(ventaId) {
         <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap;align-items:center;">
             <span id="le-progreso" style="font-size:12px;color:var(--plateado);margin-right:auto;"></span>
             <button class="btn btn-gris" onclick="cerrarLoteEditar()">Cerrar</button>
+            <button class="btn" id="le-btn-publicar" style="background:#1a3a1a;color:#4ade80;border:1px solid #166534;" onclick="lePublicar()" disabled title="Hace visibles en la tienda online estos productos (todas sus tallas) sin mover inventario">🛍️ Publicar en tienda</button>
             <button class="btn btn-dorado" id="le-btn-zip" onclick="leDescargar()" disabled>📥 Descargar ZIP</button>
         </div>
     </div>

@@ -3444,6 +3444,29 @@ async function enviar(){
           break;
         }
 
+        // Hace visibles (o oculta) productos en la tienda online SIN mover inventario: solo cambia enCatalogo. La tienda vende
+        // con stock_tienda + stock_bodega (reserva atómica: primero tienda, luego bodega), así que el inventario sigue siendo
+        // uno solo para todos los canales. En bloque: 2 peticiones sin importar cuántos códigos.
+        case "STOCK_PUBLICAR_VISIBLE": {
+          if (!esAdmin) return forbidden();
+          const cods = Array.from(new Set((Array.isArray(d.codigos) ? d.codigos : []).map(String).filter(Boolean))).slice(0, 1000);
+          if (!cods.length) { result = { ok: false, error: "codigos requeridos" }; break; }
+          const visible = d.visible !== false;
+          const docs = new Map((await sb.getMany("stock", cods)).map(x => [String(x.id), x]));
+          const cambiar = [], yaEstaban = [], noExisten = [], inactivos = [];
+          for (const c of cods) {
+            const x = docs.get(c);
+            if (!x) { noExisten.push(c); continue; }
+            if (x.estado === "inactivo") { inactivos.push(c); continue; }
+            const actual = x.enCatalogo === true || x.enCatalogo === "true" || x.enCatalogo === "TRUE";
+            if (actual === visible) { yaEstaban.push(c); continue; }
+            cambiar.push({ ...x, enCatalogo: visible });
+          }
+          if (cambiar.length) await sb.setMany("stock", cambiar);
+          result = { ok: true, visible, cambiados: cambiar.map(x => x.id), yaEstaban, noExisten, inactivos };
+          break;
+        }
+
         case "STOCK_DEVOLVER_BODEGA": {
           if (!esAdmin) return forbidden();
           result = await stockDevolverBodegaEnBloque(sb, d);
