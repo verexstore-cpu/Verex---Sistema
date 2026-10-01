@@ -651,6 +651,7 @@
                     <button class="btn" style="background:#27ae60;color:#fff;padding:8px 14px;font-size:13px;" onclick="abrirImportarExcel()">📥 Importar</button>
                     <button class="btn" style="background:#1a3a1a;color:#4ade80;border:1px solid #166534;padding:8px 14px;font-size:13px;" onclick="abrirModalFotosCelular()">📱 Fotos</button>
                     <button class="btn" style="background:#1a2f3a;color:#5AC8FA;border:1px solid #1f5f7a;padding:8px 14px;font-size:13px;" onclick="abrirReemplazarFotos()" title="Sube fotos editadas y la app reconoce a qué producto pertenece cada una">🔁 Reemplazar fotos</button>
+                    <button class="btn" style="background:#2f2a14;color:#f5d76e;border:1px solid #8a7a1e;padding:8px 14px;font-size:13px;" onclick="abrirLoteEditar()" title="Elige productos variados con más stock y descarga sus fotos en un ZIP con carpetas de 20">📦 Lote para editar</button>
                     <button class="btn" style="background:#3b2a1a;color:#f0b96a;border:1px solid #8a5a1e;padding:8px 14px;font-size:13px;" onclick="ejecutarAuditoriaStock()">🔍 Auditoría</button>
                 </div>
 
@@ -5798,6 +5799,89 @@ async function rfAplicar() {
     btn.textContent = "Reemplazar las confirmadas"; _rfRefs = null;
     try { filtrarStock(); } catch (_) { renderStock(stockData); }
     toast(`✅ ${ok} de ${filas.length} fotos reemplazadas`, ok === filas.length ? "#22c55e" : "#f97316");
+}
+
+
+// ── LOTE PARA EDITAR: productos variados con más stock → un ZIP con carpetas de N fotos ───────────────────────
+// Un producto por DISEÑO (tallas que comparten foto = uno). Reparto por categorías en rueda (variedad); dentro de cada
+// categoría, de mayor a menor stock. Las carpetas se llenan en ese orden: Lote-01 = los más prioritarios.
+function leSeleccionar(items, total) {
+    const diseños = new Map();
+    for (const p of items) {
+        if (p.estado === "inactivo") continue;
+        const foto = p.foto || p.img; if (!foto) continue;
+        const clave = String(foto).split("?")[0];
+        const stock = (parseInt(p.stock_total) || 0) || ((parseInt(p.stock_bodega) || 0) + (parseInt(p.stock_tienda) || 0) + (parseInt(p.stock_consignacion) || 0));
+        if (!diseños.has(clave)) diseños.set(clave, { clave, foto, codigos: [], stock: 0, nombre: p.nombre_base || p.nombre || "", categoria: String(p.categoria || (getCodigoBase(p.codigo).match(/^[A-Z]+/) || ["GEN"])[0]).toUpperCase() });
+        const d = diseños.get(clave); d.codigos.push(p.codigo); d.stock += stock;
+    }
+    const porCat = new Map();
+    for (const d of diseños.values()) { if (d.stock <= 0) continue; if (!porCat.has(d.categoria)) porCat.set(d.categoria, []); porCat.get(d.categoria).push(d); }
+    for (const l of porCat.values()) l.sort((a, b) => b.stock - a.stock || String(a.codigos[0]).localeCompare(String(b.codigos[0])));
+    // categorías con más diseños primero, para que la rueda arranque por las más "pobladas"
+    const cats = [...porCat.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0])).map(e => e[1]);
+    const out = [];
+    for (let i = 0; out.length < total && cats.some(l => i < l.length); i++) for (const l of cats) { if (i < l.length && out.length < total) out.push(l[i]); }
+    return out;
+}
+let _leSel = [];
+function abrirLoteEditar() { _leSel = []; document.getElementById("le-lista").innerHTML = ""; document.getElementById("le-resumen").textContent = ""; document.getElementById("le-progreso").textContent = ""; document.getElementById("le-btn-zip").disabled = true; abrirModal("modal-lote-editar"); leElegir(); }
+function cerrarLoteEditar() { cerrarModal("modal-lote-editar"); }
+function leElegir() {
+    const total = Math.max(1, Math.min(500, parseInt(document.getElementById("le-total").value) || 100));
+    _leSel = leSeleccionar(stockData, total).map(d => ({ ...d, incluir: true }));
+    lePintar();
+}
+function lePintar() {
+    const por = Math.max(1, Math.min(100, parseInt(document.getElementById("le-por").value) || 20));
+    const marcados = _leSel.filter(d => d.incluir), cats = {};
+    marcados.forEach(d => cats[d.categoria] = (cats[d.categoria] || 0) + 1);
+    document.getElementById("le-resumen").textContent = `${marcados.length} productos · ${Math.ceil(marcados.length / por)} carpeta(s) de hasta ${por} · ` + Object.entries(cats).map(([c, n]) => `${c}: ${n}`).join("  ");
+    let k = 0;
+    document.getElementById("le-lista").innerHTML = _leSel.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <tr style="position:sticky;top:0;background:#222;color:var(--plateado);text-align:left;"><th style="padding:6px;"></th><th>Carpeta</th><th>Foto</th><th>Código</th><th>Nombre</th><th>Cat.</th><th style="text-align:right;padding-right:10px;">Stock</th></tr>` +
+        _leSel.map((d, i) => { const carp = d.incluir ? "Lote-" + String(Math.floor(k++ / por) + 1).padStart(2, "0") : "—";
+            return `<tr style="border-top:1px solid #2a2a2c;opacity:${d.incluir ? 1 : .4};"><td style="padding:4px 6px;"><input type="checkbox" ${d.incluir ? "checked" : ""} onchange="_leSel[${i}].incluir=this.checked;lePintar()"></td>
+            <td style="color:var(--dorado);font-weight:700;">${carp}</td>
+            <td><img src="${sanitizar(ikFoto(d.foto, 90))}" onclick="abrirFotoZoom(${jsArg(d.foto)}, ${jsArg(d.nombre)})" style="width:46px;height:46px;object-fit:cover;border-radius:6px;cursor:zoom-in;background:#222;display:block;margin:3px 0;"></td>
+            <td>${sanitizar(getCodigoBase(d.codigos[0]))}<span style="color:var(--plateado);"> ${d.codigos.length > 1 ? "(" + d.codigos.length + " tallas)" : ""}</span></td>
+            <td>${sanitizar(d.nombre)}</td><td>${sanitizar(d.categoria)}</td><td style="text-align:right;padding-right:10px;">${d.stock}</td></tr>`; }).join("") + "</table>"
+        : '<p style="padding:14px;color:var(--plateado);font-size:13px;">No hay productos con foto y stock para elegir.</p>';
+    document.getElementById("le-btn-zip").disabled = !marcados.length;
+}
+function leCsv(filas) {
+    const esc = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+    return "﻿" + ["carpeta", "archivo", "codigos_del_diseno", "nombre", "categoria", "stock", "estado"].map(esc).join(",") + "\r\n" +
+        filas.map(f => [f.carpeta, f.archivo, f.codigos, f.nombre, f.categoria, f.stock, f.estado].map(esc).join(",")).join("\r\n");
+}
+async function leDescargar() {
+    const por = Math.max(1, Math.min(100, parseInt(document.getElementById("le-por").value) || 20));
+    const elegidos = _leSel.filter(d => d.incluir); if (!elegidos.length) return;
+    const btn = document.getElementById("le-btn-zip"), prog = document.getElementById("le-progreso"); btn.disabled = true;
+    const zip = new JSZip(), usados = new Set(), filas = [], fallidas = [];
+    let hechos = 0;
+    const trabajos = elegidos.map((d, idx) => ({ d, idx, carpeta: "Lote-" + String(Math.floor(idx / por) + 1).padStart(2, "0") }));
+    const hacer = async (t) => {
+        const { d, carpeta } = t, url = d.foto;
+        let base = getCodigoBase(d.codigos[0]) || String(d.codigos[0]), ext = ((url.split("?")[0].split(".").pop() || "jpg").slice(0, 4)).toLowerCase();
+        let nombre = `${base}.${ext}`; for (let n = 2; usados.has(carpeta + "/" + nombre); n++) nombre = `${base}_${n}.${ext}`;
+        usados.add(carpeta + "/" + nombre);
+        const fila = { carpeta, archivo: nombre, codigos: d.codigos.join(" "), nombre: d.nombre, categoria: d.categoria, stock: d.stock, estado: "ok" };
+        try { const r = await fetch(url); if (!r.ok) throw new Error(String(r.status)); zip.folder(carpeta).file(nombre, await r.blob()); }
+        catch (e) { fila.estado = "NO DESCARGADA"; fallidas.push(base); }
+        filas[t.idx] = fila; prog.textContent = `📥 ${++hechos}/${trabajos.length}…`;
+    };
+    const cola = trabajos.slice(); await Promise.all(Array.from({ length: 5 }, async () => { while (cola.length) await hacer(cola.shift()); }));
+    if (fallidas.length === trabajos.length) { prog.textContent = "⚠️ No se pudo descargar ninguna foto (revisa la conexión)"; btn.disabled = false; return; }
+    zip.file("LISTA.csv", leCsv(filas));
+    prog.textContent = "🗜️ Preparando el ZIP…";
+    const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+    const nombreZip = `lote-fotos-${new Date().toISOString().slice(0, 10)}.zip`;
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nombreZip; document.body.appendChild(a); a.click(); a.remove();
+    const ok = trabajos.length - fallidas.length;
+    prog.textContent = `✅ ${ok} fotos en ${Math.ceil(trabajos.length / por)} carpeta(s) → ${nombreZip}` + (fallidas.length ? ` · ⚠️ ${fallidas.length} fallaron (${fallidas.slice(0, 5).join(", ")})` : "");
+    toast(prog.textContent, fallidas.length ? "#f97316" : "#22c55e", 6000);
+    btn.disabled = false;
 }
 
 function abrirModalProductoNuevo() {
@@ -14755,6 +14839,32 @@ function enviarRecordatorioAbono(ventaId) {
                 <button class="btn btn-gris" onclick="cancelarEdicionProducto()">Cancelar</button>
                 <button class="btn btn-dorado" onclick="guardarEdicionProducto()">💾 Guardar</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Lote para editar: elige productos variados (más stock) y descarga un ZIP con carpetas -->
+<div class="modal-overlay" id="modal-lote-editar">
+    <div class="modal-box" style="max-width:1100px;width:96vw;">
+        <div class="modal-header">
+            <h3>📦 Lote de fotos para editar</h3>
+            <button class="modal-close" onclick="cerrarLoteEditar()">×</button>
+        </div>
+        <p style="margin:0 0 10px;color:var(--plateado);font-size:12px;line-height:1.5;">
+            Elige productos <b>variados</b> (reparte entre categorías) y dentro de cada categoría prioriza los de <b>mayor stock</b>. Cuenta un solo producto por diseño (las tallas que comparten foto entran una vez).
+            Revisa la lista, quita lo que no quieras y descarga <b>un ZIP con una carpeta por cada grupo</b>. Las carpetas siguen el orden de prioridad: <b>Lote-01 trae los de más stock</b>.
+        </p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+            <label style="font-size:12px;color:var(--plateado);">Cuántos productos<br><input type="number" id="le-total" value="100" min="1" max="500" style="width:110px;padding:8px;"></label>
+            <label style="font-size:12px;color:var(--plateado);">Por carpeta<br><input type="number" id="le-por" value="20" min="1" max="100" style="width:110px;padding:8px;"></label>
+            <button class="btn btn-dorado" style="padding:9px 16px;font-size:13px;" onclick="leElegir()">🎯 Elegir productos</button>
+            <span id="le-resumen" style="font-size:12px;color:var(--plateado);"></span>
+        </div>
+        <div id="le-lista" style="max-height:52vh;overflow:auto;background:#141414;border:1px solid #3a3a3c;border-radius:10px;"></div>
+        <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap;align-items:center;">
+            <span id="le-progreso" style="font-size:12px;color:var(--plateado);margin-right:auto;"></span>
+            <button class="btn btn-gris" onclick="cerrarLoteEditar()">Cerrar</button>
+            <button class="btn btn-dorado" id="le-btn-zip" onclick="leDescargar()" disabled>📥 Descargar ZIP</button>
         </div>
     </div>
 </div>
