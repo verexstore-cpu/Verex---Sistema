@@ -5864,7 +5864,7 @@ function leSeleccionar(items, total) {
 async function publicarVisibleEnTienda(codigos) {
     const res = await apiPost({ accion: "STOCK_PUBLICAR_VISIBLE", codigos, visible: true });
     if (!res || !res.ok) throw new Error((res && res.error) || "no se pudo publicar");
-    res.cambiados = res.cambiados || []; res.yaEstaban = res.yaEstaban || []; res.inactivos = res.inactivos || [];
+    res.cambiados = res.cambiados || []; res.yaEstaban = res.yaEstaban || []; res.inactivos = res.inactivos || []; res.noExisten = res.noExisten || [];
     for (const c of res.cambiados) { const it = stockData.find(p => p.codigo === c); if (it) it.enCatalogo = true; }
     try { filtrarStock(); } catch (_) {}
     return res;
@@ -5901,6 +5901,38 @@ async function lePublicar() {
     const prog = document.getElementById("le-progreso"); prog.textContent = "Publicando…";
     try { const r = await publicarVisibleEnTienda(codigos); prog.textContent = `🛍️ ${r.cambiados.length} publicados · ${r.yaEstaban.length} ya estaban visibles` + (r.inactivos.length ? ` · ${r.inactivos.length} inactivos omitidos` : ""); toast(prog.textContent, "#22c55e", 6000); }
     catch (e) { prog.textContent = "⚠️ " + (e.message || e); toast(prog.textContent, "#ef4444"); }
+}
+// Lee un LISTA.csv (el que trae el ZIP del lote) y devuelve las filas como objetos {columna: valor}. Soporta comillas, comas
+// dentro de comillas, comillas dobles escapadas y el BOM del inicio.
+function leLeerCsv(texto) {
+    const t = String(texto || "").replace(/^\uFEFF/, ""), filas = []; let fila = [], campo = "", q = false;
+    for (let i = 0; i < t.length; i++) {
+        const c = t[i];
+        if (q) { if (c === '"') { if (t[i + 1] === '"') { campo += '"'; i++; } else q = false; } else campo += c; }
+        else if (c === '"') q = true;
+        else if (c === ",") { fila.push(campo); campo = ""; }
+        else if (c === "\n" || c === "\r") { if (c === "\r" && t[i + 1] === "\n") i++; fila.push(campo); campo = ""; if (fila.some(x => x !== "")) filas.push(fila); fila = []; }
+        else campo += c;
+    }
+    if (campo !== "" || fila.length) { fila.push(campo); if (fila.some(x => x !== "")) filas.push(fila); }
+    if (!filas.length) return [];
+    const enc = filas[0].map(x => x.trim().toLowerCase());
+    return filas.slice(1).map(f => Object.fromEntries(enc.map((h, i) => [h, (f[i] || "").trim()])));
+}
+async function lePublicarDesdeCsv(archivo) {
+    if (!archivo) return;
+    const prog = document.getElementById("le-progreso");
+    let filas; try { filas = leLeerCsv(await archivo.text()); } catch (e) { prog.textContent = "⚠️ No se pudo leer el archivo"; return; }
+    if (!filas.length || !("codigos_del_diseno" in filas[0])) { prog.textContent = "⚠️ Ese archivo no parece un LISTA.csv del lote (falta la columna codigos_del_diseno)"; toast(prog.textContent, "#ef4444"); return; }
+    const codigos = [...new Set(filas.flatMap(f => String(f.codigos_del_diseno || "").split(/\s+/).filter(Boolean)))];
+    if (!codigos.length) { prog.textContent = "⚠️ La lista no trae códigos"; return; }
+    if (!confirm(`LISTA.csv: ${filas.length} productos · ${codigos.length} códigos (todas sus tallas).\n\nSe harán visibles en la tienda online. NO se mueve inventario: siguen disponibles en todos los canales y el stock se descuenta igual al vender.\n\n¿Continuar?`)) return;
+    prog.textContent = "Publicando…";
+    try {
+        const r = await publicarVisibleEnTienda(codigos);
+        prog.textContent = `🛍️ ${r.cambiados.length} publicados · ${r.yaEstaban.length} ya estaban visibles` + (r.inactivos.length ? ` · ${r.inactivos.length} inactivos omitidos` : "") + ((r.noExisten || []).length ? ` · ${r.noExisten.length} códigos ya no existen en Stock` : "");
+        toast(prog.textContent, "#22c55e", 7000);
+    } catch (e) { prog.textContent = "⚠️ " + (e.message || e); toast(prog.textContent, "#ef4444"); }
 }
 function leCsv(filas) {
     const esc = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
@@ -14919,6 +14951,8 @@ function enviarRecordatorioAbono(ventaId) {
         <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap;align-items:center;">
             <span id="le-progreso" style="font-size:12px;color:var(--plateado);margin-right:auto;"></span>
             <button class="btn btn-gris" onclick="cerrarLoteEditar()">Cerrar</button>
+            <label class="btn" for="le-csv" style="background:#1a2f3a;color:#5AC8FA;border:1px solid #1f5f7a;cursor:pointer;display:inline-block;" title="Publica en la tienda los productos de un LISTA.csv que descargaste antes con el ZIP del lote">📄 Publicar desde LISTA.csv</label>
+            <input type="file" id="le-csv" accept=".csv,text/csv" style="display:none;" onchange="lePublicarDesdeCsv(this.files[0]); this.value=''">
             <button class="btn" id="le-btn-publicar" style="background:#1a3a1a;color:#4ade80;border:1px solid #166534;" onclick="lePublicar()" disabled title="Hace visibles en la tienda online estos productos (todas sus tallas) sin mover inventario">🛍️ Publicar en tienda</button>
             <button class="btn btn-dorado" id="le-btn-zip" onclick="leDescargar()" disabled>📥 Descargar ZIP</button>
         </div>
