@@ -3267,7 +3267,8 @@ function guardarFraseConfianza() {
 function guardarApariciaUS() {
     const val = id => document.getElementById(id).value.trim();
     const fotosHero = ["inp-us-hero-foto", "inp-us-hero-foto-2", "inp-us-hero-foto-3"].map(val).filter(Boolean);
-    cfg.contenidoUS = {
+    // Se conserva lo que edita el «Editor de la página» del Hub (preguntas frecuentes, textos del pie, WhatsApp…): aquí solo se pisan estos campos
+    cfg.contenidoUS = { ...(cfg.contenidoUS || {}),
         heroFoto: fotosHero[0] || undefined,                         // la 1.ª también va aquí por compatibilidad
         heroFotos: fotosHero.length ? fotosHero : undefined,
         heroTitulo: {

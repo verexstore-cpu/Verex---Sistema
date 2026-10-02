@@ -3875,7 +3875,8 @@ async function enviar(){
           const ikData = await ikRes.json();
           if (ikData.url) {
             const urlBase = ikData.url.split("?")[0];
-            result = { ok: true, url: urlBase + "?tr=w-900,h-900,c-maintain_ratio" };
+            // d.original = la foto tal cual (sin reducir a 900 px): para el hero de la tienda, que necesita ~2000 px
+            result = { ok: true, url: d.original === true ? urlBase : urlBase + "?tr=w-900,h-900,c-maintain_ratio" };
           } else {
             result = { ok: false, error: ikData.message || "Error subiendo foto" };
           }
