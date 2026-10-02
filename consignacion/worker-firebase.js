@@ -2135,6 +2135,10 @@ async function enviar(){
 
         case "GUARDAR_CONFIG": {
           if (!esAdmin) return forbidden();
+          if (d.config && d.config.categorias !== undefined) {                 // lista de categorías del Editor de la página
+            const errCat = validarCategorias(d.config.categorias);
+            if (errCat) { result = { ok: false, error: errCat }; break; }
+          }
           await sb.update("config", "settings", d.config || {});
           result = { ok: true };
           break;
@@ -3453,15 +3457,17 @@ async function enviar(){
         // Revisa en qué categoría está cada producto y detecta los mal clasificados (solo lectura).
         case "AUDITORIA_CATEGORIAS": {
           if (!esAdmin) return forbidden();
-          const a = analizarCategorias(await sb.getAll("stock"));
-          result = { ok: true, categorias: CATEGORIAS_TIENDA, ...a };
+          const catsA = await categoriasTiendaActual(sb);
+          const a = analizarCategorias(await sb.getAll("stock"), catsA);
+          result = { ok: true, categorias: catsA, ...a };
           break;
         }
 
         // Cambia la categoría de los productos indicados (bloque: 2 peticiones). Solo categorías válidas; el resto no se toca.
         case "CORREGIR_CATEGORIAS": {
           if (!esAdmin) return forbidden();
-          const cambios = (Array.isArray(d.cambios) ? d.cambios : []).filter(c => c && c.codigo && CATEGORIAS_TIENDA[String(c.categoria || "").toUpperCase()]).slice(0, 1000);
+          const catsC = await categoriasTiendaActual(sb);
+          const cambios = (Array.isArray(d.cambios) ? d.cambios : []).filter(c => c && c.codigo && catsC[String(c.categoria || "").toUpperCase()]).slice(0, 1000);
           if (!cambios.length) { result = { ok: false, error: "cambios requeridos" }; break; }
           const docsC = new Map((await sb.getMany("stock", cambios.map(c => String(c.codigo)))).map(x => [String(x.id), x]));
           const nuevos = [], noExisten = [];
@@ -5053,8 +5059,27 @@ async function registrarEntregaEnBloque(sb, d) {
 const CATEGORIAS_TIENDA = { AN: "Anillos", CO: "Collares", AR: "Aretes", PU: "Pulseras", CJ: "Conjuntos", CD: "Cadenas", DJ: "Dijes", TB: "Tobilleras", RS: "Rosarios" };
 // El Admin Tienda usaba otros códigos (CN conjunto, PL pulsera) y generaba «XX-1234» al azar; Stock usa CJ/PU y [CAT][MAT][NNN].
 const CATEGORIAS_ANTIGUAS = { CN: "CJ", PL: "PU" };
+// Categorías vigentes: las de arriba + las agregadas/renombradas desde el «Editor de la página» (config.categorias).
+async function categoriasTiendaActual(sb) {
+  const out = { ...CATEGORIAS_TIENDA };
+  try { const cfg = await sb.get("config", "settings"); for (const c of (cfg && Array.isArray(cfg.categorias) ? cfg.categorias : [])) if (c && /^[A-Z]{2}$/.test(String(c.codigo))) out[c.codigo] = String(c.es || c.codigo); } catch (_) {}
+  return out;
+}
+// Valida la lista de categorías que llega desde el editor (se rechaza completa si algo no cumple)
+function validarCategorias(lista) {
+  if (!Array.isArray(lista) || lista.length > 40) return "lista de categorías inválida";
+  const vistos = new Set();
+  for (const c of lista) {
+    if (!c || typeof c !== "object") return "categoría inválida";
+    if (!/^[A-Z]{2}$/.test(String(c.codigo || ""))) return `código inválido «${c.codigo}»: deben ser 2 letras mayúsculas`;
+    if (vistos.has(c.codigo)) return `código repetido: ${c.codigo}`; vistos.add(c.codigo);
+    if (!String(c.es || "").trim() || String(c.es).length > 40 || String(c.en || "").length > 40) return `nombre inválido en ${c.codigo}`;
+  }
+  return null;
+}
 const _codigoFormatoAdmin = (c) => /^[A-Za-z]{2}-\d+/.test(String(c || ""));
-function analizarCategorias(items) {
+function analizarCategorias(items, cats) {
+  cats = cats || CATEGORIAS_TIENDA;
   const activos = items.filter(p => p && p.estado !== "inactivo");
   const publicados = activos.filter(p => p.enCatalogo === true || p.enCatalogo === "true" || p.enCatalogo === "TRUE");
   const cuenta = {}; for (const p of publicados) { const c = String(p.categoria || "").toUpperCase().trim() || "(sin categoría)"; cuenta[c] = (cuenta[c] || 0) + 1; }
@@ -5063,10 +5088,10 @@ function analizarCategorias(items) {
     const catRaw = String(p.categoria || "").toUpperCase().trim(), cat = CATEGORIAS_ANTIGUAS[catRaw] || catRaw, cod = String(p.codigo || p.id || ""), prefRaw = (cod.match(/^[A-Za-z]{2}/) || [""])[0].toUpperCase(), pref = CATEGORIAS_ANTIGUAS[prefRaw] || prefRaw;
     const nombre = String(p.nombre_base || p.nombre || ""), antiguo = _codigoFormatoAdmin(cod);
     let propuesta = null, motivo = "";
-    if (/^\s*(anillo|alianza|argolla|sortija)s?\b/i.test(nombre) && cat !== "AN") { propuesta = "AN"; motivo = `Es un anillo («${nombre}») pero está en ${CATEGORIAS_TIENDA[cat] || cat || "sin categoría"}`; }
+    if (/^\s*(anillo|alianza|argolla|sortija)s?\b/i.test(nombre) && cat !== "AN") { propuesta = "AN"; motivo = `Es un anillo («${nombre}») pero está en ${cats[cat] || cat || "sin categoría"}`; }
     else if (antiguo && pref === "CD" && /^\s*(collar|gargantilla)/i.test(nombre)) { propuesta = "CO"; motivo = `Es un collar («${nombre}») con código de cadena del Admin (${cod})`; }
-    else if (CATEGORIAS_TIENDA[pref] && cat !== pref) { propuesta = pref; motivo = catRaw ? `El código empieza por ${prefRaw} pero su categoría es ${CATEGORIAS_TIENDA[catRaw] || catRaw}` : "Sin categoría"; }
-    else if (antiguo && CATEGORIAS_TIENDA[cat]) { propuesta = cat; motivo = `Código con formato antiguo del Admin (${cod}): no coincide con el que genera Stock para la etiqueta`; }
+    else if (cats[pref] && cat !== pref) { propuesta = pref; motivo = catRaw ? `El código empieza por ${prefRaw} pero su categoría es ${cats[catRaw] || catRaw}` : "Sin categoría"; }
+    else if (antiguo && cats[cat]) { propuesta = cat; motivo = `Código con formato antiguo del Admin (${cod}): no coincide con el que genera Stock para la etiqueta`; }
     if (propuesta) dudosas.push({ codigo: cod, nombre, categoria: catRaw, propuesta, motivo, publicado: publicados.includes(p), codigoAntiguo: antiguo || !!CATEGORIAS_ANTIGUAS[prefRaw] });
   }
   return { publicados: publicados.length, porCategoria: cuenta, dudosas };
@@ -5082,7 +5107,7 @@ function analizarCategorias(items) {
 const _baseDeCodigo = (c) => String(c || "").replace(/[DCU]?T\d+(\.\d+)?$/i, "").trim();
 function _planCambioCodigo(ctx, codigo, categoria, matForzado) {
   const cat = String(categoria || "").toUpperCase();
-  if (!CATEGORIAS_TIENDA[cat]) return { ok: false, codigo, error: "categoría inválida" };
+  if (!(ctx.cats || CATEGORIAS_TIENDA)[cat]) return { ok: false, codigo, error: "categoría inválida" };
   const base = _baseDeCodigo(codigo).toUpperCase();
   const skus = ctx.stock.filter(x => x.estado !== "inactivo" && _baseDeCodigo(x.codigo).toUpperCase() === base);
   if (!skus.length) return { ok: false, codigo, error: "el producto no existe o está inactivo" };
@@ -5105,7 +5130,7 @@ function _planCambioCodigo(ctx, codigo, categoria, matForzado) {
 }
 async function _contextoCambioCodigo(sb) {
   const stock = await sb.getAll("stock");
-  return { stock, codigos: new Set(stock.map(x => String(x.codigo || x.id).toUpperCase())), reservados: new Set() };
+  return { stock, cats: await categoriasTiendaActual(sb), codigos: new Set(stock.map(x => String(x.codigo || x.id).toUpperCase())), reservados: new Set() };
 }
 // Solo calcula (no escribe): qué código nuevo recibiría cada diseño
 async function sugerirCodigos(sb, items) {
@@ -5240,7 +5265,7 @@ async function auditarStock(sb) {
   const totalDescuadrado = stockAud.filter(s => (parseInt(s.stock_total)||0) !== Supabase.COMPONENTES_STOCK.reduce((a, c) => a + (parseInt(s[c])||0), 0))
     .map(s => ({ codigo: s.codigo, nombre: s.nombre || "", stock_total: parseInt(s.stock_total)||0, suma: Supabase.COMPONENTES_STOCK.reduce((a, c) => a + (parseInt(s[c])||0), 0) }));
 
-  const categoriasDudosas = analizarCategorias(stockAud).dudosas;
+  const categoriasDudosas = analizarCategorias(stockAud, await categoriasTiendaActual(sb)).dudosas;
   return {
     ok: true,
     generadoEn: new Date().toISOString(),

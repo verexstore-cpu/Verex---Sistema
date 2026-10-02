@@ -6083,7 +6083,23 @@ async function catCorregir() {
     await catCargar();
 }
 
+// Categorías administradas desde el «Editor de la página» del Hub (config.categorias): se agregan/renombran en el selector
+async function cargarCategoriasSelect() {
+    try {
+        const r = await apiPost({ accion: "GET_CONFIG" }); const lista = r && r.config && r.config.categorias;
+        const sel = document.getElementById("np-categoria"); if (!sel || !Array.isArray(lista)) return;
+        const actual = sel.value;
+        for (const c of lista) {
+            if (!c || !/^[A-Z]{2}$/.test(String(c.codigo))) continue;
+            let o = [...sel.options].find(x => x.value === c.codigo);
+            if (!o) { o = document.createElement("option"); o.value = c.codigo; sel.appendChild(o); }
+            o.textContent = c.es || c.codigo;
+        }
+        sel.value = actual;
+    } catch (_) {}
+}
 function abrirModalProductoNuevo() {
+    cargarCategoriasSelect();
     fotoBase64 = "";
     document.getElementById("preview-foto").style.display = "none";
     document.getElementById("foto-placeholder").style.display = "block";
