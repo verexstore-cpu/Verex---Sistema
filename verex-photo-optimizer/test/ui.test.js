@@ -33,7 +33,7 @@ const ok = (c, m) => { console.log(c ? '  ✓' : '  ✗', m); c ? pass++ : fail+
   const waitIdle = () => page.waitForFunction(() => document.querySelector('#busy').hidden, null, { timeout: 60000 }).then(() => page.waitForTimeout(150));
 
   ok(await page.locator('#empty').isVisible(), 'pantalla vacía con zona para arrastrar');
-  ok((await page.locator('.preset').count()) === 7, '7 presets visibles');
+  ok((await page.locator('.preset').count()) === 8, '8 presets visibles (incluye VEREX TIENDA)');
   await page.screenshot({ path: SHOTS + '/1-vacio.png' });
 
   await page.evaluate(() => __vx.addPaths(['anillo-plata.png', 'anillo-oro.png', 'producto03.png']));
@@ -45,7 +45,7 @@ const ok = (c, m) => { console.log(c ? '  ✓' : '  ✗', m); c ? pass++ : fail+
   ok(await page.locator('#qc').innerText().then((t) => /Integridad estructural/.test(t)), 'panel de control de calidad con métricas');
 
   // ECOMMERCE → 1600×1600, fondo blanco
-  await page.click('.preset[data-name="VEREX ECOMMERCE"]'); await waitIdle();
+  await page.click('.preset[data-name="VEREX ECOMMERCE"]'); await page.waitForTimeout(700); await waitIdle();   // la vista previa se recalcula tras una pausa breve
   const dimsE = await page.locator('#cv-after').evaluate((c) => [c.width, c.height]);
   ok(dimsE[0] === 1600 && dimsE[1] === 1600 || dimsE[0] === dimsE[1], 'ECOMMERCE: lienzo cuadrado ' + dimsE.join('×') + ' (preview capado a la resolución de vista previa)');
   const corner = await page.locator('#cv-after').evaluate((c) => Array.from(c.getContext('2d').getImageData(5, 5, 1, 1).data));
@@ -104,7 +104,7 @@ const ok = (c, m) => { console.log(c ? '  ✓' : '  ✗', m); c ? pass++ : fail+
   await page.click('#btn-undo'); await waitIdle();
 
   // Exportación por lote (2 formatos, 3 fotos)
-  await page.click('.preset[data-name="VEREX ECOMMERCE"]'); await waitIdle();
+  await page.click('.preset[data-name="VEREX ECOMMERCE"]'); await page.waitForTimeout(700); await waitIdle();   // la vista previa se recalcula tras una pausa breve
   await page.click('#btn-export'); await page.check('input[name=scope][value=all]'); await page.check('#ex-jpg'); await page.check('#ex-webp');
   await page.check('input[name=dest][value=folder]'); await page.click('#ex-choose');
   const summary = await page.locator('#ex-summary').innerText(); ok(/4 fotos × 2 formatos = 8 archivos/.test(summary), 'resumen de lote: ' + summary.split('\n')[0]);

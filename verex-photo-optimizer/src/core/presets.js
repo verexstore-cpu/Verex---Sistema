@@ -34,6 +34,17 @@
   }
 
   const LOOKS = {
+    // Optimización «de verdad» para la tienda: más nitidez y limpieza, tinte corregido y luces protegidas, SIN aplanar el fondo
+    // (en fondos con textura —tela, papel, madera— el aplanado deja manchas blancas y halos alrededor de la joya). El fondo se
+    // aclara un poco y conserva su textura. Salida: 1600 px, WEBP 86 (pesa una fracción del original; no amplía fotos pequeñas).
+    'VEREX TIENDA': {
+      desc: 'Recomendado para la tienda: nítida y limpia, color corregido, fondo natural (sin manchas) · 1600 px · WEBP 86.',
+      p: { intensity: 70, sharpness: 55, denoise: 25, contrast: 22, shadows: 8, highlights: -12,
+           whiteBalance: { auto: true, strength: 70 },
+           jewelry: { on: true, metal: 'auto', protect: 85 },
+           bg: { optimize: true, pureWhite: false, clean: 0, uniform: 60, whiten: 30 },
+           output: { mode: 'fit', size: 1600, noUpscale: true, format: 'webp', quality: 86 } },
+    },
     'VEREX NATURAL': {
       desc: 'Mejora muy ligera. Casi imperceptible: limpia y afina sin tocar el carácter de la foto.',
       p: { intensity: 60, sharpness: 40, denoise: 20, contrast: 20, shadows: 8, highlights: -8,
@@ -46,7 +57,7 @@
            jewelry: { on: true, metal: 'auto', protect: 75 } },
     },
     'VEREX ECOMMERCE': {
-      desc: '1600×1600 px · WEBP 88 · sRGB · fondo #FFFFFF · nitidez para pantalla.',
+      desc: '1600×1600 px · WEBP 88 · sRGB · fondo #FFFFFF · nitidez para pantalla. Solo para fondos lisos de estudio: en fondos con textura deja manchas.',
       p: { intensity: 70, sharpness: 68, denoise: 30, contrast: 32, shadows: 10, highlights: -10, whites: 5,
            whiteBalance: { auto: true, strength: 80 },
            jewelry: { on: true, metal: 'auto', protect: 75 },
@@ -82,7 +93,7 @@
   };
 
   const ORDER = Object.keys(LOOKS);
-  const DEFAULT_PRESET = 'VEREX PROFESSIONAL';
+  const DEFAULT_PRESET = 'VEREX TIENDA';
 
   function presetParams(name, userOverrides) {
     const ov = userOverrides && userOverrides[name];

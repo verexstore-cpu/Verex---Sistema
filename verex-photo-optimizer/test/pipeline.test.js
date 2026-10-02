@@ -209,5 +209,30 @@ t('rendimiento: 1600×1600 con ECOMMERCE', () => {
   const ms = Date.now() - t0; console.log(`      ${ms} ms`); assert(ms < 20000);
 });
 
+// ── VEREX TIENDA: fondo con textura (papel/tela). El aplanado a blanco puro dejaba manchas y halos; TIENDA no debe hacerlo.
+t('TIENDA: en fondo con textura mejora la nitidez sin manchas blancas ni halos', () => {
+  const w = 640, h = 640, data = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4, dx = x - 320, dy = y - 320, r = Math.hypot(dx, dy);
+    let v = 212 + 5 * Math.sin(y * 1.7) + 3 * Math.sin(x * 0.31 + y * 0.05);          // fondo gris con rayas finas, como papel texturizado
+    if (r < 150 && r > 105) v = 80 + 120 * Math.abs(Math.sin(Math.atan2(dy, dx) * 3)); // aro metálico
+    data[i] = data[i + 1] = data[i + 2] = Math.max(0, Math.min(255, v)); data[i + 3] = 255;
+  }
+  const src = { width: w, height: h, data };
+  const lap = (a) => { let s1 = 0, s2 = 0, n = 0; for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) { const i = (y * w + x) * 4; const v = 4 * a[i] - a[i - 4] - a[i + 4] - a[i - w * 4] - a[i + w * 4]; s1 += v; s2 += v * v; n++; } return s2 / n - (s1 / n) ** 2; };
+  const blancos = (a) => { let c = 0; for (let i = 0; i < a.length; i += 4) if (a[i] >= 250) c++; return 100 * c / (a.length / 4); };
+  const r = VXP.process(clone(src), PR.presetParams('VEREX TIENDA'), {});
+  const e = VXP.process(clone(src), PR.presetParams('VEREX ECOMMERCE'), {});
+  const sharp = lap(r.data) / lap(src.data), bl = blancos(r.data), ble = blancos(e.data);
+  console.log(`      nitidez ×${sharp.toFixed(2)} · píxeles casi blancos: TIENDA ${bl.toFixed(1)} % (ECOMMERCE ${ble.toFixed(1)} %) · salida ${r.width}×${r.height}`);
+  assert(sharp > 1.15, 'no mejora la nitidez');
+  assert(bl < 5, 'dejó manchas blancas en el fondo');
+});
+t('TIENDA es el preset por defecto y sale en WEBP 1600 sin ampliar', () => {
+  assert.strictEqual(PR.DEFAULT_PRESET, 'VEREX TIENDA');
+  const p = PR.presetParams('VEREX TIENDA');
+  assert(p.output.format === 'webp' && p.output.size === 1600 && p.output.noUpscale === true && p.bg.pureWhite === false && p.bg.clean === 0);
+});
+
 console.log(`\n${pass} correctas, ${fail} con fallo`);
 process.exit(fail ? 1 : 0);
