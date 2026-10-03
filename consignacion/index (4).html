@@ -2086,7 +2086,7 @@ function pintarTabs(tab) {
     });
 }
 
-pintarTabs('dashboard');
+document.addEventListener('DOMContentLoaded', () => pintarTabs('dashboard'));
 
 function cambiarTab(tab) {
     pintarTabs(tab);
