@@ -417,6 +417,9 @@
     }
     .hub-bar { display:grid; grid-template-columns:1fr minmax(420px,46%) 1fr; gap:14px; align-items:stretch; margin-bottom:16px; background:var(--gris); border-radius:14px; padding:14px; }
     .hub-col { display:flex; flex-direction:column; gap:8px; }
+    /* Pantalla limpia: logo y botones centrados en vertical */
+    #pantalla-vendedores.hub-limpio:not([style*="display: none"]) { display:grid !important; align-content:center; box-sizing:border-box; min-height:calc(100vh - 63px); }
+    #pantalla-vendedores.hub-limpio .hub-bar { margin-bottom:0; }
     .hub-logo { cursor:pointer; display:flex; align-items:center; }
     .hub-logo img { width:100%; display:block; border-radius:12px; }
     @media (max-width: 1000px) {
@@ -2274,6 +2277,7 @@ const TAB_ALERTA = { bg: 'linear-gradient(135deg,#7a1a10,#e74c3c,#b03020,#ff7b6b
 
 function pintarTabs(tab) {
     _tabActual = tab;
+    document.getElementById('pantalla-vendedores')?.classList.toggle('hub-limpio', tab === '');
     const tabs = ['vendedores', 'pedidos', 'dashboard', 'fotoqr', 'etiquetas', 'stock', 'ventadirecta', 'historialventas'];
     tabs.forEach(t => {
         document.getElementById('tab-content-' + t).style.display = t === tab ? 'block' : 'none';
