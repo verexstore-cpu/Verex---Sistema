@@ -933,7 +933,7 @@
         </div>
 
         <!-- Tab Dashboard -->
-        <div id="tab-content-dashboard" style="display:block;">
+        <div id="tab-content-dashboard" style="display:none;">
             <!-- KPIs -->
             <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px;">
                 <div class="stat-box">
@@ -2269,7 +2269,7 @@ const TAB_INACTIVE = { bg: 'linear-gradient(135deg,#2a2a2a,#4a4a4a,#333,#555,#2a
 // Pestañas con aviso de actividad pendiente (lo calculan renderAlertasAfiliadosHub
 // y renderPedidosHub).
 const _tabAlertas = { vendedores: 0, pedidos: 0 };
-let _tabActual = 'dashboard';
+let _tabActual = '';   // '' = pantalla limpia (solo logo y botones)
 const TAB_ALERTA = { bg: 'linear-gradient(135deg,#7a1a10,#e74c3c,#b03020,#ff7b6b,#7a1a10)', color: '#fff', shadow: '0 2px 10px rgba(231,76,60,0.7)' };
 
 function pintarTabs(tab) {
@@ -2288,12 +2288,12 @@ function pintarTabs(tab) {
     });
 }
 
-document.addEventListener('DOMContentLoaded', () => pintarTabs('dashboard'));
+document.addEventListener('DOMContentLoaded', () => pintarTabs(''));
 
 // toggle=true (clic del usuario en la barra): si la pestaña ya está abierta, se cierra
-// volviendo al Dashboard. Las llamadas desde código no usan toggle.
+// volviendo a la pantalla limpia. Las llamadas desde código no usan toggle.
 function cambiarTab(tab, toggle) {
-    if (toggle && tab === _tabActual && tab !== 'dashboard') tab = 'dashboard';
+    if (toggle && tab === _tabActual) tab = '';
     pintarTabs(tab);
     if (tab === 'dashboard')    renderDashboard();
     if (tab === 'etiquetas')  { refrescarProductosEtiquetas(); setTimeout(()=>{ const f=document.getElementById('bus-etiquetas'); if(f)f.focus(); },300); }
