@@ -7,6 +7,12 @@
 //    SUPABASE_SERVICE_KEY → service_role key (Settings → API en Supabase)
 //    SECRET_PASS          → contraseña del admin
 //    SECRET_KEY           → clave legacy de vendedores
+//    INTERNAL_SECRET      → (recomendado) secreto compartido con las Functions de Pages de Admin
+//                           (variable INTERNAL_SECRET del proyecto admin-tienda, mismo valor). Permite
+//                           que el límite de intentos use la IP real del cliente y no la de Cloudflare.
+//    ALLOWED_ORIGINS      → (opcional) orígenes CORS permitidos, separados por coma, p. ej.
+//                           https://verexstore.com,https://admin.ejemplo.pages.dev,null
+//                           ("null" = archivos locales/Hub). Sin definir → CORS abierto (*), como antes.
 //    IMAGEKIT_PRIVATE_KEY → clave privada de ImageKit
 //    RESEND_KEY           → API key de Resend (correos)
 //    WOMPI_CLIENT_ID       → App ID del negocio en Wompi (checkout USA)
@@ -90,6 +96,32 @@ export default {
       secciones.push(`📦 Reposiciones pendientes (venta bajo pedido):\n${reposicionesCron.join("\n")}`);
     }
 
+    // ── AUDITORÍA DIARIA DE STOCK: detecta descuadres (total, negativos, consignación vs. registros, huérfanos) antes
+    // de que se acumulen. Solo avisa si hay algo; si la propia auditoría falla, también avisa (no falla en silencio). ──
+    try {
+      const aud = await auditarStock(sb);
+      const r = aud.resumen, n = r.discrepancias + r.negativos + r.huerfanas + r.totalDescuadrado;
+      await sb.set("config", "auditoria_stock", { fecha: aud.generadoEn, ok: n === 0, resumen: r,
+        muestra: { discrepancias: aud.discrepanciasConsignacion.slice(0, 20), negativos: aud.negativos.slice(0, 20), totalDescuadrado: aud.totalDescuadrado.slice(0, 20), huerfanas: aud.consHuerfanas.slice(0, 20) } }).catch(() => {});
+      if (n > 0) {
+        const top = (arr, f) => arr.slice(0, 8).map(f).join("\n") + (arr.length > 8 ? `\n… y ${arr.length - 8} más` : "");
+        const partes = [];
+        if (aud.totalDescuadrado.length) partes.push(`• ${aud.totalDescuadrado.length} con stock_total que no suma:\n${top(aud.totalDescuadrado, x => `   ${x.codigo}: total ${x.stock_total}, suma ${x.suma}`)}`);
+        if (aud.negativos.length) partes.push(`• ${aud.negativos.length} con cantidades negativas:\n${top(aud.negativos, x => `   ${x.codigo}`)}`);
+        if (aud.discrepanciasConsignacion.length) partes.push(`• ${aud.discrepanciasConsignacion.length} donde Stock no coincide con lo que tienen los vendedores:\n${top(aud.discrepanciasConsignacion, x => `   ${x.codigo}: Stock ${x.stock_consignacion_registrado}, vendedores ${x.consignacion_real}`)}`);
+        if (aud.consHuerfanas.length) partes.push(`• ${aud.consHuerfanas.length} consignaciones de códigos que ya no existen en Stock`);
+        secciones.push(`🔎 Auditoría de stock: ${n} producto(s) con descuadre\n${partes.join("\n")}\nDetalle: Consignación → Stock → 🔍 Auditoría`);
+      }
+      // Categorías de la tienda: un anillo (dúo, trío o suelto) nunca debe estar en «Conjuntos», ni nada fuera de su categoría
+      if (aud.categoriasDudosas.length) {
+        const cd = aud.categoriasDudosas, top8 = cd.slice(0, 8).map(x => `   ${x.codigo}: ${x.motivo}`).join("\n") + (cd.length > 8 ? `\n… y ${cd.length - 8} más` : "");
+        secciones.push(`🧩 ${cd.length} producto(s) en la categoría equivocada de la tienda:\n${top8}\nCorregir: Consignación → Stock → 🧩 Categorías`);
+      }
+    } catch (audErr) {
+      console.error("Auditoría diaria de stock falló:", audErr);
+      secciones.push("🔎 La auditoría diaria de stock NO pudo ejecutarse (" + String(audErr && audErr.message || audErr).slice(0, 120) + "). Revisa el Worker.");
+    }
+
     if (secciones.length) {
       const msg = encodeURIComponent(
         `VEREX — avisos del día:\n\n${secciones.join("\n\n")}\n\n📋 Revisa todo en: https://admin-tienda.pages.dev`
@@ -158,10 +190,21 @@ export default {
     }
   },
 
+  // Envoltorio: aplica la lista blanca de CORS (si hay ALLOWED_ORIGINS) a TODA respuesta.
   async fetch(request, env) {
+    const res = await this.handle(request, env);
+    return aplicarCors(request, env, res);
+  },
+
+  async handle(request, env) {
     if (request.method === "OPTIONS") return new Response("", { headers: CORS });
 
     const sb = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+    let ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    // Las Functions de Pages llaman desde servidores de Cloudflare (IP compartida). Reenvían la IP real
+    // del cliente y solo se les cree si presentan el secreto interno; sin él, cualquiera podría falsificarla.
+    const ipReenviada = request.headers.get("X-Verex-Client-IP");
+    if (ipReenviada && env.INTERNAL_SECRET && safeEq(request.headers.get("X-Verex-Internal") || "", env.INTERNAL_SECRET)) ip = ipReenviada.slice(0, 64);
 
     // ── GET: rutas ────────────────────────────────────────────────
     if (request.method === "GET") {
@@ -306,7 +349,10 @@ async function enviar(){
       // si mostrar "ingresa tu código" o la pantalla de configuración
       // inicial (QR + secreto).
       if (d.accion === "VERIFICAR_PASS") {
-        const ok = await verificarPassword(d._pass, env, sb);
+        const bloq = await rlBlocked(sb, "login:" + ip);
+        if (bloq) return tooMany(bloq);
+        const ok = await verificarPassword(d._pass, env, sb, ip, "login");
+        if (!ok && d._pass && await rlBlocked(sb, "login:" + ip)) return tooMany(await rlBlocked(sb, "login:" + ip));
         let totpConfigurado = false;
         if (ok) {
           const cfg = await sb.get("config", "settings");
@@ -323,7 +369,7 @@ async function enviar(){
       // se pierde, volver a correr esto (con la contraseña) es el mismo
       // nivel de recuperación que ya existía.
       if (d.accion === "TOTP_INICIAR_SETUP") {
-        const ok = await verificarPassword(d._pass, env, sb);
+        const ok = await verificarPassword(d._pass, env, sb, ip, "login");
         if (!ok) return json({ ok: false, error: "No autorizado" }, 403);
         const secret = base32Encode(crypto.getRandomValues(new Uint8Array(20)));
         await sb.update("config", "settings", { totpSecret: secret });
@@ -334,12 +380,20 @@ async function enviar(){
       // ── 2FA: verificar código TOTP (login normal, y también confirma
       // que la configuración recién hecha quedó bien escaneada) ──────
       if (d.accion === "TOTP_VERIFICAR") {
-        const ok = await verificarPassword(d._pass, env, sb);
+        const ok = await verificarPassword(d._pass, env, sb, ip, "login");
         if (!ok) return json({ ok: false, error: "No autorizado" }, 403);
+        // Límite propio del código de 6 dígitos: por IP y global (una botnet no lo evita)
+        const bTotp = (await rlBlocked(sb, "totp:" + ip)) || (await rlBlocked(sb, "totp:all"));
+        if (bTotp) return tooMany(bTotp);
         const cfg = await sb.get("config", "settings");
         if (!cfg || !cfg.totpSecret) return json({ ok: false, error: "TOTP no configurado" });
         const valido = await totpVerificar(cfg.totpSecret, d.codigo);
-        if (!valido) return json({ ok: false, error: "Código incorrecto" });
+        if (!valido) {
+          await rlFail(sb, "totp:" + ip, RL_LOGIN);
+          await rlFail(sb, "totp:all", RL_TOTP_ALL);
+          return json({ ok: false, error: "Código incorrecto" });
+        }
+        await rlReset(sb, "totp:" + ip);
         return json({ ok: true });
       }
 
@@ -348,7 +402,7 @@ async function enviar(){
       // código TOTP — el login normal de Admin (password + TOTP) sigue
       // intacto si se entra directo a su URL sin pasar por el Hub. ──
       if (d.accion === "SSO_CREAR_TOKEN") {
-        const ok = await verificarPassword(d._pass, env, sb);
+        const ok = await verificarPassword(d._pass, env, sb, ip, "login");
         if (!ok) return json({ ok: false, error: "No autorizado" }, 403);
         const token = crypto.randomUUID();
         const cfgSso = (await sb.get("config", "settings")) || {};
@@ -377,8 +431,8 @@ async function enviar(){
       }
 
       // esAdmin: acepta SECRET_PASS (env var) O el hash guardado en Supabase
-      const esAdmin = (await verificarPassword(d._pass, env, sb)) ||
-                      (d.key && d.key === env.SECRET_KEY);
+      const esAdmin = (await verificarPassword(d._pass, env, sb, ip, "api")) ||
+                      (await claveLegacyValida(d.key, env, sb, ip));
 
       let result;
 
@@ -630,11 +684,11 @@ async function enviar(){
         case "GET_LEADS_PORTAL_AFILIADO": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
-          if (!vend.tokenPedidos || String(vend.tokenPedidos) !== String(d.token)) {
+          if (!vend.tokenPedidos || !safeEq(vend.tokenPedidos, d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
           }
           // Si el afiliado tiene PIN configurado, validarlo
-          if (vend.pin && String(vend.pin) !== String(d.pin || "")) {
+          if (await pinIncorrecto(sb, vend, d.pin, d.vendedor)) {
             result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
           }
           const todos = await sb.getAll("leads");
@@ -647,10 +701,10 @@ async function enviar(){
         case "GET_HISTORIAL_AFILIADO": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
-          if (!vend.tokenPedidos || String(vend.tokenPedidos) !== String(d.token)) {
+          if (!vend.tokenPedidos || !safeEq(vend.tokenPedidos, d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
           }
-          if (vend.pin && String(vend.pin) !== String(d.pin || "")) {
+          if (await pinIncorrecto(sb, vend, d.pin, d.vendedor)) {
             result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
           }
           const todosH = await sb.getAll("leads");
@@ -686,10 +740,10 @@ async function enviar(){
         case "COMPLETAR_PEDIDO_LEADS": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
-          if (!vend.tokenPedidos || String(vend.tokenPedidos) !== String(d.token)) {
+          if (!vend.tokenPedidos || !safeEq(vend.tokenPedidos, d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
           }
-          if (vend.pin && String(vend.pin) !== String(d.pin || "")) {
+          if (await pinIncorrecto(sb, vend, d.pin, d.vendedor)) {
             result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
           }
           const cliente = d.cliente || {};
@@ -736,7 +790,7 @@ async function enviar(){
         case "GET_VENDEDOR_FIRMA": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
-          if (!vend.tokenFirma || String(vend.tokenFirma) !== String(d.token)) {
+          if (!vend.tokenFirma || !safeEq(vend.tokenFirma, d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
           }
           result = { ok: true, vendedor: {
@@ -753,7 +807,7 @@ async function enviar(){
         case "FIRMAR_CONTRATO_REMOTO": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
-          if (!vend.tokenFirma || String(vend.tokenFirma) !== String(d.token)) {
+          if (!vend.tokenFirma || !safeEq(vend.tokenFirma, d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
           }
           if (vend.firmaContrato) { result = { ok: false, error: "Este contrato ya fue firmado" }; break; }
@@ -787,10 +841,10 @@ async function enviar(){
         case "GET_INVENTARIO_VENDEDOR": {
           if (!d.vendedor || !d.token) return json({ ok: false, error: "vendedor y token requeridos" });
           const vendInv = await sb.get("vendedores", d.vendedor);
-          if (!vendInv || !vendInv.tokenInventario || String(vendInv.tokenInventario) !== String(d.token)) {
+          if (!vendInv || !vendInv.tokenInventario || !safeEq(vendInv.tokenInventario, d.token)) {
             return json({ ok: false, error: "Token inválido" });
           }
-          if (vendInv.pin && String(vendInv.pin) !== String(d.pin || "")) {
+          if (await pinIncorrecto(sb, vendInv, d.pin, d.vendedor)) {
             return json({ ok: false, error: "PIN incorrecto" });
           }
           const consV2 = await sb.query("consignacion", "vendedor", "==", d.vendedor);
@@ -912,40 +966,7 @@ async function enviar(){
 
         case "REGISTRAR_ENTREGA": {
           if (!esAdmin) return forbidden();
-          const items = d.items || [];
-          // Borrador: se descuenta stock y queda respaldado en BD, pero invisible
-          // en el link del vendedor y demás vistas hasta FINALIZAR_ENTREGA_VENDEDOR.
-          const estadoInicial = d.borrador ? "borrador" : "activo";
-          // A prueba de fallos: un item con datos raros NO debe abortar el lote
-          // entero silenciosamente (causaba items "escaneados" que nunca se
-          // guardaban sin ningún aviso). Se procesan todos y se reporta cuáles
-          // fallaron para que el frontend pueda avisar exactamente qué faltó.
-          const guardados = [];
-          const fallidos = [];
-          for (const item of items) {
-            try {
-              const id = item.id || `CONS_${Date.now()}_${item.codigo}`;
-              await sb.set("consignacion", id, {
-                id, vendedor: d.vendedor, codigo: item.codigo,
-                nombre: item.nombre, codigoBase: item.codigoBase || item.codigo,
-                talla: item.talla || "", nombre_base: item.nombre_base || item.nombre,
-                categoria: item.categoria || "", precio: item.precio || 0,
-                cantidad: item.cantidad || 1, vendido: 0,
-                foto: item.foto || "", fecha: new Date().toISOString(), estado: estadoInicial
-              });
-              const s = await sb.get("stock", item.codigo);
-              if (s) {
-                await sb.update("stock", item.codigo, {
-                  stock_bodega:       Math.max(0, (parseInt(s.stock_bodega)||0) - (item.cantidad||1)),
-                  stock_consignacion: (parseInt(s.stock_consignacion)||0) + (item.cantidad||1)
-                });
-              }
-              guardados.push(item.codigo);
-            } catch (errItem) {
-              fallidos.push({ codigo: item.codigo, error: errItem.message || String(errItem) });
-            }
-          }
-          result = { ok: fallidos.length === 0, guardados, fallidos };
+          result = await registrarEntregaEnBloque(sb, d);
           break;
         }
 
@@ -1056,30 +1077,7 @@ async function enviar(){
 
         case "REGISTRAR_DEVOLUCION": {
           if (!esAdmin) return forbidden();
-          const items = d.items || [];
-          const devId = `DEV_${Date.now()}`;
-          await sb.set("devoluciones", devId, {
-            id: devId, vendedor: d.vendedor,
-            fecha: new Date().toISOString(), items: JSON.stringify(items)
-          });
-          for (const item of items) {
-            const cons = await sb.get("consignacion", item.id);
-            if (cons) {
-              const nuevaCant = Math.max(0, (parseInt(cons.cantidad)||0) - (item.cantidad||1));
-              await sb.update("consignacion", item.id, {
-                cantidad: nuevaCant,
-                estado: nuevaCant <= parseInt(cons.vendido||0) ? "devuelto" : "activo"
-              });
-            }
-            const s = await sb.get("stock", item.codigo);
-            if (s) {
-              await sb.update("stock", item.codigo, {
-                stock_bodega:       (parseInt(s.stock_bodega)||0) + (item.cantidad||1),
-                stock_consignacion: Math.max(0, (parseInt(s.stock_consignacion)||0) - (item.cantidad||1))
-              });
-            }
-          }
-          result = { ok: true, devolucionId: devId, fecha: new Date().toISOString() };
+          result = await registrarDevolucionEnBloque(sb, d);
           break;
         }
 
@@ -1360,33 +1358,10 @@ async function enviar(){
               });
             }
           }
-          const itemsSinStock = [];
-          for (const item of (d.items || [])) {
-            if (!item.codigo) { itemsSinStock.push("SIN_CODIGO"); continue; }
-            const s = await sb.get("stock", item.codigo);
-            if (s) {
-              const cant     = parseInt(item.cantidad) || 1;
-              const bodega   = parseInt(s.stock_bodega)   || 0;
-              const tienda   = parseInt(s.stock_tienda)   || 0;
-              const vendido  = parseInt(s.stock_vendido)  || 0;
-              // Descontar primero de tienda si hay, luego de bodega
-              let descBodega = 0, descTienda = 0;
-              if (tienda >= cant) {
-                descTienda = cant;
-              } else {
-                descTienda = tienda;
-                descBodega = cant - tienda;
-              }
-              await sb.update("stock", item.codigo, {
-                stock_tienda:  Math.max(0, tienda  - descTienda),
-                stock_bodega:  Math.max(0, bodega  - descBodega),
-                stock_vendido: vendido + cant
-              });
-            } else {
-              itemsSinStock.push(item.codigo);
-            }
-          }
-          result = { ok: true, itemsSinStock };
+          // Descuento de inventario ATÓMICO (misma reserva que la tienda online): dos ventas simultáneas de la última unidad
+          // ya no pueden vender de más. Ver descontarStockVentaDirecta.
+          const { itemsSinStock, faltantes } = await descontarStockVentaDirecta(sb, d.items || []);
+          result = { ok: true, itemsSinStock, faltantes };
           break;
         }
 
@@ -1721,94 +1696,7 @@ async function enviar(){
         // Ese drift fue exactamente la causa del caso Jaime/PUP035.
         case "AUDITORIA_STOCK": {
           if (!esAdmin) return forbidden();
-          const [stockAud, consAud, vendAud] = await Promise.all([
-            sb.getAll("stock"), sb.getAll("consignacion"), sb.getAll("vendedores")
-          ]);
-          const vendMapAud = new Map(vendAud.map(v => [v.codigo, v.nombre || v.codigo]));
-
-          // Consignación real por código: suma de (cantidad - vendido) de
-          // items activos, más el detalle de qué vendedor tiene cuánto.
-          const consRealPorCodigo = new Map();
-          for (const c of consAud) {
-            if (c.estado !== "activo") continue;
-            const restante = Math.max(0, (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0));
-            if (restante <= 0) continue;
-            const cod = String(c.codigo||"").toUpperCase();
-            if (!consRealPorCodigo.has(cod)) consRealPorCodigo.set(cod, { total: 0, detalle: [] });
-            const entry = consRealPorCodigo.get(cod);
-            entry.total += restante;
-            entry.detalle.push({
-              id: c.id, vendedor: c.vendedor,
-              vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor,
-              vendedorExiste: vendMapAud.has(c.vendedor),
-              cantidad: restante
-            });
-          }
-
-          const discrepanciasConsignacion = [];
-          for (const s of stockAud) {
-            const cod = String(s.codigo||"").toUpperCase();
-            const registrado = parseInt(s.stock_consignacion) || 0;
-            const real = consRealPorCodigo.get(cod)?.total || 0;
-            if (registrado !== real) {
-              discrepanciasConsignacion.push({
-                codigo: s.codigo, nombre: s.nombre || "",
-                stock_consignacion_registrado: registrado,
-                consignacion_real: real,
-                diferencia: registrado - real,
-                detalleVendedores: consRealPorCodigo.get(cod)?.detalle || []
-              });
-            }
-          }
-
-          // Chequeos de sanidad básicos: negativos no deberían existir nunca.
-          const negativos = stockAud.filter(s =>
-            (parseInt(s.stock_bodega)||0) < 0 || (parseInt(s.stock_tienda)||0) < 0 ||
-            (parseInt(s.stock_consignacion)||0) < 0 || (parseInt(s.stock_reservado)||0) < 0
-          ).map(s => ({
-            codigo: s.codigo, nombre: s.nombre || "",
-            stock_bodega: parseInt(s.stock_bodega)||0, stock_tienda: parseInt(s.stock_tienda)||0,
-            stock_consignacion: parseInt(s.stock_consignacion)||0, stock_reservado: parseInt(s.stock_reservado)||0
-          }));
-
-          // Consignación "activa" pero cuyo código ya no existe en stock —
-          // huérfanos que pueden confundir reportes futuros.
-          const codigosStock = new Set(stockAud.map(s => String(s.codigo||"").toUpperCase()));
-          const consHuerfanas = consAud.filter(c =>
-            c.estado === "activo" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0 &&
-            !codigosStock.has(String(c.codigo||"").toUpperCase())
-          ).map(c => ({ id: c.id, codigo: c.codigo, vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor, cantidad: c.cantidad, vendido: c.vendido }));
-
-          // Piezas cerradas con "Ya vendida" (MARCAR_CONSIGNACION_VENDIDA) que
-          // en realidad nunca llegaron a contarse como venta real — típico de
-          // confundir esa opción (pensada solo para piezas YA liquidadas
-          // antes) con una venta nueva. Quedan invisibles para siempre: ya no
-          // aparecen en el inventario activo del vendedor (por eso "no
-          // aparece"), pero el stock nunca se movió y la comisión nunca se
-          // contó, y sin este chequeo no hay ninguna pantalla en la app para
-          // volver a encontrarlas.
-          const cerradosSinContar = consAud.filter(c =>
-            c.estado === "vendido" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0
-          ).map(c => ({
-            id: c.id, codigo: c.codigo, nombre: c.nombre || "",
-            vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor,
-            precio: c.precio || 0,
-            cantidad: parseInt(c.cantidad)||0, vendido: parseInt(c.vendido)||0,
-            pendiente: (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0)
-          }));
-
-          result = {
-            ok: true,
-            generadoEn: new Date().toISOString(),
-            discrepanciasConsignacion, negativos, consHuerfanas, cerradosSinContar,
-            resumen: {
-              productosRevisados: stockAud.length,
-              discrepancias: discrepanciasConsignacion.length,
-              negativos: negativos.length,
-              huerfanas: consHuerfanas.length,
-              cerradosSinContar: cerradosSinContar.length
-            }
-          };
+          result = await auditarStock(sb);
           break;
         }
 
@@ -2247,6 +2135,10 @@ async function enviar(){
 
         case "GUARDAR_CONFIG": {
           if (!esAdmin) return forbidden();
+          if (d.config && d.config.categorias !== undefined) {                 // lista de categorías del Editor de la página
+            const errCat = validarCategorias(d.config.categorias);
+            if (errCat) { result = { ok: false, error: errCat }; break; }
+          }
           await sb.update("config", "settings", d.config || {});
           result = { ok: true };
           break;
@@ -2672,7 +2564,7 @@ async function enviar(){
             // reserva vence sin confirmarse o el pedido se cancela.
             reservaDescTienda: resReservaLead.desc_tienda || 0,
             reservaDescBodega: resReservaLead.desc_bodega || 0,
-            reservaExpiraEn: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+            reservaExpiraEn: new Date(Date.now() + ttlReservaLeadMs(d)).toISOString(),
             // Capturados ANTES de que el cliente abra WhatsApp — si el envío
             // falla o nunca lo manda, estos datos son lo único que queda
             // para poder contactarlo. No se guardan en "cliente" (eso sigue
@@ -3034,10 +2926,10 @@ async function enviar(){
           // del afiliado, que no es secreto).
           if (!esAdmin) {
             const vendGLA = await sb.get("vendedores", d.vendedor);
-            if (!vendGLA || !vendGLA.tokenPedidos || String(vendGLA.tokenPedidos) !== String(d.token)) {
+            if (!vendGLA || !vendGLA.tokenPedidos || !safeEq(vendGLA.tokenPedidos, d.token)) {
               result = { ok: false, error: "Link inválido" }; break;
             }
-            if (vendGLA.pin && String(vendGLA.pin) !== String(d.pin || "")) {
+            if (await pinIncorrecto(sb, vendGLA, d.pin, d.vendedor)) {
               result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
             }
           }
@@ -3058,10 +2950,10 @@ async function enviar(){
           // conociera podia marcar leads ajenos como vendidos.
           if (!esAdmin) {
             const vendMLV = await sb.get("vendedores", d.vendedor);
-            if (!vendMLV || !vendMLV.tokenPedidos || String(vendMLV.tokenPedidos) !== String(d.token)) {
+            if (!vendMLV || !vendMLV.tokenPedidos || !safeEq(vendMLV.tokenPedidos, d.token)) {
               result = { ok: false, error: "Link inválido" }; break;
             }
-            if (vendMLV.pin && String(vendMLV.pin) !== String(d.pin || "")) {
+            if (await pinIncorrecto(sb, vendMLV, d.pin, d.vendedor)) {
               result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
             }
           }
@@ -3110,6 +3002,13 @@ async function enviar(){
               patch.reservaDescBodega = resPago.desc_bodega || 0;
             }
             patch.reservaExpiraEn = null;
+            // Si la reserva ya había vencido y el lead quedó "cancelado", este
+            // pago lo reactiva (ya se volvió a reservar arriba) — si no, el
+            // pedido pagado seguía figurando como cancelado.
+            if (leadUSA.estado === "cancelado") {
+              patch.estado = "interesado";
+              patch.historial = [...(leadUSA.historial || []), { estado: "interesado", fecha: new Date().toISOString(), motivo: "Pago confirmado tras vencer la reserva" }];
+            }
           }
           // "Marcar entregado" cierra la venta: pasa de reservado a vendido —
           // mismo criterio que CONFIRMAR_LEAD_ENTREGA. Solo si de verdad
@@ -3377,13 +3276,13 @@ async function enviar(){
           if (!vend) { result = { ok: false, razon: "no_encontrado" }; break; }
           // Sin token guardado (nunca tuvo link, o se cerró) nadie entra: antes,
           // String(undefined) === "undefined" dejaba pasar a quien mandara ese texto.
-          if (!vend.tokenInventario || String(vend.tokenInventario) !== String(d.token)) {
+          if (!vend.tokenInventario || !safeEq(vend.tokenInventario, d.token)) {
             result = { ok: false, razon: "token_invalido" }; break;
           }
           // Segunda capa: si el vendedor tiene PIN configurado, también se
           // exige — así, aunque el link (con token) se comparta por error,
           // no basta para entrar a ver ventas ni tocar el inventario.
-          if (vend.pin && String(vend.pin) !== String(d.pin || "")) {
+          if (await pinIncorrecto(sb, vend, d.pin, d.vendedor)) {
             result = { ok: false, razon: "pin_requerido", tienePin: true }; break;
           }
           // Validar 30 días desde último corte
@@ -3436,7 +3335,8 @@ async function enviar(){
             foto:               d.img || d.foto || "",
             descripcion:        d.caracteristicas || "",
             descripcionTienda:  d.caracteristicas || "",
-            categoria:          d.categoria || "",
+            categoria:          String(d.categoria || "").toUpperCase(),
+            material:           d.material || "",
             talla:              "",
             stock_bodega:       parseInt(d.cantidad) || 0,
             stock_tienda:       0,
@@ -3525,100 +3425,97 @@ async function enviar(){
         // ══ STOCK MOVIMIENTOS ════════════════════════════════════
         case "STOCK_ASIGNAR_TIENDA": {
           if (!esAdmin) return forbidden();
-          for (const codigo of (d.codigos || [])) {
-            const s = await sb.get("stock", codigo);
-            if (s) {
-              const disponible = parseInt(s.stock_bodega) || 0;
-              const cant = Math.min(d.cantidad || 1, disponible); // no mover más de lo que hay
-              if (cant <= 0) continue;
-              await sb.update("stock", codigo, {
-                stock_bodega: disponible - cant,
-                stock_tienda: (parseInt(s.stock_tienda)||0) + cant,
-                enCatalogo:   true,
-                estado:       "tienda"
-              });
-            }
-          }
-          result = { ok: true };
+          result = await stockAsignarTiendaEnBloque(sb, d);
           break;
         }
 
         case "STOCK_ASIGNAR_VENDEDOR": {
           if (!esAdmin) return forbidden();
           if (!d.vendedor) return json({ ok: false, error: "vendedor requerido" });
-          // Antes solo movía el contador stock_bodega -> stock_consignacion y
-          // marcaba estado:"consignacion", pero nunca creaba el registro en
-          // la colección "consignacion" que liga la pieza a d.vendedor — el
-          // campo vendedor que manda el frontend se ignoraba por completo.
-          // Resultado: la pieza quedaba en un contador sin dueño, invisible
-          // en el perfil de cualquier vendedor, en sus ventas o en su corte
-          // (caso real: PUP105 "asignado" a Jaime Solórzano nunca apareció
-          // en su inventario). Ahora crea el mismo tipo de registro que ya
-          // genera REGISTRAR_ENTREGA (Nueva Entrega), para que ambos caminos
-          // dejen la pieza igual de rastreable.
-          const asignados = [];
-          const sinStock = [];
-          for (const codigo of (d.codigos || [])) {
-            try {
-              const s = await sb.get("stock", codigo);
-              if (!s) { sinStock.push(codigo); continue; }
-              const disponible = parseInt(s.stock_bodega) || 0;
-              const cant = Math.min(d.cantidad || 1, disponible);
-              if (cant <= 0) { sinStock.push(codigo); continue; }
-              const id = `CONS_${Date.now()}_${codigo}`;
-              await sb.set("consignacion", id, {
-                id, vendedor: d.vendedor, codigo,
-                codigoBase:  s.codigoBase || codigo,
-                talla:       s.talla || "",
-                nombre:      s.nombre || "",
-                nombre_base: s.nombre_base || s.nombre || "",
-                categoria:   s.categoria || "",
-                precio:      s.precio || 0,
-                cantidad:    cant, vendido: 0,
-                foto:        s.foto || "",
-                fecha:       new Date().toISOString(),
-                estado:      "activo"
-              });
-              await sb.update("stock", codigo, {
-                stock_bodega:       disponible - cant,
-                stock_consignacion: (parseInt(s.stock_consignacion)||0) + cant,
-                estado:             "consignacion"
-              });
-              asignados.push(codigo);
-            } catch (errAsig) {
-              sinStock.push(codigo);
-            }
+          // Crea el registro de consignación del vendedor (para que la pieza sea rastreable en su inventario, ventas y
+          // corte) y mueve el stock bodega -> consignación. En bloque: ~4 peticiones sin importar cuántos códigos.
+          result = await stockAsignarVendedorEnBloque(sb, d);
+          break;
+        }
+
+        // Hace visibles (o oculta) productos en la tienda online SIN mover inventario: solo cambia enCatalogo. La tienda vende
+        // con stock_tienda + stock_bodega (reserva atómica: primero tienda, luego bodega), así que el inventario sigue siendo
+        // uno solo para todos los canales. En bloque: 2 peticiones sin importar cuántos códigos.
+        case "STOCK_PUBLICAR_VISIBLE": {
+          if (!esAdmin) return forbidden();
+          const cods = Array.from(new Set((Array.isArray(d.codigos) ? d.codigos : []).map(String).filter(Boolean))).slice(0, 1000);
+          if (!cods.length) { result = { ok: false, error: "codigos requeridos" }; break; }
+          const visible = d.visible !== false;
+          const docs = new Map((await sb.getMany("stock", cods)).map(x => [String(x.id), x]));
+          const cambiar = [], yaEstaban = [], noExisten = [], inactivos = [];
+          for (const c of cods) {
+            const x = docs.get(c);
+            if (!x) { noExisten.push(c); continue; }
+            if (x.estado === "inactivo") { inactivos.push(c); continue; }
+            const actual = x.enCatalogo === true || x.enCatalogo === "true" || x.enCatalogo === "TRUE";
+            if (actual === visible) { yaEstaban.push(c); continue; }
+            cambiar.push({ ...x, enCatalogo: visible });
           }
-          result = { ok: true, asignados, sinStock };
+          if (cambiar.length) await sb.setMany("stock", cambiar);
+          result = { ok: true, visible, cambiados: cambiar.map(x => x.id), yaEstaban, noExisten, inactivos };
+          break;
+        }
+
+        // Revisa en qué categoría está cada producto y detecta los mal clasificados (solo lectura).
+        case "AUDITORIA_CATEGORIAS": {
+          if (!esAdmin) return forbidden();
+          const catsA = await categoriasTiendaActual(sb);
+          const a = analizarCategorias(await sb.getAll("stock"), catsA);
+          result = { ok: true, categorias: catsA, ...a };
+          break;
+        }
+
+        // Cambia la categoría de los productos indicados (bloque: 2 peticiones). Solo categorías válidas; el resto no se toca.
+        case "CORREGIR_CATEGORIAS": {
+          if (!esAdmin) return forbidden();
+          const catsC = await categoriasTiendaActual(sb);
+          const cambios = (Array.isArray(d.cambios) ? d.cambios : []).filter(c => c && c.codigo && catsC[String(c.categoria || "").toUpperCase()]).slice(0, 1000);
+          if (!cambios.length) { result = { ok: false, error: "cambios requeridos" }; break; }
+          const docsC = new Map((await sb.getMany("stock", cambios.map(c => String(c.codigo)))).map(x => [String(x.id), x]));
+          const nuevos = [], noExisten = [];
+          for (const c of cambios) { const x = docsC.get(String(c.codigo)); if (!x) { noExisten.push(c.codigo); continue; } nuevos.push({ ...x, categoria: String(c.categoria).toUpperCase() }); }
+          if (nuevos.length) await sb.setMany("stock", nuevos);
+          result = { ok: true, corregidos: nuevos.map(x => x.id), noExisten };
+          break;
+        }
+
+        // Qué código nuevo recibiría cada diseño (no escribe nada). El código siempre lo sugiere el sistema.
+        case "SUGERIR_CODIGOS": {
+          if (!esAdmin) return forbidden();
+          const its = (Array.isArray(d.items) ? d.items : []).filter(x => x && x.codigo).slice(0, 40);
+          if (!its.length) { result = { ok: false, error: "items requeridos" }; break; }
+          result = { ok: true, sugerencias: await sugerirCodigos(sb, its) };
+          break;
+        }
+
+        // Cambia el código de los diseños indicados (todas sus tallas), todo o nada por diseño. Máx. 4 diseños por llamada.
+        case "CAMBIAR_CODIGOS": {
+          if (!esAdmin) return forbidden();
+          const its = (Array.isArray(d.items) ? d.items : []).filter(x => x && x.codigo);
+          if (!its.length) { result = { ok: false, error: "items requeridos" }; break; }
+          if (new Set(its.map(x => _baseDeCodigo(x.codigo).toUpperCase())).size > 4) { result = { ok: false, error: "máximo 4 diseños por llamada" }; break; }
+          result = { ok: true, resultados: await cambiarCodigos(sb, its) };
+          break;
+        }
+
+        // Quita el aviso «cambiar etiqueta» una vez que la etiqueta física ya se reemplazó.
+        case "MARCAR_ETIQUETA_CAMBIADA": {
+          if (!esAdmin) return forbidden();
+          const cs = Array.from(new Set((Array.isArray(d.codigos) ? d.codigos : []).map(String).filter(Boolean))).slice(0, 200);
+          const dc = (await sb.getMany("stock", cs)).filter(x => x.etiquetaPendiente);
+          if (dc.length) await sb.setMany("stock", dc.map(x => ({ ...x, etiquetaPendiente: false, etiquetaCambiadaEn: new Date().toISOString() })));
+          result = { ok: true, actualizados: dc.map(x => x.id) };
           break;
         }
 
         case "STOCK_DEVOLVER_BODEGA": {
           if (!esAdmin) return forbidden();
-          for (const codigo of (d.codigos || [])) {
-            const s = await sb.get("stock", codigo);
-            if (s) {
-              const origen = d.origen || "tienda";
-              // Determinar cuánto hay realmente en el origen para no inventar stock
-              const enOrigen = origen === "tienda"
-                ? (parseInt(s.stock_tienda)||0)
-                : (parseInt(s.stock_consignacion)||0);
-              const cant = Math.min(d.cantidad || 1, enOrigen);
-              if (cant <= 0) continue; // ya no hay nada que devolver
-              const updates = {
-                stock_bodega: (parseInt(s.stock_bodega)||0) + cant,
-                estado: "bodega"
-              };
-              if (origen === "tienda") {
-                updates.stock_tienda  = enOrigen - cant;
-                updates.enCatalogo    = false;
-              } else {
-                updates.stock_consignacion = enOrigen - cant;
-              }
-              await sb.update("stock", codigo, updates);
-            }
-          }
-          result = { ok: true };
+          result = await stockDevolverBodegaEnBloque(sb, d);
           break;
         }
 
@@ -3633,6 +3530,12 @@ async function enviar(){
           if (d.nombre_base     !== undefined) upd.nombre_base       = d.nombre_base;
           if (d.precio          !== undefined) upd.precio            = Math.round((parseFloat(d.precio) || 0) * 100) / 100;
           if (d.img             !== undefined) upd.foto              = d.img;
+          // Si la foto CAMBIA, la versión mejorada guardada es de la foto anterior y las pantallas la muestran antes que
+          // `foto`: el cambio parecía no aplicarse. Se borra salvo que la petición traiga una mejorada nueva.
+          if (d.img !== undefined && d.fotoMejorada === undefined) {
+            const actual = await sb.get("stock", d.codigo);
+            if (actual && actual.fotoMejorada && String(actual.foto || "") !== String(d.img || "")) { upd.fotoMejorada = ""; upd.fotoMejoraNivel = ""; }
+          }
           // Foto "Mejorada" (nitidez vía ImageKit, desde el botón ✨ del
           // admin) — nunca toca `foto` (la original), se guarda aparte.
           if (d.fotoMejorada    !== undefined) upd.fotoMejorada      = d.fotoMejorada;
@@ -3985,7 +3888,8 @@ async function enviar(){
           const ikData = await ikRes.json();
           if (ikData.url) {
             const urlBase = ikData.url.split("?")[0];
-            result = { ok: true, url: urlBase + "?tr=w-900,h-900,c-maintain_ratio" };
+            // d.original = la foto tal cual (sin reducir a 900 px): para el hero de la tienda, que necesita ~2000 px
+            result = { ok: true, url: d.original === true ? urlBase : urlBase + "?tr=w-900,h-900,c-maintain_ratio" };
           } else {
             result = { ok: false, error: ikData.message || "Error subiendo foto" };
           }
@@ -4430,6 +4334,76 @@ class Supabase {
     }
   }
 
+  // Inserta SOLO si el id no existe (atómico: ON CONFLICT DO NOTHING). Devuelve true si este llamado lo creó.
+  // Sirve de candado para que una tarea de una sola vez no se ejecute dos veces a la vez.
+  async insertIfAbsent(table, id, obj) {
+    const { id: _id, ...data } = obj;
+    const res = await fetch(`${this.url}/rest/v1/${table}`, {
+      method:  "POST",
+      headers: this._headers("resolution=ignore-duplicates,return=representation"),
+      body:    JSON.stringify({ id, data }),
+      cf: { cacheTtl: 0, cacheEverything: false }
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`SB insertIfAbsent ${table}: ${res.status} ${txt}`);
+    }
+    const rows = await res.json().catch(() => []);
+    return Array.isArray(rows) && rows.length > 0;
+  }
+
+  // Lee VARIOS documentos por id con una sola petición (en bloques de 60 ids).
+  // Sirve para no gastar el límite de 50 subrequests por invocación del plan gratuito.
+  async getMany(table, ids) {
+    const uniq = Array.from(new Set((ids || []).map(String).filter(Boolean)));
+    const out = [];
+    for (let i = 0; i < uniq.length; i += 60) {
+      const lista = uniq.slice(i, i + 60).map(x => '"' + encodeURIComponent(x) + '"').join(",");
+      const res = await fetch(
+        `${this.url}/rest/v1/${table}?id=in.(${lista})&select=id,data`,
+        { headers: this._headers(), cf: { cacheTtl: 0, cacheEverything: false } }
+      );
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`SB getMany ${table}: ${res.status} ${txt}`);
+      }
+      const rows = await res.json();
+      if (Array.isArray(rows)) for (const r of rows) out.push({ id: r.id, ...r.data });
+    }
+    return out;
+  }
+
+  // Borra VARIOS documentos por id con una sola petición por bloque de 60.
+  async deleteMany(table, ids) {
+    const uniq = Array.from(new Set((ids || []).map(String).filter(Boolean)));
+    for (let i = 0; i < uniq.length; i += 60) {
+      const lista = uniq.slice(i, i + 60).map(x => '"' + encodeURIComponent(x) + '"').join(",");
+      const res = await fetch(`${this.url}/rest/v1/${table}?id=in.(${lista})`, { method: "DELETE", headers: this._headers() });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`SB deleteMany ${table}: ${res.status} ${txt}`);
+      }
+    }
+  }
+
+  // Guarda VARIOS documentos COMPLETOS con una sola petición por bloque de 100 (upsert).
+  // Cada doc debe traer todos sus campos: reemplaza el JSON de datos, igual que set().
+  async setMany(table, docs) {
+    for (let i = 0; i < docs.length; i += 100) {
+      const rows = docs.slice(i, i + 100).map(({ id, ...data }) => ({ id, data }));
+      const res = await fetch(`${this.url}/rest/v1/${table}`, {
+        method:  "POST",
+        headers: this._headers("resolution=merge-duplicates"),
+        body:    JSON.stringify(rows),
+        cf: { cacheTtl: 0, cacheEverything: false }
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`SB setMany ${table}: ${res.status} ${txt}`);
+      }
+    }
+  }
+
   // stock_total es un DERIVADO de las unidades reales: bodega + tienda +
   // consignación (misma fórmula que _stockTotalProd() en el admin).
   //
@@ -4601,24 +4575,60 @@ async function hashStr(str) {
 // Verifica la contraseña: primero contra SECRET_PASS (env var),
 // si no coincide intenta con el hash guardado en Supabase
 // (permite cambiar contraseña sin editar el env var de Cloudflare).
-async function verificarPassword(pass, env, sb) {
+//
+// Protegida contra fuerza bruta: se comprueba el bloqueo ANTES de comparar
+// (si no, el intento correcto tras el bloqueo seguiría entrando) y cada fallo
+// se cuenta por IP. scope "login" (endpoints de acceso, 5 fallos) o "api"
+// (acciones con _pass, 15 fallos: tolera pestañas viejas con clave antigua).
+async function verificarPassword(pass, env, sb, ip, scope) {
   if (!pass) return false;
+  const key = (scope === "login" ? "login:" : "api:") + (ip || "unknown");
+  if (await rlBlocked(sb, key)) return false;
+  const ok = await compararPassword(pass, env, sb);
+  if (ok) await rlReset(sb, key);
+  else await rlFail(sb, key, scope === "login" ? RL_LOGIN : RL_API);
+  return ok;
+}
+
+async function compararPassword(pass, env, sb) {
+  const secret = env.SECRET_PASS || "";
   // Aceptar texto plano (SECRET_PASS del env) o su hash SHA-256
-  if (pass === env.SECRET_PASS) return true;
-  const hashDeSecret = await hashStr(env.SECRET_PASS || "");
-  if (pass === hashDeSecret) return true;
+  let ok = secret ? safeEq(pass, secret) : false;
+  if (secret && safeEq(pass, await hashStr(secret))) ok = true;
+  if (ok) return true;
   // También verificar contra passHash guardado en Supabase
   try {
     const cfg = await sb.get("config", "settings");
     if (cfg && cfg.passHash) {
       // Aceptar el hash directamente (frontend ya lo hasheó)
-      if (pass === cfg.passHash) return true;
+      let okDb = safeEq(pass, cfg.passHash);
       // O hashear lo que llegó (compatibilidad con texto plano)
-      const hash = await hashStr(pass);
-      if (hash === cfg.passHash) return true;
+      if (safeEq(await hashStr(pass), cfg.passHash)) okDb = true;
+      if (okDb) return true;
     }
   } catch(_) {}
   return false;
+}
+
+// Clave legacy de vendedores (d.key): mismo trato — comparación segura y límite de intentos.
+async function claveLegacyValida(key, env, sb, ip) {
+  if (!key || !env.SECRET_KEY) return false;
+  const rk = "api:" + (ip || "unknown");
+  if (await rlBlocked(sb, rk)) return false;
+  if (safeEq(key, env.SECRET_KEY)) return true;
+  await rlFail(sb, rk, RL_API);
+  return false;
+}
+
+// PIN de vendedor: true si es incorrecto O si está bloqueado por demasiados fallos.
+// El token ya se validó antes, así que el contador es por vendedor (no por IP).
+async function pinIncorrecto(sb, vend, pin, vendedorId) {
+  if (!vend || !vend.pin) return false;
+  const key = "pin:" + String(vendedorId || vend.id || "?");
+  if (await rlBlocked(sb, key)) return true;
+  if (safeEq(vend.pin, pin || "")) { await rlReset(sb, key); return false; }
+  await rlFail(sb, key, RL_PIN);
+  return true;
 }
 
 // ── TOTP (RFC 6238) — 2FA del Admin sin depender de ningún token de
@@ -4671,12 +4681,636 @@ async function totpVerificar(secretBase32, codigo) {
   return false;
 }
 
+// ── SEGURIDAD: comparación segura, límite de intentos, CORS ───────
+// Comparación en tiempo constante (no revela cuántos caracteres coinciden).
+function safeEq(a, b) {
+  const x = new TextEncoder().encode(String(a ?? "")), y = new TextEncoder().encode(String(b ?? ""));
+  let r = x.length ^ y.length;
+  const n = Math.max(x.length, y.length);
+  for (let i = 0; i < n; i++) r |= (x[i] || 0) ^ (y[i] || 0);
+  return r === 0;
+}
+
+// Límite de intentos. Estado en Supabase config/rl_<clave> ({n, start, until, strikes}).
+// Cada bloqueo dura el doble que el anterior (hasta 24 h). Si Supabase falla, NO se bloquea
+// (mejor abierto que dejar al admin fuera por una caída). Caché local 20 s para no leer
+// la base en cada petición.
+const MIN = 60 * 1000;
+const RL_LOGIN     = { max: 5,  windowMs: 15 * MIN, baseLockMs: 15 * MIN };
+const RL_API       = { max: 15, windowMs: 15 * MIN, baseLockMs: 15 * MIN };
+const RL_TOTP_ALL  = { max: 10, windowMs: 15 * MIN, baseLockMs: 15 * MIN };
+const RL_PIN       = { max: 8,  windowMs: 15 * MIN, baseLockMs: 15 * MIN };
+const RL_CACHE = new Map();
+const RL_TTL = 20 * 1000;
+
+/** Devuelve el instante (ms) hasta el que está bloqueada la clave, o 0 si no lo está. */
+async function rlBlocked(sb, key) {
+  const now = Date.now(), c = RL_CACHE.get(key);
+  if (c && c.exp > now) return c.until > now ? c.until : 0;
+  let rec = null;
+  try { rec = await sb.get("config", "rl_" + key); } catch (_) { /* fail-open */ }
+  const until = rec && rec.until > now ? rec.until : 0;
+  RL_CACHE.set(key, { until, n: rec ? rec.n || 0 : 0, exp: now + RL_TTL });
+  return until;
+}
+
+async function rlFail(sb, key, cfg) {
+  const now = Date.now();
+  let rec = null;
+  try { rec = await sb.get("config", "rl_" + key); } catch (_) { /* fail-open */ }
+  rec = rec ? { n: rec.n || 0, start: rec.start || now, until: rec.until || 0, strikes: rec.strikes || 0 } : { n: 0, start: now, until: 0, strikes: 0 };
+  if (rec.until && now - rec.until > 24 * 60 * MIN) rec.strikes = 0;      // el historial se olvida tras 24 h limpio
+  if (now - rec.start > cfg.windowMs) { rec.n = 0; rec.start = now; }
+  rec.n++;
+  if (rec.n >= cfg.max) {
+    rec.strikes++;
+    rec.until = now + Math.min(cfg.baseLockMs * Math.pow(2, rec.strikes - 1), 24 * 60 * MIN);
+    rec.n = 0; rec.start = now;
+  }
+  try { await sb.set("config", "rl_" + key, rec); } catch (_) { /* fail-open */ }
+  RL_CACHE.set(key, { until: rec.until > now ? rec.until : 0, n: rec.n, exp: now + RL_TTL });
+}
+
+/** Tras un acceso correcto: borra los fallos pendientes (solo escribe si había alguno). */
+async function rlReset(sb, key) {
+  const c = RL_CACHE.get(key), now = Date.now();
+  if (c && c.exp > now && !c.n && !c.until) return;
+  let rec = null;
+  try { rec = await sb.get("config", "rl_" + key); } catch (_) { return; }
+  if (rec && (rec.n || 0) > 0 && !(rec.until > now)) {
+    try { await sb.set("config", "rl_" + key, { n: 0, start: now, until: rec.until || 0, strikes: rec.strikes || 0 }); } catch (_) {}
+  }
+  RL_CACHE.set(key, { until: rec && rec.until > now ? rec.until : 0, n: 0, exp: now + RL_TTL });
+}
+
+function tooMany(until) {
+  const sec = Math.max(1, Math.ceil((until - Date.now()) / 1000));
+  return new Response(JSON.stringify({
+    ok: false, bloqueado: true, retryAfter: sec,
+    error: "Demasiados intentos. Intenta de nuevo en " + Math.ceil(sec / 60) + " min."
+  }), { status: 429, headers: { ...CORS, "Retry-After": String(sec) } });
+}
+
+// CORS con lista blanca (env.ALLOWED_ORIGINS). Sin la variable: comportamiento anterior (*).
+// Tolerante al pegar la lista: separa por coma, punto y coma, espacios o saltos de línea, y compara sin
+// distinguir mayúsculas, sin barra final y sin comillas (el navegador envía el origen sin barra: "https://x.com").
+// OJO: CORS solo protege a navegadores; no sustituye la autenticación.
+function normalizarOrigen(o) {
+  return String(o || "").trim().replace(/^["']+|["']+$/g, "").replace(/\/+$/, "").toLowerCase();
+}
+function aplicarCors(request, env, res) {
+  const lista = String(env.ALLOWED_ORIGINS || "").split(/[\s,;]+/).map(normalizarOrigen).filter(Boolean);
+  if (!lista.length) return res;
+  const origin = request.headers.get("Origin");
+  const h = new Headers(res.headers);
+  h.append("Vary", "Origin");
+  if (origin && lista.includes(normalizarOrigen(origin))) h.set("Access-Control-Allow-Origin", origin);
+  else h.delete("Access-Control-Allow-Origin");
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
+}
+
+// ── DEVOLUCIÓN EN BLOQUE ───────────────────────────────────────────
+// Antes: 5 peticiones a Supabase POR PRODUCTO (leer/actualizar consignación, leer/actualizar stock y
+// una lectura extra del total) → con más de ~9 productos se pasaba del límite de 50 subrequests del
+// plan gratuito ("Too many subrequests by single Worker invocation"). Ahora son ~8 peticiones sin
+// importar cuántos productos: 2 lecturas en bloque, 2 escrituras en bloque y el registro.
+//
+// Garantías: (1) todo lo devuelto sube a stock_bodega y baja de stock_consignacion, con stock_total
+// recalculado; (2) todo o nada: si falta un producto en Stock no se toca nada; si falla la escritura del
+// stock se deshace la de consignación; (3) idempotente: reenviar el mismo devId no aplica dos veces.
+async function registrarDevolucionEnBloque(sb, d) {
+  const itemsRaw = Array.isArray(d.items) ? d.items : [];
+  const int = (v) => parseInt(v) || 0;
+  const devIdOk = /^DEV_[A-Za-z0-9_-]{6,60}$/.test(String(d.devId || ""));
+  const devId = devIdOk ? String(d.devId) : `DEV_${Date.now()}`;
+
+  if (devIdOk) {
+    const previo = await sb.get("devoluciones", devId);
+    if (previo) return { ok: true, duplicado: true, devolucionId: devId, fecha: previo.fecha };
+  }
+
+  // Une líneas repetidas del mismo registro de consignación
+  const lineas = new Map();
+  for (const it of itemsRaw) {
+    const id = String(it && it.id != null ? it.id : "");
+    const cant = Math.max(0, int(it && it.cantidad));
+    if (!id || cant <= 0) continue;
+    const l = lineas.get(id) || { id, codigo: it.codigo, nombre: it.nombre, cantidad: 0, efectivo: 0 };
+    l.cantidad += cant; lineas.set(id, l);
+  }
+  if (!lineas.size) return { ok: false, error: "No hay productos con cantidad para devolver" };
+
+  const consDocs = new Map((await sb.getMany("consignacion", [...lineas.keys()])).map(c => [String(c.id), c]));
+  const advertencias = [];
+  const consNuevas = [], consOriginales = [], deltaPorCodigo = new Map();
+  for (const l of lineas.values()) {
+    const cons = consDocs.get(l.id);
+    const codigo = String((cons && cons.codigo) || l.codigo || "");
+    if (!codigo) return { ok: false, error: "Falta el código de un producto (id " + l.id + "). No se registró nada." };
+    let efectivo = l.cantidad;
+    if (cons) {
+      const disponible = Math.max(0, int(cons.cantidad) - int(cons.vendido));
+      if (efectivo > disponible) {
+        advertencias.push(`${codigo}: se pidieron ${l.cantidad} pero solo había ${disponible} disponibles; se devolvieron ${disponible}`);
+        efectivo = disponible;
+      }
+      const nuevaCant = int(cons.cantidad) - efectivo;
+      consOriginales.push(cons);
+      consNuevas.push({ ...cons, cantidad: nuevaCant, estado: nuevaCant <= int(cons.vendido) ? "devuelto" : "activo" });
+    } else {
+      advertencias.push(`${codigo}: no se encontró su registro de consignación; se devolvió igual a bodega`);
+    }
+    l.efectivo = efectivo; l.codigoFinal = codigo; if (!l.nombre && cons) l.nombre = cons.nombre;
+    if (efectivo > 0) deltaPorCodigo.set(codigo, (deltaPorCodigo.get(codigo) || 0) + efectivo);
+  }
+
+  const stockDocs = new Map((await sb.getMany("stock", [...deltaPorCodigo.keys()])).map(s => [String(s.id), s]));
+  const sinStock = [...deltaPorCodigo.keys()].filter(c => !stockDocs.has(c));
+  if (sinStock.length) {
+    return { ok: false, error: "Estos productos no existen en Stock, así que no se pueden regresar a bodega: " + sinStock.join(", ") + ". No se registró nada; desmárcalos e inténtalo de nuevo." };
+  }
+  const stockNuevos = [], stockOriginales = [], devuelto = [];
+  for (const [codigo, delta] of deltaPorCodigo) {
+    const st = stockDocs.get(codigo);
+    const nuevo = { ...st,
+      stock_bodega:       int(st.stock_bodega) + delta,
+      stock_consignacion: Math.max(0, int(st.stock_consignacion) - delta) };
+    nuevo.stock_total = Supabase.COMPONENTES_STOCK.reduce((a, c) => a + int(nuevo[c]), 0);
+    stockOriginales.push(st); stockNuevos.push(nuevo);
+    devuelto.push({ codigo, cantidad: delta, stock_bodega: nuevo.stock_bodega });
+  }
+
+  const fecha = new Date().toISOString();
+  // El historial guarda lo REALMENTE devuelto (no lo pedido) y su total de unidades. Se escribe ANTES de tocar
+  // consignación/stock: sirve de candado por devId (un reenvío se detecta como duplicado) y, si no se puede guardar,
+  // no se aplica nada.
+  const registro = [...lineas.values()].filter(l => l.efectivo > 0).map(l => ({ id: l.id, codigo: l.codigoFinal, nombre: l.nombre || "", cantidad: l.efectivo }));
+  const totalUnidades = registro.reduce((a, x) => a + x.cantidad, 0);
+  try {
+    await sb.set("devoluciones", devId, { id: devId, vendedor: d.vendedor, fecha, total_unidades: totalUnidades, items: JSON.stringify(registro) });
+  } catch (e) {
+    return { ok: false, error: "No se pudo guardar el registro de la devolución; no se aplicó nada. Inténtalo de nuevo. (" + e.message + ")" };
+  }
+  const quitarRegistro = async () => { try { await sb.deleteMany("devoluciones", [devId]); } catch (e3) { console.error("REGISTRAR_DEVOLUCION: no se pudo quitar el registro", e3); } };
+  try { await sb.setMany("consignacion", consNuevas); }
+  catch (e) { await quitarRegistro(); return { ok: false, error: "No se pudo actualizar la consignación; no se registró la devolución. Inténtalo de nuevo. (" + e.message + ")" }; }
+  try {
+    await sb.setMany("stock", stockNuevos);
+  } catch (e) {
+    // Deshacer todo para no dejar piezas "devueltas" que no llegaron a bodega (incluye bloques de stock ya escritos)
+    try { await sb.setMany("consignacion", consOriginales); }
+    catch (e2) { console.error("REGISTRAR_DEVOLUCION: no se pudo deshacer consignación", e2); }
+    try { await sb.setMany("stock", stockOriginales); }
+    catch (e2) { console.error("REGISTRAR_DEVOLUCION: no se pudo restaurar el stock", e2); }
+    await quitarRegistro();
+    return { ok: false, error: "No se pudo actualizar el stock; no se registró la devolución. Inténtalo de nuevo. (" + e.message + ")" };
+  }
+  return { ok: true, devolucionId: devId, fecha, devuelto, registro, advertencias };
+}
+
+// ── VENTA DIRECTA: descuento atómico de inventario ─────────────────────────────────────────────────
+// La venta física ya ocurrió, así que SIEMPRE se registra; lo que cambia es que el descuento de stock sale de la misma reserva
+// atómica de la tienda online (reservar_stock_pedido: primero tienda, luego bodega, con bloqueo de fila). Si hay menos stock del
+// vendido, se descuenta lo que haya y se informa en `faltantes` para que se revise el inventario (antes se descontaba de más
+// sin aviso o, con dos ventas simultáneas, ambas "vendían" la misma unidad).
+// La reserva suma a stock_reservado; aquí se pasa a stock_vendido y se recalcula stock_total.
+async function descontarStockVentaDirecta(sb, items) {
+  const itemsSinStock = [], faltantes = [], pedido = new Map();
+  for (const it of items) {
+    if (!it || !it.codigo) { itemsSinStock.push("SIN_CODIGO"); continue; }
+    const c = String(it.codigo); pedido.set(c, (pedido.get(c) || 0) + (parseInt(it.cantidad) || 1));
+  }
+  if (!pedido.size) return { itemsSinStock, faltantes };
+  const fichas = new Map((await sb.getMany("stock", [...pedido.keys()])).map(x => [String(x.id), x]));
+  const descontado = new Map(), clasico = new Set();
+  for (const [codigo, cant] of pedido) {
+    const f = fichas.get(codigo);
+    if (!f) { itemsSinStock.push(codigo); continue; }
+    let desc = 0;
+    try {
+      let r = await sb.reservar(codigo, cant);
+      if (r && r.ok) desc = cant;
+      else {                                                  // no alcanza: tomar lo que haya (máx. 2 intentos por carreras)
+        for (let intento = 0; intento < 2 && !desc; intento++) {
+          const fr = await sb.get("stock", codigo), disp = Math.max(0, _int(fr && fr.stock_tienda) + _int(fr && fr.stock_bodega));
+          const parcial = Math.min(cant, disp); if (parcial <= 0) break;
+          r = await sb.reservar(codigo, parcial); if (r && r.ok) desc = parcial;
+        }
+      }
+    } catch (e) {
+      // Si la reserva atómica falla por un error de comunicación/Supabase (no por falta de stock), no se deja la venta sin
+      // descontar: se usa el descuento anterior (lee y escribe: primero tienda, luego bodega) para ESTE producto.
+      console.error("descontarStockVentaDirecta: reservar falló, descuento clásico", codigo, e);
+      try {
+        const fr = await sb.get("stock", codigo), tienda = _int(fr && fr.stock_tienda), bodega = _int(fr && fr.stock_bodega);
+        const dT = Math.min(tienda, cant), dB = Math.min(bodega, cant - dT);
+        await sb.update("stock", codigo, { stock_tienda: tienda - dT, stock_bodega: bodega - dB });
+        desc = dT + dB; clasico.add(codigo);
+      } catch (e2) { console.error("descontarStockVentaDirecta: descuento clásico falló", codigo, e2); }
+    }
+    descontado.set(codigo, desc);
+    if (desc < cant) faltantes.push({ codigo, vendido: cant, descontado: desc });
+  }
+  // Pasar de reservado a vendido y recalcular el total (lectura fresca, una sola petición)
+  const frescas = new Map((await sb.getMany("stock", [...descontado.keys()])).map(x => [String(x.id), x]));
+  for (const [codigo, desc] of descontado) {
+    const fr = frescas.get(codigo); if (!fr) continue;
+    const total = Supabase.COMPONENTES_STOCK.reduce((a, c) => a + _int(fr[c]), 0);
+    await sb.update("stock", codigo, { stock_reservado: clasico.has(codigo) ? _int(fr.stock_reservado) : Math.max(0, _int(fr.stock_reservado) - desc), stock_vendido: _int(fr.stock_vendido) + (pedido.get(codigo) || 0), stock_total: total });
+  }
+  return { itemsSinStock, faltantes };
+}
+
+// ── MOVIMIENTOS DE STOCK EN BLOQUE ─────────────────────────────────
+// Antes cada código/producto hacía de 2 a 4 peticiones a Supabase y el plan gratuito de Cloudflare limita a 50 por
+// operación (~11-15 productos). Ahora: lectura en bloque + cálculo en memoria (en el mismo orden y con las mismas
+// reglas que antes) + escritura en bloque. ~4 peticiones sin importar cuántos productos.
+const _int = (v) => parseInt(v) || 0;
+function conPatchStock(st, patch) {
+  const n = { ...st, ...patch };
+  if (Supabase.COMPONENTES_STOCK.some(c => patch[c] !== undefined)) n.stock_total = Supabase.COMPONENTES_STOCK.reduce((a, c) => a + _int(n[c]), 0);
+  return n;
+}
+async function cargarStockMap(sb, codigos) {
+  return new Map((await sb.getMany("stock", (codigos || []).map(String))).map(x => [String(x.id), x]));
+}
+
+async function stockAsignarTiendaEnBloque(sb, d) {
+  const codigos = Array.isArray(d.codigos) ? d.codigos.map(String) : [];
+  const stock = await cargarStockMap(sb, codigos), originales = new Map(stock), tocados = new Set();
+  for (const codigo of codigos) {
+    const s = stock.get(codigo); if (!s) continue;
+    const disponible = _int(s.stock_bodega);
+    const cant = Math.min(d.cantidad || 1, disponible);                       // no mover más de lo que hay
+    if (cant <= 0) continue;
+    stock.set(codigo, conPatchStock(s, { stock_bodega: disponible - cant, stock_tienda: _int(s.stock_tienda) + cant, enCatalogo: true, estado: "tienda" }));
+    tocados.add(codigo);
+  }
+  if (tocados.size) {
+    const orig = [...tocados].map(c => originales.get(c));
+    try { await guardarStockAtomico(sb, orig, [...tocados].map(c => stock.get(c))); }
+    catch (e) { return { ok: false, error: "No se pudo actualizar el stock (no se guardó nada): " + e.message }; }
+  }
+  return { ok: true };
+}
+
+async function stockDevolverBodegaEnBloque(sb, d) {
+  const codigos = Array.isArray(d.codigos) ? d.codigos.map(String) : [];
+  const origen = d.origen || "tienda";
+  const stock = await cargarStockMap(sb, codigos), originales = new Map(stock), tocados = new Set();
+  for (const codigo of codigos) {
+    const s = stock.get(codigo); if (!s) continue;
+    const enOrigen = origen === "tienda" ? _int(s.stock_tienda) : _int(s.stock_consignacion);   // no inventar stock
+    const cant = Math.min(d.cantidad || 1, enOrigen);
+    if (cant <= 0) continue;                                                   // ya no hay nada que devolver
+    const patch = { stock_bodega: _int(s.stock_bodega) + cant, estado: "bodega" };
+    if (origen === "tienda") { patch.stock_tienda = enOrigen - cant; patch.enCatalogo = false; }
+    else patch.stock_consignacion = enOrigen - cant;
+    stock.set(codigo, conPatchStock(s, patch)); tocados.add(codigo);
+  }
+  if (tocados.size) {
+    const orig = [...tocados].map(c => originales.get(c));
+    try { await guardarStockAtomico(sb, orig, [...tocados].map(c => stock.get(c))); }
+    catch (e) { return { ok: false, error: "No se pudo actualizar el stock (no se guardó nada): " + e.message }; }
+  }
+  return { ok: true };
+}
+
+/** Guarda stock; si falla a mitad (varios bloques de 100), restaura los originales de lo ya escrito y relanza el error. */
+async function guardarStockAtomico(sb, originales, nuevos) {
+  try { await sb.setMany("stock", nuevos); }
+  catch (e) {
+    try { await sb.setMany("stock", originales); } catch (e2) { console.error("guardarStockAtomico: no se pudo restaurar", e2); }
+    throw e;
+  }
+}
+
+/** Escribe consignación y stock "todo o nada": si el stock falla, se restauran/borran las filas de consignación. */
+async function guardarConsignacionYStock(sb, consNuevos, stockDocs, stockOrig) {
+  const prev = new Map((await sb.getMany("consignacion", consNuevos.map(c => c.id))).map(c => [String(c.id), c]));
+  await sb.setMany("consignacion", consNuevos);
+  try {
+    if (stockDocs.length) await guardarStockAtomico(sb, stockOrig || [], stockDocs);
+  } catch (e) {
+    try {
+      const restaurar = consNuevos.map(c => prev.get(String(c.id))).filter(Boolean);
+      if (restaurar.length) await sb.setMany("consignacion", restaurar);
+      const borrar = consNuevos.filter(c => !prev.has(String(c.id))).map(c => c.id);
+      if (borrar.length) await sb.deleteMany("consignacion", borrar);
+    } catch (e2) { console.error("guardarConsignacionYStock: no se pudo deshacer", e2); }
+    throw e;
+  }
+}
+
+async function stockAsignarVendedorEnBloque(sb, d) {
+  const codigos = Array.isArray(d.codigos) ? d.codigos.map(String) : [];
+  const stock = await cargarStockMap(sb, codigos), originales = new Map(stock), tocados = new Set();
+  const asignados = [], sinStock = [], consNuevos = [], ids = new Set();
+  const ahora = Date.now(), fecha = new Date().toISOString();
+  for (const codigo of codigos) {
+    const s = stock.get(codigo);
+    if (!s) { sinStock.push(codigo); continue; }
+    const disponible = _int(s.stock_bodega);
+    const cant = Math.min(d.cantidad || 1, disponible);
+    if (cant <= 0) { sinStock.push(codigo); continue; }
+    let id = `CONS_${ahora}_${codigo}_${Math.random().toString(36).slice(2, 7)}`; while (ids.has(id)) id += "x"; ids.add(id);
+    consNuevos.push({ id, vendedor: d.vendedor, codigo, codigoBase: s.codigoBase || codigo, talla: s.talla || "", nombre: s.nombre || "",
+      nombre_base: s.nombre_base || s.nombre || "", categoria: s.categoria || "", precio: s.precio || 0, cantidad: cant, vendido: 0,
+      foto: s.foto || "", fecha, estado: "activo" });
+    stock.set(codigo, conPatchStock(s, { stock_bodega: disponible - cant, stock_consignacion: _int(s.stock_consignacion) + cant, estado: "consignacion" }));
+    tocados.add(codigo); asignados.push(codigo);
+  }
+  if (!consNuevos.length) return { ok: true, asignados, sinStock };
+  try { await guardarConsignacionYStock(sb, consNuevos, [...tocados].map(c => stock.get(c)), [...tocados].map(c => originales.get(c))); }
+  catch (e) { return { ok: false, error: "No se pudo asignar (no se guardó nada): " + e.message, asignados: [], sinStock: codigos }; }
+  return { ok: true, asignados, sinStock };
+}
+
+async function registrarEntregaEnBloque(sb, d) {
+  const items = Array.isArray(d.items) ? d.items : [];
+  const estadoInicial = d.borrador ? "borrador" : "activo";          // borrador: descuenta stock pero invisible hasta FINALIZAR_ENTREGA_VENDEDOR
+  const fallidos = [], validos = [], usados = new Set();
+  const ahora = Date.now(), fecha = new Date().toISOString();
+  for (const item of items) {
+    const codigo = item && item.codigo != null ? String(item.codigo) : "";
+    if (!codigo) { fallidos.push({ codigo: "(sin código)", error: "falta el código del producto" }); continue; }
+    const cant = _int(item.cantidad) || 1;
+    if (cant < 1) { fallidos.push({ codigo, error: "cantidad inválida" }); continue; }
+    const id = item.id || `CONS_${ahora}_${codigo}_${Math.random().toString(36).slice(2, 7)}`;
+    if (usados.has(String(id))) { fallidos.push({ codigo, error: "registro repetido en la misma entrega" }); continue; }
+    usados.add(String(id)); validos.push({ item, codigo, cant, id });
+  }
+  if (!validos.length) return { ok: fallidos.length === 0, guardados: [], fallidos };
+  const stock = await cargarStockMap(sb, validos.map(v => v.codigo)), originales = new Map(stock), tocados = new Set();
+  const consNuevos = [], guardados = [];
+  for (const { item, codigo, cant, id } of validos) {
+    consNuevos.push({ id, vendedor: d.vendedor, codigo, nombre: item.nombre, codigoBase: item.codigoBase || codigo, talla: item.talla || "",
+      nombre_base: item.nombre_base || item.nombre, categoria: item.categoria || "", precio: item.precio || 0, cantidad: cant, vendido: 0,
+      foto: item.foto || "", fecha, estado: estadoInicial });
+    const s = stock.get(codigo);
+    if (s) { stock.set(codigo, conPatchStock(s, { stock_bodega: Math.max(0, _int(s.stock_bodega) - cant), stock_consignacion: _int(s.stock_consignacion) + cant })); tocados.add(codigo); }
+    guardados.push(codigo);
+  }
+  try { await guardarConsignacionYStock(sb, consNuevos, [...tocados].map(c => stock.get(c)), [...tocados].map(c => originales.get(c))); }
+  catch (e) {
+    const motivo = "No se pudo guardar la entrega (no se guardó nada): " + e.message;
+    return { ok: false, guardados: [], fallidos: [...validos.map(v => ({ codigo: v.codigo, error: motivo })), ...fallidos] };
+  }
+  return { ok: fallidos.length === 0, guardados, fallidos };
+}
+
+// ── CATEGORÍAS: detecta productos mal clasificados (p. ej. un anillo en «Conjuntos») ─────────────────────────────
+// Los anillos (sueltos, dúo o trío) son SIEMPRE «Anillos»; «Conjuntos» es otra cosa (collar + aretes, etc.). Dos reglas de alta
+// confianza: 1) el nombre es de anillo/alianza/argolla y la categoría no es AN; 2) el código empieza con una categoría conocida
+// distinta a la guardada. Solo propone: quien confirma es el usuario (CORREGIR_CATEGORIAS).
+const CATEGORIAS_TIENDA = { AN: "Anillos", CO: "Collares", AR: "Aretes", PU: "Pulseras", CJ: "Conjuntos", CD: "Cadenas", DJ: "Dijes", TB: "Tobilleras", RS: "Rosarios" };
+// El Admin Tienda usaba otros códigos (CN conjunto, PL pulsera) y generaba «XX-1234» al azar; Stock usa CJ/PU y [CAT][MAT][NNN].
+const CATEGORIAS_ANTIGUAS = { CN: "CJ", PL: "PU" };
+// Categorías vigentes: las de arriba + las agregadas/renombradas desde el «Editor de la página» (config.categorias).
+async function categoriasTiendaActual(sb) {
+  const out = { ...CATEGORIAS_TIENDA };
+  try { const cfg = await sb.get("config", "settings"); for (const c of (cfg && Array.isArray(cfg.categorias) ? cfg.categorias : [])) if (c && /^[A-Z]{2}$/.test(String(c.codigo))) out[c.codigo] = String(c.es || c.codigo); } catch (_) {}
+  return out;
+}
+// Valida la lista de categorías que llega desde el editor (se rechaza completa si algo no cumple)
+function validarCategorias(lista) {
+  if (!Array.isArray(lista) || lista.length > 40) return "lista de categorías inválida";
+  const vistos = new Set();
+  for (const c of lista) {
+    if (!c || typeof c !== "object") return "categoría inválida";
+    if (!/^[A-Z]{2}$/.test(String(c.codigo || ""))) return `código inválido «${c.codigo}»: deben ser 2 letras mayúsculas`;
+    if (vistos.has(c.codigo)) return `código repetido: ${c.codigo}`; vistos.add(c.codigo);
+    if (!String(c.es || "").trim() || String(c.es).length > 40 || String(c.en || "").length > 40) return `nombre inválido en ${c.codigo}`;
+  }
+  return null;
+}
+const _codigoFormatoAdmin = (c) => /^[A-Za-z]{2}-\d+/.test(String(c || ""));
+function analizarCategorias(items, cats) {
+  cats = cats || CATEGORIAS_TIENDA;
+  const activos = items.filter(p => p && p.estado !== "inactivo");
+  const publicados = activos.filter(p => p.enCatalogo === true || p.enCatalogo === "true" || p.enCatalogo === "TRUE");
+  const cuenta = {}; for (const p of publicados) { const c = String(p.categoria || "").toUpperCase().trim() || "(sin categoría)"; cuenta[c] = (cuenta[c] || 0) + 1; }
+  const dudosas = [];
+  for (const p of activos) {
+    const catRaw = String(p.categoria || "").toUpperCase().trim(), cat = CATEGORIAS_ANTIGUAS[catRaw] || catRaw, cod = String(p.codigo || p.id || ""), prefRaw = (cod.match(/^[A-Za-z]{2}/) || [""])[0].toUpperCase(), pref = CATEGORIAS_ANTIGUAS[prefRaw] || prefRaw;
+    const nombre = String(p.nombre_base || p.nombre || ""), antiguo = _codigoFormatoAdmin(cod);
+    let propuesta = null, motivo = "";
+    if (/^\s*(anillo|alianza|argolla|sortija)s?\b/i.test(nombre) && cat !== "AN") { propuesta = "AN"; motivo = `Es un anillo («${nombre}») pero está en ${cats[cat] || cat || "sin categoría"}`; }
+    else if (antiguo && pref === "CD" && /^\s*(collar|gargantilla)/i.test(nombre)) { propuesta = "CO"; motivo = `Es un collar («${nombre}») con código de cadena del Admin (${cod})`; }
+    else if (cats[pref] && cat !== pref) { propuesta = pref; motivo = catRaw ? `El código empieza por ${prefRaw} pero su categoría es ${cats[catRaw] || catRaw}` : "Sin categoría"; }
+    else if (antiguo && cats[cat]) { propuesta = cat; motivo = `Código con formato antiguo del Admin (${cod}): no coincide con el que genera Stock para la etiqueta`; }
+    if (propuesta) dudosas.push({ codigo: cod, nombre, categoria: catRaw, propuesta, motivo, publicado: publicados.includes(p), codigoAntiguo: antiguo || !!CATEGORIAS_ANTIGUAS[prefRaw] });
+  }
+  return { publicados: publicados.length, porCategoria: cuenta, dudosas };
+}
+
+// ── CAMBIO DE CÓDIGO SEGURO ──────────────────────────────────────────────────────────────────────────────────
+// Corrige el código de un diseño (todas sus tallas juntas) cuando está mal codificado (p. ej. un anillo con código CJ…).
+// Formato del código: [CAT2][MAT1][NNN] + talla (ANP174T7). El código nuevo SIEMPRE lo asigna el sistema: el siguiente número libre
+// de ese prefijo, mirando TODOS los productos (también inactivos, que conservan su código). Cada código nuevo se crea con
+// insertIfAbsent (ON CONFLICT DO NOTHING): si alguien lo tomó a la vez, se deshace y se prueba el siguiente. Todo o nada.
+// El producto viejo queda inactivo y en cero (reemplazadoPor) y el nuevo lleva codigoAnterior + etiquetaPendiente para que se
+// cambie la etiqueta física. Las consignaciones activas pasan al código nuevo; pedidos y ventas pasadas quedan como histórico.
+const _baseDeCodigo = (c) => String(c || "").replace(/[DCU]?T\d+(\.\d+)?$/i, "").trim();
+function _planCambioCodigo(ctx, codigo, categoria, matForzado) {
+  const cat = String(categoria || "").toUpperCase();
+  if (!(ctx.cats || CATEGORIAS_TIENDA)[cat]) return { ok: false, codigo, error: "categoría inválida" };
+  const base = _baseDeCodigo(codigo).toUpperCase();
+  const skus = ctx.stock.filter(x => x.estado !== "inactivo" && _baseDeCodigo(x.codigo).toUpperCase() === base);
+  if (!skus.length) return { ok: false, codigo, error: "el producto no existe o está inactivo" };
+  const mm = /^[A-Z]{2}([A-Z])\d+$/.exec(base);
+  const mat = String(skus[0].material || skus[0].nombre_base || skus[0].nombre || "").toLowerCase();
+  const delCampo = mat.includes("laminado") ? "L" : mat.includes("oro") ? "O" : mat.includes("acero") ? "A" : mat.includes("reloj") ? "W" : mat.includes("plata") ? "P" : "X";
+  const forz = String(matForzado || "").toUpperCase();
+  // Letra de material: la que elige el usuario > la del código (si no es X) > la del campo material > X (sin definir)
+  const matChar = /^[POLAW]$/.test(forz) ? forz : (mm && mm[1] !== "X") ? mm[1] : delCampo;
+  const prefijo = cat + matChar;
+  let maxN = 0;
+  for (const code of ctx.codigos) { const b = _baseDeCodigo(code).toUpperCase(); if (b.startsWith(prefijo) && /^\d+$/.test(b.slice(prefijo.length))) maxN = Math.max(maxN, parseInt(b.slice(prefijo.length), 10)); }
+  for (const code of ctx.reservados) { const b = _baseDeCodigo(code).toUpperCase(); if (b.startsWith(prefijo) && /^\d+$/.test(b.slice(prefijo.length))) maxN = Math.max(maxN, parseInt(b.slice(prefijo.length), 10)); }
+  for (let intento = 0; intento < 50; intento++) {
+    const nuevoBase = prefijo + String(++maxN).padStart(3, "0");
+    const mapa = skus.map(x => ({ viejo: x.codigo, nuevo: nuevoBase + String(x.codigo).slice(_baseDeCodigo(x.codigo).length) }));
+    if (mapa.every(m => !ctx.codigos.has(m.nuevo.toUpperCase()) && !ctx.reservados.has(m.nuevo.toUpperCase()))) return { ok: true, codigo, base, nuevoBase, categoria: cat, mapa, skus, matChar, materialSinDefinir: matChar === "X" };
+  }
+  return { ok: false, codigo, error: "no se encontró un código libre" };
+}
+async function _contextoCambioCodigo(sb) {
+  const stock = await sb.getAll("stock");
+  return { stock, cats: await categoriasTiendaActual(sb), codigos: new Set(stock.map(x => String(x.codigo || x.id).toUpperCase())), reservados: new Set() };
+}
+// Solo calcula (no escribe): qué código nuevo recibiría cada diseño
+async function sugerirCodigos(sb, items) {
+  const ctx = await _contextoCambioCodigo(sb), out = [], vistos = new Set();
+  for (const it of items) {
+    const b = _baseDeCodigo(it.codigo).toUpperCase(); if (vistos.has(b)) continue; vistos.add(b);
+    const p = _planCambioCodigo(ctx, it.codigo, it.categoria, it.material);
+    if (p.ok) { p.mapa.forEach(m => ctx.reservados.add(m.nuevo.toUpperCase())); out.push({ ok: true, codigoBase: p.base, nuevoBase: p.nuevoBase, categoria: p.categoria, mapa: p.mapa, materialSinDefinir: p.materialSinDefinir }); }
+    else out.push({ ok: false, codigo: it.codigo, error: p.error });
+  }
+  return out;
+}
+async function cambiarCodigos(sb, items) {
+  const ctx = await _contextoCambioCodigo(sb), consig = await sb.getAll("consignacion"), resultados = [], vistos = new Set();
+  for (const it of items) {
+    const b = _baseDeCodigo(it.codigo).toUpperCase(); if (vistos.has(b)) continue; vistos.add(b);
+    let hecho = null;
+    for (let intento = 0; intento < 3 && !hecho; intento++) {
+      const p = _planCambioCodigo(ctx, it.codigo, it.categoria, it.material);
+      if (!p.ok) { resultados.push({ ok: false, codigo: it.codigo, error: p.error }); hecho = "error"; break; }
+      if (p.materialSinDefinir) { resultados.push({ ok: false, codigo: it.codigo, error: "el material no está definido: elige la letra (P plata, O oro, L laminado, A acero, W reloj)" }); hecho = "error"; break; }
+      const ahora = new Date().toISOString(), creados = [];
+      const matElegido = ({ P: "Plata", O: "Oro", L: "Oro laminado", A: "Acero", W: "Reloj" })[String(it.material || "").toUpperCase()] || "";   // si el usuario eligió la letra, el producto también recibe ese material
+      let choque = false;
+      try {
+        for (const m of p.mapa) {                                                // 1) crear los nuevos (candado atómico)
+          const viejo = p.skus.find(x => x.codigo === m.viejo), { id, ...datos } = viejo;
+          const nuevo = { ...datos, ...(matElegido ? { material: matElegido } : {}), codigo: m.nuevo, codigoBase: p.nuevoBase, categoria: p.categoria, codigoAnterior: m.viejo, codigoCorregidoEn: ahora, etiquetaPendiente: true };
+          if (!(await sb.insertIfAbsent("stock", m.nuevo, nuevo))) { choque = true; break; }
+          creados.push(m.nuevo);
+        }
+      } catch (e) { if (creados.length) await sb.deleteMany("stock", creados).catch(() => {}); resultados.push({ ok: false, codigo: it.codigo, error: "no se pudo crear el código nuevo: " + e.message }); hecho = "error"; break; }
+      if (choque) { if (creados.length) await sb.deleteMany("stock", creados).catch(() => {}); p.mapa.forEach(m => ctx.reservados.add(m.nuevo.toUpperCase())); continue; }   // otro lo tomó: siguiente número
+      const viejos = new Map(p.mapa.map(m => [m.viejo, m.nuevo]));
+      const consOrig = consig.filter(c => viejos.has(String(c.codigo))), consNuevas = consOrig.map(c => ({ ...c, codigo: viejos.get(String(c.codigo)), ...(c.codigoBase !== undefined ? { codigoBase: p.nuevoBase } : {}) }));
+      try {
+        if (consNuevas.length) await sb.setMany("consignacion", consNuevas);       // 2) consignaciones activas → código nuevo
+        await sb.setMany("stock", p.skus.map(x => ({ ...x, estado: "inactivo", enCatalogo: false, reemplazadoPor: viejos.get(x.codigo), stock_bodega: 0, stock_tienda: 0, stock_consignacion: 0, stock_reservado: 0, stock_total: 0 })));   // 3) el viejo queda inactivo y en cero
+      } catch (e) {                                                              // deshacer todo
+        if (consOrig.length) await sb.setMany("consignacion", consOrig).catch(() => {});
+        await sb.deleteMany("stock", creados).catch(() => {});
+        resultados.push({ ok: false, codigo: it.codigo, error: "no se pudo completar el cambio (se deshizo): " + e.message }); hecho = "error"; break;
+      }
+      p.mapa.forEach(m => { ctx.codigos.add(m.nuevo.toUpperCase()); });
+      try { await sb.set("cambios_codigo", `CC_${Date.now()}_${p.base}`, { fecha: ahora, desdeBase: p.base, haciaBase: p.nuevoBase, categoria: p.categoria, mapa: JSON.stringify(p.mapa), consignaciones: consNuevas.length }); } catch (_) {}
+      resultados.push({ ok: true, desde: p.base, hacia: p.nuevoBase, categoria: p.categoria, mapa: p.mapa, consignaciones: consNuevas.length }); hecho = "ok";
+    }
+    if (!hecho) resultados.push({ ok: false, codigo: it.codigo, error: "otro cambio ocupó los códigos a la vez; inténtalo de nuevo" });
+  }
+  return resultados;
+}
+
+// Auditoría de consistencia del stock (solo lectura). La usan la acción AUDITORIA_STOCK y el cron diario.
+async function auditarStock(sb) {
+  const [stockAud, consAud, vendAud] = await Promise.all([
+    sb.getAll("stock"), sb.getAll("consignacion"), sb.getAll("vendedores")
+  ]);
+  const vendMapAud = new Map(vendAud.map(v => [v.codigo, v.nombre || v.codigo]));
+
+  // Consignación real por código: suma de (cantidad - vendido) de
+  // items activos, más el detalle de qué vendedor tiene cuánto.
+  const consRealPorCodigo = new Map();
+  for (const c of consAud) {
+    if (c.estado !== "activo") continue;
+    const restante = Math.max(0, (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0));
+    if (restante <= 0) continue;
+    const cod = String(c.codigo||"").toUpperCase();
+    if (!consRealPorCodigo.has(cod)) consRealPorCodigo.set(cod, { total: 0, detalle: [] });
+    const entry = consRealPorCodigo.get(cod);
+    entry.total += restante;
+    entry.detalle.push({
+      id: c.id, vendedor: c.vendedor,
+      vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor,
+      vendedorExiste: vendMapAud.has(c.vendedor),
+      cantidad: restante
+    });
+  }
+
+  const discrepanciasConsignacion = [];
+  for (const s of stockAud) {
+    const cod = String(s.codigo||"").toUpperCase();
+    const registrado = parseInt(s.stock_consignacion) || 0;
+    const real = consRealPorCodigo.get(cod)?.total || 0;
+    if (registrado !== real) {
+      discrepanciasConsignacion.push({
+        codigo: s.codigo, nombre: s.nombre || "",
+        stock_consignacion_registrado: registrado,
+        consignacion_real: real,
+        diferencia: registrado - real,
+        detalleVendedores: consRealPorCodigo.get(cod)?.detalle || []
+      });
+    }
+  }
+
+  // Chequeos de sanidad básicos: negativos no deberían existir nunca.
+  const negativos = stockAud.filter(s =>
+    (parseInt(s.stock_bodega)||0) < 0 || (parseInt(s.stock_tienda)||0) < 0 ||
+    (parseInt(s.stock_consignacion)||0) < 0 || (parseInt(s.stock_reservado)||0) < 0
+  ).map(s => ({
+    codigo: s.codigo, nombre: s.nombre || "",
+    stock_bodega: parseInt(s.stock_bodega)||0, stock_tienda: parseInt(s.stock_tienda)||0,
+    stock_consignacion: parseInt(s.stock_consignacion)||0, stock_reservado: parseInt(s.stock_reservado)||0
+  }));
+
+  // Consignación "activa" pero cuyo código ya no existe en stock —
+  // huérfanos que pueden confundir reportes futuros.
+  const codigosStock = new Set(stockAud.map(s => String(s.codigo||"").toUpperCase()));
+  const consHuerfanas = consAud.filter(c =>
+    c.estado === "activo" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0 &&
+    !codigosStock.has(String(c.codigo||"").toUpperCase())
+  ).map(c => ({ id: c.id, codigo: c.codigo, vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor, cantidad: c.cantidad, vendido: c.vendido }));
+
+  // Piezas cerradas con "Ya vendida" (MARCAR_CONSIGNACION_VENDIDA) que
+  // en realidad nunca llegaron a contarse como venta real — típico de
+  // confundir esa opción (pensada solo para piezas YA liquidadas
+  // antes) con una venta nueva. Quedan invisibles para siempre: ya no
+  // aparecen en el inventario activo del vendedor (por eso "no
+  // aparece"), pero el stock nunca se movió y la comisión nunca se
+  // contó, y sin este chequeo no hay ninguna pantalla en la app para
+  // volver a encontrarlas.
+  const cerradosSinContar = consAud.filter(c =>
+    c.estado === "vendido" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0
+  ).map(c => ({
+    id: c.id, codigo: c.codigo, nombre: c.nombre || "",
+    vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor,
+    precio: c.precio || 0,
+    cantidad: parseInt(c.cantidad)||0, vendido: parseInt(c.vendido)||0,
+    pendiente: (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0)
+  }));
+
+  // stock_total debe ser bodega + tienda + consignación (así lo recalculan todas las operaciones)
+  const totalDescuadrado = stockAud.filter(s => (parseInt(s.stock_total)||0) !== Supabase.COMPONENTES_STOCK.reduce((a, c) => a + (parseInt(s[c])||0), 0))
+    .map(s => ({ codigo: s.codigo, nombre: s.nombre || "", stock_total: parseInt(s.stock_total)||0, suma: Supabase.COMPONENTES_STOCK.reduce((a, c) => a + (parseInt(s[c])||0), 0) }));
+
+  const categoriasDudosas = analizarCategorias(stockAud, await categoriasTiendaActual(sb)).dudosas;
+  return {
+    ok: true,
+    generadoEn: new Date().toISOString(),
+    discrepanciasConsignacion, negativos, consHuerfanas, cerradosSinContar, totalDescuadrado, categoriasDudosas,
+    resumen: {
+      productosRevisados: stockAud.length,
+      discrepancias: discrepanciasConsignacion.length,
+      negativos: negativos.length,
+      huerfanas: consHuerfanas.length,
+      cerradosSinContar: cerradosSinContar.length,
+      totalDescuadrado: totalDescuadrado.length,
+      categoriasDudosas: categoriasDudosas.length
+    }
+  };
+}
+
 // ── HELPERS HTTP ──────────────────────────────────────────────────
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: CORS });
 }
 function forbidden() {
   return json({ ok: false, error: "No autorizado" }, 403);
+}
+
+// ── VIGENCIA DE LA RESERVA DE UN LEAD ──────────────────────────────
+// 30 min por defecto: si el cliente no completa el pedido, la pieza vuelve a
+// stock rápido. Excepción: pedidos USA pagados con PayPal.me — PayPal no le
+// avisa al sistema cuando el cliente paga, así que el pedido queda "sin pagar"
+// hasta que el admin revisa PayPal y lo marca a mano; con solo 30 min el
+// pedido se cancelaba solo aunque el cliente ya hubiera pagado. Esos tienen
+// 12 h. Los de tarjeta (Wompi) siguen en 30 min: el webhook los confirma en
+// segundos. El método se deduce del link de pago que armó el catálogo
+// (mismo formato que valida ENVIAR_PEDIDO_USA).
+const RESERVA_NORMAL_MS = 30 * 60 * 1000;
+const RESERVA_PAYPAL_USA_MS = 12 * 3600 * 1000;
+const RE_PAYPAL_ME_LINK = /^https:\/\/paypal\.me\/[A-Za-z0-9_.]{1,50}\/\d+\.\d{2}[A-Z]{0,3}$/;
+function ttlReservaLeadMs(d) {
+  return (d && d.pais === "US" && RE_PAYPAL_ME_LINK.test(d.pagoLink || "")) ? RESERVA_PAYPAL_USA_MS : RESERVA_NORMAL_MS;
 }
 
 // ── RESERVAS DE STOCK: liberar las vencidas ────────────────────────
@@ -5071,10 +5705,10 @@ function sanearConfigPublico(cfg) {
 async function validarVendedorToken(sb, vendedor, token, pin) {
   if (!vendedor || !token) return { ok: false, error: "vendedor y token requeridos" };
   const vend = await sb.get("vendedores", vendedor);
-  if (!vend || !vend.tokenInventario || String(vend.tokenInventario) !== String(token)) {
+  if (!vend || !vend.tokenInventario || !safeEq(vend.tokenInventario, token)) {
     return { ok: false, error: "Token inválido" };
   }
-  if (vend.pin && String(vend.pin) !== String(pin || "")) {
+  if (await pinIncorrecto(sb, vend, pin, vendedor)) {
     return { ok: false, error: "PIN incorrecto" };
   }
   return { ok: true, vend };

@@ -545,6 +545,18 @@ function renderPedidosHub() {
                     ? `<input id="usa-trk-${i}" placeholder="Tracking DHL" style="width:130px;padding:5px 8px;font-size:11px;border-radius:6px;border:1px solid var(--borde);background:var(--negro);color:#fff;">
                        <button onclick="usaMarcarEnviado(${i})" style="${btnS}background:#3b82f6;">📦 Marcar enviado</button>`
                     : `<button onclick="usaMarcarEntregado(${i})" style="${btnS}background:#27ae60;">✅ Entregado</button>`;
+                // Aviso de cobro: PayPal.me no le avisa al sistema, hay que revisar PayPal y
+                // marcar pagado antes de que venza la reserva (12 h); la tarjeta se confirma sola.
+                let avisoCobro = "";
+                if (etapa === "pago") {
+                    if (/paypal\.me/.test(f.pagoLink || "")) {
+                        const ms = f.reservaExpiraEn ? new Date(f.reservaExpiraEn).getTime() - ahora : null;
+                        const resta = ms === null ? "" : ms <= 0 ? " — la reserva ya venció" : ` — la reserva vence en ${Math.floor(ms / 3600000)} h ${Math.floor((ms % 3600000) / 60000)} min`;
+                        avisoCobro = `<div style="font-size:11px;font-weight:700;color:#f97316;margin-top:3px;">⏳ Revisa PayPal y marca pagado${resta}</div>`;
+                    } else if (/wompi\.sv/.test(f.pagoLink || "")) {
+                        avisoCobro = `<div style="font-size:11px;color:var(--plateado);margin-top:3px;">💳 Tarjeta (Wompi): se confirma sola al pagar</div>`;
+                    }
+                }
                 const tel = String(f.telefonoCliente || "").replace(/\D/g, "");
                 return `<div style="background:rgba(14,165,233,0.1);border:1px solid #0ea5e9;border-radius:10px;padding:10px 12px;margin-top:8px;">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
@@ -553,7 +565,7 @@ function renderPedidosHub() {
                             <div style="font-size:11px;color:var(--plateado);margin-top:2px;">${items}</div>
                             <div style="font-size:11px;color:var(--plateado);margin-top:2px;">📍 ${sanitizar([f.ciudadUS, f.estadoUS, f.zipUS].filter(Boolean).join(", ") || f.direccionCliente || "—")} · <b style="color:var(--dorado-claro);">$${totUSD.toFixed(2)} USD</b></div>
                             ${tel ? `<a href="https://wa.me/${tel}" target="_blank" style="font-size:11px;color:#25D366;font-weight:700;text-decoration:none;">📱 ${sanitizar(f.telefonoCliente)}</a>` : ''}
-                            <div style="font-size:11px;color:var(--plateado);margin-top:3px;">${d >= 1 ? `hace ${d} día${d > 1 ? 's' : ''}` : "Hoy"}</div>
+                            ${avisoCobro}<div style="font-size:11px;color:var(--plateado);margin-top:3px;">${d >= 1 ? `hace ${d} día${d > 1 ? 's' : ''}` : "Hoy"}</div>
                         </div>
                         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;align-items:stretch;">${accion}</div>
                     </div>
