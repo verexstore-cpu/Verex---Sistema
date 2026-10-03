@@ -383,6 +383,24 @@ function usaMarcarEntregado(i) {
     _usaActualizar(i, { entregadoUSA: true }, "✅ Pedido entregado");
 }
 
+// Diagnóstico: manda un correo de prueba y explica por qué falla si no sale (clave, dominio, límite…).
+async function probarCorreos(btn) {
+    const para = prompt("¿A qué correo mando la prueba?", "verex.pedidos@verexstore.com");
+    if (!para) return;
+    const txt = btn.textContent; btn.textContent = "Enviando…"; btn.disabled = true;
+    try {
+        const r = await apiPost({ accion: "PROBAR_CORREO", para });
+        let msg;
+        if (r.ok) msg = `✅ Resend aceptó el correo para ${r.para}.\n\nSi no te llega en un par de minutos, revisa Spam y el panel de Resend (sección Emails).`;
+        else if (r.motivo === "falta_clave") msg = "❌ El Worker no tiene la clave de Resend (RESEND_KEY) en Cloudflare — por eso no sale ningún correo.\n\nHay que crearla en Cloudflare → Workers → verex-api → Settings → Variables and Secrets.";
+        else if (r.status === 401 || r.status === 403) msg = `❌ Resend rechazó el envío (HTTP ${r.status}).\n\nLo más común: la clave no es válida, o el dominio notificaciones.verexstore.com no está verificado en Resend.\n\nDetalle: ${r.detalle || ""}`;
+        else if (r.status === 429) msg = `❌ Resend dice que se superó el límite de envíos (HTTP 429).\n\nDetalle: ${r.detalle || ""}`;
+        else msg = `❌ No se pudo enviar (${r.status ? "HTTP " + r.status : r.motivo || "error"}).\n\nDetalle: ${r.detalle || r.error || ""}`;
+        alert(msg);
+    } catch (e) { alert("⚠️ No se pudo conectar con el servidor: " + e.message); }
+    btn.textContent = txt; btn.disabled = false;
+}
+
 function renderPedidosHub() {
     const cont = document.getElementById("pedidos-hub");
     if (!cont) return;
@@ -621,8 +639,9 @@ function renderPedidosHub() {
             }).join("")}
         </div>` : '';
 
-    cont.innerHTML = (bloqueNuevos + bloqueTienda + bloqueEnCamino + bloqueSinCompletar + bloqueUSA) ||
-        '<div class="card"><h2>📋 Pedidos</h2><p style="color:#4ade80;font-size:14px;">✅ Todo al día — no hay pedidos pendientes de atender.</p></div>';
+    cont.innerHTML = ((bloqueNuevos + bloqueTienda + bloqueEnCamino + bloqueSinCompletar + bloqueUSA) ||
+        '<div class="card"><h2>📋 Pedidos</h2><p style="color:#4ade80;font-size:14px;">✅ Todo al día — no hay pedidos pendientes de atender.</p></div>') +
+        `<div style="text-align:center;margin:6px 0 20px;"><button onclick="probarCorreos(this)" style="padding:6px 14px;font-size:11px;background:none;color:var(--plateado);border:1px solid var(--borde);border-radius:8px;cursor:pointer;">✉️ Probar el envío de correos</button></div>`;
 }
 
 async function migrarHistorialVentas() {

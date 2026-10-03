@@ -169,7 +169,7 @@ export default {
           backupData._fecha = new Date().toISOString();
           const json = JSON.stringify(backupData);
           const contentB64 = btoa(unescape(encodeURIComponent(json)));
-          await fetch("https://api.resend.com/emails", {
+          await fetchResend("https://api.resend.com/emails", {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
             body: JSON.stringify({
@@ -2046,7 +2046,7 @@ async function enviar(){
             try {
               const RESEND_KEY = env.RESEND_KEY;
               if (RESEND_KEY) {
-                await fetch("https://api.resend.com/emails", {
+                await fetchResend("https://api.resend.com/emails", {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
                   body: JSON.stringify({
@@ -2380,7 +2380,7 @@ async function enviar(){
           try {
             const RESEND_KEY = env.RESEND_KEY;
             if (!RESEND_KEY) throw new Error("RESEND_KEY no configurada en Cloudflare Secrets");
-            await fetch("https://api.resend.com/emails", {
+            await fetchResend("https://api.resend.com/emails", {
               method: "POST",
               headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
               body: JSON.stringify({
@@ -2419,7 +2419,7 @@ async function enviar(){
             try {
               const RESEND_KEY = env.RESEND_KEY;
               if (RESEND_KEY) {
-                await fetch("https://api.resend.com/emails", {
+                await fetchResend("https://api.resend.com/emails", {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
                   body: JSON.stringify({
@@ -2610,7 +2610,7 @@ async function enviar(){
                 const vend = await sb.get("vendedores", d.afiliado);
                 origenTxt = `🎯 Afiliado: ${vend?.nombre || d.afiliado}`;
               }
-              await fetch("https://api.resend.com/emails", {
+              await fetchResend("https://api.resend.com/emails", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
                 body: JSON.stringify({
@@ -2683,7 +2683,7 @@ async function enviar(){
                           <div style="font-size:11px;color:#8a6d1a;font-weight:700;margin-bottom:6px;">💳 LINK DE PAGO (${esWompi ? "Wompi" : "PayPal.me"})${correoValido ? "" : " — MANDAR AL CLIENTE"}</div>
                           <a href="${d.pagoLink}" style="font-size:13px;color:#1a5fb4;word-break:break-all;">${d.pagoLink}</a>
                         </div>` : "";
-              await fetch("https://api.resend.com/emails", {
+              await fetchResend("https://api.resend.com/emails", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
                 body: JSON.stringify({
@@ -2812,7 +2812,7 @@ async function enviar(){
                     <p style="font-size:12px;color:#777;margin:0 0 6px;">${txt.pagoTitulo}</p>
                     <a href="${d.pagoLink}" style="font-size:13px;color:#1a5fb4;word-break:break-all;">${d.pagoLink}</a>
                   </div>` : "";
-                await fetch("https://api.resend.com/emails", {
+                await fetchResend("https://api.resend.com/emails", {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
                   body: JSON.stringify({
@@ -2977,6 +2977,13 @@ async function enviar(){
         // que llegan. El stock SÍ se mueve en las transiciones de pago/
         // entrega (ver abajo), para que no dependa de que el admin se
         // acuerde de descontarlo aparte.
+        case "PROBAR_CORREO": {
+          if (!esAdmin) return forbidden();
+          const para = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.para || "") ? d.para : "verex.pedidos@verexstore.com";
+          result = { ...(await probarCorreo(env, para)), para };
+          break;
+        }
+
         case "ACTUALIZAR_LEAD_USA": {
           if (!esAdmin) return forbidden();
           if (!d.id) { result = { ok: false, error: "Falta el id del pedido" }; break; }
@@ -5366,12 +5373,50 @@ async function liberarReservasVencidas(sb) {
 // en los leads del grupo para no reenviarlo si esto se llama de nuevo
 // (reintento del webhook de Wompi, o el admin marca cada artículo por
 // separado en vez de todo el pedido junto).
+// Envío por Resend. Antes ninguna llamada revisaba la respuesta: si Resend rechazaba el correo
+// (clave inválida, dominio sin verificar, límite diario) no quedaba rastro y parecía que "no pasó nada".
+// Ahora cualquier rechazo se registra en los logs del Worker con el motivo exacto.
+async function fetchResend(url, opts) {
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    let detalle = "";
+    try { detalle = (await res.clone().text()).slice(0, 300); } catch (_) {}
+    let para = "";
+    try { para = JSON.parse(opts.body).to; } catch (_) {}
+    console.error(`Resend rechazó el correo (HTTP ${res.status}) para ${JSON.stringify(para)}: ${detalle}`);
+  }
+  return res;
+}
+
+// Diagnóstico de correos (solo admin): manda un correo de prueba y devuelve el motivo exacto si falla.
+async function probarCorreo(env, para) {
+  const tieneClave = !!env.RESEND_KEY;
+  if (!tieneClave) return { ok: false, tieneClave, motivo: "falta_clave", detalle: "El Worker no tiene el secreto RESEND_KEY configurado en Cloudflare." };
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.RESEND_KEY}` },
+      body: JSON.stringify({
+        from: "VEREX Store <hola@notificaciones.verexstore.com>",
+        reply_to: "hola@verexstore.com",
+        to: [para],
+        subject: "✅ Prueba de correo — VEREX",
+        html: "<p>Este es un correo de prueba del sistema VEREX. Si lo ves, el envío de correos funciona.</p>"
+      })
+    });
+    const txt = (await res.text()).slice(0, 400);
+    return { ok: res.ok, tieneClave, status: res.status, detalle: txt };
+  } catch (e) {
+    return { ok: false, tieneClave, motivo: "red", detalle: String(e && e.message || e) };
+  }
+}
+
 // Aviso interno por correo al equipo (pedidos USA que requieren atención).
 async function avisarAdminUSA(env, asunto, htmlCuerpo) {
   const RESEND_KEY = env.RESEND_KEY;
   if (!RESEND_KEY) return;
   try {
-    await fetch("https://api.resend.com/emails", {
+    await fetchResend("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
       body: JSON.stringify({
@@ -5417,7 +5462,7 @@ async function enviarCorreoEnvioUSA(env, sb, lead, tracking) {
       msg: "Tu pedido ya salió por DHL — la entrega toma de 5 a 7 días hábiles.",
       lbl: "Número de tracking DHL", btn: "Rastrear mi paquete", dudas: "¿Dudas? Responde este correo."
     };
-    await fetch("https://api.resend.com/emails", {
+    await fetchResend("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
       body: JSON.stringify({
@@ -5488,7 +5533,7 @@ async function enviarCorreoPagoConfirmadoUSA(env, sb, pedidoId) {
       dudas: "¿Dudas? Responde este correo."
     };
 
-    await fetch("https://api.resend.com/emails", {
+    await fetchResend("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
       body: JSON.stringify({
