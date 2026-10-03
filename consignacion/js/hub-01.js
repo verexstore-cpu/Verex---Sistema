@@ -404,6 +404,14 @@ function renderPedidosHub() {
         .sort((a,b) => b.dias - a.dias);
 
 
+    // ── Pedidos nuevos desde el link compartido / catálogo (afiliado o venta directa): se avisan
+    // apenas entran. Los que llevan 2+ días sin completarse salen en "Leads sin completar".
+    const idsSinCompletar = new Set(sinCompletar.map(l => l.id));
+    const nuevos = leadsMX
+        .filter(l => (l.estado === "interesado" || l.estado === "reportado") && !idsSinCompletar.has(l.id))
+        .map(l => ({ ...l, mins: Math.max(0, Math.floor((ahora - new Date(l.fecha || ahora).getTime()) / 60000)) }))
+        .sort((a, b) => b.mins - a.mins);
+
     // ── Pedidos de la tienda que aún requieren acción
     const tienda = _pedidosTienda
         .filter(p => p.numeroPedido && (p.estado === "Pendiente" || p.estado === "Despachado"))
@@ -417,7 +425,7 @@ function renderPedidosHub() {
     _usaGrupos = [...gmap.entries()].map(([id, leads]) => ({ id, leads, f: leads[0] }))
         .sort((a, b) => new Date(a.f.fecha || 0) - new Date(b.f.fecha || 0));
 
-    const total = tienda.length + enCamino.length + sinCompletar.length + _usaGrupos.length;
+    const total = tienda.length + nuevos.length + enCamino.length + sinCompletar.length + _usaGrupos.length;
     _tabAlertas.pedidos = total;
     pintarTabs(_tabActual);
     const badge = document.getElementById("tab-pedidos-badge");
@@ -500,6 +508,46 @@ function renderPedidosHub() {
         </div>` : '';
 
 
+    const hace = m => m < 1 ? "justo ahora" : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.floor(m / 60)} h` : `hace ${Math.floor(m / 1440)} día${Math.floor(m / 1440) > 1 ? 's' : ''}`;
+    const bloqueNuevos = nuevos.length ? `
+        <div class="card" style="border-color:#22d3ee;margin-bottom:14px;">
+            <h2 style="color:#22d3ee;">🆕 Pedidos nuevos — link compartido / catálogo (${nuevos.length})</h2>
+            ${nuevos.map(l => {
+                const esAfiliado = !!l.afiliado;
+                const vend = esAfiliado ? vendMap.get(l.afiliado) : null;
+                const origen = esAfiliado ? `🎯 ${sanitizar(vend?.nombre || l.afiliado)}` : "👤 Venta directa";
+                const c = l.cliente;
+                const nombreCli = c?.nombre || l.nombreCliente || "";
+                const telRaw = c?.telefono || l.telefonoCliente || "";
+                const tel = String(telRaw).replace(/\D/g, "");
+                const dir = c ? [c.direccion, c.municipio, c.departamento].filter(Boolean).join(", ") : (l.direccionCliente || "");
+                const completo = !!c || l.estado === "reportado";
+                const estadoTxt = l.estado === "reportado" ? "🟡 Reportado por el afiliado — falta confirmar el envío"
+                    : c ? "✅ Completado por el afiliado — listo para empacar y enviar"
+                    : esAfiliado ? "🔵 Cliente interesado — el afiliado debe completar el pedido" : "🔵 Cliente interesado — escríbele para cerrar la venta";
+                const acciones = (completo
+                        ? `<button onclick="confirmarLeadEnvio('${sanitizar(l.id)}')" style="${btnS}background:#f97316;">📦 Empacar y enviar</button>`
+                        : !esAfiliado
+                        ? `<button onclick="registrarVentaDesdeLead('${sanitizar(l.id)}')" style="${btnS}background:#C9A84C;color:#111;">📝 Registrar venta</button>`
+                        : "")
+                    + `<button onclick="${completo || !esAfiliado ? "cancelarLeadUI" : "resolverLeadClienteDirecto"}('${sanitizar(l.id)}')" style="${btnS}background:${completo ? '#e74c3c' : '#4a4a4e'};">${completo ? "❌ Cancelar" : "✅ Resuelto"}</button>`;
+                return `<div style="background:rgba(34,211,238,0.08);border:1px solid #22d3ee;border-radius:10px;padding:10px 12px;margin-top:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                        ${l.foto ? `<img src="${sanitizar(ikFoto(l.foto, 120))}" onerror="this.style.display='none'" style="width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0;">` : ""}
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:700;font-size:13px;">${sanitizar(l.nombre || l.codigo)} <span style="font-size:11px;color:var(--dorado-claro);font-weight:600;">$${parseFloat(l.precio || 0).toFixed(2)}</span></div>
+                            <div style="font-size:11px;color:var(--plateado);margin-top:2px;">${origen} · ${hace(l.mins)}</div>
+                            <div style="font-size:11px;font-weight:700;color:#22d3ee;margin-top:3px;">${estadoTxt}</div>
+                            ${nombreCli ? `<div style="font-size:11px;color:#e8b400;font-weight:700;margin-top:3px;">👤 ${sanitizar(nombreCli)}</div>` : ""}
+                            ${tel ? `<a href="https://wa.me/503${tel}" target="_blank" style="font-size:11px;color:#25D366;font-weight:700;text-decoration:none;">📱 ${sanitizar(telRaw)} — escribirle</a>` : ""}
+                            ${dir ? `<div style="font-size:11px;color:var(--plateado);margin-top:2px;">📍 ${sanitizar(dir)}</div>` : ""}
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">${acciones}</div>
+                    </div>
+                </div>`;
+            }).join("")}
+        </div>` : '';
+
     const bloqueTienda = tienda.length ? `
         <div class="card" style="border-color:#a66be8;margin-bottom:14px;">
             <h2 style="color:#a66be8;">🛍️ Pedidos de la tienda (${tienda.length})</h2>
@@ -573,7 +621,7 @@ function renderPedidosHub() {
             }).join("")}
         </div>` : '';
 
-    cont.innerHTML = (bloqueTienda + bloqueEnCamino + bloqueSinCompletar + bloqueUSA) ||
+    cont.innerHTML = (bloqueNuevos + bloqueTienda + bloqueEnCamino + bloqueSinCompletar + bloqueUSA) ||
         '<div class="card"><h2>📋 Pedidos</h2><p style="color:#4ade80;font-size:14px;">✅ Todo al día — no hay pedidos pendientes de atender.</p></div>';
 }
 
