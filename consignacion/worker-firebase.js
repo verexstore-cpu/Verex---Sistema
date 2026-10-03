@@ -2781,25 +2781,25 @@ async function enviar(){
                   .map(it => en ? { ...it, nombre: traducirNombreEN(it.nombre) } : it)
                   .map(filaProducto).join("");
                 const txt = en ? {
-                  preheader: "New order from the USA catalog",
+                  preheader: "We received your order",
                   hola: `Hi ${d.nombreCliente || ""},`,
-                  gracias: "Thanks for your order! Here's your summary:",
+                  gracias: "Thanks for your order! We received it. Here's your summary:",
                   envioLbl: "Shipping (DHL)", freeLbl: "FREE", totalLbl: "Total",
-                  pagoTitulo: "You should already be able to pay directly on our site. If you closed the page before finishing, here's your payment link:",
+                  pagoTitulo: "If you already paid, there's nothing else you need to do. If not — or if you closed the page before finishing — here's your payment link:",
                   siguiente: "Once we confirm your payment, we'll prepare your order and ship it via DHL — delivery takes 5–7 business days.",
                   direccionLbl: "Shipping to:",
                   dudas: "Questions? Just reply to this email.",
-                  subject: `🛍️ Your VEREX Store order — complete your payment`
+                  subject: `🛍️ We received your VEREX Store order`
                 } : {
-                  preheader: "Nuevo pedido del catálogo de Estados Unidos",
+                  preheader: "Recibimos tu pedido",
                   hola: `Hola ${d.nombreCliente || ""},`,
-                  gracias: "¡Gracias por tu pedido! Aquí está tu resumen:",
+                  gracias: "¡Gracias por tu pedido! Lo recibimos. Aquí está tu resumen:",
                   envioLbl: "Envío (DHL)", freeLbl: "GRATIS", totalLbl: "Total",
-                  pagoTitulo: "Ya deberías poder pagar directo desde nuestra página. Si cerraste la página antes de terminar, este es tu link de pago:",
+                  pagoTitulo: "Si ya pagaste, no necesitas hacer nada más. Si aún no, o si cerraste la página antes de terminar, este es tu link de pago:",
                   siguiente: "Cuando confirmemos tu pago, preparamos tu pedido y lo enviamos por DHL — la entrega toma entre 5 y 7 días hábiles.",
                   direccionLbl: "Dirección de envío:",
                   dudas: "¿Dudas? Responde este mismo correo.",
-                  subject: `🛍️ Tu pedido en VEREX Store — completa tu pago`
+                  subject: `🛍️ Recibimos tu pedido en VEREX Store`
                 };
                 // Ya no es un botón grande de "pagar aquí": el pago se completa
                 // directo en la página al hacer el pedido (link de respaldo
