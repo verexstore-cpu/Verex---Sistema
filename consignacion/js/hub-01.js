@@ -690,7 +690,7 @@ const TAB_METALS = {
     ventadirecta:    { bg: 'linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1,#38bdf8,#0a4a6b)', color: '#e0f7ff', shadow: '0 2px 8px rgba(14,165,233,0.5)' },
     historialventas: { bg: 'linear-gradient(135deg,#005f5f,#00c2c2,#008a8a,#00e5e5,#005f5f)', color: '#e0ffff', shadow: '0 2px 8px rgba(0,194,194,0.5)' },
 };
-const TAB_INACTIVE = { bg: 'linear-gradient(135deg,#2a2a2a,#4a4a4a,#333,#555,#2a2a2a)', color: '#888', shadow: 'none' };
+const TAB_INACTIVE = { bg: 'linear-gradient(135deg,#2a2a2a,#4a4a4a,#333,#555,#2a2a2a)', color: '#fff', shadow: 'none' };
 
 // Pestañas con aviso de actividad pendiente (lo calculan renderAlertasAfiliadosHub
 // y renderPedidosHub).
@@ -710,7 +710,7 @@ function pintarTabs(tab) {
         btn.style.background  = m.bg;
         btn.style.color       = m.color;
         btn.style.boxShadow   = m.shadow;
-        btn.style.filter      = (t === tab || alerta) ? 'none' : 'brightness(0.7)';
+        btn.style.filter      = 'none';
         if (t in _tabAlertas) btn.classList.toggle('tab-alerta', alerta);
     });
 }
