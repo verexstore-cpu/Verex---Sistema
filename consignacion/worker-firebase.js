@@ -3016,10 +3016,11 @@ async function enviar(){
           // como exige el orden del panel).
           if (patch.entregadoUSA === true && !leadUSA.entregadoUSA && (leadUSA.pagadoUSA || patch.pagadoUSA)) {
             const sEntrega = await sb.get("stock", leadUSA.codigo);
+            const qtyEntrega = Math.max(1, parseInt(leadUSA.qty) || 1); // antes se descontaba siempre 1, aunque el pedido fuera de 2 o más
             if (sEntrega) {
               await sb.update("stock", leadUSA.codigo, {
-                stock_reservado: Math.max(0, (parseInt(sEntrega.stock_reservado)||0) - 1),
-                stock_vendido:   (parseInt(sEntrega.stock_vendido)||0) + 1
+                stock_reservado: Math.max(0, (parseInt(sEntrega.stock_reservado)||0) - qtyEntrega),
+                stock_vendido:   (parseInt(sEntrega.stock_vendido)||0) + qtyEntrega
               });
             }
           }
@@ -3027,6 +3028,10 @@ async function enviar(){
           await sb.update("leads", d.id, patch);
           if (patch.pagadoUSA === true && !leadUSA.pagadoUSA) {
             await enviarCorreoPagoConfirmadoUSA(env, sb, leadUSA.pedidoId);
+          }
+          // Primer tracking de DHL de un pedido pagado → aviso de envío al cliente.
+          if (patch.trackingDHL && !leadUSA.trackingDHL && (leadUSA.pagadoUSA || patch.pagadoUSA)) {
+            await enviarCorreoEnvioUSA(env, sb, leadUSA, patch.trackingDHL);
           }
           result = { ok: true };
           break;
@@ -5361,6 +5366,87 @@ async function liberarReservasVencidas(sb) {
 // en los leads del grupo para no reenviarlo si esto se llama de nuevo
 // (reintento del webhook de Wompi, o el admin marca cada artículo por
 // separado en vez de todo el pedido junto).
+// Aviso interno por correo al equipo (pedidos USA que requieren atención).
+async function avisarAdminUSA(env, asunto, htmlCuerpo) {
+  const RESEND_KEY = env.RESEND_KEY;
+  if (!RESEND_KEY) return;
+  try {
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
+      body: JSON.stringify({
+        from: "VEREX Store <hola@notificaciones.verexstore.com>",
+        reply_to: "hola@verexstore.com",
+        to: ["verex.pedidos@verexstore.com"],
+        subject: asunto,
+        html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:20px;border:2px solid #e74c3c;border-radius:12px;">${htmlCuerpo}</div>`
+      })
+    });
+  } catch (e) { console.error("avisarAdminUSA:", e); }
+}
+
+// Correo al cliente cuando se agrega el tracking de DHL de su pedido. Se manda UNO por
+// pedido: el panel actualiza todos los productos a la vez (peticiones paralelas), así que
+// solo lo dispara el primer lead del grupo (por id) para no duplicarlo.
+async function enviarCorreoEnvioUSA(env, sb, lead, tracking) {
+  const RESEND_KEY = env.RESEND_KEY;
+  if (!RESEND_KEY) return;
+  try {
+    const todos = await sb.getAll("leads");
+    const grupo = lead.pedidoId ? todos.filter(l => l.pedidoId === lead.pedidoId && l.pais === "US") : [lead];
+    const idsOrdenados = grupo.map(l => String(l.id)).sort();
+    if (idsOrdenados.length && String(lead.id) !== idsOrdenados[0]) return;   // lo manda otro lead del grupo
+    if (grupo.some(l => l.correoEnvioEnviado)) return;
+    const correo = lead.correoCliente || "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) return;
+    const trk = String(tracking || "").replace(/[^A-Za-z0-9 \-]/g, "").trim();
+    if (!trk) return;
+    const en = lead.lang === "en";
+    const nombre = lead.nombreCliente || "";
+    const linkTrk = `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${encodeURIComponent(trk.replace(/\s+/g, ""))}`;
+    const txt = en ? {
+      subject: "📦 Your VEREX Store order has shipped",
+      pre: "Your order is on its way",
+      hola: `Hi ${nombre},`,
+      msg: "Your order has shipped via DHL — delivery takes 5–7 business days.",
+      lbl: "DHL tracking number", btn: "Track my package", dudas: "Questions? Just reply to this email."
+    } : {
+      subject: "📦 Tu pedido de VEREX Store ya fue enviado",
+      pre: "Tu pedido va en camino",
+      hola: `Hola ${nombre},`,
+      msg: "Tu pedido ya salió por DHL — la entrega toma de 5 a 7 días hábiles.",
+      lbl: "Número de tracking DHL", btn: "Rastrear mi paquete", dudas: "¿Dudas? Responde este correo."
+    };
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
+      body: JSON.stringify({
+        from: "VEREX Store <hola@notificaciones.verexstore.com>",
+        reply_to: "hola@verexstore.com",
+        to: [correo],
+        subject: txt.subject,
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#fff;border:2px solid #C9A84C;border-radius:12px;overflow:hidden;">
+            <div style="background:linear-gradient(135deg,#aaa,#d0d0d0);padding:24px;text-align:center;">
+              <h1 style="margin:0;font-size:22px;letter-spacing:3px;color:#111;">VEREX STORE</h1>
+              <p style="margin:6px 0 0;font-size:13px;color:#444;">${txt.pre}</p>
+            </div>
+            <div style="padding:24px;">
+              <p style="margin:0 0 16px;font-size:15px;color:#111;">${txt.hola}</p>
+              <p style="margin:0 0 16px;font-size:14px;color:#444;">${txt.msg}</p>
+              <p style="margin:0 0 4px;font-size:12px;color:#888;">${txt.lbl}</p>
+              <p style="margin:0 0 16px;font-size:16px;font-weight:700;color:#111;">${trk}</p>
+              <p style="margin:0 0 16px;text-align:center;"><a href="${linkTrk}" style="display:inline-block;padding:12px 22px;background:#C9A84C;color:#111;font-weight:700;text-decoration:none;border-radius:8px;">${txt.btn}</a></p>
+              <p style="margin:20px 0 0;font-size:13px;color:#444;">${txt.dudas}</p>
+            </div>
+            <div style="padding:16px 24px;background:#f5f5f5;border-top:2px solid #C9A84C;text-align:center;font-size:12px;color:#888;">El mundo es mejor cuando brillas tú ✨</div>
+          </div>`
+      })
+    });
+    for (const l of grupo) await sb.update("leads", l.id, { correoEnvioEnviado: true });
+  } catch (e) { console.error("Error enviando correo de envío USA:", e); }
+}
+
 async function enviarCorreoPagoConfirmadoUSA(env, sb, pedidoId) {
   if (!pedidoId) return;
   const RESEND_KEY = env.RESEND_KEY;
@@ -5477,9 +5563,11 @@ async function manejarWebhookWompi(request, env, sb) {
     // se reserva recién ahora como respaldo.
     const todosLeads = await sb.getAll("leads");
     const leadsPedido = todosLeads.filter(l => l.pedidoId === pedidoId && l.pais === "US");
+    const avisosSinStock = [];
     for (const lead of leadsPedido) {
       if (lead.pagadoUSA) continue; // ya procesado — evita reservar dos veces
       const patchWompi = { pagadoUSA: true, metodoPagoUSA: "wompi", wompiIdTransaccion: idTransaccion, reservaExpiraEn: null };
+      let sinStock = null;
       if (!lead.reservaDescTienda && !lead.reservaDescBodega) {
         try {
           const resWompi = await sb.reservar(lead.codigo, lead.qty || 1);
@@ -5487,13 +5575,27 @@ async function manejarWebhookWompi(request, env, sb) {
             patchWompi.reservaDescTienda = resWompi.desc_tienda || 0;
             patchWompi.reservaDescBodega = resWompi.desc_bodega || 0;
           } else {
+            sinStock = "sin stock";
             console.error("Webhook Wompi: sin stock para " + lead.codigo + " (pedido " + pedidoId + ")");
           }
         } catch (eResWompi) {
+          sinStock = "error al reservar";
           console.error("Webhook Wompi: error reservando " + lead.codigo, eResWompi);
         }
       }
+      // Si la reserva ya había vencido (lead "cancelado") y se pudo volver a reservar,
+      // el pago lo reactiva; si no, queda marcado para que el admin lo resuelva.
+      if (lead.estado === "cancelado" && !sinStock) {
+        patchWompi.estado = "interesado";
+        patchWompi.historial = [...(lead.historial || []), { estado: "interesado", fecha: new Date().toISOString(), motivo: "Pago con tarjeta confirmado tras vencer la reserva" }];
+      }
+      if (sinStock) { patchWompi.pagadoSinStock = true; avisosSinStock.push(`${lead.nombre || lead.codigo} (${lead.codigo})`); }
       await sb.update("leads", lead.id, patchWompi);
+    }
+    if (avisosSinStock.length) {
+      await avisarAdminUSA(env, `⚠️ Pedido USA pagado SIN STOCK — ${pedidoId}`,
+        `<p>El cliente pagó con tarjeta (Wompi) el pedido <b>${pedidoId}</b>, pero no se pudo reservar stock de: <b>${avisosSinStock.join(", ")}</b>.</p>
+         <p>Revisa el panel de Logística USA: hay que conseguir la pieza o reembolsar el pago en Wompi.</p>`);
     }
     await enviarCorreoPagoConfirmadoUSA(env, sb, pedidoId);
     return json({ ok: true });

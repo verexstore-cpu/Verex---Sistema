@@ -130,6 +130,10 @@ body{
 .chip.success{ background:var(--success-wash); color:var(--success); }
 .chip.prep{ background:var(--accent-wash); color:var(--accent-ink); }
 .chip.mono{ font-family:"IBM Plex Mono",monospace; }
+.chip.cancel{ background:#e5e5e5; color:#555; }
+.chip.alerta{ background:#fde2e2; color:#b42318; }
+.cancelados{ margin-top:22px; }
+.cancelados summary{ cursor:pointer; font-weight:600; padding:8px 0; color:var(--ink-soft); }
 .chip.days{ background:var(--attention-wash); color:var(--attention); }
 
 /* ── Drawer ──────────────────────────────────────────── */
@@ -227,6 +231,7 @@ body{
 
   <div id="estado-msg" class="estado-msg" hidden></div>
   <section class="board" id="board"></section>
+  <details class="cancelados" id="cancelados" hidden><summary id="cancelados-sum"></summary><div class="cards" id="cancelados-cards" style="margin-top:8px;"></div></details>
 </div>
 
 <div class="overlay" id="overlay"></div>
@@ -265,6 +270,7 @@ function sesionValidaHoy(){
 }
 
 function etapaDe(o){
+    if(o.cancelado) return "cancelado";
     if(o.entregadoUSA) return "entregado";
     if(o.trackingDHL) return "enviado";
     if(o.pagadoUSA) return "preparando";
@@ -303,6 +309,11 @@ function agruparPedidos(leads){
             envio: first.envioUSD,
             total: first.totalPedidoUSD != null ? first.totalPedidoUSD : subtotal,
             pagoLink: first.pagoLink || "",
+            // Cobro: tarjeta (Wompi, se confirma sola) o PayPal.me (se marca a mano)
+            metodoPago: first.metodoPagoUSA === "wompi" || /wompi\.sv/.test(first.pagoLink || "") ? "wompi" : "paypal",
+            pagadoSinStock: leadsGrupo.some(l => l.pagadoSinStock),
+            // Todos los productos cancelados y sin pagar/entregar = pedido cancelado (reserva vencida o cancelado a mano)
+            cancelado: leadsGrupo.every(l => l.estado === "cancelado") && !first.pagadoUSA && !first.entregadoUSA,
             pagadoUSA: !!first.pagadoUSA,
             trackingDHL: first.trackingDHL || "",
             notasUSA: first.notasUSA || "",
@@ -313,6 +324,7 @@ function agruparPedidos(leads){
 
 function chipForStage(o){
     const etapa = etapaDe(o);
+    if(etapa === "cancelado") return `<span class="chip cancel">Cancelado</span>`;
     if(etapa === "pendiente") return `<span class="chip pending">Sin pagar</span>`;
     if(etapa === "preparando") return `<span class="chip prep">Pagado</span>`;
     if(etapa === "enviado") return `<span class="chip transit mono">${esc(o.trackingDHL)}</span>`;
@@ -336,6 +348,8 @@ function renderBoard(){
                         <div class="card-place">${esc(o.ciudad)}${o.ciudad && o.estado ? ", " : ""}${esc(o.estado)}</div>
                         <div class="card-foot">
                             ${chipForStage(o)}
+                            ${o.pagadoSinStock ? `<span class="chip alerta">Pagado sin stock</span>` : ""}
+                            ${st.key === "pendiente" ? `<span class="chip">${o.metodoPago === "wompi" ? "Tarjeta" : "PayPal"}</span>` : ""}
                             ${st.key === "pendiente" && dias >= 2 ? `<span class="chip days">${dias} días</span>` : ""}
                         </div>
                     </button>`;
@@ -343,6 +357,14 @@ function renderBoard(){
             </div>
         </div>`;
     }).join("");
+
+    const canc = PEDIDOS.filter(o => etapaDe(o) === "cancelado");
+    const dc = document.getElementById("cancelados");
+    dc.hidden = !canc.length;
+    document.getElementById("cancelados-sum").textContent = `Cancelados (${canc.length})`;
+    document.getElementById("cancelados-cards").innerHTML = canc.map(o => `<button class="card" onclick="abrirPedido('${esc(o.id)}')">
+        <div class="card-top"><span class="card-name">${esc(o.nombre)}</span><span class="card-total num">${money(o.total)}</span></div>
+        <div class="card-foot"><span class="chip cancel">Cancelado</span><span class="chip">${diasDesde(o.fecha)} días</span></div></button>`).join("");
 
     document.getElementById("stat-pend").textContent = PEDIDOS.filter(o => etapaDe(o)==="pendiente").length;
     document.getElementById("stat-transit").textContent = PEDIDOS.filter(o => etapaDe(o)==="enviado").length;
@@ -386,12 +408,14 @@ function abrirPedido(id){
                 </div>`).join("")}
             </div>
             <div class="dsec-row" style="margin-top:6px;"><span>Envío (DHL)</span><span class="num">${money(o.envio)}</span></div>
+            ${(o.subtotal + (parseFloat(o.envio)||0) - (parseFloat(o.total)||0)) > 0.009 ? `<div class="dsec-row"><span>Descuento (cupón)</span><span class="num">-${money(o.subtotal + (parseFloat(o.envio)||0) - (parseFloat(o.total)||0))}</span></div>` : ""}
             <div class="dsec-row" style="font-weight:600;"><span>Total</span><span class="num">${money(o.total)}</span></div>
         </div>
 
         ${o.pagoLink ? `
         <div class="dsec">
-            <div class="dsec-label">Cobro por PayPal</div>
+            <div class="dsec-label">${o.metodoPago === "wompi" ? "Cobro con tarjeta (Wompi) — se confirma sola al pagar" : "Cobro por PayPal — revisa PayPal y marca pagado"}</div>
+            ${o.pagadoSinStock ? `<div style="color:#b42318;font-weight:600;margin-bottom:6px;">⚠️ El cliente pagó pero no había stock: consigue la pieza o reembolsa el pago.</div>` : ""}
             <div class="paylink-box">
                 <span class="num" id="dr-paylink-txt">${esc(o.pagoLink)}</span>
                 <button class="btn ghost" id="btn-copiar-link" onclick="copiarLinkPago('${esc(o.pagoLink)}')">📋 Copiar link</button>
@@ -411,11 +435,12 @@ function abrirPedido(id){
             <button class="btn ghost" id="btn-etiqueta" onclick="imprimirEtiquetaEnvio('${esc(o.id)}')">🏷️ Imprimir etiqueta</button>
         </div>
         <div class="btnrow">
-            ${etapa === "pendiente" ? `<button class="btn primary" onclick="marcarPagado('${esc(o.id)}')">Marcar pagado</button>` : ""}
+            ${etapa === "pendiente" || etapa === "cancelado" ? `<button class="btn primary" onclick="marcarPagado('${esc(o.id)}')">${etapa === "cancelado" ? "Marcar pagado (reactivar)" : "Marcar pagado"}</button>` : ""}
             ${etapa === "preparando" ? `<button class="btn primary" onclick="marcarEnviado('${esc(o.id)}')">Marcar enviado</button>` : ""}
             ${etapa === "enviado" ? `<button class="btn primary" onclick="marcarEntregado('${esc(o.id)}')">Marcar entregado</button>` : ""}
             ${etapa === "entregado" ? `<button class="btn ghost" disabled>Pedido completo</button>` : ""}
             <button class="btn ghost" onclick="guardarNotas('${esc(o.id)}')">Guardar</button>
+            ${etapa === "pendiente" || etapa === "preparando" || etapa === "enviado" ? `<button class="btn ghost" style="color:#b42318;" onclick="cancelarPedido('${esc(o.id)}')">Cancelar pedido</button>` : ""}
         </div>
     `;
 
@@ -432,44 +457,63 @@ function cerrarDrawer(){
 
 // Aplica el mismo patch a TODOS los leads del pedido (uno por producto) para
 // que queden consistentes — el panel siempre lee del primero del grupo.
-async function actualizarPedido(id, patch){
-    const o = PEDIDOS.find(x => x.id === id);
-    if(!o) return false;
+// Si el servidor rechaza el cambio (p. ej. "Sin stock disponible para confirmar este pago")
+// se avisa y NO se marca como hecho — antes la pantalla mostraba el cambio igual.
+async function llamarLeads(o, accion, extra){
     try{
-        await Promise.all(o.leadIds.map(leadId =>
+        const rs = await Promise.all(o.leadIds.map(leadId =>
             fetch(API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ accion: "ACTUALIZAR_LEAD_USA", _pass: ADMIN_PASS, id: leadId, ...patch })
+                body: JSON.stringify({ accion, _pass: ADMIN_PASS, id: leadId, ...extra })
             }).then(r => r.json())
         ));
-        Object.assign(o, patch);
+        const fallo = rs.find(r => !r || r.ok === false);
+        if(fallo){ alert("⚠️ " + (fallo?.error || "El servidor no aceptó el cambio")); return false; }
         return true;
-    }catch(_){ return false; }
+    }catch(_){ alert("⚠️ No se pudo conectar con el servidor"); return false; }
+}
+
+async function actualizarPedido(id, patch){
+    const o = PEDIDOS.find(x => x.id === id);
+    if(!o) return false;
+    const ok = await llamarLeads(o, "ACTUALIZAR_LEAD_USA", patch);
+    if(ok) Object.assign(o, patch);
+    return ok;
 }
 
 async function marcarPagado(id){
-    await actualizarPedido(id, { pagadoUSA: true });
+    if(!await actualizarPedido(id, { pagadoUSA: true })) return;
+    await cargarPedidos();   // trae el estado real (un pedido cancelado vuelve a estar activo)
     cerrarDrawer();
-    renderBoard();
 }
 async function marcarEnviado(id){
-    const o = PEDIDOS.find(x => x.id === id);
     const tracking = (document.getElementById("dr-tracking")?.value || "").trim();
     if(!tracking){ document.getElementById("dr-tracking")?.focus(); return; }
-    await actualizarPedido(id, { trackingDHL: tracking });
+    if(!await actualizarPedido(id, { trackingDHL: tracking })) return;
     cerrarDrawer();
     renderBoard();
 }
 async function marcarEntregado(id){
-    await actualizarPedido(id, { entregadoUSA: true });
+    if(!await actualizarPedido(id, { entregadoUSA: true })) return;
     cerrarDrawer();
     renderBoard();
+}
+async function cancelarPedido(id){
+    const o = PEDIDOS.find(x => x.id === id);
+    if(!o) return;
+    const aviso = o.pagadoUSA
+        ? "Este pedido YA está pagado. Cancelarlo libera el stock pero NO reembolsa al cliente (hazlo aparte en PayPal/Wompi). ¿Cancelar de todos modos?"
+        : "¿Cancelar este pedido? Se libera el stock reservado.";
+    if(!confirm(aviso)) return;
+    if(!await llamarLeads(o, "CANCELAR_LEAD", {})) return;
+    await cargarPedidos();
+    cerrarDrawer();
 }
 async function guardarNotas(id){
     const tracking = (document.getElementById("dr-tracking")?.value || "").trim();
     const notas = (document.getElementById("dr-notas")?.value || "").trim();
-    await actualizarPedido(id, { trackingDHL: tracking, notasUSA: notas });
+    if(!await actualizarPedido(id, { trackingDHL: tracking, notasUSA: notas })) return;
     cerrarDrawer();
     renderBoard();
 }
