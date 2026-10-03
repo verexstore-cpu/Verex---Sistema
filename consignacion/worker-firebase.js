@@ -3087,6 +3087,30 @@ async function enviar(){
         }
 
         // Reembolso total de un pedido USA pagado por PayPal (solo admin): devuelve el dinero, cancela el pedido y libera el stock.
+        // Paso 1 del reembolso: valida que se pueda reembolsar y manda un código de 6 dígitos por WhatsApp.
+        case "SOLICITAR_CODIGO_REEMBOLSO": {
+          if (!esAdmin) return forbidden();
+          const pid = String(d.pedidoId || "");
+          const lds = RE_PEDIDO_USA.test(pid) ? (await sb.query("leads", "pedidoId", "eq", pid)).filter(l => l.pais === "US") : [];
+          if (!lds.length) { result = { ok: false, error: "pedido_no_encontrado" }; break; }
+          if (lds.every(l => l.reembolsadoUSA)) { result = { ok: false, error: "ya_reembolsado" }; break; }
+          if (!lds.some(l => l.pagadoUSA) || !lds.find(l => l.paypalCaptureId)) { result = { ok: false, error: "no_reembolsable_por_aqui" }; break; }
+          if (lds.some(l => l.trackingDHL || l.entregadoUSA)) { result = { ok: false, error: "ya_enviado" }; break; }
+          const previo = await sb.get("config", "otp_reemb_" + pid);
+          if (previo && previo.creado && Date.now() - previo.creado < 30000) { result = { ok: false, error: "espera_un_momento" }; break; }
+          const codigo = codigoAleatorio6();
+          await sb.set("config", "otp_reemb_" + pid, { hash: await huellaCodigoReembolso(env, pid, codigo), exp: Date.now() + OTP_REEMB_VIGENCIA_MS, intentos: 0, creado: Date.now() });
+          const total = lds.find(l => l.totalPedidoUSD != null)?.totalPedidoUSD;
+          const envio = await enviarWhatsAppAdmin(env, `VEREX — código para autorizar el REEMBOLSO del pedido ${pid}${total != null ? ` ($${parseFloat(total).toFixed(2)})` : ""}: ${codigo}\nVale 10 minutos y se usa una sola vez. Si no lo pediste, ignóralo.`);
+          if (!envio.ok) {
+            try { await sb.delete("config", "otp_reemb_" + pid); } catch (_) {}
+            result = { ok: false, error: envio.motivo };
+            break;
+          }
+          result = { ok: true, venceEnMin: OTP_REEMB_VIGENCIA_MS / 60000 };
+          break;
+        }
+
         case "REEMBOLSAR_PEDIDO_USA": {
           if (!esAdmin) return forbidden();
           if (!paypalConfigurado(env)) { result = { ok: false, error: "paypal_no_configurado" }; break; }
@@ -3099,6 +3123,20 @@ async function enviar(){
           // Política: una vez enviado el paquete (tiene tracking) o entregado, ya no se reembolsa ni se libera stock desde aquí.
           // Si algún día hay que hacer una excepción, se hace directamente en PayPal (el webhook lo marca como reembolsado).
           if (lds.some(l => l.trackingDHL || l.entregadoUSA)) { result = { ok: false, error: "ya_enviado" }; break; }
+          // Segundo paso: el código de un solo uso que llegó por WhatsApp (ver SOLICITAR_CODIGO_REEMBOLSO)
+          const codigoIngresado = String(d.codigo || "").trim();
+          if (!/^\d{6}$/.test(codigoIngresado)) { result = { ok: false, error: "codigo_requerido" }; break; }
+          const otp = await sb.get("config", "otp_reemb_" + pid);
+          if (!otp || !otp.hash) { result = { ok: false, error: "codigo_invalido" }; break; }
+          if (Date.now() > otp.exp) { await sb.delete("config", "otp_reemb_" + pid).catch(() => {}); result = { ok: false, error: "codigo_vencido" }; break; }
+          if ((otp.intentos || 0) >= OTP_REEMB_MAX_INTENTOS) { result = { ok: false, error: "demasiados_intentos" }; break; }
+          if (!safeEq(otp.hash, await huellaCodigoReembolso(env, pid, codigoIngresado))) {
+            const n = (otp.intentos || 0) + 1;
+            await sb.update("config", "otp_reemb_" + pid, { intentos: n });
+            result = { ok: false, error: n >= OTP_REEMB_MAX_INTENTOS ? "demasiados_intentos" : "codigo_invalido", intentosRestantes: Math.max(0, OTP_REEMB_MAX_INTENTOS - n) };
+            break;
+          }
+          await sb.delete("config", "otp_reemb_" + pid).catch(() => {});   // se gasta: un solo uso
           try {
             const rf = await paypalApi(env, "POST", `/v2/payments/captures/${capId}/refund`, { note_to_payer: "VEREX Store refund" }, "refund-" + capId);
             if (!rf.ok || !["COMPLETED", "PENDING"].includes(rf.data?.status)) {
@@ -5600,6 +5638,30 @@ async function probarCorreo(env, para) {
     await registrarEstadoCorreo(false, { motivo: "red", detalle: String(e && e.message || e) });
     return { ok: false, tieneClave, motivo: "red", detalle: String(e && e.message || e) };
   }
+}
+
+// ── CÓDIGO DE UN SOLO USO para autorizar reembolsos ────────────────────────
+// Un reembolso devuelve dinero y no se puede deshacer: además de la sesión de admin, pide un código de 6 dígitos
+// que llega por WhatsApp (CallMeBot, el mismo canal de los avisos diarios). Vale 10 min, se usa una sola vez,
+// está atado a UN pedido y se bloquea tras 5 intentos fallidos. Solo se guarda su huella (hash), nunca el código.
+const OTP_REEMB_VIGENCIA_MS = 10 * 60 * 1000;
+const OTP_REEMB_MAX_INTENTOS = 5;
+async function huellaCodigoReembolso(env, pedidoId, codigo) {
+  const sal = String(env.SECRET_PASS || env.SUPABASE_SERVICE_KEY || "");
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`reembolso|${pedidoId}|${codigo}|${sal}`));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+function codigoAleatorio6() {
+  const n = new Uint32Array(1); crypto.getRandomValues(n);
+  return String(n[0] % 1000000).padStart(6, "0");
+}
+async function enviarWhatsAppAdmin(env, texto) {
+  const apikey = env.CALLMEBOT_KEY || "";
+  if (!apikey) return { ok: false, motivo: "sin_whatsapp" };
+  try {
+    const res = await fetch(`https://api.callmebot.com/whatsapp.php?phone=${ADMIN_WA}&text=${encodeURIComponent(texto)}&apikey=${apikey}`);
+    return res.ok ? { ok: true } : { ok: false, motivo: "whatsapp_fallo", status: res.status };
+  } catch (e) { return { ok: false, motivo: "whatsapp_fallo" }; }
 }
 
 // Aviso interno por correo al equipo (pedidos USA que requieren atención).

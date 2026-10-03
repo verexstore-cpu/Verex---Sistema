@@ -507,16 +507,40 @@ async function marcarEntregado(id){
     cerrarDrawer();
     renderBoard();
 }
+const ERR_REEMBOLSO = {
+    ya_reembolsado: "Este pedido ya fue reembolsado.",
+    ya_enviado: "No se reembolsa un pedido ya enviado (política de VEREX). Si hay que hacer una excepción, hazlo directamente en PayPal.",
+    no_reembolsable_por_aqui: "Este pago no se puede reembolsar desde aquí (tarjeta o sin pago).",
+    sin_whatsapp: "No se puede autorizar el reembolso: el servidor no tiene configurado el WhatsApp de avisos (CALLMEBOT_KEY).",
+    whatsapp_fallo: "No se pudo enviar el código por WhatsApp. Inténtalo de nuevo en un momento.",
+    espera_un_momento: "Ya se mandó un código hace unos segundos. Espera un momento antes de pedir otro.",
+    codigo_requerido: "Falta el código de 6 dígitos.",
+    codigo_vencido: "El código venció (valen 10 minutos). Vuelve a tocar «Reembolsar» para pedir otro.",
+    demasiados_intentos: "Demasiados intentos con ese código. Vuelve a tocar «Reembolsar» para pedir uno nuevo."
+};
+async function apiUSA(accion, extra){
+    return fetch(API_URL, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion, _pass: ADMIN_PASS, ...extra }) }).then(r => r.json());
+}
+// Un reembolso devuelve dinero y no se puede deshacer: además de confirmar, pide un código de 6 dígitos
+// que llega por WhatsApp (vale 10 min y se usa una sola vez).
 async function reembolsarPedido(id){
     const o = PEDIDOS.find(x => x.id === id);
     if(!o) return;
-    const efecto = "Se cancelará el pedido y el stock vuelve a bodega.";
-    if(!confirm(`Se devolverá el pago completo (${money(o.total)}) al cliente por PayPal.\n\n${efecto}\n\nEsto no se puede deshacer. ¿Reembolsar?`)) return;
+    if(!confirm(`Se devolverá el pago completo (${money(o.total)}) al cliente por PayPal.\n\nSe cancelará el pedido y el stock vuelve a bodega.\n\nEsto no se puede deshacer. ¿Continuar?`)) return;
     try{
-        const res = await fetch(API_URL, { method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ accion: "REEMBOLSAR_PEDIDO_USA", _pass: ADMIN_PASS, pedidoId: id }) }).then(r => r.json());
-        if(!res.ok){ alert("⚠️ " + ({ ya_reembolsado:"Este pedido ya fue reembolsado.", ya_enviado:"No se reembolsa un pedido ya enviado (política de VEREX). Si hay que hacer una excepción, hazlo directamente en PayPal.", no_reembolsable_por_aqui:"Este pago no se puede reembolsar desde aquí (tarjeta o sin pago).", paypal_error:"PayPal no aceptó el reembolso. " + (res.detalle || "") }[res.error] || res.error || "No se pudo reembolsar")); return; }
-        alert("✅ Reembolso enviado por PayPal.");
+        const pedir = await apiUSA("SOLICITAR_CODIGO_REEMBOLSO", { pedidoId: id });
+        if(!pedir.ok){ alert("⚠️ " + (ERR_REEMBOLSO[pedir.error] || pedir.error || "No se pudo pedir el código")); return; }
+        let intentos = 0;
+        while(true){
+            const codigo = (prompt(intentos ? "Código incorrecto. Escríbelo de nuevo (6 dígitos):" : `Te envié un código por WhatsApp (vale ${pedir.venceEnMin || 10} minutos).\n\nEscríbelo para autorizar el reembolso de ${money(o.total)}:`) || "").trim();
+            if(!codigo) return;                                   // canceló
+            const res = await apiUSA("REEMBOLSAR_PEDIDO_USA", { pedidoId: id, codigo });
+            if(res.ok){ alert("✅ Reembolso enviado por PayPal."); break; }
+            if(res.error === "codigo_invalido" && ++intentos < 5){ continue; }
+            alert("⚠️ " + (res.error === "paypal_error" ? "PayPal no aceptó el reembolso. " + (res.detalle || "") : ERR_REEMBOLSO[res.error] || res.error || "No se pudo reembolsar"));
+            return;
+        }
     }catch(_){ alert("⚠️ No se pudo conectar con el servidor"); return; }
     await cargarPedidos();
     cerrarDrawer();
