@@ -419,7 +419,7 @@
         0%,100% { box-shadow: 0 0 0 0 rgba(231,76,60,.75), 0 2px 8px rgba(231,76,60,.5); }
         50%     { box-shadow: 0 0 0 8px rgba(231,76,60,0), 0 2px 14px rgba(231,76,60,.9); }
     }
-    #tab-vendedores.tab-alerta { animation: tabAlertaPulso 1.4s infinite; }
+    #tab-vendedores.tab-alerta, #tab-pedidos.tab-alerta { animation: tabAlertaPulso 1.4s infinite; }
     @keyframes modalIn {
         from { transform: scale(0.85) translateY(20px); opacity: 0; }
         to   { transform: scale(1) translateY(0); opacity: 1; }
@@ -543,6 +543,11 @@
                 👥 Vendedores
                 <span id="tab-vendedores-badge" style="display:none;position:absolute;top:2px;right:6px;background:#e74c3c;color:#fff;border-radius:10px;min-width:18px;height:18px;padding:0 5px;font-size:11px;font-weight:800;line-height:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.5);"></span>
             </button>
+            <button id="tab-pedidos" onclick="cambiarTab('pedidos')"
+                style="position:relative;flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
+                📋 Pedidos
+                <span id="tab-pedidos-badge" style="display:none;position:absolute;top:2px;right:6px;background:#e74c3c;color:#fff;border-radius:10px;min-width:18px;height:18px;padding:0 5px;font-size:11px;font-weight:800;line-height:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.5);"></span>
+            </button>
             <button id="tab-dashboard" onclick="cambiarTab('dashboard')"
                 style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
                 📊 Dashboard
@@ -580,6 +585,11 @@
                 </div>
                 <div id="alertas-afiliados-hub" style="flex:1;min-width:280px;"></div>
             </div>
+        </div>
+
+        <!-- Tab Pedidos: tienda + leads + USA en un solo lugar -->
+        <div id="tab-content-pedidos" style="display:none;">
+            <div id="pedidos-hub"></div>
         </div>
 
         <!-- Tab Foto QR -->
@@ -1670,7 +1680,9 @@ function iniciarAutoSync() {
             } else {
                 renderVendedores();
             }
-            renderAlertasAfiliadosHub(); // mantiene vivo el aviso del botón Vendedores
+            // Leads y pedidos de tienda cambian solos (clientes que piden): se refrescan cada ~30 s
+            if (Date.now() - _pedidosTs > 30000) { await cargarLeads(); cargarPedidosTienda(); }
+            renderAlertasAfiliadosHub(); // mantiene vivos los avisos de Vendedores y Pedidos
             // Indicador discreto
             const ind = document.getElementById("sync-indicator");
             if (ind) { ind.textContent = "↻ " + new Date().toLocaleTimeString('es', {hour:'2-digit',minute:'2-digit'}); }
@@ -1775,37 +1787,205 @@ function _alertasCortePorVencer() {
         .sort((a,b) => a.dias - b.dias);
 }
 
+function actualizarTituloAlertas() {
+    const total = (_tabAlertas.vendedores || 0) + (_tabAlertas.pedidos || 0);
+    document.title = document.title.replace(/^🔔\(\d+\)\s*/, "");
+    if (total > 0) document.title = `🔔(${total}) ` + document.title;
+}
+
 function renderAlertasAfiliadosHub() {
     const cont = document.getElementById("alertas-afiliados-hub");
     if (!cont) return;
-    const vendMap = new Map(vendedores.map(v => [v.codigo, v]));
-    const ahora = Date.now();
+    renderPedidosHub();
 
     const cortesPorVencer = _alertasCortePorVencer();
 
-    const enCamino = leadsData
-        .filter(l => l.estado === "en_camino")
-        .map(l => ({ ...l, dias: Math.floor((ahora - new Date(l.fecha||ahora).getTime()) / 86400000) }))
-        .sort((a,b) => b.dias - a.dias);
-
-    const sinCompletar = leadsData
-        .filter(l => l.estado === "interesado" && !l.cliente)
-        .map(l => ({ ...l, dias: Math.floor((ahora - new Date(l.fecha||ahora).getTime()) / 86400000) }))
-        .filter(l => l.dias >= LEADS_SIN_COMPLETAR_DIAS_HUB)
-        .sort((a,b) => b.dias - a.dias);
-
     const badge = document.getElementById("tab-vendedores-badge");
-    const totalPendientes = enCamino.length + sinCompletar.length + cortesPorVencer.length
-        + _reposicionesPendientes.length + _cortesPendientesCobro.length;
-    _vendedoresAlerta = totalPendientes;
+    const totalPendientes = cortesPorVencer.length + _reposicionesPendientes.length + _cortesPendientesCobro.length;
+    _tabAlertas.vendedores = totalPendientes;
     pintarTabs(_tabActual);
     if (badge) {
         if (totalPendientes > 0) { badge.textContent = totalPendientes; badge.style.display = "block"; }
         else badge.style.display = "none";
     }
+    actualizarTituloAlertas();
 
-    if (!enCamino.length && !sinCompletar.length && !_reposicionesPendientes.length && !cortesPorVencer.length && !_cortesPendientesCobro.length) { cont.innerHTML = ""; return; }
+    if (!totalPendientes) { cont.innerHTML = ""; return; }
 
+    const bloqueReposiciones = _reposicionesPendientes.length ? `
+        <div class="card" style="border-color:#f59e0b;margin-bottom:14px;">
+            <h2 style="color:#f59e0b;">📦 Piezas por reponer — vendidas bajo pedido (${_reposicionesPendientes.length})</h2>
+            ${_reposicionesPendientes.map(r => `
+                <div style="background:rgba(245,158,11,0.1);border:1px solid #f59e0b;border-radius:10px;padding:10px 12px;margin-top:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:700;font-size:13px;">${sanitizar(r.nombre||r.codigo)}</div>
+                            <div style="font-size:11px;color:var(--plateado);">Ref: ${sanitizar(r.codigo)} · Vendedor: ${sanitizar(r.vendedorNombre||r.vendedor)}</div>
+                            <div style="font-size:11px;font-weight:700;color:#f59e0b;margin-top:3px;">⚠️ Vendió su última pieza — entregarle otra en la próxima entrega</div>
+                        </div>
+                        <button onclick="resolverReposicion('${sanitizar(r.vendedor)}','${sanitizar(r.codigo)}')" style="padding:5px 10px;font-size:11px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">✅ Ya se repuso</button>
+                    </div>
+                </div>`).join("")}
+        </div>` : '';
+
+    const bloqueCortes = cortesPorVencer.length ? `
+        <div class="card" style="border-color:#e74c3c;margin-bottom:14px;">
+            <h2 style="color:#e74c3c;">🧾 Cortes por vencer (${cortesPorVencer.length})</h2>
+            ${cortesPorVencer.map(({v, dias}) => {
+                const msg = dias < 0 ? `Vencido hace ${Math.abs(dias)} día${Math.abs(dias)===1?'':'s'}` : dias === 0 ? "Vence hoy" : "Vence mañana";
+                return `<div style="background:rgba(231,76,60,0.1);border:1px solid #e74c3c;border-radius:10px;padding:10px 12px;margin-top:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:700;font-size:13px;">${sanitizar(v.nombre)}</div>
+                            <div style="font-size:11px;font-weight:700;color:#e74c3c;margin-top:2px;">⚠️ ${sanitizar(msg)} — se paga comisión a los 30 días</div>
+                        </div>
+                        <button onclick="abrirPerfil('${sanitizar(v.codigo)}');abrirCorte();" style="padding:5px 10px;font-size:11px;background:#e74c3c;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">🧾 Hacer corte</button>
+                    </div>
+                </div>`;
+            }).join("")}
+        </div>` : '';
+
+    const bloqueCobrosPendientes = _cortesPendientesCobro.length ? `
+        <div class="card" style="border-color:#e67e22;margin-bottom:14px;">
+            <h2 style="color:#e67e22;">💰 Cobros pendientes (${_cortesPendientesCobro.length})</h2>
+            ${_cortesPendientesCobro.map(c => {
+                const fecha = c.fecha ? new Date(c.fecha).toLocaleDateString("es-SV", { day: "numeric", month: "short" }) : "—";
+                return `<div style="background:rgba(230,126,34,0.1);border:1px solid #e67e22;border-radius:10px;padding:10px 12px;margin-top:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:700;font-size:13px;">${sanitizar(c.vendedorNombre || c.vendedor)}</div>
+                            <div style="font-size:11px;font-weight:700;color:#e67e22;margin-top:2px;">⚠️ Corte del ${sanitizar(fecha)} — $${parseFloat(c.aPagarVerex||0).toFixed(2)} sin cobrar</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:4px;">
+                            <button onclick="marcarCorteCobrado('${sanitizar(c.id)}')" style="padding:5px 10px;font-size:11px;background:#e67e22;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">💰 Ya cobré</button>
+                            <button onclick="eliminarCorteHistorial('${sanitizar(c.id)}')" style="padding:4px 10px;font-size:10px;background:none;color:#e74c3c;border:1px solid #e74c3c;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">🗑️ Eliminar</button>
+                        </div>
+                    </div>
+                </div>`;
+            }).join("")}
+        </div>` : '';
+
+    cont.innerHTML = bloqueCobrosPendientes + bloqueCortes + bloqueReposiciones;
+}
+
+// ══ PEDIDOS: tienda + leads de afiliados + catálogo USA, todo en un lugar ══
+let _pedidosTienda = [], _pedidosTs = 0, _pedidosCargando = false;
+let _usaGrupos = [];
+
+async function cargarPedidosTienda() {
+    if (_pedidosCargando || !_sessionPass) return;
+    _pedidosCargando = true;
+    try {
+        const res = await apiPost({ accion: "GET_PEDIDOS" });
+        if (res && res.ok && Array.isArray(res.pedidos)) { _pedidosTienda = res.pedidos; _pedidosTs = Date.now(); }
+    } catch (_) { /* conserva lo último que se tenía */ }
+    _pedidosCargando = false;
+    renderPedidosHub();
+}
+
+const ZONA_METRO_HUB = [
+    "antiguo cuscatlán","apopa","ayutuxtepeque","ciudad delgado","cuscatancingo",
+    "ilopango","mejicanos","nejapa","san marcos","san martín","san martin",
+    "san salvador","santa tecla","santo tomás","santo tomas","soyapango","tonacatepeque"
+];
+
+function _mensajeWhatsAppPedido(estado, p) {
+    const nombre = p.cliente || "cliente", numero = p.numeroPedido || "—";
+    const m = String(p.municipio || "").toLowerCase();
+    const metro = ZONA_METRO_HUB.some(z => m.includes(z));
+    if (estado === "Despachado") {
+        const tiempo = metro ? "Como estás cerca, lo tendrás en tus manos hoy o mañana." : "En 1 a 2 días hábiles estará en tus manos.";
+        return "Hola " + nombre + ", tu pedido " + numero + " ya está en camino hacia ti! " + tiempo + " Gracias por elegir VEREX!";
+    }
+    if (estado === "Entregado") return "Hola " + nombre + ", tu pedido " + numero + " fue entregado con éxito. Esperamos que lo ames tanto como nosotros al hacerlo llegar hasta ti. Gracias por ser parte de VEREX!";
+    return null;
+}
+
+async function cambiarEstadoPedidoTienda(numeroPedido, estado) {
+    const p = _pedidosTienda.find(x => x.numeroPedido === numeroPedido);
+    if (!p) return;
+    if ((estado === "Cancelado" || estado === "No entregado") &&
+        !confirm(`¿Marcar el pedido ${numeroPedido} como "${estado}"? Se libera el stock reservado.`)) return;
+    try {
+        const res = await apiPost({ accion: "ACTUALIZAR_ESTADO_PEDIDO", numeroPedido, estado });
+        if (!res || res.ok === false || res.error) throw new Error(res?.error || "No se pudo actualizar");
+        p.estado = estado;
+        const msg = _mensajeWhatsAppPedido(estado, p);
+        const tel = String(p.telefono || "").replace(/\D/g, "");
+        if (msg && tel && (p.canal || "whatsapp") !== "correo") window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`);
+        toast(`✅ Pedido ${numeroPedido}: ${estado}`);
+    } catch (e) { toast("⚠️ " + e.message, "#c0392b"); }
+    renderPedidosHub();
+}
+
+async function _usaActualizar(i, patch, okMsg) {
+    const g = _usaGrupos[i];
+    if (!g) return;
+    try {
+        const rs = await Promise.all(g.leads.map(l => apiPost({ accion: "ACTUALIZAR_LEAD_USA", id: l.id, ...patch })));
+        const fallo = rs.find(r => !r || r.ok === false);
+        if (fallo) throw new Error(fallo?.error || "No se pudo actualizar");
+        g.leads.forEach(l => Object.assign(l, patch));
+        toast(okMsg);
+    } catch (e) { toast("⚠️ " + e.message, "#c0392b"); }
+    renderPedidosHub();
+}
+function usaMarcarPagado(i) {
+    if (!confirm("¿Confirmas que ya recibiste el pago de este pedido USA? Se envía el correo de pago confirmado al cliente.")) return;
+    _usaActualizar(i, { pagadoUSA: true }, "✅ Pago confirmado");
+}
+function usaMarcarEnviado(i) {
+    const trk = (document.getElementById("usa-trk-" + i)?.value || "").trim();
+    if (!trk) { document.getElementById("usa-trk-" + i)?.focus(); toast("⚠️ Escribe el tracking de DHL", "#c0392b"); return; }
+    _usaActualizar(i, { trackingDHL: trk }, "📦 Pedido marcado como enviado");
+}
+function usaMarcarEntregado(i) {
+    if (!confirm("¿Confirmas que este pedido USA fue entregado? Cierra la venta.")) return;
+    _usaActualizar(i, { entregadoUSA: true }, "✅ Pedido entregado");
+}
+
+function renderPedidosHub() {
+    const cont = document.getElementById("pedidos-hub");
+    if (!cont) return;
+    const vendMap = new Map(vendedores.map(v => [v.codigo, v]));
+    const ahora = Date.now();
+    const dias = f => Math.floor((ahora - new Date(f || ahora).getTime()) / 86400000);
+
+    // ── Leads de afiliados / catálogo (sin USA, que va en su propia sección)
+    const leadsMX = leadsData.filter(l => l.pais !== "US");
+    const enCamino = leadsMX
+        .filter(l => l.estado === "en_camino")
+        .map(l => ({ ...l, dias: Math.floor((ahora - new Date(l.fecha||ahora).getTime()) / 86400000) }))
+        .sort((a,b) => b.dias - a.dias);
+
+    const sinCompletar = leadsMX
+        .filter(l => l.estado === "interesado" && !l.cliente)
+        .map(l => ({ ...l, dias: Math.floor((ahora - new Date(l.fecha||ahora).getTime()) / 86400000) }))
+        .filter(l => l.dias >= LEADS_SIN_COMPLETAR_DIAS_HUB)
+        .sort((a,b) => b.dias - a.dias);
+
+
+    // ── Pedidos de la tienda que aún requieren acción
+    const tienda = _pedidosTienda
+        .filter(p => p.numeroPedido && (p.estado === "Pendiente" || p.estado === "Despachado"))
+        .map(p => ({ ...p, dias: dias(p.fecha) }))
+        .sort((a, b) => new Date(a.fecha || 0) - new Date(b.fecha || 0));
+
+    // ── Pedidos USA (un pedido = varios leads con el mismo pedidoId)
+    const gmap = new Map();
+    leadsData.filter(l => l.pais === "US" && !l.entregadoUSA && l.estado !== "cancelado" && l.estado !== "rechazado")
+        .forEach(l => { const k = l.pedidoId || l.id; if (!gmap.has(k)) gmap.set(k, []); gmap.get(k).push(l); });
+    _usaGrupos = [...gmap.entries()].map(([id, leads]) => ({ id, leads, f: leads[0] }))
+        .sort((a, b) => new Date(a.f.fecha || 0) - new Date(b.f.fecha || 0));
+
+    const total = tienda.length + enCamino.length + sinCompletar.length + _usaGrupos.length;
+    _tabAlertas.pedidos = total;
+    pintarTabs(_tabActual);
+    const badge = document.getElementById("tab-pedidos-badge");
+    if (badge) { if (total > 0) { badge.textContent = total; badge.style.display = "block"; } else badge.style.display = "none"; }
+    actualizarTituloAlertas();
+
+    const btnS = "padding:5px 10px;font-size:11px;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;";
     const bloqueEnCamino = enCamino.length ? `
         <div class="card" style="border-color:#f97316;margin-bottom:14px;">
             <h2 style="color:#f97316;">🚚 Pedidos en Camino — Confirmar Entrega (${enCamino.length})</h2>
@@ -1880,64 +2060,70 @@ function renderAlertasAfiliadosHub() {
             }).join("")}
         </div>` : '';
 
-    const bloqueReposiciones = _reposicionesPendientes.length ? `
-        <div class="card" style="border-color:#f59e0b;margin-bottom:14px;">
-            <h2 style="color:#f59e0b;">📦 Piezas por reponer — vendidas bajo pedido (${_reposicionesPendientes.length})</h2>
-            ${_reposicionesPendientes.map(r => `
-                <div style="background:rgba(245,158,11,0.1);border:1px solid #f59e0b;border-radius:10px;padding:10px 12px;margin-top:8px;">
+
+    const bloqueTienda = tienda.length ? `
+        <div class="card" style="border-color:#a66be8;margin-bottom:14px;">
+            <h2 style="color:#a66be8;">🛍️ Pedidos de la tienda (${tienda.length})</h2>
+            ${tienda.map(p => {
+                const pend = p.estado === "Pendiente";
+                const tel = String(p.telefono || "").replace(/\D/g, "");
+                return `<div style="background:rgba(166,107,232,0.1);border:1px solid #a66be8;border-radius:10px;padding:10px 12px;margin-top:8px;">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                         <div style="flex:1;min-width:0;">
-                            <div style="font-weight:700;font-size:13px;">${sanitizar(r.nombre||r.codigo)}</div>
-                            <div style="font-size:11px;color:var(--plateado);">Ref: ${sanitizar(r.codigo)} · Vendedor: ${sanitizar(r.vendedorNombre||r.vendedor)}</div>
-                            <div style="font-size:11px;font-weight:700;color:#f59e0b;margin-top:3px;">⚠️ Vendió su última pieza — entregarle otra en la próxima entrega</div>
+                            <div style="font-weight:700;font-size:13px;">${sanitizar(p.numeroPedido)} · ${sanitizar(p.cliente || "—")} <span style="font-size:10px;color:${pend ? '#f97316' : '#3b82f6'};border:1px solid currentColor;border-radius:5px;padding:1px 6px;margin-left:4px;">${pend ? "PENDIENTE" : "DESPACHADO"}</span></div>
+                            <div style="font-size:11px;color:var(--plateado);margin-top:2px;">${sanitizar(p.productos || "—")}</div>
+                            <div style="font-size:11px;color:var(--plateado);margin-top:2px;">📍 ${sanitizar([p.municipio, p.departamento].filter(Boolean).join(", ") || "—")} · ${sanitizar(p.metodoPago || "—")} · <b style="color:var(--dorado-claro);">${sanitizar(p.total)}</b> · ${sanitizar(p.canal || "whatsapp")}</div>
+                            ${tel ? `<a href="https://wa.me/${tel}" target="_blank" style="font-size:11px;color:#25D366;font-weight:700;text-decoration:none;">📱 ${sanitizar(p.telefono)}</a>` : ''}
+                            <div style="font-size:11px;font-weight:700;color:${p.dias >= 1 ? '#f97316' : 'var(--plateado)'};margin-top:3px;">${p.dias >= 1 ? `⚠️ hace ${p.dias} día${p.dias > 1 ? 's' : ''}` : "Hoy"}</div>
                         </div>
-                        <button onclick="resolverReposicion('${sanitizar(r.vendedor)}','${sanitizar(r.codigo)}')" style="padding:5px 10px;font-size:11px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">✅ Ya se repuso</button>
-                    </div>
-                </div>`).join("")}
-        </div>` : '';
-
-    const bloqueCortes = cortesPorVencer.length ? `
-        <div class="card" style="border-color:#e74c3c;margin-bottom:14px;">
-            <h2 style="color:#e74c3c;">🧾 Cortes por vencer (${cortesPorVencer.length})</h2>
-            ${cortesPorVencer.map(({v, dias}) => {
-                const msg = dias < 0 ? `Vencido hace ${Math.abs(dias)} día${Math.abs(dias)===1?'':'s'}` : dias === 0 ? "Vence hoy" : "Vence mañana";
-                return `<div style="background:rgba(231,76,60,0.1);border:1px solid #e74c3c;border-radius:10px;padding:10px 12px;margin-top:8px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-                        <div style="flex:1;min-width:0;">
-                            <div style="font-weight:700;font-size:13px;">${sanitizar(v.nombre)}</div>
-                            <div style="font-size:11px;font-weight:700;color:#e74c3c;margin-top:2px;">⚠️ ${sanitizar(msg)} — se paga comisión a los 30 días</div>
-                        </div>
-                        <button onclick="abrirPerfil('${sanitizar(v.codigo)}');abrirCorte();" style="padding:5px 10px;font-size:11px;background:#e74c3c;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">🧾 Hacer corte</button>
-                    </div>
-                </div>`;
-            }).join("")}
-        </div>` : '';
-
-    const bloqueCobrosPendientes = _cortesPendientesCobro.length ? `
-        <div class="card" style="border-color:#e67e22;margin-bottom:14px;">
-            <h2 style="color:#e67e22;">💰 Cobros pendientes (${_cortesPendientesCobro.length})</h2>
-            ${_cortesPendientesCobro.map(c => {
-                const fecha = c.fecha ? new Date(c.fecha).toLocaleDateString("es-SV", { day: "numeric", month: "short" }) : "—";
-                return `<div style="background:rgba(230,126,34,0.1);border:1px solid #e67e22;border-radius:10px;padding:10px 12px;margin-top:8px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-                        <div style="flex:1;min-width:0;">
-                            <div style="font-weight:700;font-size:13px;">${sanitizar(c.vendedorNombre || c.vendedor)}</div>
-                            <div style="font-size:11px;font-weight:700;color:#e67e22;margin-top:2px;">⚠️ Corte del ${sanitizar(fecha)} — $${parseFloat(c.aPagarVerex||0).toFixed(2)} sin cobrar</div>
-                        </div>
-                        <div style="display:flex;flex-direction:column;gap:4px;">
-                            <button onclick="marcarCorteCobrado('${sanitizar(c.id)}')" style="padding:5px 10px;font-size:11px;background:#e67e22;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">💰 Ya cobré</button>
-                            <button onclick="eliminarCorteHistorial('${sanitizar(c.id)}')" style="padding:4px 10px;font-size:10px;background:none;color:#e74c3c;border:1px solid #e74c3c;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap;">🗑️ Eliminar</button>
+                        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+                            ${pend
+                                ? `<button onclick="cambiarEstadoPedidoTienda(${jsArg(p.numeroPedido)},'Despachado')" style="${btnS}background:#3b82f6;">🚚 Despachar</button>`
+                                : `<button onclick="cambiarEstadoPedidoTienda(${jsArg(p.numeroPedido)},'Entregado')" style="${btnS}background:#27ae60;">✅ Entregado</button>
+                                   <button onclick="cambiarEstadoPedidoTienda(${jsArg(p.numeroPedido)},'No entregado')" style="${btnS}background:#4a4a4e;">↩️ No entregado</button>`}
+                            <button onclick="cambiarEstadoPedidoTienda(${jsArg(p.numeroPedido)},'Cancelado')" style="${btnS}background:#e74c3c;">❌ Cancelar</button>
                         </div>
                     </div>
                 </div>`;
             }).join("")}
         </div>` : '';
 
-    cont.innerHTML = bloqueCobrosPendientes + bloqueCortes + bloqueReposiciones + bloqueEnCamino + bloqueSinCompletar;
+    const bloqueUSA = _usaGrupos.length ? `
+        <div class="card" style="border-color:#0ea5e9;margin-bottom:14px;">
+            <h2 style="color:#0ea5e9;">🇺🇸 Pedidos USA (${_usaGrupos.length})</h2>
+            ${_usaGrupos.map((g, i) => {
+                const f = g.f;
+                const items = g.leads.map(l => `${sanitizar(l.nombre || l.codigo)} ×${parseInt(l.qty) || 1}`).join(", ");
+                const sub = g.leads.reduce((s, l) => s + (parseFloat(l.precio) || 0) * (parseInt(l.qty) || 1), 0);
+                const totUSD = f.totalPedidoUSD != null ? parseFloat(f.totalPedidoUSD) : sub;
+                const etapa = !f.pagadoUSA ? "pago" : !f.trackingDHL ? "envio" : "entrega";
+                const chip = { pago: ["SIN PAGAR", "#f97316"], envio: ["PAGADO · POR ENVIAR", "#a66be8"], entrega: ["ENVIADO · " + sanitizar(f.trackingDHL || ""), "#3b82f6"] }[etapa];
+                const d = dias(f.fecha);
+                const accion = etapa === "pago"
+                    ? `${f.pagoLink ? `<button onclick="navigator.clipboard.writeText(${jsArg(f.pagoLink)});toast('✅ Link de pago copiado','#22c55e')" style="${btnS}background:#4a4a4e;">📋 Link de pago</button>` : ''}
+                       <button onclick="usaMarcarPagado(${i})" style="${btnS}background:#27ae60;">💵 Marcar pagado</button>`
+                    : etapa === "envio"
+                    ? `<input id="usa-trk-${i}" placeholder="Tracking DHL" style="width:130px;padding:5px 8px;font-size:11px;border-radius:6px;border:1px solid var(--borde);background:var(--negro);color:#fff;">
+                       <button onclick="usaMarcarEnviado(${i})" style="${btnS}background:#3b82f6;">📦 Marcar enviado</button>`
+                    : `<button onclick="usaMarcarEntregado(${i})" style="${btnS}background:#27ae60;">✅ Entregado</button>`;
+                const tel = String(f.telefonoCliente || "").replace(/\D/g, "");
+                return `<div style="background:rgba(14,165,233,0.1);border:1px solid #0ea5e9;border-radius:10px;padding:10px 12px;margin-top:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:700;font-size:13px;">${sanitizar(f.nombreCliente || "(sin nombre)")} <span style="font-size:10px;color:${chip[1]};border:1px solid currentColor;border-radius:5px;padding:1px 6px;margin-left:4px;">${chip[0]}</span></div>
+                            <div style="font-size:11px;color:var(--plateado);margin-top:2px;">${items}</div>
+                            <div style="font-size:11px;color:var(--plateado);margin-top:2px;">📍 ${sanitizar([f.ciudadUS, f.estadoUS, f.zipUS].filter(Boolean).join(", ") || f.direccionCliente || "—")} · <b style="color:var(--dorado-claro);">$${totUSD.toFixed(2)} USD</b></div>
+                            ${tel ? `<a href="https://wa.me/${tel}" target="_blank" style="font-size:11px;color:#25D366;font-weight:700;text-decoration:none;">📱 ${sanitizar(f.telefonoCliente)}</a>` : ''}
+                            <div style="font-size:11px;color:var(--plateado);margin-top:3px;">${d >= 1 ? `hace ${d} día${d > 1 ? 's' : ''}` : "Hoy"}</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;align-items:stretch;">${accion}</div>
+                    </div>
+                </div>`;
+            }).join("")}
+        </div>` : '';
 
-    const totalBadge = enCamino.length + sinCompletar.length + cortesPorVencer.length;
-    document.title = document.title.replace(/^🔔\(\d+\)\s*/, "");
-    if (totalBadge > 0) document.title = `🔔(${totalBadge}) ` + document.title;
+    cont.innerHTML = (bloqueTienda + bloqueEnCamino + bloqueSinCompletar + bloqueUSA) ||
+        '<div class="card"><h2>📋 Pedidos</h2><p style="color:#4ade80;font-size:14px;">✅ Todo al día — no hay pedidos pendientes de atender.</p></div>';
 }
 
 async function migrarHistorialVentas() {
@@ -2032,6 +2218,7 @@ async function cargarDatos() {
         productosDisponibles = data.productos    || [];
         promoGeneral         = data.config?.promoGeneral || null;
         await cargarLeads();
+        cargarPedidosTienda();
         renderVendedores();
         renderAlertasAfiliadosHub();
         if (document.getElementById("tab-content-dashboard")?.style.display === "block") renderDashboard();
@@ -2055,6 +2242,7 @@ async function apiPost(datos) {
 }
 
 const TAB_METALS = {
+    pedidos:       { bg: 'linear-gradient(135deg,#4a2a6b,#a66be8,#6b3aa8,#c9a0ff,#4a2a6b)', color: '#f5ecff', shadow: '0 2px 8px rgba(166,107,232,0.5)' },
     vendedores:    { bg: 'linear-gradient(135deg,#7a5500,#C9A84C,#a87d20,#F5D78E,#7a5500)', color: '#fff8e1', shadow: '0 2px 8px rgba(201,168,76,0.5)' },
     dashboard:     { bg: 'linear-gradient(135deg,#1a3a6b,#4a90d9,#1a5fa8,#6ab0f5,#1a3a6b)', color: '#e8f4ff', shadow: '0 2px 8px rgba(74,144,217,0.5)' },
     fotoqr:        { bg: 'linear-gradient(135deg,#1a4a2e,#27ae60,#0e6b35,#52d68a,#1a4a2e)', color: '#e8fff2', shadow: '0 2px 8px rgba(39,174,96,0.5)' },
@@ -2065,24 +2253,25 @@ const TAB_METALS = {
 };
 const TAB_INACTIVE = { bg: 'linear-gradient(135deg,#2a2a2a,#4a4a4a,#333,#555,#2a2a2a)', color: '#888', shadow: 'none' };
 
-// Hay actividad pendiente de vendedores (la calcula renderAlertasAfiliadosHub).
-let _vendedoresAlerta = 0;
+// Pestañas con aviso de actividad pendiente (lo calculan renderAlertasAfiliadosHub
+// y renderPedidosHub).
+const _tabAlertas = { vendedores: 0, pedidos: 0 };
 let _tabActual = 'dashboard';
 const TAB_ALERTA = { bg: 'linear-gradient(135deg,#7a1a10,#e74c3c,#b03020,#ff7b6b,#7a1a10)', color: '#fff', shadow: '0 2px 10px rgba(231,76,60,0.7)' };
 
 function pintarTabs(tab) {
     _tabActual = tab;
-    const tabs = ['vendedores', 'dashboard', 'fotoqr', 'etiquetas', 'stock', 'ventadirecta', 'historialventas'];
+    const tabs = ['vendedores', 'pedidos', 'dashboard', 'fotoqr', 'etiquetas', 'stock', 'ventadirecta', 'historialventas'];
     tabs.forEach(t => {
         document.getElementById('tab-content-' + t).style.display = t === tab ? 'block' : 'none';
         const btn = document.getElementById('tab-' + t);
-        const alerta = t === 'vendedores' && t !== tab && _vendedoresAlerta > 0;
+        const alerta = t !== tab && (_tabAlertas[t] || 0) > 0;
         const m = t === tab ? TAB_METALS[t] : alerta ? TAB_ALERTA : TAB_INACTIVE;
         btn.style.background  = m.bg;
         btn.style.color       = m.color;
         btn.style.boxShadow   = m.shadow;
         btn.style.filter      = (t === tab || alerta) ? 'none' : 'brightness(0.7)';
-        if (t === 'vendedores') btn.classList.toggle('tab-alerta', alerta);
+        if (t in _tabAlertas) btn.classList.toggle('tab-alerta', alerta);
     });
 }
 
