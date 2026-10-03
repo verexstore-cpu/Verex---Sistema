@@ -3096,6 +3096,9 @@ async function enviar(){
           if (!lds.length) { result = { ok: false, error: "pedido_no_encontrado" }; break; }
           if (lds.every(l => l.reembolsadoUSA)) { result = { ok: false, error: "ya_reembolsado" }; break; }
           if (!lds.some(l => l.pagadoUSA) || !capId) { result = { ok: false, error: "no_reembolsable_por_aqui" }; break; }   // tarjeta (Wompi) o sin pago: se hace aparte
+          // Política: una vez enviado el paquete (tiene tracking) o entregado, ya no se reembolsa ni se libera stock desde aquí.
+          // Si algún día hay que hacer una excepción, se hace directamente en PayPal (el webhook lo marca como reembolsado).
+          if (lds.some(l => l.trackingDHL || l.entregadoUSA)) { result = { ok: false, error: "ya_enviado" }; break; }
           try {
             const rf = await paypalApi(env, "POST", `/v2/payments/captures/${capId}/refund`, { note_to_payer: "VEREX Store refund" }, "refund-" + capId);
             if (!rf.ok || !["COMPLETED", "PENDING"].includes(rf.data?.status)) {

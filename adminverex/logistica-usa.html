@@ -314,7 +314,8 @@ function agruparPedidos(leads){
             metodoPago: first.metodoPagoUSA === "wompi" || /wompi\.sv/.test(first.pagoLink || "") ? "wompi"
                 : /paypal\.me/.test(first.pagoLink || "") ? "paypalme" : "paypal",
             reembolsado: leadsGrupo.every(l => l.reembolsadoUSA),
-            reembolsable: !!first.pagadoUSA && !!first.paypalCaptureId && !leadsGrupo.every(l => l.reembolsadoUSA),
+            // política: sin reembolsos una vez enviado el paquete (tracking) ni entregado
+            reembolsable: !!first.pagadoUSA && !!first.paypalCaptureId && !leadsGrupo.every(l => l.reembolsadoUSA) && !first.trackingDHL && !first.entregadoUSA,
             pagadoSinStock: leadsGrupo.some(l => l.pagadoSinStock),
             // Todos los productos cancelados y sin pagar/entregar = pedido cancelado (reserva vencida o cancelado a mano)
             // (un pedido pagado con tarjeta sin stock sigue visible en el tablero para resolverlo; uno cancelado a mano, aunque ya estuviera pagado, va a Cancelados)
@@ -446,7 +447,8 @@ function abrirPedido(id){
             ${etapa === "entregado" ? `<button class="btn ghost" disabled>Pedido completo</button>` : ""}
             <button class="btn ghost" onclick="guardarNotas('${esc(o.id)}')">Guardar</button>
             ${o.reembolsable ? `<button class="btn ghost" style="color:#b42318;" onclick="reembolsarPedido('${esc(o.id)}')">Reembolsar pago (PayPal)</button>` : ""}
-            ${(etapa === "pendiente" || etapa === "preparando" || etapa === "enviado") && !o.reembolsable ? `<button class="btn ghost" style="color:#b42318;" onclick="cancelarPedido('${esc(o.id)}')">Cancelar pedido</button>` : ""}
+            ${(etapa === "pendiente" || etapa === "preparando") && !o.reembolsable ? `<button class="btn ghost" style="color:#b42318;" onclick="cancelarPedido('${esc(o.id)}')">Cancelar pedido</button>` : ""}
+            ${etapa === "enviado" || etapa === "entregado" ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:6px;">Pedido ya enviado: no se reembolsa ni se cancela desde aquí.</div>` : ""}
         </div>
     `;
 
@@ -508,17 +510,12 @@ async function marcarEntregado(id){
 async function reembolsarPedido(id){
     const o = PEDIDOS.find(x => x.id === id);
     if(!o) return;
-    const etapa = etapaDe(o);
-    const efecto = etapa === "entregado"
-        ? "El pedido YA FUE ENTREGADO: el stock NO cambia (la pieza ya se vendió). Si el cliente la devuelve, tendrás que ajustar el stock a mano."
-        : etapa === "enviado"
-        ? "El pedido YA TIENE TRACKING (el paquete va en camino): se libera el stock, pero la pieza solo estará en bodega cuando regrese físicamente. El envío con DHL no se cancela desde aquí."
-        : "Se cancelará el pedido y el stock vuelve a bodega.";
+    const efecto = "Se cancelará el pedido y el stock vuelve a bodega.";
     if(!confirm(`Se devolverá el pago completo (${money(o.total)}) al cliente por PayPal.\n\n${efecto}\n\nEsto no se puede deshacer. ¿Reembolsar?`)) return;
     try{
         const res = await fetch(API_URL, { method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ accion: "REEMBOLSAR_PEDIDO_USA", _pass: ADMIN_PASS, pedidoId: id }) }).then(r => r.json());
-        if(!res.ok){ alert("⚠️ " + ({ ya_reembolsado:"Este pedido ya fue reembolsado.", no_reembolsable_por_aqui:"Este pago no se puede reembolsar desde aquí (tarjeta o sin pago).", paypal_error:"PayPal no aceptó el reembolso. " + (res.detalle || "") }[res.error] || res.error || "No se pudo reembolsar")); return; }
+        if(!res.ok){ alert("⚠️ " + ({ ya_reembolsado:"Este pedido ya fue reembolsado.", ya_enviado:"No se reembolsa un pedido ya enviado (política de VEREX). Si hay que hacer una excepción, hazlo directamente en PayPal.", no_reembolsable_por_aqui:"Este pago no se puede reembolsar desde aquí (tarjeta o sin pago).", paypal_error:"PayPal no aceptó el reembolso. " + (res.detalle || "") }[res.error] || res.error || "No se pudo reembolsar")); return; }
         alert("✅ Reembolso enviado por PayPal.");
     }catch(_){ alert("⚠️ No se pudo conectar con el servidor"); return; }
     await cargarPedidos();
