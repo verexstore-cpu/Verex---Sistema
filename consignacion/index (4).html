@@ -10381,6 +10381,7 @@ async function guardarStockNuevo() {
             if (_snFotoBase64) {
                 const url = await subirFotoImageKit(_snFotoOriginalFile || _snFotoOriginalBase64 || _snFotoBase64, primerBase, _snFotoCropCoords);
                 if (url) fotoUrlMulti = url;
+                else if (!confirm("La foto NO se pudo subir a ImageKit (revisa tu conexión; si la foto es muy grande, prueba con una más liviana).\n\nAceptar = guardar el producto SIN foto (aparecerá como «SIN FOTO» en Stock)\nCancelar = no guardar todavía, para intentarlo de nuevo")) { btn.textContent = "✅ Guardar en Stock"; btn.disabled = false; return; }
             }
             let guardados = 0;
             const nuevos   = _snMultiCodigos.filter(c => !c.esRestock);
@@ -10464,7 +10465,7 @@ async function guardarStockNuevo() {
             const url = await subirFotoImageKit(_snFotoOriginalFile || _snFotoOriginalBase64 || _snFotoBase64, codigoBase, _snFotoCropCoords);
             console.log("[guardar] subirFotoImageKit resultado:", url);
             if (url) fotoUrl = url;
-            else toast("⚠️ Foto no se pudo subir a ImageKit");
+            else if (!confirm("La foto NO se pudo subir a ImageKit (revisa tu conexión; si la foto es muy grande, prueba con una más liviana).\n\nAceptar = guardar el producto SIN foto (aparecerá como «SIN FOTO» en Stock)\nCancelar = no guardar todavía, para intentarlo de nuevo")) { btn.textContent = "✅ Guardar en Stock"; btn.disabled = false; return; }
         }
 
         // Si el código manual ya trae talla (SA18509JT7), guardarlo como pieza única
