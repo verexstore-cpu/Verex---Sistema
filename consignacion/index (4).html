@@ -657,6 +657,7 @@
                     <button class="btn" style="background:#3b2a1a;color:#f0b96a;border:1px solid #8a5a1e;padding:8px 14px;font-size:13px;" onclick="ejecutarAuditoriaStock()">🔍 Auditoría</button>
                 </div>
 
+                <div id="stock-sinfoto-aviso" style="display:none;margin:-4px 0 12px;"></div>
                 <div id="auditoria-stock-panel" style="display:none;background:#141414;border:1px solid #3a3a3c;border-radius:10px;padding:14px;margin-bottom:16px;"></div>
 
                 <!-- Acciones con seleccionados -->
@@ -9393,7 +9394,17 @@ const CATEGORIA_LABELS_STOCK = {
     CA: "⛓️ Cadenas solas", RS: "📿 Rosarios", RE: "⌚ Relojes",
 };
 
+// Aviso «N productos sin foto» (sobre todo el stock activo, sin importar los filtros): un clic abre la lista
+function actualizarAvisoSinFoto() {
+    const box = document.getElementById("stock-sinfoto-aviso"); if (!box) return;
+    const sin = (typeof stockData !== "undefined" ? stockData : []).filter(i => i.estado !== "inactivo" && !String(i.foto || i.img || "").trim());
+    if (!sin.length) { box.style.display = "none"; box.innerHTML = ""; return; }
+    const disenos = new Set(sin.map(i => getCodigoBase(i.codigo).toUpperCase())).size;
+    box.innerHTML = `<button class="btn" onclick="document.getElementById('fil-stock-estado').value='sinfoto';filtrarStock();" style="background:#2f2a14;color:#f5d76e;border:1px solid #8a7a1e;padding:7px 14px;font-size:12px;">📷 <b>${sin.length}</b> código${sin.length > 1 ? "s" : ""} sin foto (<b>${disenos}</b> diseño${disenos > 1 ? "s" : ""}) — ver lista</button>`;
+    box.style.display = "block";
+}
 function filtrarStock() {
+    actualizarAvisoSinFoto();
     const filtro = document.getElementById("fil-stock-estado").value;
     const material = document.getElementById("fil-stock-material")?.value || "";
     const categoria = document.getElementById("fil-stock-categoria")?.value || "";
@@ -9416,7 +9427,7 @@ function filtrarStock() {
                 case "consignacion": coincideEstado = (parseInt(i.stock_consignacion)||0)  > 0; break;
                 case "reservado":    coincideEstado = Boolean(i.reservado) || (parseInt(i.stock_reservado)||0) > 0; break;
                 case "vendido":      coincideEstado = (parseInt(i.stock_vendido)||0)       > 0; break;
-                case "sinfoto":      coincideEstado = !String(i.foto || i.img || "").trim(); break;
+                case "sinfoto":      coincideEstado = i.estado !== "inactivo" && !String(i.foto || i.img || "").trim(); break;
                 default:             coincideEstado = normalizar(i.estado) === filtro;
             }
         }
