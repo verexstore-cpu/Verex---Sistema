@@ -420,7 +420,7 @@ function renderPedidosHub() {
 
     // ── Pedidos USA (un pedido = varios leads con el mismo pedidoId)
     const gmap = new Map();
-    leadsData.filter(l => l.pais === "US" && !l.entregadoUSA && l.estado !== "cancelado" && l.estado !== "rechazado")
+    leadsData.filter(l => l.pais === "US" && !l.entregadoUSA && ((l.estado !== "cancelado" && l.estado !== "rechazado") || l.pagadoSinStock))   // pagado sin stock se sigue mostrando aunque haya quedado cancelado
         .forEach(l => { const k = l.pedidoId || l.id; if (!gmap.has(k)) gmap.set(k, []); gmap.get(k).push(l); });
     _usaGrupos = [...gmap.entries()].map(([id, leads]) => ({ id, leads, f: leads[0] }))
         .sort((a, b) => new Date(a.f.fecha || 0) - new Date(b.f.fecha || 0));

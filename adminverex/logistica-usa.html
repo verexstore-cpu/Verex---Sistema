@@ -313,7 +313,8 @@ function agruparPedidos(leads){
             metodoPago: first.metodoPagoUSA === "wompi" || /wompi\.sv/.test(first.pagoLink || "") ? "wompi" : "paypal",
             pagadoSinStock: leadsGrupo.some(l => l.pagadoSinStock),
             // Todos los productos cancelados y sin pagar/entregar = pedido cancelado (reserva vencida o cancelado a mano)
-            cancelado: leadsGrupo.every(l => l.estado === "cancelado") && !first.pagadoUSA && !first.entregadoUSA,
+            // (un pedido pagado con tarjeta sin stock sigue visible en el tablero para resolverlo; uno cancelado a mano, aunque ya estuviera pagado, va a Cancelados)
+            cancelado: leadsGrupo.every(l => l.estado === "cancelado") && !first.entregadoUSA && !leadsGrupo.some(l => l.pagadoSinStock),
             pagadoUSA: !!first.pagadoUSA,
             trackingDHL: first.trackingDHL || "",
             notasUSA: first.notasUSA || "",
@@ -324,7 +325,7 @@ function agruparPedidos(leads){
 
 function chipForStage(o){
     const etapa = etapaDe(o);
-    if(etapa === "cancelado") return `<span class="chip cancel">Cancelado</span>`;
+    if(etapa === "cancelado") return `<span class="chip cancel">Cancelado</span>${o.pagadoUSA ? `<span class="chip alerta">Ya pagado: reembolsar</span>` : ""}`;
     if(etapa === "pendiente") return `<span class="chip pending">Sin pagar</span>`;
     if(etapa === "preparando") return `<span class="chip prep">Pagado</span>`;
     if(etapa === "enviado") return `<span class="chip transit mono">${esc(o.trackingDHL)}</span>`;
@@ -364,7 +365,7 @@ function renderBoard(){
     document.getElementById("cancelados-sum").textContent = `Cancelados (${canc.length})`;
     document.getElementById("cancelados-cards").innerHTML = canc.map(o => `<button class="card" onclick="abrirPedido('${esc(o.id)}')">
         <div class="card-top"><span class="card-name">${esc(o.nombre)}</span><span class="card-total num">${money(o.total)}</span></div>
-        <div class="card-foot"><span class="chip cancel">Cancelado</span><span class="chip">${diasDesde(o.fecha)} días</span></div></button>`).join("");
+        <div class="card-foot"><span class="chip cancel">Cancelado</span>${o.pagadoUSA ? `<span class="chip alerta">Ya pagado: reembolsar</span>` : ""}<span class="chip">${diasDesde(o.fecha)} días</span></div></button>`).join("");
 
     document.getElementById("stat-pend").textContent = PEDIDOS.filter(o => etapaDe(o)==="pendiente").length;
     document.getElementById("stat-transit").textContent = PEDIDOS.filter(o => etapaDe(o)==="enviado").length;
@@ -435,7 +436,7 @@ function abrirPedido(id){
             <button class="btn ghost" id="btn-etiqueta" onclick="imprimirEtiquetaEnvio('${esc(o.id)}')">🏷️ Imprimir etiqueta</button>
         </div>
         <div class="btnrow">
-            ${etapa === "pendiente" || etapa === "cancelado" ? `<button class="btn primary" onclick="marcarPagado('${esc(o.id)}')">${etapa === "cancelado" ? "Marcar pagado (reactivar)" : "Marcar pagado"}</button>` : ""}
+            ${etapa === "pendiente" || (etapa === "cancelado" && !o.pagadoUSA) ? `<button class="btn primary" onclick="marcarPagado('${esc(o.id)}')">${etapa === "cancelado" ? "Marcar pagado (reactivar)" : "Marcar pagado"}</button>` : ""}
             ${etapa === "preparando" ? `<button class="btn primary" onclick="marcarEnviado('${esc(o.id)}')">Marcar enviado</button>` : ""}
             ${etapa === "enviado" ? `<button class="btn primary" onclick="marcarEntregado('${esc(o.id)}')">Marcar entregado</button>` : ""}
             ${etapa === "entregado" ? `<button class="btn ghost" disabled>Pedido completo</button>` : ""}
