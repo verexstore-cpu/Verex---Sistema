@@ -508,7 +508,13 @@ async function marcarEntregado(id){
 async function reembolsarPedido(id){
     const o = PEDIDOS.find(x => x.id === id);
     if(!o) return;
-    if(!confirm(`Se devolverá el pago completo (${money(o.total)}) al cliente por PayPal, se cancelará el pedido y el stock vuelve a bodega. Esto no se puede deshacer. ¿Reembolsar?`)) return;
+    const etapa = etapaDe(o);
+    const efecto = etapa === "entregado"
+        ? "El pedido YA FUE ENTREGADO: el stock NO cambia (la pieza ya se vendió). Si el cliente la devuelve, tendrás que ajustar el stock a mano."
+        : etapa === "enviado"
+        ? "El pedido YA TIENE TRACKING (el paquete va en camino): se libera el stock, pero la pieza solo estará en bodega cuando regrese físicamente. El envío con DHL no se cancela desde aquí."
+        : "Se cancelará el pedido y el stock vuelve a bodega.";
+    if(!confirm(`Se devolverá el pago completo (${money(o.total)}) al cliente por PayPal.\n\n${efecto}\n\nEsto no se puede deshacer. ¿Reembolsar?`)) return;
     try{
         const res = await fetch(API_URL, { method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ accion: "REEMBOLSAR_PEDIDO_USA", _pass: ADMIN_PASS, pedidoId: id }) }).then(r => r.json());
