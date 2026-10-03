@@ -538,37 +538,37 @@
     <div id="pantalla-vendedores" class="main">
         <!-- Pestañas -->
         <div style="display:flex;gap:0;margin-bottom:16px;background:var(--gris);border-radius:10px;padding:4px;">
-            <button id="tab-vendedores" onclick="cambiarTab('vendedores')"
+            <button id="tab-vendedores" onclick="cambiarTab('vendedores', true)"
                 style="position:relative;flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#7a5500,#C9A84C,#a87d20,#F5D78E,#7a5500);color:#fff8e1;text-shadow:0 1px 3px rgba(0,0,0,0.5);box-shadow:0 2px 8px rgba(201,168,76,0.5);">
                 👥 Vendedores
                 <span id="tab-vendedores-badge" style="display:none;position:absolute;top:2px;right:6px;background:#e74c3c;color:#fff;border-radius:10px;min-width:18px;height:18px;padding:0 5px;font-size:11px;font-weight:800;line-height:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.5);"></span>
             </button>
-            <button id="tab-pedidos" onclick="cambiarTab('pedidos')"
+            <button id="tab-pedidos" onclick="cambiarTab('pedidos', true)"
                 style="position:relative;flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
                 📋 Pedidos
                 <span id="tab-pedidos-badge" style="display:none;position:absolute;top:2px;right:6px;background:#e74c3c;color:#fff;border-radius:10px;min-width:18px;height:18px;padding:0 5px;font-size:11px;font-weight:800;line-height:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.5);"></span>
             </button>
-            <button id="tab-dashboard" onclick="cambiarTab('dashboard')"
+            <button id="tab-dashboard" onclick="cambiarTab('dashboard', true)"
                 style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
                 📊 Dashboard
             </button>
-            <button id="tab-fotoqr" onclick="cambiarTab('fotoqr')"
+            <button id="tab-fotoqr" onclick="cambiarTab('fotoqr', true)"
                 style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
                 📷 Foto QR
             </button>
-            <button id="tab-etiquetas" onclick="cambiarTab('etiquetas')"
+            <button id="tab-etiquetas" onclick="cambiarTab('etiquetas', true)"
                 style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
                 🏷️ Etiquetas
             </button>
-            <button id="tab-stock" onclick="cambiarTab('stock')"
+            <button id="tab-stock" onclick="cambiarTab('stock', true)"
                 style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
                 📦 Stock
             </button>
-            <button id="tab-ventadirecta" onclick="cambiarTab('ventadirecta')"
+            <button id="tab-ventadirecta" onclick="cambiarTab('ventadirecta', true)"
                 style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
                 💸 Venta Directa
             </button>
-            <button id="tab-historialventas" onclick="cambiarTab('historialventas')"
+            <button id="tab-historialventas" onclick="cambiarTab('historialventas', true)"
                 style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#005f5f,#00c2c2,#008a8a,#00e5e5,#005f5f);color:#e0ffff;text-shadow:0 1px 3px rgba(0,0,0,0.4);box-shadow:0 2px 8px rgba(0,194,194,0.5);">
                 🧾 Ventas
             </button>
@@ -2277,7 +2277,10 @@ function pintarTabs(tab) {
 
 document.addEventListener('DOMContentLoaded', () => pintarTabs('dashboard'));
 
-function cambiarTab(tab) {
+// toggle=true (clic del usuario en la barra): si la pestaña ya está abierta, se cierra
+// volviendo al Dashboard. Las llamadas desde código no usan toggle.
+function cambiarTab(tab, toggle) {
+    if (toggle && tab === _tabActual && tab !== 'dashboard') tab = 'dashboard';
     pintarTabs(tab);
     if (tab === 'dashboard')    renderDashboard();
     if (tab === 'etiquetas')  { refrescarProductosEtiquetas(); setTimeout(()=>{ const f=document.getElementById('bus-etiquetas'); if(f)f.focus(); },300); }
