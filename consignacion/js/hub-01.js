@@ -403,6 +403,20 @@ function usaMarcarEntregado(i) {
     _usaActualizar(i, { entregadoUSA: true }, "✅ Pedido entregado");
 }
 
+// Diagnóstico de PayPal: comprueba que las claves del worker existan y que PayPal las acepte (no muestra ningún valor).
+async function probarPayPal(btn) {
+    const txt = btn.textContent; btn.textContent = "Probando…"; btn.disabled = true;
+    try {
+        const r = await apiPost({ accion: "PROBAR_PAYPAL" });
+        const modo = r.entorno === "live" ? "REAL (live) — cobra dinero de verdad" : "PRUEBAS (sandbox) — no mueve dinero";
+        const lista = `• PAYPAL_CLIENT_ID: ${r.tieneClientId ? "✅" : "❌ falta"}\n• PAYPAL_SECRET: ${r.tieneSecret ? "✅" : "❌ falta"}\n• PAYPAL_WEBHOOK_ID: ${r.tieneWebhookId ? "✅" : "❌ falta (solo afecta al respaldo)"}\n• PAYPAL_ENV: ${r.entornoDefinido ? r.entornoDefinido : "(vacío → se usa sandbox)"}`;
+        if (r.ok) alert(`✅ PayPal aceptó las claves.\n\nModo: ${modo}\n\n${lista}`);
+        else if (r.motivo === "faltan_claves") alert(`❌ Faltan claves de PayPal en el worker.\n\n${lista}\n\nCréalas en Cloudflare → verex-api → Settings → Variables and Secrets y vuelve a desplegar.`);
+        else alert(`❌ PayPal rechazó las claves.\n\nModo: ${modo}\n\n${lista}\n\nDetalle: ${r.detalle || ""}\n\nLo más común: el Client ID y el Secret son de otro entorno (Sandbox vs Live) o tienen un espacio al copiarlos.`);
+    } catch (e) { alert("⚠️ No se pudo conectar con el servidor: " + e.message); }
+    btn.textContent = txt; btn.disabled = false;
+}
+
 // Diagnóstico: manda un correo de prueba y explica por qué falla si no sale (clave, dominio, límite…).
 async function probarCorreos(btn) {
     const para = prompt("¿A qué correo mando la prueba?", "verex.pedidos@verexstore.com");
@@ -664,7 +678,7 @@ function renderPedidosHub() {
 
     cont.innerHTML = ((bloqueNuevos + bloqueTienda + bloqueEnCamino + bloqueSinCompletar + bloqueUSA) ||
         '<div class="card"><h2>📋 Pedidos</h2><p style="color:#4ade80;font-size:14px;">✅ Todo al día — no hay pedidos pendientes de atender.</p></div>') +
-        `<div style="text-align:center;margin:6px 0 20px;"><button onclick="probarCorreos(this)" style="padding:6px 14px;font-size:11px;background:none;color:var(--plateado);border:1px solid var(--borde);border-radius:8px;cursor:pointer;">✉️ Probar el envío de correos</button></div>`;
+        `<div style="text-align:center;margin:6px 0 20px;"><button onclick="probarCorreos(this)" style="padding:6px 14px;font-size:11px;background:none;color:var(--plateado);border:1px solid var(--borde);border-radius:8px;cursor:pointer;">✉️ Probar el envío de correos</button> <button onclick="probarPayPal(this)" style="padding:6px 14px;font-size:11px;background:none;color:var(--plateado);border:1px solid var(--borde);border-radius:8px;cursor:pointer;">🅿️ Probar PayPal</button></div>`;
 }
 
 async function migrarHistorialVentas() {

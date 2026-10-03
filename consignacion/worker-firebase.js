@@ -3119,6 +3119,21 @@ async function enviar(){
           break;
         }
 
+        // Diagnóstico de PayPal (solo admin): comprueba que las claves existan y que PayPal las acepte. No revela ningún valor.
+        case "PROBAR_PAYPAL": {
+          if (!esAdmin) return forbidden();
+          const info = { tieneClientId: !!env.PAYPAL_CLIENT_ID, tieneSecret: !!env.PAYPAL_SECRET, tieneWebhookId: !!env.PAYPAL_WEBHOOK_ID, entorno: env.PAYPAL_ENV === "live" ? "live" : "sandbox", entornoDefinido: env.PAYPAL_ENV || "" };
+          if (!info.tieneClientId || !info.tieneSecret) { result = { ok: false, ...info, motivo: "faltan_claves" }; break; }
+          try {
+            _ppTokenCache.clear();
+            await paypalToken(env);
+            result = { ok: true, ...info };
+          } catch (ePP) {
+            result = { ok: false, ...info, motivo: "paypal_rechazo", detalle: String(ePP && ePP.message || ePP).slice(0, 200) };
+          }
+          break;
+        }
+
         case "GET_ESTADO_CORREO": {
           if (!esAdmin) return forbidden();
           result = { ok: true, estado: (await sb.get("config", "correo_estado")) || null };
