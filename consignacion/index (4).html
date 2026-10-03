@@ -403,6 +403,11 @@
         from { transform: translateX(-50%) translateY(20px); opacity: 0; }
         to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
     }
+    @keyframes tabAlertaPulso {
+        0%,100% { box-shadow: 0 0 0 0 rgba(231,76,60,.75), 0 2px 8px rgba(231,76,60,.5); }
+        50%     { box-shadow: 0 0 0 8px rgba(231,76,60,0), 0 2px 14px rgba(231,76,60,.9); }
+    }
+    #tab-vendedores.tab-alerta { animation: tabAlertaPulso 1.4s infinite; }
     @keyframes modalIn {
         from { transform: scale(0.85) translateY(20px); opacity: 0; }
         to   { transform: scale(1) translateY(0); opacity: 1; }
@@ -553,7 +558,7 @@
         </div>
 
         <!-- Tab Vendedores -->
-        <div id="tab-content-vendedores">
+        <div id="tab-content-vendedores" style="display:none;">
             <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;">
                 <div class="card" style="flex:2;min-width:320px;">
                     <h2>👥 Vendedores</h2>
@@ -888,7 +893,7 @@
         </div>
 
         <!-- Tab Dashboard -->
-        <div id="tab-content-dashboard" style="display:none;">
+        <div id="tab-content-dashboard" style="display:block;">
             <!-- KPIs -->
             <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px;">
                 <div class="stat-box">
@@ -1646,6 +1651,7 @@ function iniciarAutoSync() {
             } else {
                 renderVendedores();
             }
+            renderAlertasAfiliadosHub(); // mantiene vivo el aviso del botón Vendedores
             // Indicador discreto
             const ind = document.getElementById("sync-indicator");
             if (ind) { ind.textContent = "↻ " + new Date().toLocaleTimeString('es', {hour:'2-digit',minute:'2-digit'}); }
@@ -1770,7 +1776,10 @@ function renderAlertasAfiliadosHub() {
         .sort((a,b) => b.dias - a.dias);
 
     const badge = document.getElementById("tab-vendedores-badge");
-    const totalPendientes = enCamino.length + sinCompletar.length + cortesPorVencer.length;
+    const totalPendientes = enCamino.length + sinCompletar.length + cortesPorVencer.length
+        + _reposicionesPendientes.length + _cortesPendientesCobro.length;
+    _vendedoresAlerta = totalPendientes;
+    pintarTabs(_tabActual);
     if (badge) {
         if (totalPendientes > 0) { badge.textContent = totalPendientes; badge.style.display = "block"; }
         else badge.style.display = "none";
@@ -2006,6 +2015,7 @@ async function cargarDatos() {
         await cargarLeads();
         renderVendedores();
         renderAlertasAfiliadosHub();
+        if (document.getElementById("tab-content-dashboard")?.style.display === "block") renderDashboard();
         cargarReposicionesPendientes();
         cargarCortesPendientesCobro();
         cargarLinksAfiliados();
@@ -2036,17 +2046,31 @@ const TAB_METALS = {
 };
 const TAB_INACTIVE = { bg: 'linear-gradient(135deg,#2a2a2a,#4a4a4a,#333,#555,#2a2a2a)', color: '#888', shadow: 'none' };
 
-function cambiarTab(tab) {
+// Hay actividad pendiente de vendedores (la calcula renderAlertasAfiliadosHub).
+let _vendedoresAlerta = 0;
+let _tabActual = 'dashboard';
+const TAB_ALERTA = { bg: 'linear-gradient(135deg,#7a1a10,#e74c3c,#b03020,#ff7b6b,#7a1a10)', color: '#fff', shadow: '0 2px 10px rgba(231,76,60,0.7)' };
+
+function pintarTabs(tab) {
+    _tabActual = tab;
     const tabs = ['vendedores', 'dashboard', 'fotoqr', 'etiquetas', 'stock', 'ventadirecta', 'historialventas'];
     tabs.forEach(t => {
         document.getElementById('tab-content-' + t).style.display = t === tab ? 'block' : 'none';
         const btn = document.getElementById('tab-' + t);
-        const m = t === tab ? TAB_METALS[t] : TAB_INACTIVE;
+        const alerta = t === 'vendedores' && t !== tab && _vendedoresAlerta > 0;
+        const m = t === tab ? TAB_METALS[t] : alerta ? TAB_ALERTA : TAB_INACTIVE;
         btn.style.background  = m.bg;
         btn.style.color       = m.color;
         btn.style.boxShadow   = m.shadow;
-        btn.style.filter      = t === tab ? 'none' : 'brightness(0.7)';
+        btn.style.filter      = (t === tab || alerta) ? 'none' : 'brightness(0.7)';
+        if (t === 'vendedores') btn.classList.toggle('tab-alerta', alerta);
     });
+}
+
+pintarTabs('dashboard');
+
+function cambiarTab(tab) {
+    pintarTabs(tab);
     if (tab === 'dashboard')    renderDashboard();
     if (tab === 'etiquetas')  { refrescarProductosEtiquetas(); setTimeout(()=>{ const f=document.getElementById('bus-etiquetas'); if(f)f.focus(); },300); }
     if (tab === 'stock')      { cargarStock(); setTimeout(()=>{ const f=document.getElementById('bus-stock'); if(f)f.focus(); },300); }
