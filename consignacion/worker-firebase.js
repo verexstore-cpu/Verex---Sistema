@@ -20,6 +20,11 @@
 //    WOMPI_WEBHOOK_SECRET  → token random propio — NO viene de Wompi, se
 //                            genera acá y se usa como sufijo de la URL del
 //                            webhook (Wompi no firma sus webhooks)
+//    PAYPAL_CLIENT_ID      → Client ID de la app de PayPal (checkout oficial USA)
+//    PAYPAL_SECRET         → Secret de la misma app
+//    PAYPAL_WEBHOOK_ID     → ID del webhook creado en esa app (para verificar la firma de PayPal)
+//    PAYPAL_ENV            → "live" para cobros reales; cualquier otro valor (o vacío) = Sandbox de pruebas
+//    PAYPAL_RETURN_BASE    → (opcional) a dónde vuelve el cliente tras pagar; por defecto https://us.verexstore.com/
 // ═══════════════════════════════════════════════════════════════════
 
 const CORS = {
@@ -340,6 +345,10 @@ async function enviar(){
       const urlPost = new URL(request.url);
       if (request.method === "POST" && urlPost.pathname === `/webhook-wompi/${env.WOMPI_WEBHOOK_SECRET}`) {
         return manejarWebhookWompi(request, env, sb);
+      }
+      // PayPal firma sus webhooks: la autenticación es la verificación de esa firma (ver manejarWebhookPayPal).
+      if (request.method === "POST" && urlPost.pathname === "/webhook-paypal") {
+        return manejarWebhookPayPal(request, env, sb);
       }
     }
 
@@ -2603,6 +2612,8 @@ async function enviar(){
             // Link de PayPal.me con el monto exacto del pedido, armado en el
             // checkout — el panel de Logística USA lo muestra para copiarlo.
             pagoLink: d.pagoLink || "",
+            // Orden del checkout oficial de PayPal (si pagó por ahí) — se usa para capturar y para reconocer su webhook.
+            paypalOrderId: /^[A-Z0-9]{8,30}$/.test(d.paypalOrderId || "") ? d.paypalOrderId : "",
             // Idioma elegido en el catálogo — para poder mandar el correo de
             // pago confirmado en el mismo idioma que el cliente ya venía usando.
             lang: d.lang || "",
@@ -2691,11 +2702,12 @@ async function enviar(){
               // se acepta un paypal.me/usuario/monto bien formado.
               const esWompi = d.metodoPago === "wompi";
               const pagoLinkOk = /^https:\/\/paypal\.me\/[A-Za-z0-9_.]{1,50}\/\d+\.\d{2}[A-Z]{0,3}$/.test(d.pagoLink || "")
+                || /^https:\/\/www\.(sandbox\.)?paypal\.com\/[A-Za-z0-9\/_\-?=&%.]{1,200}$/.test(d.pagoLink || "")
                 || /^https:\/\/([a-z0-9-]+\.)*wompi\.sv\//.test(d.pagoLink || "");
               const correoValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.correo || "");
               const pagoLinkHtml = pagoLinkOk ? `
                         <div style="margin:0 0 16px;padding:12px 14px;background:#fef9e7;border:1px solid #f0d98c;border-radius:8px;text-align:center;">
-                          <div style="font-size:11px;color:#8a6d1a;font-weight:700;margin-bottom:6px;">💳 LINK DE PAGO (${esWompi ? "Wompi" : "PayPal.me"})${correoValido ? "" : " — MANDAR AL CLIENTE"}</div>
+                          <div style="font-size:11px;color:#8a6d1a;font-weight:700;margin-bottom:6px;">💳 LINK DE PAGO (${esWompi ? "Wompi" : "PayPal"})${correoValido ? "" : " — MANDAR AL CLIENTE"}</div>
                           <a href="${d.pagoLink}" style="font-size:13px;color:#1a5fb4;word-break:break-all;">${d.pagoLink}</a>
                         </div>` : "";
               await fetchResend("https://api.resend.com/emails", {
@@ -3004,6 +3016,106 @@ async function enviar(){
               : lds.every(l => l.estado === "cancelado") ? "cancelado" : "pendiente";
           }
           result = { ok: true, estado: estadoPed };
+          break;
+        }
+
+        // Checkout oficial de PayPal (público, lo usa us.verexstore.com): crea la orden y devuelve a dónde mandar al cliente.
+        case "CREAR_ORDEN_PAYPAL": {
+          if (!paypalConfigurado(env)) { result = { ok: false, error: "paypal_no_configurado" }; break; }
+          const pid = String(d.pedidoId || "");
+          const montoPP = Math.round(parseFloat(d.monto) * 100) / 100;
+          if (!RE_PEDIDO_USA.test(pid) || !(montoPP > 0) || montoPP > 50000) { result = { ok: false, error: "pedido_invalido" }; break; }
+          const baseRet = (env.PAYPAL_RETURN_BASE || "https://us.verexstore.com/").replace(/\/?$/, "/");
+          try {
+            const o = await paypalApi(env, "POST", "/v2/checkout/orders", {
+              intent: "CAPTURE",
+              purchase_units: [{
+                reference_id: pid, custom_id: pid,
+                description: String(d.descripcion || "VEREX Store order").slice(0, 120),
+                amount: { currency_code: "USD", value: montoPP.toFixed(2) }
+              }],
+              payment_source: { paypal: { experience_context: {
+                brand_name: "VEREX Store", landing_page: "NO_PREFERENCE", user_action: "PAY_NOW", shipping_preference: "NO_SHIPPING",
+                return_url: `${baseRet}?pp=return&pedido=${pid}`, cancel_url: `${baseRet}?pp=cancel&pedido=${pid}`
+              } } }
+            }, pid);
+            const link = (o.data?.links || []).find(l => l.rel === "payer-action") || (o.data?.links || []).find(l => l.rel === "approve");
+            if (!o.ok || !o.data?.id || !link?.href) {
+              console.error("PayPal crear orden:", o.status, JSON.stringify(o.data).slice(0, 300));
+              result = { ok: false, error: "paypal_error" }; break;
+            }
+            result = { ok: true, orderId: o.data.id, urlAprobar: link.href };
+          } catch (ePP) {
+            console.error("PayPal crear orden error:", ePP);
+            result = { ok: false, error: "paypal_error" };
+          }
+          break;
+        }
+
+        // El cliente volvió de PayPal tras aprobar: se cobra de verdad (captura) y el pedido queda pagado.
+        // Idempotente — si ya estaba capturado (otra pestaña, el webhook) solo confirma el estado.
+        case "CAPTURAR_ORDEN_PAYPAL": {
+          if (!paypalConfigurado(env)) { result = { ok: false, error: "paypal_no_configurado" }; break; }
+          const pid = String(d.pedidoId || ""), oid = String(d.orderId || "");
+          if (!RE_PEDIDO_USA.test(pid) || !RE_PAYPAL_ORDER.test(oid)) { result = { ok: false, error: "pedido_invalido" }; break; }
+          const lds = (await sb.query("leads", "pedidoId", "eq", pid)).filter(l => l.pais === "US");
+          if (!lds.length || !lds.some(l => l.paypalOrderId === oid)) { result = { ok: false, error: "orden_no_coincide" }; break; }
+          if (lds.every(l => l.pagadoUSA)) { result = { ok: true, estado: "pagado" }; break; }
+          try {
+            let cap = null;
+            const c = await paypalApi(env, "POST", `/v2/checkout/orders/${oid}/capture`, {}, "cap-" + oid);
+            if (c.ok && c.data?.status === "COMPLETED") cap = paypalCapturaDe(c.data);
+            else {
+              // ¿ya estaba capturada? (doble clic, otra pestaña) — se consulta el estado real de la orden
+              const g = await paypalApi(env, "GET", `/v2/checkout/orders/${oid}`);
+              if (g.ok && g.data?.status === "COMPLETED") cap = paypalCapturaDe(g.data);
+              else if (g.ok && (g.data?.status === "APPROVED" || g.data?.status === "PAYER_ACTION_REQUIRED" || g.data?.status === "CREATED")) { result = { ok: true, estado: "pendiente" }; break; }
+              else { console.error("PayPal capturar:", c.status, JSON.stringify(c.data).slice(0, 300)); result = { ok: false, error: "no_se_pudo_cobrar" }; break; }
+            }
+            if (!cap) { result = { ok: true, estado: "pendiente" }; break; }
+            if (!montoCoincide(lds, cap)) {
+              await avisarAdminUSA(env, `⚠️ PayPal: el monto cobrado no coincide — ${pid}`, `<p>PayPal cobró <b>${cap.amount?.value} ${cap.amount?.currency_code}</b> en el pedido <b>${pid}</b>, pero el total registrado es <b>${lds.find(l => l.totalPedidoUSD != null)?.totalPedidoUSD}</b>. No se marcó como pagado: revísalo en PayPal.</p>`);
+              result = { ok: false, error: "monto_distinto" }; break;
+            }
+            await confirmarPagoPedidoUSA(env, sb, pid, { metodo: "paypal", idTransaccion: cap.id, extra: { paypalCaptureId: cap.id, paypalOrderId: oid } });
+            result = { ok: true, estado: "pagado" };
+          } catch (eCap) {
+            console.error("PayPal capturar error:", eCap);
+            result = { ok: false, error: "paypal_error" };
+          }
+          break;
+        }
+
+        // Reembolso total de un pedido USA pagado por PayPal (solo admin): devuelve el dinero, cancela el pedido y libera el stock.
+        case "REEMBOLSAR_PEDIDO_USA": {
+          if (!esAdmin) return forbidden();
+          if (!paypalConfigurado(env)) { result = { ok: false, error: "paypal_no_configurado" }; break; }
+          const pid = String(d.pedidoId || "");
+          const lds = (await sb.query("leads", "pedidoId", "eq", pid)).filter(l => l.pais === "US");
+          const capId = lds.find(l => l.paypalCaptureId)?.paypalCaptureId;
+          if (!lds.length) { result = { ok: false, error: "pedido_no_encontrado" }; break; }
+          if (lds.every(l => l.reembolsadoUSA)) { result = { ok: false, error: "ya_reembolsado" }; break; }
+          if (!lds.some(l => l.pagadoUSA) || !capId) { result = { ok: false, error: "no_reembolsable_por_aqui" }; break; }   // tarjeta (Wompi) o sin pago: se hace aparte
+          try {
+            const rf = await paypalApi(env, "POST", `/v2/payments/captures/${capId}/refund`, { note_to_payer: "VEREX Store refund" }, "refund-" + capId);
+            if (!rf.ok || !["COMPLETED", "PENDING"].includes(rf.data?.status)) {
+              console.error("PayPal reembolso:", rf.status, JSON.stringify(rf.data).slice(0, 300));
+              result = { ok: false, error: "paypal_error", detalle: String(rf.data?.message || rf.data?.name || "").slice(0, 160) }; break;
+            }
+            for (const l of lds) {
+              const patch = { reembolsadoUSA: true, paypalReembolsoId: rf.data.id || "" };
+              if (!l.entregadoUSA && l.estado !== "cancelado") {
+                if (l.reservaDescTienda || l.reservaDescBodega) { try { await sb.liberar(l.codigo, l.reservaDescTienda || 0, l.reservaDescBodega || 0); } catch (eLib) { console.error("Reembolso: error liberando " + l.codigo, eLib); } }
+                patch.estado = "cancelado"; patch.reservaDescTienda = 0; patch.reservaDescBodega = 0; patch.reservaExpiraEn = null;
+                patch.historial = [...(l.historial || []), { estado: "cancelado", fecha: new Date().toISOString(), motivo: "Reembolsado por PayPal" }];
+              }
+              await sb.update("leads", l.id, patch);
+            }
+            result = { ok: true, reembolsoId: rf.data.id || "", estado: rf.data.status };
+          } catch (eRf) {
+            console.error("PayPal reembolso error:", eRf);
+            result = { ok: false, error: "paypal_error" };
+          }
           break;
         }
 
@@ -5357,7 +5469,9 @@ function forbidden() {
 const RESERVA_NORMAL_MS = 30 * 60 * 1000;
 const RESERVA_PAYPAL_USA_MS = 12 * 3600 * 1000;
 const RE_PAYPAL_ME_LINK = /^https:\/\/paypal\.me\/[A-Za-z0-9_.]{1,50}\/\d+\.\d{2}[A-Z]{0,3}$/;
+const RESERVA_PAYPAL_CHECKOUT_MS = 2 * 3600 * 1000;   // el cliente tiene tiempo de aprobar el pago en PayPal; luego se confirma sola
 function ttlReservaLeadMs(d) {
+  if (d && d.pais === "US" && /^[A-Z0-9]{8,30}$/.test(d.paypalOrderId || "")) return RESERVA_PAYPAL_CHECKOUT_MS;
   return (d && d.pais === "US" && RE_PAYPAL_ME_LINK.test(d.pagoLink || "")) ? RESERVA_PAYPAL_USA_MS : RESERVA_NORMAL_MS;
 }
 
@@ -5650,6 +5764,53 @@ async function wompiToken(env) {
 // El webhook llega apenas Wompi resuelve la transacción (aprobada o no).
 // Como no hay firma documentada para validarlo, la URL secreta (ver arriba)
 // es la única autenticación — así que acá sí se confía en el body.
+// Marca como pagado TODO el pedido USA (un lead por producto), ya sea por tarjeta (webhook de Wompi) o por
+// PayPal (captura / webhook). Idempotente: los leads ya pagados se saltan. Si el pago llega con la reserva vencida
+// reactiva el pedido cuando todavía hay stock; si ya no hay, queda "pagado sin stock" y se avisa al equipo.
+async function confirmarPagoPedidoUSA(env, sb, pedidoId, { metodo, idTransaccion, extra }) {
+  const etiqueta = metodo === "paypal" ? "PayPal" : "tarjeta (Wompi)";
+  const leadsPedido = (await sb.query("leads", "pedidoId", "eq", pedidoId)).filter(l => l.pais === "US");
+  const avisosSinStock = [];
+  let nuevos = 0;
+  for (const lead of leadsPedido) {
+    if (lead.pagadoUSA) continue; // ya procesado — evita reservar dos veces
+    nuevos++;
+    const patch = { pagadoUSA: true, metodoPagoUSA: metodo, reservaExpiraEn: null, ...(extra || {}) };
+    if (metodo === "wompi") patch.wompiIdTransaccion = idTransaccion;
+    let sinStock = null;
+    // La reserva normalmente ya se hizo en REGISTRAR_LEAD (antes de pagar) — acá solo se confirma. Si por algo
+    // el lead nunca llegó a reservar, o la reserva ya se liberó, se reserva recién ahora como respaldo.
+    if (!lead.reservaDescTienda && !lead.reservaDescBodega) {
+      try {
+        const res = await sb.reservar(lead.codigo, lead.qty || 1);
+        if (res.ok) {
+          patch.reservaDescTienda = res.desc_tienda || 0;
+          patch.reservaDescBodega = res.desc_bodega || 0;
+        } else {
+          sinStock = "sin stock";
+          console.error("Pago " + etiqueta + ": sin stock para " + lead.codigo + " (pedido " + pedidoId + ")");
+        }
+      } catch (eRes) {
+        sinStock = "error al reservar";
+        console.error("Pago " + etiqueta + ": error reservando " + lead.codigo, eRes);
+      }
+    }
+    if (lead.estado === "cancelado" && !sinStock) {
+      patch.estado = "interesado";
+      patch.historial = [...(lead.historial || []), { estado: "interesado", fecha: new Date().toISOString(), motivo: "Pago con " + etiqueta + " confirmado tras vencer la reserva" }];
+    }
+    if (sinStock) { patch.pagadoSinStock = true; avisosSinStock.push(`${lead.nombre || lead.codigo} (${lead.codigo})`); }
+    await sb.update("leads", lead.id, patch);
+  }
+  if (avisosSinStock.length) {
+    await avisarAdminUSA(env, `⚠️ Pedido USA pagado SIN STOCK — ${pedidoId}`,
+      `<p>El cliente pagó con ${etiqueta} el pedido <b>${pedidoId}</b>, pero no se pudo reservar stock de: <b>${avisosSinStock.join(", ")}</b>.</p>
+       <p>Revisa el panel de Logística USA: hay que conseguir la pieza o reembolsar el pago${metodo === "paypal" ? " (botón «Reembolsar» del panel)" : " en Wompi"}.</p>`);
+  }
+  if (nuevos) await enviarCorreoPagoConfirmadoUSA(env, sb, pedidoId);
+  return { leads: leadsPedido.length, nuevos };
+}
+
 async function manejarWebhookWompi(request, env, sb) {
   try {
     const payload = await request.json();
@@ -5657,55 +5818,98 @@ async function manejarWebhookWompi(request, env, sb) {
     const pedidoId = payload.EnlacePago?.IdentificadorEnlaceComercio;
     if (!idTransaccion || !pedidoId) return json({ ok: true });
     if (payload.ResultadoTransaccion !== "ExitosaAprobada") return json({ ok: true });
-
-    // La reserva normalmente ya se hizo en REGISTRAR_LEAD, al momento del
-    // pedido (antes de que el cliente llegara a pagar) — acá solo se
-    // confirma. Igual que ACTUALIZAR_LEAD_USA, si por algo el lead nunca
-    // llegó a reservar (ej. el fetch fire-and-forget del catálogo falló),
-    // se reserva recién ahora como respaldo.
-    const todosLeads = await sb.getAll("leads");
-    const leadsPedido = todosLeads.filter(l => l.pedidoId === pedidoId && l.pais === "US");
-    const avisosSinStock = [];
-    for (const lead of leadsPedido) {
-      if (lead.pagadoUSA) continue; // ya procesado — evita reservar dos veces
-      const patchWompi = { pagadoUSA: true, metodoPagoUSA: "wompi", wompiIdTransaccion: idTransaccion, reservaExpiraEn: null };
-      let sinStock = null;
-      if (!lead.reservaDescTienda && !lead.reservaDescBodega) {
-        try {
-          const resWompi = await sb.reservar(lead.codigo, lead.qty || 1);
-          if (resWompi.ok) {
-            patchWompi.reservaDescTienda = resWompi.desc_tienda || 0;
-            patchWompi.reservaDescBodega = resWompi.desc_bodega || 0;
-          } else {
-            sinStock = "sin stock";
-            console.error("Webhook Wompi: sin stock para " + lead.codigo + " (pedido " + pedidoId + ")");
-          }
-        } catch (eResWompi) {
-          sinStock = "error al reservar";
-          console.error("Webhook Wompi: error reservando " + lead.codigo, eResWompi);
-        }
-      }
-      // Si la reserva ya había vencido (lead "cancelado") y se pudo volver a reservar,
-      // el pago lo reactiva; si no, queda marcado para que el admin lo resuelva.
-      if (lead.estado === "cancelado" && !sinStock) {
-        patchWompi.estado = "interesado";
-        patchWompi.historial = [...(lead.historial || []), { estado: "interesado", fecha: new Date().toISOString(), motivo: "Pago con tarjeta confirmado tras vencer la reserva" }];
-      }
-      if (sinStock) { patchWompi.pagadoSinStock = true; avisosSinStock.push(`${lead.nombre || lead.codigo} (${lead.codigo})`); }
-      await sb.update("leads", lead.id, patchWompi);
-    }
-    if (avisosSinStock.length) {
-      await avisarAdminUSA(env, `⚠️ Pedido USA pagado SIN STOCK — ${pedidoId}`,
-        `<p>El cliente pagó con tarjeta (Wompi) el pedido <b>${pedidoId}</b>, pero no se pudo reservar stock de: <b>${avisosSinStock.join(", ")}</b>.</p>
-         <p>Revisa el panel de Logística USA: hay que conseguir la pieza o reembolsar el pago en Wompi.</p>`);
-    }
-    await enviarCorreoPagoConfirmadoUSA(env, sb, pedidoId);
+    await confirmarPagoPedidoUSA(env, sb, pedidoId, { metodo: "wompi", idTransaccion });
     return json({ ok: true });
   } catch(e) {
     console.error("Webhook Wompi error:", e);
     // Siempre 200 — un error nuestro no debe hacer que Wompi reintente
     // indefinidamente el mismo webhook.
     return json({ ok: true });
+  }
+}
+
+// ── PAYPAL (checkout oficial, catálogo USA) ───────────────────────
+// Flujo: la página pide CREAR_ORDEN_PAYPAL → el cliente aprueba el pago en PayPal → vuelve a la página, que pide
+// CAPTURAR_ORDEN_PAYPAL (cobra de verdad) → el pedido queda pagado y sale el correo. El webhook de PayPal es el
+// respaldo por si el cliente cierra la pestaña después de aprobar. Para pruebas: PAYPAL_ENV distinto de "live" = Sandbox.
+const _ppTokenCache = new Map();
+function paypalBase(env) { return env.PAYPAL_ENV === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com"; }
+function paypalConfigurado(env) { return !!(env.PAYPAL_CLIENT_ID && env.PAYPAL_SECRET); }
+async function paypalToken(env) {
+  const base = paypalBase(env), c = _ppTokenCache.get(base);
+  if (c && c.exp > Date.now() + 60000) return c.token;
+  const res = await fetch(base + "/v1/oauth2/token", {
+    method: "POST",
+    headers: { "Authorization": "Basic " + btoa(`${env.PAYPAL_CLIENT_ID}:${env.PAYPAL_SECRET}`), "Content-Type": "application/x-www-form-urlencoded" },
+    body: "grant_type=client_credentials"
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.access_token) throw new Error("PayPal token: " + res.status + " " + String(data.error_description || data.error || "").slice(0, 120));
+  _ppTokenCache.set(base, { token: data.access_token, exp: Date.now() + (parseInt(data.expires_in) || 300) * 1000 });
+  return data.access_token;
+}
+async function paypalApi(env, method, path, body, requestId) {
+  const token = await paypalToken(env);
+  const headers = { "Authorization": "Bearer " + token, "Content-Type": "application/json" };
+  if (requestId) headers["PayPal-Request-Id"] = requestId;
+  const res = await fetch(paypalBase(env) + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, data };
+}
+const RE_PEDIDO_USA = /^US[a-z0-9]{4,40}$/;
+const RE_PAYPAL_ORDER = /^[A-Z0-9]{8,30}$/;
+function paypalCapturaDe(order) {
+  const caps = order?.purchase_units?.[0]?.payments?.captures;
+  return Array.isArray(caps) ? (caps.find(c => c.status === "COMPLETED") || null) : null;
+}
+// ¿El monto cobrado coincide con el total que quedó registrado en el pedido? (evita marcar pagado un pago por menos)
+function montoCoincide(leads, captura) {
+  const esperado = leads.find(l => l.totalPedidoUSD != null)?.totalPedidoUSD;
+  if (esperado == null) return true;   // pedidos viejos sin total guardado
+  const cobrado = parseFloat(captura?.amount?.value);
+  return captura?.amount?.currency_code === "USD" && Math.abs(cobrado - parseFloat(esperado)) < 0.011;
+}
+
+async function manejarWebhookPayPal(request, env, sb) {
+  try {
+    const raw = await request.text();
+    let evento; try { evento = JSON.parse(raw); } catch (_) { return json({ ok: false, error: "json" }, 400); }
+    if (!paypalConfigurado(env) || !env.PAYPAL_WEBHOOK_ID) return json({ ok: false, error: "no_configurado" }, 400);
+    const h = n => request.headers.get(n) || "";
+    const v = await paypalApi(env, "POST", "/v1/notifications/verify-webhook-signature", {
+      auth_algo: h("paypal-auth-algo"), cert_url: h("paypal-cert-url"), transmission_id: h("paypal-transmission-id"),
+      transmission_sig: h("paypal-transmission-sig"), transmission_time: h("paypal-transmission-time"),
+      webhook_id: env.PAYPAL_WEBHOOK_ID, webhook_event: evento
+    });
+    if (!v.ok || v.data?.verification_status !== "SUCCESS") {
+      console.error("Webhook PayPal: firma no válida", v.status, JSON.stringify(v.data).slice(0, 200));
+      return json({ ok: false, error: "firma" }, 400);
+    }
+    const r = evento.resource || {};
+    if (evento.event_type === "PAYMENT.CAPTURE.COMPLETED") {
+      const orderId = r.supplementary_data?.related_ids?.order_id || "";
+      let pedidoId = RE_PEDIDO_USA.test(r.custom_id || "") ? r.custom_id : "";
+      if (!pedidoId && RE_PAYPAL_ORDER.test(orderId)) {
+        const porOrden = (await sb.query("leads", "paypalOrderId", "eq", orderId))[0];
+        pedidoId = porOrden?.pedidoId || "";
+      }
+      if (pedidoId) {
+        const leads = (await sb.query("leads", "pedidoId", "eq", pedidoId)).filter(l => l.pais === "US");
+        if (leads.length && montoCoincide(leads, r)) {
+          await confirmarPagoPedidoUSA(env, sb, pedidoId, { metodo: "paypal", idTransaccion: r.id, extra: { paypalCaptureId: r.id, paypalOrderId: orderId || leads[0].paypalOrderId || "" } });
+        } else if (leads.length) {
+          await avisarAdminUSA(env, `⚠️ PayPal: el monto cobrado no coincide — ${pedidoId}`, `<p>PayPal cobró <b>${r.amount?.value} ${r.amount?.currency_code}</b> en el pedido <b>${pedidoId}</b>, pero el total registrado es <b>${leads.find(l => l.totalPedidoUSD != null)?.totalPedidoUSD}</b>. No se marcó como pagado: revísalo en PayPal.</p>`);
+        }
+      }
+    } else if (evento.event_type === "PAYMENT.CAPTURE.REFUNDED" || evento.event_type === "PAYMENT.CAPTURE.REVERSED") {
+      // Reembolso o contracargo hechos desde el panel de PayPal: se marca en el pedido para que se vea en Logística USA.
+      const cap = (await sb.query("leads", "paypalCaptureId", "eq", r.id || ""));
+      for (const l of cap) await sb.update("leads", l.id, { reembolsadoUSA: true });
+    }
+    return json({ ok: true });
+  } catch (e) {
+    console.error("Webhook PayPal error:", e);
+    return json({ ok: false, error: "interno" }, 500);   // 5xx: PayPal reintenta el aviso
   }
 }
 

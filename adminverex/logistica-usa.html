@@ -310,7 +310,11 @@ function agruparPedidos(leads){
             total: first.totalPedidoUSD != null ? first.totalPedidoUSD : subtotal,
             pagoLink: first.pagoLink || "",
             // Cobro: tarjeta (Wompi, se confirma sola) o PayPal.me (se marca a mano)
-            metodoPago: first.metodoPagoUSA === "wompi" || /wompi\.sv/.test(first.pagoLink || "") ? "wompi" : "paypal",
+            // "wompi" (tarjeta, se confirma sola) · "paypal" (checkout oficial, se confirma sola) · "paypalme" (links viejos, se marca a mano)
+            metodoPago: first.metodoPagoUSA === "wompi" || /wompi\.sv/.test(first.pagoLink || "") ? "wompi"
+                : /paypal\.me/.test(first.pagoLink || "") ? "paypalme" : "paypal",
+            reembolsado: leadsGrupo.every(l => l.reembolsadoUSA),
+            reembolsable: !!first.pagadoUSA && !!first.paypalCaptureId && !leadsGrupo.every(l => l.reembolsadoUSA),
             pagadoSinStock: leadsGrupo.some(l => l.pagadoSinStock),
             // Todos los productos cancelados y sin pagar/entregar = pedido cancelado (reserva vencida o cancelado a mano)
             // (un pedido pagado con tarjeta sin stock sigue visible en el tablero para resolverlo; uno cancelado a mano, aunque ya estuviera pagado, va a Cancelados)
@@ -325,7 +329,7 @@ function agruparPedidos(leads){
 
 function chipForStage(o){
     const etapa = etapaDe(o);
-    if(etapa === "cancelado") return `<span class="chip cancel">Cancelado</span>${o.pagadoUSA ? `<span class="chip alerta">Ya pagado: reembolsar</span>` : ""}`;
+    if(etapa === "cancelado") return `<span class="chip cancel">Cancelado</span>${o.reembolsado ? `<span class="chip">Reembolsado</span>` : o.pagadoUSA ? `<span class="chip alerta">Ya pagado: reembolsar</span>` : ""}`;
     if(etapa === "pendiente") return `<span class="chip pending">Sin pagar</span>`;
     if(etapa === "preparando") return `<span class="chip prep">Pagado</span>`;
     if(etapa === "enviado") return `<span class="chip transit mono">${esc(o.trackingDHL)}</span>`;
@@ -365,7 +369,7 @@ function renderBoard(){
     document.getElementById("cancelados-sum").textContent = `Cancelados (${canc.length})`;
     document.getElementById("cancelados-cards").innerHTML = canc.map(o => `<button class="card" onclick="abrirPedido('${esc(o.id)}')">
         <div class="card-top"><span class="card-name">${esc(o.nombre)}</span><span class="card-total num">${money(o.total)}</span></div>
-        <div class="card-foot"><span class="chip cancel">Cancelado</span>${o.pagadoUSA ? `<span class="chip alerta">Ya pagado: reembolsar</span>` : ""}<span class="chip">${diasDesde(o.fecha)} días</span></div></button>`).join("");
+        <div class="card-foot"><span class="chip cancel">Cancelado</span>${o.reembolsado ? `<span class="chip">Reembolsado</span>` : o.pagadoUSA ? `<span class="chip alerta">Ya pagado: reembolsar</span>` : ""}<span class="chip">${diasDesde(o.fecha)} días</span></div></button>`).join("");
 
     document.getElementById("stat-pend").textContent = PEDIDOS.filter(o => etapaDe(o)==="pendiente").length;
     document.getElementById("stat-transit").textContent = PEDIDOS.filter(o => etapaDe(o)==="enviado").length;
@@ -415,7 +419,7 @@ function abrirPedido(id){
 
         ${o.pagoLink ? `
         <div class="dsec">
-            <div class="dsec-label">${o.metodoPago === "wompi" ? "Cobro con tarjeta (Wompi) — se confirma sola al pagar" : "Cobro por PayPal — revisa PayPal y marca pagado"}</div>
+            <div class="dsec-label">${o.metodoPago === "wompi" ? "Cobro con tarjeta (Wompi) — se confirma sola al pagar" : o.metodoPago === "paypal" ? "Cobro por PayPal — se confirma sola al pagar" : "Cobro por PayPal.me — revisa PayPal y marca pagado"}${o.reembolsado ? " · REEMBOLSADO" : ""}</div>
             ${o.pagadoSinStock ? `<div style="color:#b42318;font-weight:600;margin-bottom:6px;">⚠️ El cliente pagó pero no había stock: consigue la pieza o reembolsa el pago.</div>` : ""}
             <div class="paylink-box">
                 <span class="num" id="dr-paylink-txt">${esc(o.pagoLink)}</span>
@@ -441,7 +445,8 @@ function abrirPedido(id){
             ${etapa === "enviado" ? `<button class="btn primary" onclick="marcarEntregado('${esc(o.id)}')">Marcar entregado</button>` : ""}
             ${etapa === "entregado" ? `<button class="btn ghost" disabled>Pedido completo</button>` : ""}
             <button class="btn ghost" onclick="guardarNotas('${esc(o.id)}')">Guardar</button>
-            ${etapa === "pendiente" || etapa === "preparando" || etapa === "enviado" ? `<button class="btn ghost" style="color:#b42318;" onclick="cancelarPedido('${esc(o.id)}')">Cancelar pedido</button>` : ""}
+            ${o.reembolsable ? `<button class="btn ghost" style="color:#b42318;" onclick="reembolsarPedido('${esc(o.id)}')">Reembolsar pago (PayPal)</button>` : ""}
+            ${(etapa === "pendiente" || etapa === "preparando" || etapa === "enviado") && !o.reembolsable ? `<button class="btn ghost" style="color:#b42318;" onclick="cancelarPedido('${esc(o.id)}')">Cancelar pedido</button>` : ""}
         </div>
     `;
 
@@ -499,6 +504,19 @@ async function marcarEntregado(id){
     if(!await actualizarPedido(id, { entregadoUSA: true })) return;
     cerrarDrawer();
     renderBoard();
+}
+async function reembolsarPedido(id){
+    const o = PEDIDOS.find(x => x.id === id);
+    if(!o) return;
+    if(!confirm(`Se devolverá el pago completo (${money(o.total)}) al cliente por PayPal, se cancelará el pedido y el stock vuelve a bodega. Esto no se puede deshacer. ¿Reembolsar?`)) return;
+    try{
+        const res = await fetch(API_URL, { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accion: "REEMBOLSAR_PEDIDO_USA", _pass: ADMIN_PASS, pedidoId: id }) }).then(r => r.json());
+        if(!res.ok){ alert("⚠️ " + ({ ya_reembolsado:"Este pedido ya fue reembolsado.", no_reembolsable_por_aqui:"Este pago no se puede reembolsar desde aquí (tarjeta o sin pago).", paypal_error:"PayPal no aceptó el reembolso. " + (res.detalle || "") }[res.error] || res.error || "No se pudo reembolsar")); return; }
+        alert("✅ Reembolso enviado por PayPal.");
+    }catch(_){ alert("⚠️ No se pudo conectar con el servidor"); return; }
+    await cargarPedidos();
+    cerrarDrawer();
 }
 async function cancelarPedido(id){
     const o = PEDIDOS.find(x => x.id === id);

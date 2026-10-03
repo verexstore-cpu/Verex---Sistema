@@ -636,7 +636,9 @@ function renderPedidosHub() {
                 // marcar pagado antes de que venza la reserva (12 h); la tarjeta se confirma sola.
                 let avisoCobro = "";
                 if (etapa === "pago") {
-                    if (/paypal\.me/.test(f.pagoLink || "")) {
+                    if (f.paypalOrderId || /paypal\.com/.test(f.pagoLink || "")) {
+                        avisoCobro = `<div style="font-size:11px;color:var(--plateado);margin-top:3px;">🅿️ PayPal: se confirma sola al pagar</div>`;
+                    } else if (/paypal\.me/.test(f.pagoLink || "")) {
                         const ms = f.reservaExpiraEn ? new Date(f.reservaExpiraEn).getTime() - ahora : null;
                         const resta = ms === null ? "" : ms <= 0 ? " — la reserva ya venció" : ` — la reserva vence en ${Math.floor(ms / 3600000)} h ${Math.floor((ms % 3600000) / 60000)} min`;
                         avisoCobro = `<div style="font-size:11px;font-weight:700;color:#f97316;margin-top:3px;">⏳ Revisa PayPal y marca pagado${resta}</div>`;
