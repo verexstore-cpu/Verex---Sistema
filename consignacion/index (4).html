@@ -415,6 +415,14 @@
         from { transform: translateX(-50%) translateY(20px); opacity: 0; }
         to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
     }
+    .hub-bar { display:grid; grid-template-columns:1fr minmax(420px,46%) 1fr; gap:14px; align-items:stretch; margin-bottom:16px; background:var(--gris); border-radius:14px; padding:14px; }
+    .hub-col { display:flex; flex-direction:column; gap:8px; }
+    .hub-logo { cursor:pointer; display:flex; align-items:center; }
+    .hub-logo img { width:100%; display:block; border-radius:12px; }
+    @media (max-width: 1000px) {
+        .hub-bar { grid-template-columns:1fr 1fr; }
+        .hub-logo { grid-column:1/-1; order:-1; }
+    }
     @keyframes tabAlertaPulso {
         0%,100% { box-shadow: 0 0 0 0 rgba(231,76,60,.75), 0 2px 8px rgba(231,76,60,.5); }
         50%     { box-shadow: 0 0 0 8px rgba(231,76,60,0), 0 2px 14px rgba(231,76,60,.9); }
@@ -537,41 +545,46 @@
 
     <div id="pantalla-vendedores" class="main">
         <!-- Pestañas -->
-        <div style="display:flex;gap:0;margin-bottom:16px;background:var(--gris);border-radius:10px;padding:4px;">
+        <div class="hub-bar">
+          <div class="hub-col">
             <button id="tab-vendedores" onclick="cambiarTab('vendedores', true)"
-                style="position:relative;flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#7a5500,#C9A84C,#a87d20,#F5D78E,#7a5500);color:#fff8e1;text-shadow:0 1px 3px rgba(0,0,0,0.5);box-shadow:0 2px 8px rgba(201,168,76,0.5);">
+                style="position:relative;flex:1;padding:9px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:19px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#7a5500,#C9A84C,#a87d20,#F5D78E,#7a5500);color:#fff8e1;text-shadow:0 1px 3px rgba(0,0,0,0.5);box-shadow:0 2px 8px rgba(201,168,76,0.5);">
                 👥 Vendedores
                 <span id="tab-vendedores-badge" style="display:none;position:absolute;top:2px;right:6px;background:#e74c3c;color:#fff;border-radius:10px;min-width:18px;height:18px;padding:0 5px;font-size:11px;font-weight:800;line-height:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.5);"></span>
             </button>
             <button id="tab-pedidos" onclick="cambiarTab('pedidos', true)"
-                style="position:relative;flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
+                style="position:relative;flex:1;padding:9px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:19px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
                 📋 Pedidos
                 <span id="tab-pedidos-badge" style="display:none;position:absolute;top:2px;right:6px;background:#e74c3c;color:#fff;border-radius:10px;min-width:18px;height:18px;padding:0 5px;font-size:11px;font-weight:800;line-height:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.5);"></span>
             </button>
             <button id="tab-dashboard" onclick="cambiarTab('dashboard', true)"
-                style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
+                style="flex:1;padding:9px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:19px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
                 📊 Dashboard
             </button>
             <button id="tab-fotoqr" onclick="cambiarTab('fotoqr', true)"
-                style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
+                style="flex:1;padding:9px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:19px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
                 📷 Foto QR
             </button>
+          </div>
+          <div class="hub-logo" onclick="cambiarTab('dashboard')" title="Ir al Dashboard"><img src="logo-verex.webp" alt="VEREX — La expresión de tu mejor versión"></div>
+          <div class="hub-col">
             <button id="tab-etiquetas" onclick="cambiarTab('etiquetas', true)"
-                style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
+                style="flex:1;padding:9px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:19px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
                 🏷️ Etiquetas
             </button>
             <button id="tab-stock" onclick="cambiarTab('stock', true)"
-                style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
+                style="flex:1;padding:9px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:19px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
                 📦 Stock
             </button>
             <button id="tab-ventadirecta" onclick="cambiarTab('ventadirecta', true)"
-                style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
+                style="flex:1;padding:9px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:19px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#2a2a2a,#6a6a6a,#3a3a3a,#8a8a8a,#2a2a2a);color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
                 💸 Venta Directa
             </button>
             <button id="tab-historialventas" onclick="cambiarTab('historialventas', true)"
-                style="flex:1;padding:10px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#005f5f,#00c2c2,#008a8a,#00e5e5,#005f5f);color:#e0ffff;text-shadow:0 1px 3px rgba(0,0,0,0.4);box-shadow:0 2px 8px rgba(0,194,194,0.5);">
+                style="flex:1;padding:9px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:19px;font-weight:700;cursor:pointer;transition:all 0.2s;background:linear-gradient(135deg,#005f5f,#00c2c2,#008a8a,#00e5e5,#005f5f);color:#e0ffff;text-shadow:0 1px 3px rgba(0,0,0,0.4);box-shadow:0 2px 8px rgba(0,194,194,0.5);">
                 🧾 Ventas
             </button>
+          </div>
         </div>
 
         <!-- Tab Vendedores -->
