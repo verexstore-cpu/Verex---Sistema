@@ -409,7 +409,7 @@ async function probarPayPal(btn) {
     try {
         const r = await apiPost({ accion: "PROBAR_PAYPAL" });
         const modo = r.entorno === "live" ? "REAL (live) — cobra dinero de verdad" : "PRUEBAS (sandbox) — no mueve dinero";
-        const lista = `• PAYPAL_CLIENT_ID: ${r.tieneClientId ? "✅" : "❌ falta"}\n• PAYPAL_SECRET: ${r.tieneSecret ? "✅" : "❌ falta"}\n• PAYPAL_WEBHOOK_ID: ${r.tieneWebhookId ? "✅" : "❌ falta (solo afecta al respaldo)"}\n• PAYPAL_ENV: ${r.entornoDefinido ? r.entornoDefinido : "(vacío → se usa sandbox)"}`;
+        const lista = `• PAYPAL_CLIENT_ID: ${r.tieneClientId ? "✅" : "❌ falta"}\n• PAYPAL_SECRET: ${r.tieneSecret ? "✅" : "❌ falta"}\n• PAYPAL_WEBHOOK_ID: ${r.tieneWebhookId ? "✅" : "❌ falta (solo afecta al respaldo)"}\n• PAYPAL_ENV: ${r.entornoDefinido === "valor_invalido" ? "❌ valor no válido (debe ser exactamente: sandbox o live) — por ahora se usa sandbox" : r.entornoDefinido ? "✅ " + r.entornoDefinido : "(vacío → se usa sandbox)"}`;
         if (r.ok) alert(`✅ PayPal aceptó las claves.\n\nModo: ${modo}\n\n${lista}`);
         else if (r.motivo === "faltan_claves") alert(`❌ Faltan claves de PayPal en el worker.\n\n${lista}\n\nCréalas en Cloudflare → verex-api → Settings → Variables and Secrets y vuelve a desplegar.`);
         else alert(`❌ PayPal rechazó las claves.\n\nModo: ${modo}\n\n${lista}\n\nDetalle: ${r.detalle || ""}\n\nLo más común: el Client ID y el Secret son de otro entorno (Sandbox vs Live) o tienen un espacio al copiarlos.`);

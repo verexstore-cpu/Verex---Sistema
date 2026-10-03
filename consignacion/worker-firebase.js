@@ -3122,7 +3122,9 @@ async function enviar(){
         // Diagnóstico de PayPal (solo admin): comprueba que las claves existan y que PayPal las acepte. No revela ningún valor.
         case "PROBAR_PAYPAL": {
           if (!esAdmin) return forbidden();
-          const info = { tieneClientId: !!env.PAYPAL_CLIENT_ID, tieneSecret: !!env.PAYPAL_SECRET, tieneWebhookId: !!env.PAYPAL_WEBHOOK_ID, entorno: env.PAYPAL_ENV === "live" ? "live" : "sandbox", entornoDefinido: env.PAYPAL_ENV || "" };
+          const info = { tieneClientId: !!env.PAYPAL_CLIENT_ID, tieneSecret: !!env.PAYPAL_SECRET, tieneWebhookId: !!env.PAYPAL_WEBHOOK_ID, entorno: env.PAYPAL_ENV === "live" ? "live" : "sandbox",
+            // Nunca se devuelve el valor tal cual (por si alguien pegó ahí una clave por error): solo si es válido o no.
+            entornoDefinido: env.PAYPAL_ENV === "live" ? "live" : env.PAYPAL_ENV === "sandbox" ? "sandbox" : (env.PAYPAL_ENV ? "valor_invalido" : "") };
           if (!info.tieneClientId || !info.tieneSecret) { result = { ok: false, ...info, motivo: "faltan_claves" }; break; }
           try {
             _ppTokenCache.clear();
