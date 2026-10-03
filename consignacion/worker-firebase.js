@@ -34,6 +34,7 @@ const ADMIN_WA = "50371250725"; // WhatsApp VEREX
 export default {
   async scheduled(event, env, ctx) {
     const sb = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+    _sbCorreo = sb;
 
     // ── CRON CADA 5 MIN: liberar reservas de stock vencidas ──
     // Pedidos que reservaron pieza al crearse (REGISTRAR_LEAD) pero nadie
@@ -95,6 +96,19 @@ export default {
     if (reposicionesCron.length) {
       secciones.push(`📦 Reposiciones pendientes (venta bajo pedido):\n${reposicionesCron.join("\n")}`);
     }
+
+    // ── SALUD DE LOS CORREOS: manda una prueba diaria a la dirección de pruebas de Resend (no llega a nadie)
+    // para detectar a tiempo si el envío dejó de funcionar (clave, dominio verificado, límite) — el aviso va
+    // por WhatsApp, que no depende de los correos. ──
+    try {
+      const hb = await probarCorreo(env, "delivered@resend.dev");
+      if (!hb.ok) {
+        const causa = hb.motivo === "falta_clave" ? "falta la clave RESEND_KEY"
+          : hb.status === 401 || hb.status === 403 ? `Resend rechazó el envío (HTTP ${hb.status}): ${String(hb.detalle || "").slice(0, 160)}`
+          : `error ${hb.status || hb.motivo || ""}: ${String(hb.detalle || "").slice(0, 120)}`;
+        secciones.push(`📧 Los CORREOS del sistema NO están saliendo (pedidos, pagos, envíos, respaldo semanal). ${causa}\nRevisa Resend (clave y dominio) y prueba desde el hub → Pedidos → "Probar el envío de correos".`);
+      }
+    } catch (hbErr) { console.error("Chequeo diario de correos falló:", hbErr); }
 
     // ── AUDITORÍA DIARIA DE STOCK: detecta descuadres (total, negativos, consignación vs. registros, huérfanos) antes
     // de que se acumulen. Solo avisa si hay algo; si la propia auditoría falla, también avisa (no falla en silencio). ──
@@ -200,6 +214,7 @@ export default {
     if (request.method === "OPTIONS") return new Response("", { headers: CORS });
 
     const sb = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+    _sbCorreo = sb;
     let ip = request.headers.get("CF-Connecting-IP") || "unknown";
     // Las Functions de Pages llaman desde servidores de Cloudflare (IP compartida). Reenvían la IP real
     // del cliente y solo se les cree si presentan el secreto interno; sin él, cualquiera podría falsificarla.
@@ -2977,6 +2992,12 @@ async function enviar(){
         // que llegan. El stock SÍ se mueve en las transiciones de pago/
         // entrega (ver abajo), para que no dependa de que el admin se
         // acuerde de descontarlo aparte.
+        case "GET_ESTADO_CORREO": {
+          if (!esAdmin) return forbidden();
+          result = { ok: true, estado: (await sb.get("config", "correo_estado")) || null };
+          break;
+        }
+
         case "PROBAR_CORREO": {
           if (!esAdmin) return forbidden();
           const para = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.para || "") ? d.para : "verex.pedidos@verexstore.com";
@@ -5376,6 +5397,19 @@ async function liberarReservasVencidas(sb) {
 // Envío por Resend. Antes ninguna llamada revisaba la respuesta: si Resend rechazaba el correo
 // (clave inválida, dominio sin verificar, límite diario) no quedaba rastro y parecía que "no pasó nada".
 // Ahora cualquier rechazo se registra en los logs del Worker con el motivo exacto.
+let _sbCorreo = null;            // conexión a la base, para guardar el estado de los correos
+let _correoOkConocido = null;    // último estado visto por esta instancia (evita escribir en cada correo)
+async function registrarEstadoCorreo(ok, info) {
+  if (_correoOkConocido === ok && ok === true) return;
+  _correoOkConocido = ok;
+  if (!_sbCorreo) return;
+  try {
+    await _sbCorreo.set("config", "correo_estado", ok
+      ? { ok: true, fecha: new Date().toISOString() }
+      : { ok: false, fecha: new Date().toISOString(), status: info?.status || null, detalle: String(info?.detalle || info?.motivo || "").slice(0, 300) });
+  } catch (e) { console.error("No se pudo guardar el estado de los correos:", e); }
+}
+
 async function fetchResend(url, opts) {
   const res = await fetch(url, opts);
   if (!res.ok) {
@@ -5384,6 +5418,9 @@ async function fetchResend(url, opts) {
     let para = "";
     try { para = JSON.parse(opts.body).to; } catch (_) {}
     console.error(`Resend rechazó el correo (HTTP ${res.status}) para ${JSON.stringify(para)}: ${detalle}`);
+    await registrarEstadoCorreo(false, { status: res.status, detalle });
+  } else {
+    await registrarEstadoCorreo(true);
   }
   return res;
 }
@@ -5391,7 +5428,10 @@ async function fetchResend(url, opts) {
 // Diagnóstico de correos (solo admin): manda un correo de prueba y devuelve el motivo exacto si falla.
 async function probarCorreo(env, para) {
   const tieneClave = !!env.RESEND_KEY;
-  if (!tieneClave) return { ok: false, tieneClave, motivo: "falta_clave", detalle: "El Worker no tiene el secreto RESEND_KEY configurado en Cloudflare." };
+  if (!tieneClave) {
+    await registrarEstadoCorreo(false, { motivo: "falta_clave", detalle: "El Worker no tiene el secreto RESEND_KEY configurado en Cloudflare." });
+    return { ok: false, tieneClave, motivo: "falta_clave", detalle: "El Worker no tiene el secreto RESEND_KEY configurado en Cloudflare." };
+  }
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -5405,8 +5445,10 @@ async function probarCorreo(env, para) {
       })
     });
     const txt = (await res.text()).slice(0, 400);
+    await registrarEstadoCorreo(res.ok, { status: res.status, detalle: txt });
     return { ok: res.ok, tieneClave, status: res.status, detalle: txt };
   } catch (e) {
+    await registrarEstadoCorreo(false, { motivo: "red", detalle: String(e && e.message || e) });
     return { ok: false, tieneClave, motivo: "red", detalle: String(e && e.message || e) };
   }
 }

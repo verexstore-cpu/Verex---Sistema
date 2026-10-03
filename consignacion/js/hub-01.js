@@ -311,8 +311,28 @@ function renderAlertasAfiliadosHub() {
 let _pedidosTienda = [], _pedidosTs = 0, _pedidosCargando = false;
 let _usaGrupos = [];
 
+// Aviso permanente si los correos del sistema dejaron de salir (lo registra el worker al fallar un envío
+// y en su chequeo diario) — antes un fallo así pasaba desapercibido durante días.
+async function cargarEstadoCorreo() {
+    try {
+        const r = await apiPost({ accion: "GET_ESTADO_CORREO" });
+        const el = document.getElementById("alerta-correo");
+        if (!el || !r || !r.ok) return;
+        const e = r.estado;
+        if (e && e.ok === false) {
+            const cuando = e.fecha ? new Date(e.fecha).toLocaleString("es-SV", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+            el.innerHTML = `⚠️ Los correos del sistema NO están saliendo (pedidos, pagos, envíos${cuando ? " · desde " + sanitizar(cuando) : ""}). ${sanitizar(String(e.detalle || "").slice(0, 140))}
+                <button onclick="probarCorreos(this)" style="margin-left:10px;padding:3px 10px;font-size:11px;background:#fff;color:#7a1a10;border:none;border-radius:6px;cursor:pointer;font-weight:700;">✉️ Probar ahora</button>`;
+            el.style.display = "block";
+        } else {
+            el.style.display = "none";
+        }
+    } catch (_) { /* sin red: no se toca el aviso */ }
+}
+
 async function cargarPedidosTienda() {
     if (_pedidosCargando || !_sessionPass) return;
+    cargarEstadoCorreo();
     _pedidosCargando = true;
     try {
         const res = await apiPost({ accion: "GET_PEDIDOS" });
@@ -399,6 +419,7 @@ async function probarCorreos(btn) {
         alert(msg);
     } catch (e) { alert("⚠️ No se pudo conectar con el servidor: " + e.message); }
     btn.textContent = txt; btn.disabled = false;
+    cargarEstadoCorreo();
 }
 
 function renderPedidosHub() {
