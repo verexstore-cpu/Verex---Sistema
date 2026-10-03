@@ -2992,6 +2992,21 @@ async function enviar(){
         // que llegan. El stock SÍ se mueve en las transiciones de pago/
         // entrega (ver abajo), para que no dependa de que el admin se
         // acuerde de descontarlo aparte.
+        // Público (lo usa us.verexstore.com): ¿ya se confirmó el pago de este pedido? No devuelve datos del
+        // cliente, solo un estado. El pedidoId lo genera el catálogo al hacer el pedido (no es adivinable a la ligera).
+        case "GET_ESTADO_PEDIDO_USA": {
+          const pid = String(d.pedidoId || "");
+          if (!/^US[a-z0-9]{4,40}$/.test(pid)) { result = { ok: false, error: "pedido_invalido" }; break; }
+          const lds = (await sb.query("leads", "pedidoId", "eq", pid)).filter(l => l.pais === "US");
+          let estadoPed = "no_encontrado";
+          if (lds.length) {
+            estadoPed = lds.some(l => l.pagadoUSA) ? "pagado"
+              : lds.every(l => l.estado === "cancelado") ? "cancelado" : "pendiente";
+          }
+          result = { ok: true, estado: estadoPed };
+          break;
+        }
+
         case "GET_ESTADO_CORREO": {
           if (!esAdmin) return forbidden();
           result = { ok: true, estado: (await sb.get("config", "correo_estado")) || null };
