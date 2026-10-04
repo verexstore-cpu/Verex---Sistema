@@ -3087,7 +3087,7 @@ async function enviar(){
         }
 
         // Reembolso total de un pedido USA pagado por PayPal (solo admin): devuelve el dinero, cancela el pedido y libera el stock.
-        // Paso 1 del reembolso: valida que se pueda reembolsar y manda un código de 6 dígitos por WhatsApp.
+        // Paso 1 del reembolso: valida que se pueda reembolsar y manda un código de 6 dígitos por correo (y WhatsApp si hay).
         case "SOLICITAR_CODIGO_REEMBOLSO": {
           if (!esAdmin) return forbidden();
           const pid = String(d.pedidoId || "");
@@ -3101,13 +3101,13 @@ async function enviar(){
           const codigo = codigoAleatorio6();
           await sb.set("config", "otp_reemb_" + pid, { hash: await huellaCodigoReembolso(env, pid, codigo), exp: Date.now() + OTP_REEMB_VIGENCIA_MS, intentos: 0, creado: Date.now() });
           const total = lds.find(l => l.totalPedidoUSD != null)?.totalPedidoUSD;
-          const envio = await enviarWhatsAppAdmin(env, `VEREX — código para autorizar el REEMBOLSO del pedido ${pid}${total != null ? ` ($${parseFloat(total).toFixed(2)})` : ""}: ${codigo}\nVale 10 minutos y se usa una sola vez. Si no lo pediste, ignóralo.`);
+          const envio = await enviarCodigoReembolso(env, pid, total, codigo);
           if (!envio.ok) {
-            try { await sb.delete("config", "otp_reemb_" + pid); } catch (_) {}
+            try { await sb.delete("config", "otp_reemb_" + pid); } catch (_) {}   // sin envío no queda ningún código activo
             result = { ok: false, error: envio.motivo };
             break;
           }
-          result = { ok: true, venceEnMin: OTP_REEMB_VIGENCIA_MS / 60000 };
+          result = { ok: true, venceEnMin: OTP_REEMB_VIGENCIA_MS / 60000, canales: envio.canales, destino: envio.destino };
           break;
         }
 
@@ -3123,7 +3123,7 @@ async function enviar(){
           // Política: una vez enviado el paquete (tiene tracking) o entregado, ya no se reembolsa ni se libera stock desde aquí.
           // Si algún día hay que hacer una excepción, se hace directamente en PayPal (el webhook lo marca como reembolsado).
           if (lds.some(l => l.trackingDHL || l.entregadoUSA)) { result = { ok: false, error: "ya_enviado" }; break; }
-          // Segundo paso: el código de un solo uso que llegó por WhatsApp (ver SOLICITAR_CODIGO_REEMBOLSO)
+          // Segundo paso: el código de un solo uso que llegó por correo/WhatsApp (ver SOLICITAR_CODIGO_REEMBOLSO)
           const codigoIngresado = String(d.codigo || "").trim();
           if (!/^\d{6}$/.test(codigoIngresado)) { result = { ok: false, error: "codigo_requerido" }; break; }
           const otp = await sb.get("config", "otp_reemb_" + pid);
@@ -5642,7 +5642,7 @@ async function probarCorreo(env, para) {
 
 // ── CÓDIGO DE UN SOLO USO para autorizar reembolsos ────────────────────────
 // Un reembolso devuelve dinero y no se puede deshacer: además de la sesión de admin, pide un código de 6 dígitos
-// que llega por WhatsApp (CallMeBot, el mismo canal de los avisos diarios). Vale 10 min, se usa una sola vez,
+// que llega por correo (y por WhatsApp si CALLMEBOT_KEY está configurada). Vale 10 min, se usa una sola vez,
 // está atado a UN pedido y se bloquea tras 5 intentos fallidos. Solo se guarda su huella (hash), nunca el código.
 const OTP_REEMB_VIGENCIA_MS = 10 * 60 * 1000;
 const OTP_REEMB_MAX_INTENTOS = 5;
@@ -5655,6 +5655,46 @@ function codigoAleatorio6() {
   const n = new Uint32Array(1); crypto.getRandomValues(n);
   return String(n[0] % 1000000).padStart(6, "0");
 }
+// Correo al que llega el código de autorización (buzón personal del dueño, NO el compartido de pedidos).
+// Se puede cambiar sin tocar el código creando el secreto CORREO_CODIGOS en Cloudflare.
+const CORREO_CODIGOS_DEFECTO = "eramayanavarro@gmail.com";
+function correoCodigos(env) {
+  const c = String(env.CORREO_CODIGOS || "").trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c) ? c : CORREO_CODIGOS_DEFECTO;
+}
+function correoOculto(c) { const [u, d] = String(c).split("@"); return (u || "").slice(0, 2) + "•••@" + (d || ""); }
+// Manda el código por correo (canal principal) y también por WhatsApp si CALLMEBOT_KEY está configurada.
+// Basta con que UNO de los canales funcione; si ninguno, el reembolso no se puede autorizar (falla cerrado).
+async function enviarCodigoReembolso(env, pid, total, codigo) {
+  const canales = [];
+  const monto = total != null ? ` ($${parseFloat(total).toFixed(2)})` : "";
+  if (env.RESEND_KEY) {
+    try {
+      const res = await fetchResend("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.RESEND_KEY}` },
+        body: JSON.stringify({
+          from: "VEREX Store <hola@notificaciones.verexstore.com>",
+          to: [correoCodigos(env)],
+          subject: `🔐 Código para autorizar el reembolso — pedido ${pid}`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;border:2px solid #C9A84C;border-radius:12px;">
+            <h2 style="margin:0 0 12px;color:#111;">Autorizar reembolso</h2>
+            <p style="font-size:14px;color:#444;">Pedido <b>${pid}</b>${monto}. Escribe este código en el panel de Logística USA:</p>
+            <p style="font-size:34px;font-weight:800;letter-spacing:8px;text-align:center;margin:20px 0;color:#111;">${codigo}</p>
+            <p style="font-size:12px;color:#888;">Vale 10 minutos y se usa una sola vez. Si tú no pediste este reembolso, ignora este correo y avisa: alguien con acceso al panel lo intentó.</p></div>`
+        })
+      });
+      if (res.ok) canales.push("correo");
+    } catch (e) { console.error("Código de reembolso por correo falló:", e); }
+  }
+  if (env.CALLMEBOT_KEY) {
+    const wa = await enviarWhatsAppAdmin(env, `VEREX — código para autorizar el REEMBOLSO del pedido ${pid}${monto}: ${codigo}\nVale 10 minutos y se usa una sola vez. Si no lo pediste, ignóralo.`);
+    if (wa.ok) canales.push("whatsapp");
+  }
+  if (!canales.length) return { ok: false, motivo: (env.RESEND_KEY || env.CALLMEBOT_KEY) ? "envio_fallo" : "sin_canal" };
+  return { ok: true, canales, destino: canales.includes("correo") ? correoOculto(correoCodigos(env)) : "" };
+}
+
 async function enviarWhatsAppAdmin(env, texto) {
   const apikey = env.CALLMEBOT_KEY || "";
   if (!apikey) return { ok: false, motivo: "sin_whatsapp" };
