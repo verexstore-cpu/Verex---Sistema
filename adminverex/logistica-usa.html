@@ -602,57 +602,61 @@ const ETIQUETA_DIMS = { w: 62, h: 90 };
 // dirección completa y contacto. No intenta imitar una guía real de DHL (esa
 // la arma el mensajero con sus propios sistemas) — es la referencia que va
 // pegada al paquete para que la copien.
-async function generarPDFEtiquetaEnvio(o){
+// Etiqueta de envío (datos del destinatario). Dos versiones del MISMO contenido:
+//  · vertical 62×90 mm  → "Descargar PDF" y el diálogo de impresión del navegador.
+//  · horizontal 90×62 mm → impresión directa a la Brother QL: la app de impresión (formato «guia») gira la página 90°,
+//    recorta el blanco y la estira a 62×94 mm, así que la página va apaisada, con marco (para que no se recorte el
+//    contenido) y con letra grande que se ajusta sola para llenar la etiqueta.
+async function generarPDFEtiquetaEnvio(o, horizontal){
     if(!window.jspdf?.jsPDF) throw new Error("jsPDF no cargado");
     const { jsPDF } = window.jspdf;
-    const { w: W, h: H } = ETIQUETA_DIMS;
-    const doc = new jsPDF({ unit: "mm", format: [W, H], orientation: "portrait" });
-    const marginX = 5;
-    const usableW = W - marginX * 2;
-    let y = 8;
-
-    const linea = (texto, size, opts={}) => {
-        doc.setFont("helvetica", opts.bold ? "bold" : "normal");
-        doc.setFontSize(size);
-        doc.setTextColor(...(opts.color || [0,0,0]));
-        const partes = doc.splitTextToSize(String(texto), usableW);
-        partes.forEach(p => { doc.text(p, marginX, y); y += size * 0.42 + 1; });
-        return partes.length;
-    };
-
-    linea("VEREX STORE", 8, { color:[140,110,60], bold:true });
-    y += 1;
-    doc.setDrawColor(210,210,210);
-    doc.line(marginX, y, W - marginX, y);
-    y += 4;
-
-    linea("ENVIAR A:", 7, { color:[130,130,130], bold:true });
-    y += 2;
-    linea(o.nombre || "(sin nombre)", 13, { bold:true });
-    y += 1;
-    // direccionCliente se guarda como "calle, ciudad, estado zip" (ver
-    // enviarCarritoWhatsApp en catalogo-us.html) — se quita ese sufijo para
-    // no repetir ciudad/estado/zip dos veces en la etiqueta.
+    const { w: Wv, h: Hv } = ETIQUETA_DIMS;
+    const W = horizontal ? Hv : Wv, H = horizontal ? Wv : Hv;       // 90×62 apaisada o 62×90 vertical
+    const margen = horizontal ? 4.5 : 5;
+    // direccionCliente se guarda como "calle, ciudad, estado zip" — se quita ese sufijo para no repetir ciudad/estado/zip.
     const sufijoCSZ = `, ${o.ciudad || ""}, ${o.estado || ""} ${o.zip || ""}`;
-    const calle = (o.direccion || "").endsWith(sufijoCSZ)
-        ? o.direccion.slice(0, -sufijoCSZ.length)
-        : (o.direccion || "");
-    linea(calle, 10);
-    linea(`${o.ciudad || ""}, ${o.estado || ""} ${o.zip || ""}`.trim(), 12, { bold:true });
-    linea("Estados Unidos", 9, { color:[90,90,90] });
-    y += 2;
-
-    if(o.tel){ linea(`Tel: ${o.tel}`, 9); }
-    if(o.correo){ linea(`Email: ${o.correo}`, 8, { color:[90,90,90] }); }
-
-    y += 2;
-    doc.line(marginX, y, W - marginX, y);
-    y += 4;
+    const calle = (o.direccion || "").endsWith(sufijoCSZ) ? o.direccion.slice(0, -sufijoCSZ.length) : (o.direccion || "");
     const fecha = new Date(o.fecha).toLocaleDateString("es-CO",{day:"numeric",month:"short",year:"numeric"});
-    linea(`Pedido ${o.numero || o.id} · ${fecha}`, 7, { color:[150,150,150] });
 
-    const raw = doc.output("datauristring");
-    return raw.split(",")[1];
+    const dibujar = (k) => {
+        const doc = new jsPDF({ unit: "mm", format: [W, H], orientation: horizontal ? "landscape" : "portrait" });
+        const usableW = W - margen * 2;
+        let y = horizontal ? 7 : 8;
+        const linea = (texto, size, opts={}) => {
+            size = size * k;
+            doc.setFont("helvetica", opts.bold ? "bold" : "normal");
+            doc.setFontSize(size);
+            doc.setTextColor(...(opts.color || [0,0,0]));
+            const partes = doc.splitTextToSize(String(texto), usableW);
+            partes.forEach(p => { doc.text(p, margen, y); y += size * 0.42 + 1; });
+            return partes.length;
+        };
+        if(horizontal){ doc.setDrawColor(0); doc.setLineWidth(0.5); doc.rect(1.2, 1.2, W - 2.4, H - 2.4); }   // marco: fija el tamaño al recortar
+        linea("VEREX STORE", horizontal ? 9 : 8, { color:[140,110,60], bold:true });
+        y += 1;
+        doc.setDrawColor(210,210,210); doc.setLineWidth(0.2);
+        doc.line(margen, y, W - margen, y);
+        y += horizontal ? 3 : 4;
+        linea("ENVIAR A:", horizontal ? 8 : 7, { color:[130,130,130], bold:true });
+        y += horizontal ? 1 : 2;
+        linea(o.nombre || "(sin nombre)", horizontal ? 20 : 13, { bold:true });
+        y += 1;
+        linea(calle, horizontal ? 14 : 10);
+        linea(`${o.ciudad || ""}, ${o.estado || ""} ${o.zip || ""}`.trim(), horizontal ? 16 : 12, { bold:true });
+        linea("Estados Unidos", horizontal ? 11 : 9, { color:[90,90,90] });
+        y += horizontal ? 1 : 2;
+        if(o.tel){ linea(`Tel: ${o.tel}`, horizontal ? 13 : 9); }
+        if(o.correo){ linea(`Email: ${o.correo}`, horizontal ? 10 : 8, { color:[90,90,90] }); }
+        y += horizontal ? 1 : 2;
+        doc.setDrawColor(210,210,210); doc.line(margen, y, W - margen, y);
+        y += horizontal ? 3 : 4;
+        linea(`Pedido ${o.numero || o.id} · ${fecha}`, horizontal ? 8 : 7, { color:[120,120,120] });
+        return { doc, y };
+    };
+    // vertical: tamaños originales; horizontal: se empieza grande y se achica hasta que todo entre en la etiqueta
+    let k = 1, r = dibujar(k);
+    if(horizontal){ for(k = 1; k >= 0.5; k = Math.round((k - 0.05) * 100) / 100){ r = dibujar(k); if(r.y <= H - 3) break; } }
+    return r.doc.output("datauristring").split(",")[1];
 }
 
 function imprimirPDFEtiquetaNavegador(pdfBase64){
@@ -681,7 +685,7 @@ async function descargarEtiquetaPDF(id){
     const texto = "⬇️ Descargar PDF";
     if(btn){ btn.disabled = true; btn.textContent = "⏳ Generando…"; }
     try{
-        const b64 = await generarPDFEtiquetaEnvio(o);
+        const b64 = await generarPDFEtiquetaEnvio(o, false);
         const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
         const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
         const limpio = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -701,9 +705,10 @@ async function imprimirEtiquetaEnvio(id){
     const btn = document.getElementById("btn-etiqueta");
     if(btn){ btn.disabled = true; btn.textContent = "⏳ Generando…"; }
 
-    let pdfBase64;
+    let pdfBase64, pdfBase64Directo;
     try{
-        pdfBase64 = await generarPDFEtiquetaEnvio(o);
+        pdfBase64 = await generarPDFEtiquetaEnvio(o, false);          // vertical → diálogo del navegador
+        pdfBase64Directo = await generarPDFEtiquetaEnvio(o, true);    // apaisada → Brother QL (formato guía)
     }catch(e){
         if(btn){ btn.disabled = false; btn.textContent = "⚠️ Error generando PDF"; setTimeout(() => { btn.textContent = "🏷️ Imprimir etiqueta"; }, 6000); }
         return;
@@ -720,7 +725,7 @@ async function imprimirEtiquetaEnvio(id){
             const res = await fetch(PRINT_SERVER + "/imprimir", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ formato: "grande", pdf_base64: pdfBase64, pageCount: 1 }),
+                body: JSON.stringify({ formato: "guia", pdf_base64: pdfBase64Directo, pageCount: 1 }),   // «grande» no existe en la app de impresión: lo trataba como etiqueta mini (~10 mm de alto)
                 signal: AbortSignal.timeout(PRINT_TIMEOUT_MS)   // antes no había límite: si la impresora no contestaba, el botón se quedaba en "Generando…" para siempre
             });
             const json = await res.json();
