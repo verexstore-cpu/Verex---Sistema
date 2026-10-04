@@ -311,6 +311,8 @@ function agruparPedidos(leads){
             pagoLink: first.pagoLink || "",
             // Cobro: tarjeta (Wompi, se confirma sola) o PayPal.me (se marca a mano)
             // "wompi" (tarjeta, se confirma sola) · "paypal" (checkout oficial, se confirma sola) · "paypalme" (links viejos, se marca a mano)
+            // número corto del pedido (US-DDMM-NNN); los pedidos viejos no lo tienen y se identifican por el id largo
+            numero: first.numeroPedidoUSA || "",
             metodoPago: first.metodoPagoUSA === "wompi" || /wompi\.sv/.test(first.pagoLink || "") ? "wompi"
                 : /paypal\.me/.test(first.pagoLink || "") ? "paypalme" : "paypal",
             reembolsado: leadsGrupo.every(l => l.reembolsadoUSA),
@@ -352,6 +354,7 @@ function renderBoard(){
                             <span class="card-total num">${money(o.total)}</span>
                         </div>
                         <div class="card-place">${esc(o.ciudad)}${o.ciudad && o.estado ? ", " : ""}${esc(o.estado)}</div>
+                        ${o.numero ? `<div class="card-place mono" style="font-weight:600;">${esc(o.numero)}</div>` : ""}
                         <div class="card-foot">
                             ${chipForStage(o)}
                             ${o.pagadoSinStock ? `<span class="chip alerta">Pagado sin stock</span>` : ""}
@@ -395,7 +398,7 @@ function abrirPedido(id){
     drawer.innerHTML = `
         <button class="drawer-close" onclick="cerrarDrawer()">Cerrar ✕</button>
         <h2>${esc(o.nombre)}</h2>
-        <div class="sub">${esc(o.ciudad)}${o.ciudad && o.estado ? ", " : ""}${esc(o.estado)} · ${new Date(o.fecha).toLocaleDateString("es-CO",{day:"numeric",month:"short",year:"numeric"})}</div>
+        <div class="sub">${o.numero ? `<b>${esc(o.numero)}</b> · ` : ""}${esc(o.ciudad)}${o.ciudad && o.estado ? ", " : ""}${esc(o.estado)} · ${new Date(o.fecha).toLocaleDateString("es-CO",{day:"numeric",month:"short",year:"numeric"})}</div>
 
         <div class="dsec">
             <div class="dsec-label">Envío</div>
@@ -646,7 +649,7 @@ async function generarPDFEtiquetaEnvio(o){
     doc.line(marginX, y, W - marginX, y);
     y += 4;
     const fecha = new Date(o.fecha).toLocaleDateString("es-CO",{day:"numeric",month:"short",year:"numeric"});
-    linea(`Pedido ${o.id} · ${fecha}`, 7, { color:[150,150,150] });
+    linea(`Pedido ${o.numero || o.id} · ${fecha}`, 7, { color:[150,150,150] });
 
     const raw = doc.output("datauristring");
     return raw.split(",")[1];
@@ -683,7 +686,7 @@ async function descargarEtiquetaPDF(id){
         const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
         const limpio = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
         const a = document.createElement("a");
-        a.href = url; a.download = `etiqueta-${limpio(o.nombre) || "pedido"}-${limpio(o.id).slice(0, 20)}.pdf`;
+        a.href = url; a.download = `etiqueta-${limpio(o.nombre) || "pedido"}-${limpio(o.numero || o.id).slice(0, 20)}.pdf`;
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 4000);
         if(btn){ btn.disabled = false; btn.textContent = "✅ PDF descargado"; setTimeout(() => { btn.textContent = texto; }, 2500); }

@@ -664,7 +664,7 @@ function renderPedidosHub() {
                 return `<div style="background:rgba(14,165,233,0.1);border:1px solid #0ea5e9;border-radius:10px;padding:10px 12px;margin-top:8px;">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                         <div style="flex:1;min-width:0;">
-                            <div style="font-weight:700;font-size:13px;">${sanitizar(f.nombreCliente || "(sin nombre)")} <span style="font-size:10px;color:${chip[1]};border:1px solid currentColor;border-radius:5px;padding:1px 6px;margin-left:4px;">${chip[0]}</span></div>
+                            <div style="font-weight:700;font-size:13px;">${f.numeroPedidoUSA ? `<span style="color:var(--dorado);">${sanitizar(f.numeroPedidoUSA)}</span> · ` : ""}${sanitizar(f.nombreCliente || "(sin nombre)")} <span style="font-size:10px;color:${chip[1]};border:1px solid currentColor;border-radius:5px;padding:1px 6px;margin-left:4px;">${chip[0]}</span></div>
                             <div style="font-size:11px;color:var(--plateado);margin-top:2px;">${items}</div>
                             <div style="font-size:11px;color:var(--plateado);margin-top:2px;">📍 ${sanitizar([f.ciudadUS, f.estadoUS, f.zipUS].filter(Boolean).join(", ") || f.direccionCliente || "—")} · <b style="color:var(--dorado-claro);">$${totUSD.toFixed(2)} USD</b></div>
                             ${tel ? `<a href="https://wa.me/${tel}" target="_blank" style="font-size:11px;color:#25D366;font-weight:700;text-decoration:none;">📱 ${sanitizar(f.telefonoCliente)}</a>` : ''}

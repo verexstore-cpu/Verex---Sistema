@@ -2573,6 +2573,7 @@ async function enviar(){
             break;
           }
           const leadId = "LEAD_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+          const numeroUS = d.pais === "US" ? await numeroGuardadoPedidoUSA(sb, d.pedidoId) : "";
           await sb.set("leads", leadId, {
             id: leadId,
             afiliado: d.afiliado || "",
@@ -2614,6 +2615,7 @@ async function enviar(){
             pagoLink: d.pagoLink || "",
             // Orden del checkout oficial de PayPal (si pagó por ahí) — se usa para capturar y para reconocer su webhook.
             paypalOrderId: /^[A-Z0-9]{8,30}$/.test(d.paypalOrderId || "") ? d.paypalOrderId : "",
+            numeroPedidoUSA: numeroUS,
             // Idioma elegido en el catálogo — para poder mandar el correo de
             // pago confirmado en el mismo idioma que el cliente ya venía usando.
             lang: d.lang || "",
@@ -2681,6 +2683,7 @@ async function enviar(){
         // (el catálogo es una página pública, no el panel de Admin).
         case "ENVIAR_PEDIDO_USA": {
           if (!Array.isArray(d.items) || !d.items.length) { result = { ok: false, error: "Pedido vacío" }; break; }
+          const numPed = await numeroGuardadoPedidoUSA(sb, d.pedidoId);   // número corto US-DDMM-NNN (si la página mandó el pedidoId)
           try {
             const RESEND_KEY = env.RESEND_KEY;
             if (RESEND_KEY) {
@@ -2717,7 +2720,7 @@ async function enviar(){
                   from: "VEREX Store <hola@notificaciones.verexstore.com>",
                   reply_to: "hola@verexstore.com",
                   to:   ["verex.pedidos@verexstore.com"],
-                  subject: `🇺🇸 Pedido USA — ${d.nombreCliente || "cliente"} — $${(total ?? 0).toFixed(2)}`,
+                  subject: `🇺🇸 Pedido USA${numPed ? " " + numPed : ""} — ${d.nombreCliente || "cliente"} — $${(total ?? 0).toFixed(2)}`,
                   html: `
                     <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;background:#fff;border:2px solid #C9A84C;border-radius:12px;overflow:hidden;">
                       <div style="background:linear-gradient(135deg,#aaa,#d0d0d0);padding:24px;text-align:center;">
@@ -2816,7 +2819,7 @@ async function enviar(){
                   siguiente: "Once we confirm your payment, we'll prepare your order and ship it via DHL — delivery takes 5–7 business days.",
                   direccionLbl: "Shipping to:",
                   dudas: "Questions? Just reply to this email.",
-                  subject: `🛍️ We received your VEREX Store order`
+                  subject: `🛍️ We received your VEREX Store order${numPed ? " " + numPed : ""}`
                 } : {
                   preheader: "Recibimos tu pedido",
                   hola: `Hola ${d.nombreCliente || ""},`,
@@ -2826,7 +2829,7 @@ async function enviar(){
                   siguiente: "Cuando confirmemos tu pago, preparamos tu pedido y lo enviamos por DHL — la entrega toma entre 5 y 7 días hábiles.",
                   direccionLbl: "Dirección de envío:",
                   dudas: "¿Dudas? Responde este mismo correo.",
-                  subject: `🛍️ Recibimos tu pedido en VEREX Store`
+                  subject: `🛍️ Recibimos tu pedido${numPed ? " " + numPed : ""} en VEREX Store`
                 };
                 // Ya no es un botón grande de "pagar aquí": el pago se completa
                 // directo en la página al hacer el pedido (link de respaldo
@@ -2856,6 +2859,7 @@ async function enviar(){
                         <div style="padding:24px;">
                           <p style="margin:0 0 14px;font-size:14px;color:#111;">${txt.hola}</p>
                           <p style="margin:0 0 16px;font-size:13px;color:#555;">${txt.gracias}</p>
+                          ${numPed ? `<p style="margin:0 0 14px;font-size:14px;color:#111;"><span style="color:#888;">${en ? "Order number" : "Número de pedido"}:</span> <b>${numPed}</b></p>` : ""}
                           <table style="width:100%;border-collapse:collapse;font-size:13px;border-top:1px solid #eee;padding-top:8px;">
                             ${filasCliente}
                             <tr><td style="padding:8px 0 2px;color:#888;">${txt.envioLbl}</td><td style="padding:8px 0 2px;color:#111;text-align:right;">${envio > 0 ? "$" + envio.toFixed(2) : txt.freeLbl}</td></tr>
@@ -2937,7 +2941,7 @@ async function enviar(){
               console.error("Wompi enlace error:", dataEnlace);
               result = { ok: false, error: "No se pudo generar el link de pago" }; break;
             }
-            result = { ok: true, urlEnlace: dataEnlace.urlEnlace, idEnlace: dataEnlace.idEnlace };
+            result = { ok: true, urlEnlace: dataEnlace.urlEnlace, idEnlace: dataEnlace.idEnlace, numeroPedido: await numeroPedidoUSA(sb, String(d.pedidoId)) };
           } catch(wompiErr) {
             console.error("Wompi error:", wompiErr);
             result = { ok: false, error: "No se pudo generar el link de pago" };
@@ -3015,7 +3019,7 @@ async function enviar(){
             estadoPed = lds.some(l => l.pagadoUSA) ? "pagado"
               : lds.every(l => l.estado === "cancelado") ? "cancelado" : "pendiente";
           }
-          result = { ok: true, estado: estadoPed };
+          result = { ok: true, estado: estadoPed, numero: lds.find(l => l.numeroPedidoUSA)?.numeroPedidoUSA || "" };
           break;
         }
 
@@ -3026,12 +3030,13 @@ async function enviar(){
           const montoPP = Math.round(parseFloat(d.monto) * 100) / 100;
           if (!RE_PEDIDO_USA.test(pid) || !(montoPP > 0) || montoPP > 50000) { result = { ok: false, error: "pedido_invalido" }; break; }
           const baseRet = (env.PAYPAL_RETURN_BASE || "https://us.verexstore.com/").replace(/\/?$/, "/");
+          const numeroPP = await numeroPedidoUSA(sb, pid);
           try {
             const o = await paypalApi(env, "POST", "/v2/checkout/orders", {
               intent: "CAPTURE",
               purchase_units: [{
                 reference_id: pid, custom_id: pid,
-                description: String(d.descripcion || "VEREX Store order").slice(0, 120),
+                description: ((numeroPP ? numeroPP + " — " : "") + String(d.descripcion || "VEREX Store order")).slice(0, 120),
                 amount: { currency_code: "USD", value: montoPP.toFixed(2) }
               }],
               payment_source: { paypal: { experience_context: {
@@ -3044,7 +3049,7 @@ async function enviar(){
               console.error("PayPal crear orden:", o.status, JSON.stringify(o.data).slice(0, 300));
               result = { ok: false, error: "paypal_error" }; break;
             }
-            result = { ok: true, orderId: o.data.id, urlAprobar: link.href };
+            result = { ok: true, orderId: o.data.id, urlAprobar: link.href, numeroPedido: numeroPP };
           } catch (ePP) {
             console.error("PayPal crear orden error:", ePP);
             result = { ok: false, error: "paypal_error" };
@@ -3060,7 +3065,7 @@ async function enviar(){
           if (!RE_PEDIDO_USA.test(pid) || !RE_PAYPAL_ORDER.test(oid)) { result = { ok: false, error: "pedido_invalido" }; break; }
           const lds = (await sb.query("leads", "pedidoId", "eq", pid)).filter(l => l.pais === "US");
           if (!lds.length || !lds.some(l => l.paypalOrderId === oid)) { result = { ok: false, error: "orden_no_coincide" }; break; }
-          if (lds.every(l => l.pagadoUSA)) { result = { ok: true, estado: "pagado" }; break; }
+          if (lds.every(l => l.pagadoUSA)) { result = { ok: true, estado: "pagado", numero: lds.find(l => l.numeroPedidoUSA)?.numeroPedidoUSA || "" }; break; }
           try {
             let cap = null;
             const c = await paypalApi(env, "POST", `/v2/checkout/orders/${oid}/capture`, {}, "cap-" + oid);
@@ -3078,7 +3083,7 @@ async function enviar(){
               result = { ok: false, error: "monto_distinto" }; break;
             }
             await confirmarPagoPedidoUSA(env, sb, pid, { metodo: "paypal", idTransaccion: cap.id, extra: { paypalCaptureId: cap.id, paypalOrderId: oid } });
-            result = { ok: true, estado: "pagado" };
+            result = { ok: true, estado: "pagado", numero: lds.find(l => l.numeroPedidoUSA)?.numeroPedidoUSA || "" };
           } catch (eCap) {
             console.error("PayPal capturar error:", eCap);
             result = { ok: false, error: "paypal_error" };
@@ -3101,7 +3106,7 @@ async function enviar(){
           const codigo = codigoAleatorio6();
           await sb.set("config", "otp_reemb_" + pid, { hash: await huellaCodigoReembolso(env, pid, codigo), exp: Date.now() + OTP_REEMB_VIGENCIA_MS, intentos: 0, creado: Date.now() });
           const total = lds.find(l => l.totalPedidoUSD != null)?.totalPedidoUSD;
-          const envio = await enviarCodigoReembolso(env, pid, total, codigo);
+          const envio = await enviarCodigoReembolso(env, lds.find(l => l.numeroPedidoUSA)?.numeroPedidoUSA || pid, total, codigo);
           if (!envio.ok) {
             try { await sb.delete("config", "otp_reemb_" + pid); } catch (_) {}   // sin envío no queda ningún código activo
             result = { ok: false, error: envio.motivo };
@@ -5743,13 +5748,13 @@ async function enviarCorreoEnvioUSA(env, sb, lead, tracking) {
     const nombre = lead.nombreCliente || "";
     const linkTrk = `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${encodeURIComponent(trk.replace(/\s+/g, ""))}`;
     const txt = en ? {
-      subject: "📦 Your VEREX Store order has shipped",
+      subject: `📦 Your VEREX Store order${lead.numeroPedidoUSA ? " " + lead.numeroPedidoUSA : ""} has shipped`,
       pre: "Your order is on its way",
       hola: `Hi ${nombre},`,
       msg: "Your order has shipped via DHL — delivery takes 5–7 business days.",
       lbl: "DHL tracking number", btn: "Track my package", dudas: "Questions? Just reply to this email."
     } : {
-      subject: "📦 Tu pedido de VEREX Store ya fue enviado",
+      subject: `📦 Tu pedido de VEREX Store${lead.numeroPedidoUSA ? " " + lead.numeroPedidoUSA : ""} ya fue enviado`,
       pre: "Tu pedido va en camino",
       hola: `Hola ${nombre},`,
       msg: "Tu pedido ya salió por DHL — la entrega toma de 5 a 7 días hábiles.",
@@ -5811,14 +5816,14 @@ async function enviarCorreoPagoConfirmadoUSA(env, sb, pedidoId) {
       : leadsPedido.reduce((s, l) => s + (parseFloat(l.precio) || 0), 0);
 
     const txt = en ? {
-      subject: "✅ Payment received — your VEREX Store order is on its way",
+      subject: `✅ Payment received${primero.numeroPedidoUSA ? " — " + primero.numeroPedidoUSA : ""} — your VEREX Store order is on its way`,
       preheader: "Payment confirmed",
       hola: `Hi ${nombreCliente},`,
       msg: "We've received your payment! Your order is now being prepared and will ship via DHL — delivery takes 5–7 business days.",
       totalLbl: "Total paid",
       dudas: "Questions? Just reply to this email."
     } : {
-      subject: "✅ Pago recibido — tu pedido de VEREX Store va en camino",
+      subject: `✅ Pago recibido${primero.numeroPedidoUSA ? " — " + primero.numeroPedidoUSA : ""} — tu pedido de VEREX Store va en camino`,
       preheader: "Pago confirmado",
       hola: `Hola ${nombreCliente},`,
       msg: "¡Recibimos tu pago! Tu pedido ya se está preparando y saldrá por DHL — la entrega toma de 5 a 7 días hábiles.",
@@ -5979,6 +5984,33 @@ async function paypalApi(env, method, path, body, requestId) {
   return { ok: res.ok, status: res.status, data };
 }
 const RE_PEDIDO_USA = /^US[a-z0-9]{4,40}$/;
+
+// ── NÚMERO CORTO DE PEDIDO USA (legible para el cliente y para el equipo): US-DDMM-NNN ───────────────
+// El id largo (USmusun96u5ap8) sigue siendo la llave interna de los pagos; este es el que se ve en pantallas,
+// correos y etiqueta. Día y mes en hora de El Salvador (UTC-6) y un contador del día. La unicidad la garantiza la
+// base (insertIfAbsent): si dos pedidos piden el mismo número a la vez, uno gana y el otro toma el siguiente.
+function ddmmSV() { const d = new Date(Date.now() - 6 * 3600 * 1000); return String(d.getUTCDate()).padStart(2, "0") + String(d.getUTCMonth() + 1).padStart(2, "0"); }
+async function numeroPedidoUSA(sb, pedidoId) {
+  try {
+    const previo = await sb.get("config", "usnum_ped_" + pedidoId);
+    if (previo && previo.numero) return previo.numero;
+    const ddmm = ddmmSV();
+    const ctr = await sb.get("config", "usnum_ctr_" + ddmm);
+    let n = ((ctr && ctr.n) || 0) + 1;
+    for (let i = 0; i < 25; i++, n++) {
+      const numero = `US-${ddmm}-${String(n).padStart(3, "0")}`;
+      if (await sb.insertIfAbsent("config", "usnum_" + numero, { pedidoId, creado: Date.now() })) {
+        await sb.set("config", "usnum_ctr_" + ddmm, { n });
+        await sb.set("config", "usnum_ped_" + pedidoId, { numero });
+        return numero;
+      }
+    }
+  } catch (e) { console.error("numeroPedidoUSA:", e); }
+  return "";     // sin número corto: las pantallas usan el id largo
+}
+async function numeroGuardadoPedidoUSA(sb, pedidoId) {
+  try { return (RE_PEDIDO_USA.test(pedidoId || "") && (await sb.get("config", "usnum_ped_" + pedidoId))?.numero) || ""; } catch (_) { return ""; }
+}
 const RE_PAYPAL_ORDER = /^[A-Z0-9]{8,30}$/;
 function paypalCapturaDe(order) {
   const caps = order?.purchase_units?.[0]?.payments?.captures;
