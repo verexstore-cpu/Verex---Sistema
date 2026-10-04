@@ -591,6 +591,7 @@ async function copiarLinkPago(link){
 // Consignación para hablar con la Brother QL. Si no está corriendo, se cae
 // al diálogo de impresión del navegador con el tamaño de página correcto.
 const PRINT_SERVER = "http://127.0.0.1:7891";
+let PRINT_TIMEOUT_MS = 25000;   // tiempo máximo que se espera a la impresora antes de avisar que no respondió
 const ETIQUETA_DIMS = { w: 62, h: 90 };
 
 // Solo el contenido que DHL necesita para armar su guía a mano: destinatario,
@@ -678,7 +679,7 @@ async function imprimirEtiquetaEnvio(id){
     try{
         pdfBase64 = await generarPDFEtiquetaEnvio(o);
     }catch(e){
-        if(btn){ btn.disabled = false; btn.textContent = "⚠️ Error generando PDF"; }
+        if(btn){ btn.disabled = false; btn.textContent = "⚠️ Error generando PDF"; setTimeout(() => { btn.textContent = "🏷️ Imprimir etiqueta"; }, 6000); }
         return;
     }
 
@@ -693,13 +694,16 @@ async function imprimirEtiquetaEnvio(id){
             const res = await fetch(PRINT_SERVER + "/imprimir", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ formato: "grande", pdf_base64: pdfBase64, pageCount: 1 })
+                body: JSON.stringify({ formato: "grande", pdf_base64: pdfBase64, pageCount: 1 }),
+                signal: AbortSignal.timeout(PRINT_TIMEOUT_MS)   // antes no había límite: si la impresora no contestaba, el botón se quedaba en "Generando…" para siempre
             });
             const json = await res.json();
             if(btn){ btn.disabled = false; btn.textContent = json.ok ? "✅ Enviada a Brother QL" : "⚠️ " + (json.error || "Error en impresora"); }
-            if(json.ok) setTimeout(() => { if(btn) btn.textContent = "🏷️ Imprimir etiqueta"; }, 2500);
+            setTimeout(() => { if(btn) btn.textContent = "🏷️ Imprimir etiqueta"; }, json.ok ? 2500 : 6000);
         }catch(e){
-            if(btn){ btn.disabled = false; btn.textContent = "⚠️ Error al enviar al servidor"; }
+            const tiempo = e && (e.name === "TimeoutError" || e.name === "AbortError");
+            if(btn){ btn.disabled = false; btn.textContent = tiempo ? "⚠️ La impresora no respondió — revisa que esté encendida y con papel" : "⚠️ Error al enviar al servidor de impresión"; }
+            setTimeout(() => { if(btn) btn.textContent = "🏷️ Imprimir etiqueta"; }, 8000);
         }
     } else {
         imprimirPDFEtiquetaNavegador(pdfBase64);
