@@ -439,6 +439,7 @@ function abrirPedido(id){
 
         <div class="btnrow">
             <button class="btn ghost" id="btn-etiqueta" onclick="imprimirEtiquetaEnvio('${esc(o.id)}')">🏷️ Imprimir etiqueta</button>
+            <button class="btn ghost" id="btn-etiqueta-pdf" onclick="descargarEtiquetaPDF('${esc(o.id)}')">⬇️ Descargar PDF</button>
         </div>
         <div class="btnrow">
             ${etapa === "pendiente" || (etapa === "cancelado" && !o.pagadoUSA) ? `<button class="btn primary" onclick="marcarPagado('${esc(o.id)}')">${etapa === "cancelado" ? "Marcar pagado (reactivar)" : "Marcar pagado"}</button>` : ""}
@@ -667,6 +668,28 @@ function imprimirPDFEtiquetaNavegador(pdfBase64){
 </body></html>`;
     const win = window.open("", "_blank", `width=${Math.round(w*3.78)},height=${Math.round(h*3.78)}`);
     if(win){ win.document.write(html); win.document.close(); }
+}
+
+// Descarga la misma etiqueta (62×90 mm) como archivo PDF, sin imprimir: para guardarla o mandarla por otro medio.
+async function descargarEtiquetaPDF(id){
+    const o = PEDIDOS.find(x => x.id === id);
+    if(!o) return;
+    const btn = document.getElementById("btn-etiqueta-pdf");
+    const texto = "⬇️ Descargar PDF";
+    if(btn){ btn.disabled = true; btn.textContent = "⏳ Generando…"; }
+    try{
+        const b64 = await generarPDFEtiquetaEnvio(o);
+        const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+        const limpio = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        const a = document.createElement("a");
+        a.href = url; a.download = `etiqueta-${limpio(o.nombre) || "pedido"}-${limpio(o.id).slice(0, 20)}.pdf`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        if(btn){ btn.disabled = false; btn.textContent = "✅ PDF descargado"; setTimeout(() => { btn.textContent = texto; }, 2500); }
+    }catch(e){
+        if(btn){ btn.disabled = false; btn.textContent = "⚠️ Error generando PDF"; setTimeout(() => { btn.textContent = texto; }, 6000); }
+    }
 }
 
 async function imprimirEtiquetaEnvio(id){
