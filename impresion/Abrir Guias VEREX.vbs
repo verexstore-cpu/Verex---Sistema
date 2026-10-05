@@ -1,7 +1,11 @@
-' Acceso directo: abre la app "VEREX – Impresión" directamente en la pestaña "Cualquier PDF"
-' (arrastras el PDF de la guía, eliges Guía y el grosor del texto, e imprimes).
-' La app vive en la bandeja del sistema; este archivo le avisa que se muestre en esa pestaña.
-Dim http, ok
+' Abre la app "VEREX - Impresion" directamente en la pestana "Cualquier PDF" (imprimir guias de envio en PDF).
+' - Si la app ya esta en marcha (bandeja del sistema): la trae al frente en esa pestana.
+' - Si esta cerrada: la arranca (electron.exe de esta misma carpeta) ya en esa pestana.
+' Pensado para usarse desde el menu de VEREX HUB ("Imprimir PDF (Guias)") o desde un acceso directo del escritorio.
+Dim http, ok, sh, fso, carpeta, electron
+Set sh  = CreateObject("WScript.Shell")
+Set fso = CreateObject("Scripting.FileSystemObject")
+carpeta = fso.GetParentFolderName(WScript.ScriptFullName)
 ok = False
 On Error Resume Next
 Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
@@ -13,7 +17,14 @@ If Err.Number = 0 Then
 End If
 On Error GoTo 0
 If Not ok Then
-  MsgBox "No se pudo abrir VEREX - Impresion." & vbCrLf & vbCrLf & _
-         "La app no esta en marcha. Abrela primero (icono de la impresora en la bandeja, junto al reloj, o el acceso directo de VEREX Impresion) y vuelve a probar.", _
-         vbExclamation, "Guias VEREX"
+  electron = carpeta & "\node_modules\electron\dist\electron.exe"
+  If fso.FileExists(electron) Then
+    sh.CurrentDirectory = carpeta
+    sh.Run """" & electron & """ """ & carpeta & """ --tab=3", 1, False
+  Else
+    MsgBox "No se pudo abrir VEREX - Impresion." & vbCrLf & vbCrLf & _
+           "La app no esta en marcha y no se encontro electron.exe en:" & vbCrLf & electron & vbCrLf & vbCrLf & _
+           "Abrela primero con el acceso directo habitual de VEREX Impresion y vuelve a probar.", _
+           vbExclamation, "Guias VEREX"
+  End If
 End If
