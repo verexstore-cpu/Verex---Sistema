@@ -217,6 +217,55 @@ async function cambiarFormaPagoVD(ventaId) {
 // adivinar la fecha real buscando en la nota de la venta (ej: "Pieza
 // agregada el 13 ago 2026: ... (CODIGO) ..."), y si no la encuentra, deja
 // que se escriba manual.
+// Devolución de una pieza de una venta directa: vuelve a bodega, la venta baja por lo que costó esa pieza y el saldo se recalcula.
+async function devolverPiezaVD(ventaId) {
+    const venta = _historialVD.find(v => v.id === ventaId);
+    if (!venta) return toast("⚠️ Venta no encontrada", "#c0392b");
+    let items = [];
+    try { items = typeof venta.items === "string" ? JSON.parse(venta.items || "[]") : (venta.items || []); } catch(_) {}
+    if (!items.length) return toast("⚠️ Esta venta no tiene piezas para devolver", "#c0392b");
+
+    let it;
+    if (items.length === 1) {
+        it = items[0];
+    } else {
+        const lista = items.map((x, i) => `${i+1}. ${x.nombre || x.codigo} (${x.codigo}) ×${x.cantidad || 1}`).join("\n");
+        const idx = parseInt(prompt(`¿Cuál pieza devolvió el cliente?\n\n${lista}\n\nEscribe el número:`, "1")) - 1;
+        if (isNaN(idx) || !items[idx]) return;
+        it = items[idx];
+    }
+    let cantidad = parseInt(it.cantidad) || 1;
+    if (cantidad > 1) {
+        const q = parseInt(prompt(`"${it.nombre || it.codigo}": ¿cuántas unidades devolvió? (máx. ${cantidad})`, String(cantidad)));
+        if (isNaN(q) || q < 1 || q > cantidad) return;
+        cantidad = q;
+    }
+    const motivo = (prompt("Motivo de la devolución (opcional):", "") || "").trim();
+
+    try {
+        const pre = await apiPost({ accion: "DEVOLVER_PIEZA_VD", id: ventaId, codigo: it.codigo, cantidad, motivo, soloCalcular: true });
+        if (!pre.ok) throw new Error(pre.error || "Error del servidor");
+        const m = x => "$" + Number(x || 0).toFixed(2);
+        const msg = `¿Registrar esta devolución?\n\n` +
+            `Pieza: ${pre.pieza} ×${pre.cantidad} (valor ${m(pre.valor)})\n` +
+            `• La pieza vuelve a BODEGA.\n` +
+            `• Total de la venta: ${m(pre.totalAntes)} → ${m(pre.nuevoTotal)}\n` +
+            `• Lo que el sistema tiene como PAGADO por el cliente: ${m(pre.pagadoHastaAhora)}\n` +
+            `• Pendiente por cobrar: ${m(pre.nuevoSaldo)}\n` +
+            (pre.pagadoHastaAhora <= 0 ? `• ⚠️ Si el cliente ya te había pagado algo y no está registrado, cancela y regístralo primero con 💰 Abono.\n` : "") +
+            (pre.aFavorCliente > 0 ? `• ⚠️ El cliente ya había pagado de más: ${m(pre.aFavorCliente)} a su favor (devuélvelo o déjalo como saldo).\n` : "") +
+            (pre.quedanPiezas === 0 ? `• La venta queda como DEVUELTA (sin piezas).\n` : "");
+        if (!confirm(msg)) return;
+        const data = await apiPost({ accion: "DEVOLVER_PIEZA_VD", id: ventaId, codigo: it.codigo, cantidad, motivo });
+        if (!data.ok) throw new Error(data.error || "Error del servidor");
+        toast(`✅ Devolución registrada: "${pre.pieza}" volvió a bodega`);
+        cargarHistorialVD();
+        if (typeof cargarDatos === "function") cargarDatos();   // refresca el stock
+    } catch(e) {
+        toast("⚠️ " + e.message, "#c0392b");
+    }
+}
+
 async function marcarFechaItemVD(ventaId) {
     const venta = _historialVD.find(v => v.id === ventaId);
     if (!venta) return toast("⚠️ Venta no encontrada", "#c0392b");

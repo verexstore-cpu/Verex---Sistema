@@ -1740,7 +1740,15 @@ async function cargarHistorialVD() {
 function renderHistorialVD() {
     const el     = document.getElementById("lista-historial-vd");
     const filtro = document.getElementById("filtro-historial-vd")?.value || "";
-    let lista  = filtro ? _historialVD.filter(v => v.estado === filtro) : _historialVD;
+    // Una venta a crédito sin saldo (saldoPendiente $0) cuenta como PAGADA aunque el registro viejo siga diciendo "credito"
+    const vdSaldo = v => parseFloat(v.saldoPendiente || 0);
+    const vdCreditoPendiente = v => v.estado === "credito" && vdSaldo(v) > 0.005;
+    const vdCreditoPagado = v => (v.estado === "credito" && vdSaldo(v) <= 0.005) || (v.estado === "pagado" && v.tipo === "credito");
+    let lista  = !filtro ? _historialVD
+        : filtro === "credito" ? _historialVD.filter(vdCreditoPendiente)
+        : filtro === "credito_pagado" ? _historialVD.filter(vdCreditoPagado)
+        : filtro === "pagado" ? _historialVD.filter(v => v.estado === "pagado" && !vdCreditoPagado(v))
+        : _historialVD.filter(v => v.estado === filtro);
 
     // Filtrando por Crédito: ordenar por deuda MÁS VIEJA primero — es la
     // vista que se usa para decidir a quién recordarle el pago, así que el
@@ -1756,8 +1764,8 @@ function renderHistorialVD() {
 
     // Totales rápidos
     const totalVentas  = lista.reduce((s, v) => s + (parseFloat(v.total)||0), 0);
-    const totalPend    = lista.filter(v => v.estado === "credito").reduce((s, v) => s + (parseFloat(v.saldoPendiente)||0), 0);
-    const countCred    = lista.filter(v => v.estado === "credito").length;
+    const totalPend    = lista.filter(vdCreditoPendiente).reduce((s, v) => s + (parseFloat(v.saldoPendiente)||0), 0);
+    const countCred    = lista.filter(vdCreditoPendiente).length;
 
     el.innerHTML = `
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">
@@ -1777,7 +1785,8 @@ function renderHistorialVD() {
         ${lista.map(v => {
             const fecha    = new Date(v.fecha).toLocaleDateString("es-SV", { day:"2-digit", month:"short", year:"2-digit" });
             const hora     = new Date(v.fecha).toLocaleTimeString("es-SV", { hour:"2-digit", minute:"2-digit" });
-            const esCredito = v.estado === "credito";
+            const esCredito = v.estado === "credito" && vdSaldo(v) > 0.005;   // crédito con deuda
+            const creditoPagado = vdCreditoPagado(v);                          // crédito ya saldado
             const diasDeuda = esCredito ? Math.floor((Date.now() - new Date(v.fecha).getTime()) / 86400000) : 0;
             const diasTxt = esCredito
                 ? ` · <span style="color:${diasDeuda>=15?'#e85555':diasDeuda>=7?'#ffb85c':'var(--plateado)'};font-weight:${diasDeuda>=7?700:400};">hace ${diasDeuda} día${diasDeuda===1?"":"s"}</span>`
@@ -1785,11 +1794,11 @@ function renderHistorialVD() {
             const saldo    = parseFloat(v.saldoPendiente||0);
             const total    = parseFloat(v.total||0);
             const pagado   = total - saldo;
-            const pct      = total > 0 ? Math.round((pagado/total)*100) : 100;
+            const pct      = (total > 0 && !creditoPagado) ? Math.round((pagado/total)*100) : 100;
             let items = [];
             try { items = typeof v.items === "string" ? JSON.parse(v.items) : (v.items||[]); } catch(e){}
             const itemsResumen = items.map(i => `${i.nombre||i.codigo} ×${i.cantidad||1}`).join(", ");
-            return `<div style="background:#0f0f0f;border:1px solid ${esCredito ? "#c97a2b" : "#1a3a1a"};border-radius:10px;padding:12px;margin-bottom:8px;">
+            return `<div style="background:#0f0f0f;border:1px solid ${esCredito ? "#c97a2b" : creditoPagado ? "#27ae60" : "#1a3a1a"};border-radius:10px;padding:12px;margin-bottom:8px;">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
                     <div style="flex:1;min-width:0;">
                         <div style="font-size:14px;font-weight:700;color:#fff;">${sanitizar(v.cliente || "Sin nombre")}</div>
@@ -1801,19 +1810,19 @@ function renderHistorialVD() {
                         <div style="font-size:10px;padding:2px 7px;border-radius:20px;display:inline-block;margin-top:2px;
                             background:${esCredito ? "rgba(255,159,64,0.15)" : "rgba(82,214,138,0.15)"};
                             color:${esCredito ? "#ffb85c" : "#52d68a"};">
-                            ${esCredito ? "Crédito" : "Contado"}
+                            ${v.estado === "devuelto" ? "↩️ Devuelta" : esCredito ? "Crédito" : creditoPagado ? "✅ Crédito pagado" : "Contado"}
                         </div>
                     </div>
                 </div>
                 ${itemsResumen ? `<div style="font-size:11px;color:#666;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${itemsResumen}</div>` : ""}
                 ${v.empresaEnvio ? `<div style="font-size:11px;color:#0ea5e9;margin-bottom:4px;">🚚 ${sanitizar(v.empresaEnvio)}</div>` : ""}
-                ${esCredito ? `
+                ${(esCredito || creditoPagado) ? `
                 <div style="background:#3a2a12;border-radius:5px;height:5px;margin-bottom:6px;overflow:hidden;">
                     <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#27ae60,#52d68a);border-radius:5px;"></div>
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
-                    <div style="font-size:11px;color:var(--plateado);">Pagado $${pagado.toFixed(2)} · Pendiente <strong style="color:#ffb85c;">$${saldo.toFixed(2)}</strong></div>
-                    ${saldo > 0 ? `<div style="display:flex;gap:6px;flex-shrink:0;">
+                    <div style="font-size:11px;color:var(--plateado);">Pagado $${pagado.toFixed(2)} · Pendiente <strong style="color:${saldo > 0.005 ? '#ffb85c' : '#52d68a'};">$${saldo.toFixed(2)}</strong></div>
+                    ${saldo > 0.005 ? `<div style="display:flex;gap:6px;flex-shrink:0;">
                         <button onclick="enviarRecordatorioAbono('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:#25D366;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">💬 Recordar</button>
                         <button onclick="abrirModalAbono('${v.id}')" style="padding:5px 10px;border:none;border-radius:6px;background:linear-gradient(135deg,#0a4a6b,#0ea5e9,#0369a1);color:#e0f7ff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">💰 Abono</button>
                     </div>` : '<span style="font-size:11px;color:#52d68a;font-weight:700;">✅ Saldado</span>'}
@@ -1822,6 +1831,7 @@ function renderHistorialVD() {
                     <div id="menu-mas-vd-${v.id}" style="display:none;position:absolute;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:170px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
                         <button onclick="toggleMenuMasVD('${v.id}');agregarProductoVentaDirectaVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#52d68a;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">➕ Agregar pieza</button>
                         <button onclick="toggleMenuMasVD('${v.id}');cambiarProductoVentaDirectaVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#a78bfa;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🔄 Cambiar producto</button>
+                        <button onclick="toggleMenuMasVD('${v.id}');devolverPiezaVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#fb923c;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">↩️ Devolver pieza (vuelve a bodega)</button>
                         <button onclick="toggleMenuMasVD('${v.id}');editarDescuentoVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#ccc;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">✏️ Descuento</button>
                         <button onclick="toggleMenuMasVD('${v.id}');corregirSaldoVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#e85555;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🩹 Corregir saldo</button>
                         <button onclick="toggleMenuMasVD('${v.id}');cambiarFormaPagoVD('${v.id}')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#5eb3f0;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🔄 Cambiar forma de pago</button>

@@ -364,6 +364,8 @@ function startPrintServer() {
         try {
           const body = JSON.parse(Buffer.concat(chunks).toString())
           const { png_base64, formato, rollo } = body
+          // Grosor del texto (0 normal · 1 negrita · 2 extra): engrosa la letra de guías de terceros (PDF) que sale delgada en la térmica
+          const negrita = Math.max(0, Math.min(3, parseInt(body.negrita)))
           if (!png_base64) { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'png_base64 vacío' })); return }
 
           const cfg = loadConfig()
@@ -395,7 +397,8 @@ function startPrintServer() {
           const r = await new Promise(resolve => {
             execFile('python', [
               pyScript, '--png', tmpPng, '--ip', printerIp, '--label', labelId,
-              '--target-w', String(fm.w), '--target-h', String(fm.h), '--rotate', String(fm.rotate)
+              '--target-w', String(fm.w), '--target-h', String(fm.h), '--rotate', String(fm.rotate),
+              '--bold', String(isNaN(negrita) ? (formato === 'guia' ? 1 : 0) : negrita)
             ], { timeout: 30000 }, (err, stdout, stderr) => {
               if (err) resolve({ ok: false, error: parsePrintError(stderr, err.message) })
               else     resolve({ ok: true, ip: printerIp })

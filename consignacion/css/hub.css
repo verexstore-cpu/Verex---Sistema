@@ -495,3 +495,7 @@
            de la pantalla (incluido el escáner). 16px lo evita por completo. */
         input, select, textarea { font-size: 16px !important; }
     }
+
+/* Móvil/tablet: la página no se desplaza hacia los lados — todo queda dentro del ancho de la pantalla */
+html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
+@supports not (overflow:clip){ html,body{ overflow-x:hidden; } }

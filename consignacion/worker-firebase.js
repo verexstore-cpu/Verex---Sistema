@@ -1442,6 +1442,8 @@ async function enviar(){
             descuentoTipo:  d.descuentoTipo  || "monto",
             descuentoValor: d.descuentoValor || descNuevo,
             saldoPendiente: Math.max(0, totalNuevo - pagadoHastaAhora),
+            // si al cambiar el descuento ya no se debe nada, la venta a crédito pasa a pagada (antes quedaba "crédito" con saldo $0)
+            estado: Math.max(0, totalNuevo - pagadoHastaAhora) <= 0.005 ? "pagado" : "credito",
           });
           result = { ok: true };
           break;
@@ -1601,6 +1603,63 @@ async function enviar(){
           if (d.descuento != null) patchCorr.descuento = Math.max(0, parseFloat(d.descuento) || 0);
           await sb.update("ventas_directas", d.id, patchCorr);
           result = { ok: true, nuevoSaldo: nuevoSaldoCorr, patch: patchCorr };
+          break;
+        }
+
+        // Devolución (total o parcial) de una pieza de una venta directa: la pieza vuelve a bodega, la venta baja por lo que se pagó por ella
+        // y el saldo se recalcula (si el cliente ya había pagado más de lo que queda, el sobrante se avisa como "a favor del cliente").
+        case "DEVOLVER_PIEZA_VD": {
+          if (!esAdmin) return forbidden();
+          const vdDev = await sb.get("ventas_directas", d.id);
+          if (!vdDev) { result = { ok: false, error: "Venta no encontrada" }; break; }
+          let itemsOrigDev = [];
+          try { itemsOrigDev = JSON.parse(vdDev.items || "[]"); } catch (_) {}
+          const itemsDev = completarPrecioPagadoVD(itemsOrigDev, vdDev.descuento);
+          const idxDev = itemsDev.findIndex(it => it.codigo === String(d.codigo || ""));
+          if (idxDev === -1) { result = { ok: false, error: "Esa pieza no está en esta venta" }; break; }
+          const itDev = itemsDev[idxDev];
+          const cantItemDev = parseInt(itDev.cantidad) || 1;
+          const cantDev = Math.min(cantItemDev, Math.max(1, parseInt(d.cantidad) || cantItemDev));
+          const listaDev = (parseFloat(itDev.precio) || 0) * cantDev;
+          const pagadoDev = (parseFloat(itDev.precioPagado) || 0) * cantDev;   // lo que costó la pieza ya con su parte del descuento
+          const saldoCrudoDev = r2VD((parseFloat(vdDev.saldoPendiente) || 0) - pagadoDev);
+          const itemsQuedan = itemsDev.map((it, i) => i === idxDev ? { ...it, cantidad: cantItemDev - cantDev } : it).filter(it => (parseInt(it.cantidad) || 0) > 0);
+          const resumenDev = {
+            pieza: itDev.nombre || itDev.codigo, cantidad: cantDev, valor: r2VD(pagadoDev),
+            pagadoHastaAhora: Math.max(0, r2VD((parseFloat(vdDev.total) || 0) - (parseFloat(vdDev.saldoPendiente) || 0))),
+            totalAntes: r2VD(parseFloat(vdDev.total) || 0), nuevoTotal: Math.max(0, r2VD((parseFloat(vdDev.total) || 0) - pagadoDev)),
+            nuevoSaldo: Math.max(0, saldoCrudoDev), aFavorCliente: saldoCrudoDev < 0 ? r2VD(-saldoCrudoDev) : 0,
+            quedanPiezas: itemsQuedan.length
+          };
+          if (d.soloCalcular) { result = { ok: true, preview: true, ...resumenDev }; break; }
+
+          const stDev = await sb.get("stock", itDev.codigo);
+          if (stDev) {
+            await sb.update("stock", itDev.codigo, {
+              stock_bodega: (parseInt(stDev.stock_bodega) || 0) + cantDev,
+              stock_vendido: Math.max(0, (parseInt(stDev.stock_vendido) || 0) - cantDev)
+            });
+          }
+          const fechaDev = new Date().toLocaleDateString("es-SV", { day: "numeric", month: "short", year: "numeric" });
+          const motivoDev = String(d.motivo || "").trim().slice(0, 200);
+          const notaDev = `↩️ Devolución el ${fechaDev}: "${itDev.nombre || itDev.codigo}" (${itDev.codigo}) x${cantDev} — $${r2VD(pagadoDev).toFixed(2)}` +
+            (motivoDev ? " — Motivo: " + motivoDev : "") + " — vuelve a bodega" +
+            (resumenDev.aFavorCliente > 0 ? `\n⚠️ A favor del cliente: $${resumenDev.aFavorCliente.toFixed(2)}` : "");
+          const patchDev = {
+            items: JSON.stringify(itemsQuedan),
+            total: resumenDev.nuevoTotal,
+            subtotal: Math.max(0, r2VD((parseFloat(vdDev.subtotal) || 0) - listaDev)),
+            saldoPendiente: resumenDev.nuevoSaldo,
+            estado: itemsQuedan.length === 0 ? "devuelto" : (resumenDev.nuevoSaldo <= 0.005 ? "pagado" : "credito"),
+            nota: (vdDev.nota ? vdDev.nota + "\n" : "") + notaDev,
+            devoluciones: [...(Array.isArray(vdDev.devoluciones) ? vdDev.devoluciones : []), {
+              fecha: new Date().toISOString(), codigo: itDev.codigo, nombre: itDev.nombre || "", cantidad: cantDev, valor: r2VD(pagadoDev), motivo: motivoDev
+            }]
+          };
+          const descNuevoDev = Math.max(0, r2VD((parseFloat(vdDev.descuento) || 0) - (listaDev - pagadoDev)));
+          if (descNuevoDev !== r2VD(vdDev.descuento)) { patchDev.descuento = descNuevoDev; patchDev.descuentoTipo = "monto"; patchDev.descuentoValor = descNuevoDev; }
+          await sb.update("ventas_directas", d.id, patchDev);
+          result = { ok: true, ...resumenDev };
           break;
         }
 
@@ -2204,7 +2263,8 @@ async function enviar(){
 
           let activos = prods.filter(p =>
             (p.enCatalogo === true || p.enCatalogo === "true" || p.enCatalogo === "TRUE") &&
-            p.estado !== "inactivo"
+            p.estado !== "inactivo" &&
+            (!p.esPrueba || (d.incluirPrueba === true && env.PAYPAL_ENV !== "live"))   // el producto de prueba solo se ve con ?prueba=1 y en Sandbox
           );
 
           // Separar destacados del resto
@@ -2556,6 +2616,11 @@ async function enviar(){
         case "REGISTRAR_LEAD": {
           if (!d.codigo) { result = { ok: false, error: "Datos incompletos" }; break; }
           const qtyLead = parseInt(d.qty) || 1;
+          // Producto de PRUEBA (ver CREAR_PRODUCTO_PRUEBA): solo se puede pedir mientras PayPal esté en Sandbox, y el pedido
+          // queda marcado esPrueba para no contar en ingresos. Con cobros reales (live) se rechaza.
+          const prodPrueba = await sb.get("stock", d.codigo).catch(() => null);
+          const esPruebaLead = !!(prodPrueba && prodPrueba.esPrueba);
+          if (esPruebaLead && env.PAYPAL_ENV === "live") { result = { ok: false, error: "producto_de_prueba" }; break; }
           // Reserva atómica al momento del pedido (no cuando un admin lo
           // confirma después) — así el catálogo deja de mostrar la pieza
           // como disponible de inmediato, en vez de dejar una ventana donde
@@ -2576,6 +2641,7 @@ async function enviar(){
           const numeroUS = d.pais === "US" ? await numeroGuardadoPedidoUSA(sb, d.pedidoId) : "";
           await sb.set("leads", leadId, {
             id: leadId,
+            ...(esPruebaLead ? { esPrueba: true } : {}),
             afiliado: d.afiliado || "",
             codigo: d.codigo,
             nombre: d.nombre || "",
@@ -3243,6 +3309,17 @@ async function enviar(){
             }
           }
 
+          // Reembolso hecho fuera del panel (PayPal.me, Wompi, etc.): solo deja constancia.
+          // No toca dinero ni stock. Solo para pedidos cancelados, pagados y sin captura de PayPal Checkout
+          // (esos se reembolsan desde el panel con código).
+          if (d.reembolsadoManual === true) {
+            if (!leadUSA.pagadoUSA || leadUSA.estado !== "cancelado" || leadUSA.paypalCaptureId || leadUSA.reembolsadoUSA) {
+              result = { ok: false, error: "No se puede marcar como reembolsado este pedido" }; break;
+            }
+            patch.reembolsadoUSA = true;
+            patch.reembolsoManual = true;
+            patch.historial = [...(leadUSA.historial || []), { estado: "cancelado", fecha: new Date().toISOString(), motivo: "Reembolso hecho aparte (marcado manualmente)" }];
+          }
           await sb.update("leads", d.id, patch);
           if (patch.pagadoUSA === true && !leadUSA.pagadoUSA) {
             await enviarCorreoPagoConfirmadoUSA(env, sb, leadUSA.pedidoId);
@@ -3491,6 +3568,61 @@ async function enviar(){
             reservaExpiraEn: null, reservaDescTienda: 0, reservaDescBodega: 0
           });
           result = { ok: true };
+          break;
+        }
+
+        // Borra del panel de Logística USA los pedidos CANCELADOS que ya no deben cobrarse ni devolverse (pruebas, reservas vencidas).
+        // Seguro: no toca stock; omite lo que tenga reserva activa, entrega, o dinero cobrado sin reembolsar (esos se resuelven antes).
+        case "ELIMINAR_CANCELADOS_USA": {
+          if (!esAdmin) return forbidden();
+          const pids = Array.isArray(d.pedidoIds) ? d.pedidoIds.map(String).slice(0, 200) : [];
+          let borrados = 0; const omitidos = [];
+          for (const pid of pids) {
+            const lds = (await sb.query("leads", "pedidoId", "eq", pid)).filter(l => l.pais === "US");
+            const ok = lds.length && lds.every(l => l.estado === "cancelado" && !l.entregadoUSA && !l.reservaDescTienda && !l.reservaDescBodega
+              && (!l.pagadoUSA || l.reembolsadoUSA));
+            if (!ok) { omitidos.push(pid); continue; }
+            for (const l of lds) await sb.delete("leads", l.id);
+            borrados++;
+          }
+          result = { ok: true, borrados, omitidos };
+          break;
+        }
+
+        // Producto de PRUEBA con su propio stock (no toca el inventario real). Se crea/reinicia con esta acción y se pide
+        // en el catálogo con ?prueba=1. Nunca pisa un producto real (si el código ya existe y no es de prueba, se rechaza).
+        case "CREAR_PRODUCTO_PRUEBA": {
+          if (!esAdmin) return forbidden();
+          if (env.PAYPAL_ENV === "live") { result = { ok: false, error: "solo_en_sandbox" }; break; }
+          const codP = String(d.codigo || "W78RE").trim().toUpperCase();
+          if (!/^[A-Z0-9-]{3,20}$/.test(codP)) { result = { ok: false, error: "codigo_invalido" }; break; }
+          const existeP = await sb.get("stock", codP);
+          if (existeP && !existeP.esPrueba) { result = { ok: false, error: "codigo_en_uso_por_producto_real" }; break; }
+          const cantP = Math.min(500, Math.max(1, parseInt(d.cantidad) || 50));
+          await sb.set("stock", codP, {
+            ...(existeP || {}),
+            codigo: codP, nombre: "PRUEBA - no es un producto real", nombre_base: "PRUEBA - no es un producto real",
+            categoria: "CO", precio: Math.round((parseFloat(d.precio) || 50) * 100) / 100,
+            esPrueba: true, enCatalogo: true, estado: "bodega", fechaRegistro: existeP?.fechaRegistro || new Date().toISOString(),
+            stock_bodega: cantP, stock_tienda: 0, stock_consignacion: 0, stock_reservado: 0, stock_vendido: 0, stock_total: cantP,
+          });
+          result = { ok: true, codigo: codP, cantidad: cantP };
+          break;
+        }
+
+        // Borra TODOS los pedidos de prueba (leads esPrueba, en cualquier estado) y deja el producto de prueba con su stock inicial.
+        // No toca ningún producto real. Solo en Sandbox.
+        case "LIMPIAR_PEDIDOS_PRUEBA": {
+          if (!esAdmin) return forbidden();
+          if (env.PAYPAL_ENV === "live") { result = { ok: false, error: "solo_en_sandbox" }; break; }
+          const leadsP = (await sb.getAll("leads")).filter(l => l.esPrueba === true);
+          for (const l of leadsP) await sb.delete("leads", l.id);
+          const prodsP = (await sb.getAll("stock")).filter(x => x.esPrueba === true);
+          for (const x of prodsP) {
+            const base = Math.max(1, parseInt(x.stock_total) || 50);
+            await sb.update("stock", x.codigo, { stock_bodega: base, stock_reservado: 0, stock_vendido: 0, stock_tienda: 0, stock_consignacion: 0 });
+          }
+          result = { ok: true, pedidosBorrados: new Set(leadsP.map(l => l.pedidoId || l.id)).size, productosReiniciados: prodsP.length };
           break;
         }
 

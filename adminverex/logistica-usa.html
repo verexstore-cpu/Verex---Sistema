@@ -4,9 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VEREX · Logística USA</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Outfit:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
+/* Móvil/tablet: la página no se desplaza hacia los lados — todo queda dentro del ancho de la pantalla */
+html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
+@supports not (overflow:clip){ html,body{ overflow-x:hidden; } }
+
 :root{
   --ground:#faf7f1;
   --ground-raised:#ffffff;
@@ -22,6 +26,10 @@
   --transit-wash:#e4eef5;
   --success:#2f7d52;
   --success-wash:#e4f1e8;
+  --prep:#6d4aa8;
+  --prep-wash:#ece5f7;
+  --cancel:#6b6b6b;
+  --cancel-wash:#ececec;
   --attention:#a8432f;
   --attention-wash:#f7e6e1;
   --shadow: 0 1px 2px rgba(36,31,22,.06), 0 6px 20px -10px rgba(36,31,22,.18);
@@ -63,10 +71,15 @@ body{
 }
 .back:hover{ border-color:var(--accent); color:var(--accent-ink); }
 .wordmark{
-  font-family:"Fraunces", Georgia, serif; font-weight:600; font-size:22px;
-  letter-spacing:.2px; flex:1; min-width:180px;
+  font-family:"Outfit", "IBM Plex Sans", system-ui, sans-serif; font-weight:700; font-size:36px;
+  letter-spacing:2.5px; text-transform:uppercase; line-height:1; flex:1; min-width:240px;
+  display:flex; align-items:center; gap:12px;
 }
-.wordmark span{ color:var(--accent); }
+.wordmark span{
+  font-weight:800; font-size:.62em; letter-spacing:3px; color:#fff; padding:6px 12px 6px 14px; border-radius:8px;
+  background:linear-gradient(135deg,#7a5500,#C9A84C,#a87d20,#F5D78E);
+  text-shadow:0 1px 2px rgba(0,0,0,.35); box-shadow:0 2px 8px rgba(201,168,76,.45);
+}
 .btn-nuevo{
   font-size:12.5px; font-weight:600; color:#fff; background:var(--accent);
   border:none; border-radius:9px; padding:9px 14px; text-decoration:none;
@@ -83,8 +96,22 @@ body{
 }
 .stat-label{ display:block; font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.6px; margin-bottom:6px; }
 .stat-value{ display:block; font-size:24px; font-weight:600; }
-.stat.warn .stat-value{ color:var(--pending); }
-.stat.transit .stat-value{ color:var(--transit); }
+.stat{ cursor:pointer; position:relative; user-select:none; }
+.stat .stat-ojo{ position:absolute; top:10px; right:12px; font-size:14px; opacity:.45; }
+.stat:hover .stat-ojo{ opacity:.9; }
+.stat.oculto .stat-value{ filter:blur(9px); }
+/* Mismo estilo que los botones de cada vendedor del Hub: oscuro, brillo del color y barra lateral con luz */
+.stat{ position:relative; overflow:hidden; background:#111; border:1px solid color-mix(in srgb,var(--sc) 45%,#111); box-shadow:0 2px 10px color-mix(in srgb,var(--sc) 28%,transparent); padding-left:20px; }
+.stat::before{ content:''; position:absolute; inset:0; background:linear-gradient(135deg,var(--sc),transparent 62%); opacity:.28; pointer-events:none; }
+.stat::after{ content:''; position:absolute; left:0; top:12%; bottom:12%; width:4px; border-radius:0 4px 4px 0; background:var(--sc); box-shadow:0 0 10px var(--sc); }
+.stat > *{ position:relative; z-index:1; }
+.stat .stat-label{ color:#bdbdbd; }
+.stat .stat-value, .stat.warn .stat-value, .stat.transit .stat-value{ color:#fff; }
+.stat[data-stat=mes]{ --sc:#cd8c52; }
+.stat[data-stat=ingresos]{ --sc:#27ae60; }
+.stat[data-stat=pend]{ --sc:#C9A84C; }
+.stat[data-stat=transit]{ --sc:#4a90d9; }
+.stat .stat-ojo{ opacity:.7; }
 
 /* ── Board ───────────────────────────────────────────── */
 .board{
@@ -103,7 +130,8 @@ body{
 .dot.pending{ background:var(--pending); }
 .dot.transit{ background:var(--transit); }
 .dot.success{ background:var(--success); }
-.dot.prep{ background:var(--accent); }
+.dot.prep{ background:var(--prep); }
+.dot.cancel{ background:var(--cancel); }
 
 .cards{ display:flex; flex-direction:column; gap:10px; }
 .vacio{ font-size:12px; color:var(--ink-soft); padding:8px 2px; }
@@ -125,12 +153,29 @@ body{
   font-size:10.5px; font-weight:600; border-radius:6px; padding:2.5px 7px;
   letter-spacing:.2px; white-space:nowrap;
 }
-.chip.pending{ background:var(--pending-wash); color:var(--pending); }
-.chip.transit{ background:var(--transit-wash); color:var(--transit); }
-.chip.success{ background:var(--success-wash); color:var(--success); }
-.chip.prep{ background:var(--accent-wash); color:var(--accent-ink); }
+.chip.pending{ background:color-mix(in srgb,#C9A84C 20%,#fff); color:color-mix(in srgb,#C9A84C 55%,#000); }
+.chip.transit{ background:color-mix(in srgb,#4a90d9 16%,#fff); color:color-mix(in srgb,#4a90d9 70%,#000); }
+.chip.success{ background:color-mix(in srgb,#27ae60 16%,#fff); color:color-mix(in srgb,#27ae60 75%,#000); }
+.chip.prep{ background:color-mix(in srgb,#9b59b6 16%,#fff); color:color-mix(in srgb,#9b59b6 80%,#000); }
 .chip.mono{ font-family:"IBM Plex Mono",monospace; }
 .chip.cancel{ background:#e5e5e5; color:#555; }
+/* Color por estado: encabezado de columna, borde de las tarjetas y barra superior del detalle */
+.col-pendiente{ --c:#C9A84C; --cw:color-mix(in srgb,#C9A84C 18%,#fff); --ct:color-mix(in srgb,#C9A84C 55%,#000); }
+.col-preparando{ --c:#9b59b6; --cw:color-mix(in srgb,#9b59b6 16%,#fff); --ct:color-mix(in srgb,#9b59b6 80%,#000); }
+.col-enviado{ --c:#4a90d9; --cw:color-mix(in srgb,#4a90d9 16%,#fff); --ct:color-mix(in srgb,#4a90d9 70%,#000); }
+.col-entregado{ --c:#27ae60; --cw:color-mix(in srgb,#27ae60 16%,#fff); --ct:color-mix(in srgb,#27ae60 75%,#000); }
+.col-cancelado{ --c:var(--cancel); --cw:var(--cancel-wash); }
+.column[class*="col-"]{ background:color-mix(in srgb, var(--cw) 55%, var(--ground)); border:1px solid color-mix(in srgb, var(--c) 25%, transparent); border-radius:14px; padding:10px; }
+.column-head{ position:relative; overflow:hidden; background:#111; color:#e8e8e8; border:1px solid color-mix(in srgb,var(--c) 45%,#111); border-radius:12px; padding:13px 14px 13px 18px !important; margin-bottom:10px; font-size:14px; box-shadow:0 2px 10px color-mix(in srgb,var(--c) 30%,transparent); }
+.column-head::before{ content:''; position:absolute; inset:0; background:linear-gradient(135deg,var(--c),transparent 62%); opacity:.30; pointer-events:none; }
+.column-head::after{ content:''; position:absolute; left:0; top:12%; bottom:12%; width:4px; border-radius:0 4px 4px 0; background:var(--c); box-shadow:0 0 10px var(--c); }
+.column-head > *{ position:relative; z-index:1; }
+.column-head .count{ background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.2); color:#fff; }
+.column-head .dot{ background:var(--c) !important; box-shadow:0 0 8px var(--c); }
+.card[class*="col-"]{ border-left:5px solid var(--c); }
+.drawer[class*="col-"]{ border-top:6px solid var(--c); }
+.stage-badge{ display:inline-block; font-size:11px; font-weight:700; padding:3px 9px; border-radius:6px; background:var(--cw); color:var(--ct,var(--c)); margin-bottom:6px; }
+.cancelados summary{ color:var(--cancel); }
 .chip.alerta{ background:#fde2e2; color:#b42318; }
 .cancelados{ margin-top:22px; }
 .cancelados summary{ cursor:pointer; font-weight:600; padding:8px 0; color:var(--ink-soft); }
@@ -166,10 +211,19 @@ body{
 .dsec-row span:first-child{ color:var(--ink-soft); }
 
 .items{ display:flex; flex-direction:column; gap:6px; }
-.item-row{ display:flex; align-items:center; justify-content:space-between; font-size:12.5px; gap:8px; }
+.prod-card{ display:flex; gap:14px; align-items:center; background:var(--ground); border:1px solid var(--line); border-radius:14px; padding:10px; margin-bottom:10px; }
+.prod-foto{ width:170px; height:170px; border-radius:12px; object-fit:cover; flex-shrink:0; background:#fff; border:1px solid var(--line); cursor:zoom-in; }
+.prod-foto-ph{ display:flex; align-items:center; justify-content:center; font-size:56px; cursor:default; }
+.prod-info{ flex:1; min-width:0; }
+.prod-nombre{ font-size:17px; font-weight:700; line-height:1.25; }
+.prod-codigo{ display:inline-block; margin-top:6px; font-size:14px; font-weight:700; background:var(--accent-wash); color:var(--accent-ink); border-radius:7px; padding:3px 9px; }
+.prod-cant{ margin-top:8px; font-size:14px; color:var(--ink-soft); }
+.prod-cant b{ font-size:26px; color:var(--success); }
+.prod-precio{ margin-top:4px; font-size:13px; color:var(--ink-soft); }
+.item-row{ display:flex; align-items:center; justify-content:space-between; font-size:14px; font-weight:600; gap:12px; }
 .item-name{ flex:1; }
 .item-foto{
-  width:34px; height:34px; border-radius:7px; object-fit:cover; flex-shrink:0;
+  width:84px; height:84px; border-radius:10px; cursor:zoom-in; object-fit:cover; flex-shrink:0;
   background:var(--ground); border:1px solid var(--line);
 }
 .item-foto-ph{ display:flex; align-items:center; justify-content:center; font-size:15px; }
@@ -181,6 +235,8 @@ body{
 .paylink-box .num{ flex:1; font-size:11.5px; word-break:break-all; color:var(--accent-ink); }
 .paylink-box button{ flex:0 0 auto; }
 .field{ margin-bottom:12px; }
+.trk-wrap{ display:flex; align-items:center; gap:10px; }
+.trk-logo{ height:36px; width:auto; flex-shrink:0; border-radius:4px; }
 .field label{ display:block; font-size:11px; color:var(--ink-soft); margin-bottom:5px; }
 .field input, .field textarea{
   width:100%; border:1.5px solid var(--line); border-radius:9px; padding:9px 10px;
@@ -201,9 +257,17 @@ body{
 
 .estado-msg{ text-align:center; padding:40px 10px; color:var(--ink-soft); font-size:13px; }
 
+/* Textos largos (nombre, correo, dirección, códigos) se parten en vez de ensanchar la página */
+.board > *, .stats > *, .column, .cards, .card, .drawer *{ min-width:0; }
+.card, .card *, .drawer, .drawer *, .stat{ overflow-wrap:anywhere; }
+.drawer{ max-width:100vw; }
 @media (max-width:860px){
-  .stats{ grid-template-columns:repeat(2,1fr); }
-  .board{ grid-template-columns:1fr; }
+  .stats{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .board{ grid-template-columns:minmax(0,1fr); }
+  .topbar{ justify-content:center; }
+  .wordmark{ font-size:28px; letter-spacing:1.5px; min-width:0; flex:1 1 100%; justify-content:center; order:-1; }
+  .prod-card{ flex-direction:column; align-items:stretch; }
+  .prod-foto{ width:100%; height:auto; aspect-ratio:1/1; max-height:320px; }
 }
 </style>
 </head>
@@ -223,15 +287,20 @@ body{
   </header>
 
   <section class="stats">
-    <div class="stat"><span class="stat-label">Pedidos este mes</span><span class="stat-value num" id="stat-mes">—</span></div>
-    <div class="stat"><span class="stat-label">Ingresos cobrados</span><span class="stat-value num" id="stat-ingresos">—</span></div>
-    <div class="stat warn"><span class="stat-label">Pago pendiente</span><span class="stat-value num" id="stat-pend">—</span></div>
-    <div class="stat transit"><span class="stat-label">En tránsito</span><span class="stat-value num" id="stat-transit">—</span></div>
+    <div class="stat" data-stat="mes"><span class="stat-ojo"></span><span class="stat-label">Pedidos este mes</span><span class="stat-value num" id="stat-mes">—</span></div>
+    <div class="stat oculto" data-stat="ingresos"><span class="stat-ojo"></span><span class="stat-label">Ingresos cobrados</span><span class="stat-value num" id="stat-ingresos">—</span></div>
+    <div class="stat warn" data-stat="pend"><span class="stat-ojo"></span><span class="stat-label">Pago pendiente</span><span class="stat-value num" id="stat-pend">—</span></div>
+    <div class="stat transit" data-stat="transit"><span class="stat-ojo"></span><span class="stat-label">En tránsito</span><span class="stat-value num" id="stat-transit">—</span></div>
   </section>
 
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:-8px 0 18px;">
+    <button class="btn ghost" style="flex:none;" onclick="crearProductoPrueba()">🧪 Crear/reiniciar producto de prueba (W78RE)</button>
+    <button class="btn ghost" style="flex:none;color:#b42318;" onclick="limpiarPedidosPrueba()">🧹 Limpiar pedidos de prueba</button>
+    <span style="font-size:11px;color:var(--ink-soft);">Solo con PayPal en Sandbox. El producto de prueba tiene su propio stock y no cuenta en ingresos. Se pide en el catálogo USA con <b>?prueba=1</b>.</span>
+  </div>
   <div id="estado-msg" class="estado-msg" hidden></div>
   <section class="board" id="board"></section>
-  <details class="cancelados" id="cancelados" hidden><summary id="cancelados-sum"></summary><div class="cards" id="cancelados-cards" style="margin-top:8px;"></div></details>
+  <details class="cancelados" id="cancelados" hidden><summary id="cancelados-sum"></summary><div style="margin:6px 0;"><button class="btn ghost" id="btn-elim-canc" style="flex:none;color:#b42318;" onclick="eliminarCancelados()">🗑️ Eliminar cancelados</button><span id="elim-canc-info" style="font-size:11px;color:var(--ink-soft);margin-left:8px;">Solo los que no tienen dinero pendiente por devolver.</span></div><div class="cards" id="cancelados-cards" style="margin-top:8px;"></div></details>
 </div>
 
 <div class="overlay" id="overlay"></div>
@@ -259,6 +328,23 @@ function fotoMini(url){
     if(!url.includes("imagekit.io")) return url;
     return url.includes("?tr=") ? url + ",w-100,h-100,e-sharpen" : url + "?tr=w-100,h-100,e-sharpen";
 }
+function fotoGrande(url){
+    if(!url) return "";
+    if(!url.includes("imagekit.io")) return url;
+    return url.includes("?tr=") ? url + ",w-400,h-400,e-sharpen" : url + "?tr=w-400,h-400,e-sharpen";
+}
+function ampliarFoto(url){
+    let ov = document.getElementById("foto-zoom");
+    if(!ov){
+        ov = document.createElement("div"); ov.id = "foto-zoom";
+        ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:50;display:none;align-items:center;justify-content:center;cursor:zoom-out;";
+        ov.onclick = () => { ov.style.display = "none"; };
+        ov.innerHTML = '<img style="max-width:92vw;max-height:92vh;border-radius:12px;background:#fff;">';
+        document.body.appendChild(ov);
+    }
+    ov.querySelector("img").src = url.includes("imagekit.io") ? (url.includes("?tr=") ? url + ",w-1400" : url + "?tr=w-1400") : url;
+    ov.style.display = "flex";
+}
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 // ── Sesión: reusa la misma del Admin (mismo dominio, mismo localStorage) ──
@@ -272,9 +358,9 @@ function sesionValidaHoy(){
 function etapaDe(o){
     if(o.cancelado) return "cancelado";
     if(o.entregadoUSA) return "entregado";
+    if(!o.pagadoUSA) return "pendiente";   // un tracking tecleado en un pedido sin pagar no lo convierte en "Enviado"
     if(o.trackingDHL) return "enviado";
-    if(o.pagadoUSA) return "preparando";
-    return "pendiente";
+    return "preparando";
 }
 
 function diasDesde(fechaISO){
@@ -304,7 +390,7 @@ function agruparPedidos(leads){
             estado: first.estadoUS || "",
             zip: first.zipUS || "",
             fecha: first.fecha,
-            items: leadsGrupo.map(l => ({ nombre: l.nombre, qty: parseInt(l.qty)||1, precio: parseFloat(l.precio)||0, foto: l.foto || "" })),
+            items: leadsGrupo.map(l => ({ nombre: l.nombre, qty: parseInt(l.qty)||1, precio: parseFloat(l.precio)||0, foto: l.foto || "", codigo: l.codigo || "" })),
             subtotal,
             envio: first.envioUSD,
             total: first.totalPedidoUSD != null ? first.totalPedidoUSD : subtotal,
@@ -322,6 +408,7 @@ function agruparPedidos(leads){
             // Todos los productos cancelados y sin pagar/entregar = pedido cancelado (reserva vencida o cancelado a mano)
             // (un pedido pagado con tarjeta sin stock sigue visible en el tablero para resolverlo; uno cancelado a mano, aunque ya estuviera pagado, va a Cancelados)
             cancelado: leadsGrupo.every(l => l.estado === "cancelado") && !first.entregadoUSA && !leadsGrupo.some(l => l.pagadoSinStock),
+            esPrueba: leadsGrupo.some(l => l.esPrueba === true),   // pedido del producto de prueba: no cuenta en ingresos
             pagadoUSA: !!first.pagadoUSA,
             trackingDHL: first.trackingDHL || "",
             notasUSA: first.notasUSA || "",
@@ -343,12 +430,12 @@ function renderBoard(){
     const board = document.getElementById("board");
     board.innerHTML = STAGES.map(st => {
         const enEtapa = PEDIDOS.filter(o => etapaDe(o) === st.key);
-        return `<div class="column">
+        return `<div class="column col-${st.key}">
             <div class="column-head"><span class="dot ${st.dot}"></span>${st.label}<span class="count">${enEtapa.length}</span></div>
             <div class="cards">
                 ${enEtapa.map(o => {
                     const dias = diasDesde(o.fecha);
-                    return `<button class="card" onclick="abrirPedido('${esc(o.id)}')">
+                    return `<button class="card col-${st.key}" onclick="abrirPedido('${esc(o.id)}')">
                         <div class="card-top">
                             <span class="card-name">${esc(o.nombre)}</span>
                             <span class="card-total num">${money(o.total)}</span>
@@ -357,6 +444,7 @@ function renderBoard(){
                         ${o.numero ? `<div class="card-place mono" style="font-weight:600;">${esc(o.numero)}</div>` : ""}
                         <div class="card-foot">
                             ${chipForStage(o)}
+                            ${o.esPrueba ? `<span class="chip alerta">🧪 PRUEBA</span>` : ""}
                             ${o.pagadoSinStock ? `<span class="chip alerta">Pagado sin stock</span>` : ""}
                             ${st.key === "pendiente" ? `<span class="chip">${o.metodoPago === "wompi" ? "Tarjeta" : "PayPal"}</span>` : ""}
                             ${st.key === "pendiente" && dias >= 2 ? `<span class="chip days">${dias} días</span>` : ""}
@@ -371,9 +459,9 @@ function renderBoard(){
     const dc = document.getElementById("cancelados");
     dc.hidden = !canc.length;
     document.getElementById("cancelados-sum").textContent = `Cancelados (${canc.length})`;
-    document.getElementById("cancelados-cards").innerHTML = canc.map(o => `<button class="card" onclick="abrirPedido('${esc(o.id)}')">
+    document.getElementById("cancelados-cards").innerHTML = canc.map(o => `<button class="card col-cancelado" onclick="abrirPedido('${esc(o.id)}')">
         <div class="card-top"><span class="card-name">${esc(o.nombre)}</span><span class="card-total num">${money(o.total)}</span></div>
-        <div class="card-foot"><span class="chip cancel">Cancelado</span>${o.reembolsado ? `<span class="chip">Reembolsado</span>` : o.pagadoUSA ? `<span class="chip alerta">Ya pagado: reembolsar</span>` : ""}<span class="chip">${diasDesde(o.fecha)} días</span></div></button>`).join("");
+        <div class="card-foot"><span class="chip cancel">Cancelado</span>${o.esPrueba ? `<span class="chip alerta">🧪 PRUEBA</span>` : ""}${o.reembolsado ? `<span class="chip">Reembolsado</span>` : o.pagadoUSA ? `<span class="chip alerta">Ya pagado: reembolsar</span>` : ""}<span class="chip">${diasDesde(o.fecha)} días</span></div></button>`).join("");
 
     document.getElementById("stat-pend").textContent = PEDIDOS.filter(o => etapaDe(o)==="pendiente").length;
     document.getElementById("stat-transit").textContent = PEDIDOS.filter(o => etapaDe(o)==="enviado").length;
@@ -381,10 +469,10 @@ function renderBoard(){
     const hoy = new Date();
     const esteMes = PEDIDOS.filter(o => {
         const f = new Date(o.fecha);
-        return f.getMonth() === hoy.getMonth() && f.getFullYear() === hoy.getFullYear();
+        return f.getMonth() === hoy.getMonth() && f.getFullYear() === hoy.getFullYear() && !o.reembolsado && !o.cancelado && !o.esPrueba;
     });
     document.getElementById("stat-mes").textContent = esteMes.length;
-    const ingresos = PEDIDOS.filter(o => o.pagadoUSA).reduce((s,o) => s + (parseFloat(o.total)||0), 0);
+    const ingresos = PEDIDOS.filter(o => o.pagadoUSA && !o.reembolsado && !o.cancelado && !o.esPrueba).reduce((s,o) => s + (parseFloat(o.total)||0), 0);
     document.getElementById("stat-ingresos").textContent = money(ingresos);
 }
 
@@ -395,8 +483,11 @@ function abrirPedido(id){
     const overlay = document.getElementById("overlay");
     const etapa = etapaDe(o);
 
+    drawer.className = "drawer col-" + etapa;
+    const NOMBRE_ETAPA = { pendiente:"Pago pendiente", preparando:"Pagado · Preparando", enviado:"Enviado", entregado:"Entregado", cancelado:"Cancelado" };
     drawer.innerHTML = `
         <button class="drawer-close" onclick="cerrarDrawer()">Cerrar ✕</button>
+        <span class="stage-badge">${NOMBRE_ETAPA[etapa]}</span>${o.esPrueba ? ` <span class="stage-badge" style="background:#fde2e2;color:#b42318;">🧪 PEDIDO DE PRUEBA</span>` : ""}
         <h2>${esc(o.nombre)}</h2>
         <div class="sub">${o.numero ? `<b>${esc(o.numero)}</b> · ` : ""}${esc(o.ciudad)}${o.ciudad && o.estado ? ", " : ""}${esc(o.estado)} · ${new Date(o.fecha).toLocaleDateString("es-CO",{day:"numeric",month:"short",year:"numeric"})}</div>
 
@@ -410,10 +501,14 @@ function abrirPedido(id){
         <div class="dsec">
             <div class="dsec-label">Productos</div>
             <div class="items">
-                ${o.items.map(it => `<div class="item-row">
-                    ${it.foto ? `<img class="item-foto" src="${esc(fotoMini(it.foto))}" alt="" loading="lazy" onerror="this.remove()">` : `<span class="item-foto item-foto-ph">💍</span>`}
-                    <span class="item-name">${esc(it.nombre)}${it.qty>1?` ×${it.qty}`:""}</span>
-                    <span class="num">${money(it.precio*it.qty)}</span>
+                ${o.items.map(it => `<div class="prod-card">
+                    ${it.foto ? `<img class="prod-foto" src="${esc(fotoGrande(it.foto))}" alt="" loading="lazy" title="Clic para ampliar" onclick="ampliarFoto('${esc(it.foto)}')" onerror="this.outerHTML='<div class=\\'prod-foto prod-foto-ph\\'>💍</div>'">` : `<div class="prod-foto prod-foto-ph">💍</div>`}
+                    <div class="prod-info">
+                        <div class="prod-nombre">${esc(it.nombre)}</div>
+                        ${it.codigo ? `<div class="prod-codigo num">${esc(it.codigo)}</div>` : ""}
+                        <div class="prod-cant">Cantidad: <b>×${it.qty}</b></div>
+                        <div class="prod-precio num">${money(it.precio*it.qty)}</div>
+                    </div>
                 </div>`).join("")}
             </div>
             <div class="dsec-row" style="margin-top:6px;"><span>Envío (DHL)</span><span class="num">${money(o.envio)}</span></div>
@@ -432,8 +527,8 @@ function abrirPedido(id){
         </div>` : ""}
 
         <div class="field">
-            <label for="dr-tracking">Número de tracking DHL</label>
-            <input id="dr-tracking" type="text" placeholder="Ej: 7834 1122 90" value="${esc(o.trackingDHL)}">
+            <label for="dr-tracking">Guía / número de tracking DHL</label>
+            <div class="trk-wrap"><img class="trk-logo" src="images/dhl-logo.png" alt="DHL"><input id="dr-tracking" type="text" placeholder="Pega aquí la guía" value="${esc(o.trackingDHL)}"></div>
         </div>
         <div class="field">
             <label for="dr-notas">Notas internas</label>
@@ -452,6 +547,7 @@ function abrirPedido(id){
             <button class="btn ghost" onclick="guardarNotas('${esc(o.id)}')">Guardar</button>
             ${o.reembolsable ? `<button class="btn ghost" style="color:#b42318;" onclick="reembolsarPedido('${esc(o.id)}')">Reembolsar pago (PayPal)</button>` : ""}
             ${(etapa === "pendiente" || etapa === "preparando") && !o.reembolsable ? `<button class="btn ghost" style="color:#b42318;" onclick="cancelarPedido('${esc(o.id)}')">Cancelar pedido</button>` : ""}
+            ${etapa === "cancelado" && o.pagadoUSA && !o.reembolsado && !o.reembolsable ? `<button class="btn ghost" style="color:#b42318;" onclick="marcarReembolsadoAparte('${esc(o.id)}')">Marcar como reembolsado (hecho aparte)</button>` : ""}
             ${etapa === "enviado" || etapa === "entregado" ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:6px;">Pedido ya enviado: no se reembolsa ni se cancela desde aquí.</div>` : ""}
         </div>
     `;
@@ -548,6 +644,46 @@ async function reembolsarPedido(id){
     }catch(_){ alert("⚠️ No se pudo conectar con el servidor"); return; }
     await cargarPedidos();
     cerrarDrawer();
+}
+// Solo deja constancia de un reembolso hecho fuera del panel (PayPal.me, Wompi...): no mueve dinero ni stock.
+async function marcarReembolsadoAparte(id){
+    if(!confirm("¿Confirmas que ya devolviste el dinero a este cliente por fuera del panel (PayPal.me, Wompi, etc.)?\n\nEsto solo quita el aviso y lo saca de los ingresos: no devuelve dinero ni toca el stock.")) return;
+    const o = PEDIDOS.find(x => x.id === id);
+    if(!o) return;
+    if(!await llamarLeads(o, "ACTUALIZAR_LEAD_USA", { reembolsadoManual: true })) return;
+    await cargarPedidos();
+    cerrarDrawer();
+}
+// Borra de forma definitiva los cancelados sin dinero pendiente (pruebas, reservas vencidas). Los cancelados con pago sin reembolsar se quedan.
+async function eliminarCancelados(){
+    const lista = PEDIDOS.filter(o => etapaDe(o) === "cancelado" && (!o.pagadoUSA || o.reembolsado));
+    const quedan = PEDIDOS.filter(o => etapaDe(o) === "cancelado").length - lista.length;
+    if(!lista.length){ alert("No hay cancelados que se puedan eliminar" + (quedan ? ` (${quedan} tienen un pago sin reembolsar: reembólsalos o márcalos «hecho aparte» primero).` : ".")); return; }
+    if(!confirm(`¿Eliminar DEFINITIVAMENTE ${lista.length} pedido(s) cancelado(s)?\n\nNo se puede deshacer. No toca el stock.` + (quedan ? `\n\n${quedan} cancelado(s) con pago sin reembolsar se quedan.` : ""))) return;
+    try{
+        const r = await apiUSA("ELIMINAR_CANCELADOS_USA", { pedidoIds: lista.map(o => o.id) });
+        if(!r || r.ok === false){ alert("⚠️ " + (r?.error || "El servidor no aceptó el cambio")); return; }
+        alert(`✅ Eliminados: ${r.borrados}` + (r.omitidos?.length ? ` · Omitidos: ${r.omitidos.length}` : ""));
+    }catch(_){ alert("⚠️ No se pudo conectar con el servidor"); return; }
+    await cargarPedidos();
+}
+const ERR_PRUEBA = { solo_en_sandbox: "Solo funciona con PayPal en Sandbox (ahora está en cobros reales).", codigo_en_uso_por_producto_real: "Ese código ya lo usa un producto real; no se toca.", codigo_invalido: "Código inválido." };
+async function crearProductoPrueba(){
+    if(!confirm("¿Crear (o reiniciar) el producto de prueba W78RE con 50 unidades propias?\n\nNo toca ningún producto real.")) return;
+    try{
+        const r = await apiUSA("CREAR_PRODUCTO_PRUEBA", { codigo: "W78RE" });
+        if(!r || r.ok === false){ alert("⚠️ " + (ERR_PRUEBA[r?.error] || r?.error || "El servidor no aceptó el cambio")); return; }
+        alert(`✅ Producto ${r.codigo} listo con ${r.cantidad} unidades.\n\nPídelo en: https://us.verexstore.com/?prueba=1`);
+    }catch(_){ alert("⚠️ No se pudo conectar con el servidor"); }
+}
+async function limpiarPedidosPrueba(){
+    if(!confirm("¿Borrar TODOS los pedidos de prueba y reiniciar el stock del producto de prueba?\n\nNo toca productos ni pedidos reales. No se puede deshacer.")) return;
+    try{
+        const r = await apiUSA("LIMPIAR_PEDIDOS_PRUEBA", {});
+        if(!r || r.ok === false){ alert("⚠️ " + (ERR_PRUEBA[r?.error] || r?.error || "El servidor no aceptó el cambio")); return; }
+        alert(`✅ Pedidos de prueba borrados: ${r.pedidosBorrados}`);
+    }catch(_){ alert("⚠️ No se pudo conectar con el servidor"); return; }
+    await cargarPedidos();
 }
 async function cancelarPedido(id){
     const o = PEDIDOS.find(x => x.id === id);
@@ -750,13 +886,49 @@ async function cargarPedidos(){
         msg.hidden = PEDIDOS.length > 0;
         if(!PEDIDOS.length) msg.textContent = "Todavía no hay pedidos del catálogo de Estados Unidos.";
         renderBoard();
+        if(PEDIDO_A_ABRIR){
+            const id = PEDIDO_A_ABRIR; PEDIDO_A_ABRIR = "";
+            if(PEDIDOS.some(x => x.id === id)) abrirPedido(id);
+        }
     }catch(e){
         msg.textContent = "⚠️ Error conectando con la API.";
         msg.hidden = false;
     }
 }
 
-(function boot(){
+// Entrada directa desde el Hub (?sso=...): canjea el token de un solo uso y guarda la sesión del día.
+let PEDIDO_A_ABRIR = new URLSearchParams(location.search).get("pedido") || "";   // ?pedido=ID → abre ese pedido al cargar
+async function intentarSSO(){
+    const token = new URLSearchParams(location.search).get("sso");
+    if(!token) return;
+    history.replaceState({}, "", location.pathname);   // el token no se queda en la URL ni en el historial
+    try{
+        const r = await fetch(API_URL, { method:"POST", body: JSON.stringify({ accion:"SSO_CANJEAR_TOKEN", token }) }).then(x => x.json());
+        if(r.ok && r.hash) localStorage.setItem("vx_sesion_dia", JSON.stringify({ fecha: new Date().toDateString(), hash: r.hash }));
+    }catch(_){}
+}
+
+// Cifras del encabezado: el ingreso sale borroso por defecto (por si alguien mira la pantalla); un clic en cualquier tarjeta
+// la muestra u oculta, y el panel recuerda tu elección en este navegador.
+(function cifras(){
+    let guardado = {};
+    try{ guardado = JSON.parse(localStorage.getItem("vx_logusa_cifras") || "{}"); }catch(_){}
+    document.querySelectorAll(".stat[data-stat]").forEach(el => {
+        const k = el.dataset.stat;
+        if(k in guardado) el.classList.toggle("oculto", !!guardado[k]);
+        const ojo = () => { el.querySelector(".stat-ojo").textContent = el.classList.contains("oculto") ? "🙈" : "👁️"; };
+        ojo();
+        el.title = "Clic para mostrar u ocultar";
+        el.addEventListener("click", () => {
+            el.classList.toggle("oculto"); ojo();
+            guardado[k] = el.classList.contains("oculto");
+            try{ localStorage.setItem("vx_logusa_cifras", JSON.stringify(guardado)); }catch(_){}
+        });
+    });
+})();
+
+(async function boot(){
+    await intentarSSO();
     const hash = sesionValidaHoy();
     if(!hash){
         document.getElementById("gate").hidden = false;

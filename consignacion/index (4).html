@@ -430,7 +430,8 @@
                                 style="padding:6px 10px;background:#1a1a1a;border:1px solid #333;border-radius:6px;color:#fff;font-size:12px;">
                                 <option value="">Todas</option>
                                 <option value="pagado">Contado</option>
-                                <option value="credito">Crédito</option>
+                                <option value="credito">Crédito (con deuda)</option>
+                                <option value="credito_pagado">Crédito pagado</option>
                             </select>
                             <button class="btn btn-gris" style="padding:6px 12px;font-size:12px;" onclick="cargarHistorialVD()">🔄</button>
                         </div>
@@ -1163,8 +1164,8 @@
                 <label for="ep-foto" style="display:block;cursor:pointer;">
                     <div id="ep-foto-preview" style="width:100%;height:150px;background:var(--gris2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:8px;overflow:hidden;">📷</div>
                 </label>
-                <input type="file" id="ep-foto" accept="image/*" capture="environment" style="display:none;">
-                <label for="ep-foto" class="btn btn-gris" style="font-size:12px;padding:6px 14px;display:inline-block;cursor:pointer;">📷 Cambiar Foto</label>
+                <input type="file" id="ep-foto" accept="image/*" style="display:none;">
+                <label for="ep-foto" class="btn btn-gris" style="font-size:12px;padding:6px 14px;display:inline-block;cursor:pointer;">🖼️ Cambiar Foto</label>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                 <button class="btn btn-gris" onclick="cancelarEdicionProducto()">Cancelar</button>

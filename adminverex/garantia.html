@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Garantía Limitada VEREX</title>
 <style>
+/* Móvil/tablet: la página no se desplaza hacia los lados — todo queda dentro del ancho de la pantalla */
+html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
+@supports not (overflow:clip){ html,body{ overflow-x:hidden; } }
+
     *{box-sizing:border-box;margin:0;padding:0;}
     body{font-family:'Segoe UI',sans-serif;background:#f7f7f7;color:#1a1a1a;line-height:1.6;}
     header{background:#111;text-align:center;padding:14px 16px;}

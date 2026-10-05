@@ -567,6 +567,12 @@
             <div class="fit-btn active" onclick="setFit('cover')" id="fit-cover">Llenar</div>
             <div class="fit-btn" onclick="setFit('stretch')" id="fit-stretch">Estirar</div>
           </div>
+          <label style="margin-top:12px">Grosor del texto al imprimir</label>
+          <div class="fit-options">
+            <div class="fit-btn" onclick="setNegrita(0)" id="neg-0">Normal</div>
+            <div class="fit-btn" onclick="setNegrita(1)" id="neg-1">Negrita</div>
+            <div class="fit-btn" onclick="setNegrita(2)" id="neg-2">Extra negrita</div>
+          </div>
           <div style="margin-top:10px;padding:8px 12px;background:#e0e3ec;border:1px solid #c8ccd6;border-left:3px solid #c9a840;border-radius:8px;font-size:12px;color:#6a7080;">
             📐 Tamaño estándar: <strong style="color:#a07820;">62 × 90 mm</strong>
           </div>
@@ -1106,6 +1112,15 @@ function selectPage(idx) {
   document.querySelectorAll('.page-thumb').forEach((t, i) => t.classList.toggle('selected', i === idx));
   renderPdfPreview();
 }
+// Grosor del texto de la guía impresa (0 normal · 1 negrita · 2 extra) — se recuerda en este equipo
+let negrita = 1;
+try { const g = parseInt(localStorage.getItem('verex_guia_negrita')); if (!isNaN(g) && g >= 0 && g <= 2) negrita = g; } catch(_) {}
+function setNegrita(n) {
+  negrita = n;
+  try { localStorage.setItem('verex_guia_negrita', String(n)); } catch(_) {}
+  [0,1,2].forEach(i => { const b = document.getElementById('neg-' + i); if (b) b.classList.toggle('active', i === n); });
+}
+setTimeout(() => setNegrita(negrita), 0);
 function setFit(mode) {
   fitMode = mode;
   ['contain','cover','stretch'].forEach(m => document.getElementById('fit-'+m).classList.toggle('active', m === mode));
@@ -1137,7 +1152,7 @@ async function imprimirPdf() {
     const res = await fetch('http://127.0.0.1:7891/imprimir-png', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ png_base64, formato: 'guia', rollo })
+      body: JSON.stringify({ png_base64, formato: 'guia', rollo, negrita })
     });
     const d = await res.json();
     if (d.ok) toast('✅ Guía enviada · IP ' + (d.ip || '?'));

@@ -78,7 +78,8 @@ async function login() {
 // el Hub ya está autenticado, así que le pide al worker un token corto de
 // un solo uso (90s) y Admin lo canjea al cargar. Si algo falla, cae al
 // link normal (Admin sigue pidiendo su login completo como siempre).
-async function abrirAdminSSO() {
+async function abrirAdminSSO(pagina) {
+    const base = "https://admin-tienda.pages.dev/" + (pagina || "");
     try {
         const res = await fetch(API_URL, {
             method: 'POST', headers: {'Content-Type':'application/json'},
@@ -86,11 +87,11 @@ async function abrirAdminSSO() {
         });
         const data = await res.json();
         if (data.ok && data.token) {
-            window.open("https://admin-tienda.pages.dev/?sso=" + encodeURIComponent(data.token), "_blank");
+            window.open(base + (base.includes("?") ? "&" : "?") + "sso=" + encodeURIComponent(data.token), "_blank");
             return;
         }
     } catch(e) {}
-    window.open("https://admin-tienda.pages.dev", "_blank");
+    window.open(base, "_blank");
 }
 
 let _autoSyncInterval = null;
@@ -377,32 +378,6 @@ async function cambiarEstadoPedidoTienda(numeroPedido, estado) {
     renderPedidosHub();
 }
 
-async function _usaActualizar(i, patch, okMsg) {
-    const g = _usaGrupos[i];
-    if (!g) return;
-    try {
-        const rs = await Promise.all(g.leads.map(l => apiPost({ accion: "ACTUALIZAR_LEAD_USA", id: l.id, ...patch })));
-        const fallo = rs.find(r => !r || r.ok === false);
-        if (fallo) throw new Error(fallo?.error || "No se pudo actualizar");
-        g.leads.forEach(l => Object.assign(l, patch));
-        toast(okMsg);
-    } catch (e) { toast("⚠️ " + e.message, "#c0392b"); }
-    renderPedidosHub();
-}
-function usaMarcarPagado(i) {
-    if (!confirm("¿Confirmas que ya recibiste el pago de este pedido USA? Se envía el correo de pago confirmado al cliente.")) return;
-    _usaActualizar(i, { pagadoUSA: true }, "✅ Pago confirmado");
-}
-function usaMarcarEnviado(i) {
-    const trk = (document.getElementById("usa-trk-" + i)?.value || "").trim();
-    if (!trk) { document.getElementById("usa-trk-" + i)?.focus(); toast("⚠️ Escribe el tracking de DHL", "#c0392b"); return; }
-    _usaActualizar(i, { trackingDHL: trk }, "📦 Pedido marcado como enviado");
-}
-function usaMarcarEntregado(i) {
-    if (!confirm("¿Confirmas que este pedido USA fue entregado? Cierra la venta.")) return;
-    _usaActualizar(i, { entregadoUSA: true }, "✅ Pedido entregado");
-}
-
 // Diagnóstico de PayPal: comprueba que las claves del worker existan y que PayPal las acepte (no muestra ningún valor).
 async function probarPayPal(btn) {
     const txt = btn.textContent; btn.textContent = "Probando…"; btn.disabled = true;
@@ -633,19 +608,12 @@ function renderPedidosHub() {
             <h2 style="color:#0ea5e9;">🇺🇸 Pedidos USA (${_usaGrupos.length})</h2>
             ${_usaGrupos.map((g, i) => {
                 const f = g.f;
-                const items = g.leads.map(l => `${sanitizar(l.nombre || l.codigo)} ×${parseInt(l.qty) || 1}`).join(", ");
+                const items = g.leads.map(l => `<b>${sanitizar(l.nombre || l.codigo)}</b> ×${parseInt(l.qty) || 1} <span style="color:var(--dorado-claro);font-weight:700;">[${sanitizar(l.codigo || "—")}]</span>`).join("<br>");
                 const sub = g.leads.reduce((s, l) => s + (parseFloat(l.precio) || 0) * (parseInt(l.qty) || 1), 0);
                 const totUSD = f.totalPedidoUSD != null ? parseFloat(f.totalPedidoUSD) : sub;
                 const etapa = !f.pagadoUSA ? "pago" : !f.trackingDHL ? "envio" : "entrega";
                 const chip = { pago: ["SIN PAGAR", "#f97316"], envio: ["PAGADO · POR ENVIAR", "#a66be8"], entrega: ["ENVIADO · " + sanitizar(f.trackingDHL || ""), "#3b82f6"] }[etapa];
                 const d = dias(f.fecha);
-                const accion = etapa === "pago"
-                    ? `${f.pagoLink ? `<button onclick="navigator.clipboard.writeText(${jsArg(f.pagoLink)});toast('✅ Link de pago copiado','#22c55e')" style="${btnS}background:#4a4a4e;">📋 Link de pago</button>` : ''}
-                       <button onclick="usaMarcarPagado(${i})" style="${btnS}background:#27ae60;">💵 Marcar pagado</button>`
-                    : etapa === "envio"
-                    ? `<input id="usa-trk-${i}" placeholder="Tracking DHL" style="width:130px;padding:5px 8px;font-size:11px;border-radius:6px;border:1px solid var(--borde);background:var(--negro);color:#fff;">
-                       <button onclick="usaMarcarEnviado(${i})" style="${btnS}background:#3b82f6;">📦 Marcar enviado</button>`
-                    : `<button onclick="usaMarcarEntregado(${i})" style="${btnS}background:#27ae60;">✅ Entregado</button>`;
                 // Aviso de cobro: PayPal.me no le avisa al sistema, hay que revisar PayPal y
                 // marcar pagado antes de que venza la reserva (12 h); la tarjeta se confirma sola.
                 let avisoCobro = "";
@@ -664,13 +632,13 @@ function renderPedidosHub() {
                 return `<div style="background:rgba(14,165,233,0.1);border:1px solid #0ea5e9;border-radius:10px;padding:10px 12px;margin-top:8px;">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                         <div style="flex:1;min-width:0;">
-                            <div style="font-weight:700;font-size:13px;">${f.numeroPedidoUSA ? `<span style="color:var(--dorado);">${sanitizar(f.numeroPedidoUSA)}</span> · ` : ""}${sanitizar(f.nombreCliente || "(sin nombre)")} <span style="font-size:10px;color:${chip[1]};border:1px solid currentColor;border-radius:5px;padding:1px 6px;margin-left:4px;">${chip[0]}</span></div>
+                            <div style="font-weight:700;font-size:13px;">${f.esPrueba ? `<span style="color:#b42318;font-weight:800;">🧪 PRUEBA</span> · ` : ""}${f.numeroPedidoUSA ? `<span style="color:var(--dorado);">${sanitizar(f.numeroPedidoUSA)}</span> · ` : ""}${sanitizar(f.nombreCliente || "(sin nombre)")} <span style="font-size:10px;color:${chip[1]};border:1px solid currentColor;border-radius:5px;padding:1px 6px;margin-left:4px;">${chip[0]}</span></div>
                             <div style="font-size:11px;color:var(--plateado);margin-top:2px;">${items}</div>
                             <div style="font-size:11px;color:var(--plateado);margin-top:2px;">📍 ${sanitizar([f.ciudadUS, f.estadoUS, f.zipUS].filter(Boolean).join(", ") || f.direccionCliente || "—")} · <b style="color:var(--dorado-claro);">$${totUSD.toFixed(2)} USD</b></div>
                             ${tel ? `<a href="https://wa.me/${tel}" target="_blank" style="font-size:11px;color:#25D366;font-weight:700;text-decoration:none;">📱 ${sanitizar(f.telefonoCliente)}</a>` : ''}
                             ${avisoCobro}<div style="font-size:11px;color:var(--plateado);margin-top:3px;">${d >= 1 ? `hace ${d} día${d > 1 ? 's' : ''}` : "Hoy"}</div>
                         </div>
-                        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;align-items:stretch;">${accion}</div>
+                        <button onclick="abrirAdminSSO('logistica-usa.html?pedido=' + encodeURIComponent(${jsArg(g.id)}))" style="flex-shrink:0;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:9px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;" title="Abre este pedido en Logística USA">📦 Abrir ↗</button>
                     </div>
                 </div>`;
             }).join("")}
