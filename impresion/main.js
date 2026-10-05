@@ -110,6 +110,8 @@ function createWindow() {
       mainWindow.show()
       mainWindow.focus()
       mainWindow.moveTop()
+      const tabInicial = pestanaDeArgs(process.argv)   // arranque con --tab=N (acceso directo)
+      if (tabInicial !== null) mainWindow.webContents.executeJavaScript(`setTab(${tabInicial})`).catch(() => {})
     })
   }
 
@@ -173,12 +175,30 @@ app.on('open-url', (event, url) => {
   }
 })
 
+// Trae la ventana al frente y abre una pestaña (0 Guía/Etiqueta, 1 Joyería, 2 Recibo, 3 Cualquier PDF). Lo usa el acceso directo "Guías VEREX".
+function abrirEnPestana(n) {
+  if (!mainWindow) return false
+  try {
+    mainWindow.setSkipTaskbar(false)
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show(); mainWindow.focus()
+    if (Number.isInteger(n) && n >= 0 && n <= 3) mainWindow.webContents.executeJavaScript(`setTab(${n})`).catch(() => {})
+    return true
+  } catch { return false }
+}
+function pestanaDeArgs(argv) {
+  const a = (argv || []).find(x => /^--tab=\d+$/.test(x))
+  return a ? parseInt(a.split('=')[1]) : null
+}
+
 // En Windows: segunda instancia por protocolo verex://
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_e, argv) => {
+    const tab = pestanaDeArgs(argv)
+    if (tab !== null) { abrirEnPestana(tab); return }
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.focus()
@@ -908,6 +928,15 @@ const url='file:///${pdfPath.replace(/\\/g,'/')}';
         }
         checkUrl('/')
       })
+      return
+    }
+
+    // GET /abrir?tab=3 — trae la app al frente y abre esa pestaña (acceso directo del escritorio)
+    if (req.method === 'GET' && req.url.startsWith('/abrir')) {
+      const t = parseInt(new URL(req.url, 'http://127.0.0.1').searchParams.get('tab'))
+      const ok = abrirEnPestana(isNaN(t) ? null : t)
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ok }))
       return
     }
 
