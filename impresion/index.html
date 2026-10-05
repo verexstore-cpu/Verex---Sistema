@@ -770,6 +770,12 @@
         <div class="pdfany-fmt-btn" data-fmt="producto" onclick="selPdfAnyFmt('producto',this)">🏷️ Producto<span>5cm × 1.5cm</span></div>
         <div class="pdfany-fmt-btn" data-fmt="mini" onclick="selPdfAnyFmt('mini',this)">📎 Mini<span>29mm × 90mm</span></div>
       </div>
+      <label style="margin-top:12px">Grosor del texto al imprimir</label>
+      <div class="fit-options">
+        <div class="fit-btn" onclick="setNegrita(0)" id="neg2-0">Normal</div>
+        <div class="fit-btn" onclick="setNegrita(1)" id="neg2-1">Negrita</div>
+        <div class="fit-btn" onclick="setNegrita(2)" id="neg2-2">Extra negrita</div>
+      </div>
       <label style="margin-top:12px">Tipo de rollo instalado</label>
       <div class="pdfany-fmt-grid" id="pdfany-rollo-grid">
         <div class="pdfany-fmt-btn" data-rollo="mono" onclick="selPdfAnyRollo('mono',this)">⬜ Monocromo</div>
@@ -1118,7 +1124,7 @@ try { const g = parseInt(localStorage.getItem('verex_guia_negrita')); if (!isNaN
 function setNegrita(n) {
   negrita = n;
   try { localStorage.setItem('verex_guia_negrita', String(n)); } catch(_) {}
-  [0,1,2].forEach(i => { const b = document.getElementById('neg-' + i); if (b) b.classList.toggle('active', i === n); });
+  [0,1,2].forEach(i => { ['neg-', 'neg2-'].forEach(pre => { const b = document.getElementById(pre + i); if (b) b.classList.toggle('active', i === n); }); });
 }
 setTimeout(() => setNegrita(negrita), 0);
 function setFit(mode) {
@@ -1976,7 +1982,7 @@ async function imprimirPdfAny() {
     const res = await fetch('http://127.0.0.1:7891/imprimir', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ formato: pdfAnyFormato, rollo: pdfAnyRollo, pdf_base64, rotar: false })
+      body: JSON.stringify({ formato: pdfAnyFormato, rollo: pdfAnyRollo, pdf_base64, rotar: false, negrita })
     });
     const json = await res.json();
     if (json.ok) {

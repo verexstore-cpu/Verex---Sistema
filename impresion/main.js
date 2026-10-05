@@ -422,6 +422,7 @@ function startPrintServer() {
         try {
           const body   = JSON.parse(Buffer.concat(chunks).toString())
           const { formato, rollo, pdf_base64, pageCount } = body
+          const negritaPdf = Math.max(0, Math.min(3, parseInt(body.negrita) || 0))   // solo si la pantalla lo pide (pestaña "Cualquier PDF"); 0 = sin cambio
           const pages  = parseInt(pageCount) || 1
           if (!pdf_base64) {
             res.writeHead(400, { 'Content-Type': 'application/json' })
@@ -670,6 +671,7 @@ const url='file:///${pdfPath.replace(/\\/g,'/')}';
                     '--target-w', String(px.w), '--target-h', String(px.h), '--rotate', String(rotateDeg)
                   ]
                   if (formato === 'dk1204' || formato === 'mini') args.push('--no-crop')
+                  if (negritaPdf > 0) args.push('--bold', String(negritaPdf))   // engrosa la letra de guías de terceros
 
                   // Cada página del PDF es una etiqueta física distinta. El PNG las
                   // trae apiladas (pdfjs las dibuja en un solo canvas), así que hay
