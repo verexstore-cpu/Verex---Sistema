@@ -49,7 +49,14 @@ class VerexHub(ctk.CTk):
             self._seccion(seccion["nombre"], seccion["color"])
             for btn in seccion["botones"]:
                 texto = f"{btn['emoji']}  {btn['texto']}"
-                self._boton(texto, btn["archivo"], btn.get("url", ""), "#1a1a2e", seccion["color"])
+                archivo = btn["archivo"]
+                t = btn["texto"].lower()
+                # Las dos entradas de impresión se reconocen por su nombre, sin depender de hub_config.json:
+                if "imprimir pdf" in t:
+                    archivo = "imprimir"             # → app de impresión en la pestaña "Cualquier PDF"
+                elif "impresión verex" in t or "impresion verex" in t:
+                    archivo = "__app_impresion__"    # → app de impresión (ventana normal)
+                self._boton(texto, archivo, btn.get("url", ""), "#1a1a2e", seccion["color"])
 
     def _seccion(self, titulo, color):
         frame = ctk.CTkFrame(self.scroll, fg_color="transparent")
@@ -87,6 +94,11 @@ class VerexHub(ctk.CTk):
         # vez de abrirla siempre con el Hub (aunque no se vaya a imprimir
         # nada esa sesión), se arranca sola justo aquí, un instante antes de
         # abrir la página, solo si todavía no está activa.
+        if nombre_base == "__app_impresion__":
+            self._asegurar_impresion_activa()
+            if self._traer_app_impresion_al_frente():
+                return
+            nombre_base, url = "impresion", url   # si algo falla, el comportamiento de siempre
         if nombre_base == "imprimir":
             self._asegurar_impresion_activa()
             # Ahora "Imprimir PDF (Guías)" abre la app VEREX – Impresión en su pestaña
@@ -112,6 +124,15 @@ class VerexHub(ctk.CTk):
             print(f"No encontrado: {nombre_base}")
         except Exception as e:
             print(f"Error: {e}")
+
+    def _traer_app_impresion_al_frente(self):
+        """Muestra la ventana de 'VEREX – Impresión' (la app que escucha en el puerto 7891). True si respondió."""
+        try:
+            import urllib.request
+            urllib.request.urlopen("http://127.0.0.1:7891/abrir", timeout=3).read()
+            return True
+        except Exception:
+            return False
 
     def _abrir_guias_en_app_impresion(self):
         """Abre la app 'VEREX – Impresión' directo en la pestaña 'Cualquier PDF' usando
