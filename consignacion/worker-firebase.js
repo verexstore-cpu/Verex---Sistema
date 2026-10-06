@@ -7,6 +7,12 @@
 //    SUPABASE_SERVICE_KEY → service_role key (Settings → API en Supabase)
 //    SECRET_PASS          → contraseña del admin
 //    SECRET_KEY           → clave legacy de vendedores
+//    INTERNAL_SECRET      → (recomendado) secreto compartido con las Functions de Pages de Admin
+//                           (variable INTERNAL_SECRET del proyecto admin-tienda, mismo valor). Permite
+//                           que el límite de intentos use la IP real del cliente y no la de Cloudflare.
+//    ALLOWED_ORIGINS      → (opcional) orígenes CORS permitidos, separados por coma, p. ej.
+//                           https://verexstore.com,https://admin.ejemplo.pages.dev,null
+//                           ("null" = archivos locales/Hub). Sin definir → CORS abierto (*), como antes.
 //    IMAGEKIT_PRIVATE_KEY → clave privada de ImageKit
 //    RESEND_KEY           → API key de Resend (correos)
 //    WOMPI_CLIENT_ID       → App ID del negocio en Wompi (checkout USA)
@@ -14,6 +20,11 @@
 //    WOMPI_WEBHOOK_SECRET  → token random propio — NO viene de Wompi, se
 //                            genera acá y se usa como sufijo de la URL del
 //                            webhook (Wompi no firma sus webhooks)
+//    PAYPAL_CLIENT_ID      → Client ID de la app de PayPal (checkout oficial USA)
+//    PAYPAL_SECRET         → Secret de la misma app
+//    PAYPAL_WEBHOOK_ID     → ID del webhook creado en esa app (para verificar la firma de PayPal)
+//    PAYPAL_ENV            → "live" para cobros reales; cualquier otro valor (o vacío) = Sandbox de pruebas
+//    PAYPAL_RETURN_BASE    → (opcional) a dónde vuelve el cliente tras pagar; por defecto https://us.verexstore.com/
 // ═══════════════════════════════════════════════════════════════════
 
 const CORS = {
@@ -28,6 +39,7 @@ const ADMIN_WA = "50371250725"; // WhatsApp VEREX
 export default {
   async scheduled(event, env, ctx) {
     const sb = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+    _sbCorreo = sb;
 
     // ── CRON CADA 5 MIN: liberar reservas de stock vencidas ──
     // Pedidos que reservaron pieza al crearse (REGISTRAR_LEAD) pero nadie
@@ -90,6 +102,45 @@ export default {
       secciones.push(`📦 Reposiciones pendientes (venta bajo pedido):\n${reposicionesCron.join("\n")}`);
     }
 
+    // ── SALUD DE LOS CORREOS: manda una prueba diaria a la dirección de pruebas de Resend (no llega a nadie)
+    // para detectar a tiempo si el envío dejó de funcionar (clave, dominio verificado, límite) — el aviso va
+    // por WhatsApp, que no depende de los correos. ──
+    try {
+      const hb = await probarCorreo(env, "delivered@resend.dev");
+      if (!hb.ok) {
+        const causa = hb.motivo === "falta_clave" ? "falta la clave RESEND_KEY"
+          : hb.status === 401 || hb.status === 403 ? `Resend rechazó el envío (HTTP ${hb.status}): ${String(hb.detalle || "").slice(0, 160)}`
+          : `error ${hb.status || hb.motivo || ""}: ${String(hb.detalle || "").slice(0, 120)}`;
+        secciones.push(`📧 Los CORREOS del sistema NO están saliendo (pedidos, pagos, envíos, respaldo semanal). ${causa}\nRevisa Resend (clave y dominio) y prueba desde el hub → Pedidos → "Probar el envío de correos".`);
+      }
+    } catch (hbErr) { console.error("Chequeo diario de correos falló:", hbErr); }
+
+    // ── AUDITORÍA DIARIA DE STOCK: detecta descuadres (total, negativos, consignación vs. registros, huérfanos) antes
+    // de que se acumulen. Solo avisa si hay algo; si la propia auditoría falla, también avisa (no falla en silencio). ──
+    try {
+      const aud = await auditarStock(sb);
+      const r = aud.resumen, n = r.discrepancias + r.negativos + r.huerfanas + r.totalDescuadrado;
+      await sb.set("config", "auditoria_stock", { fecha: aud.generadoEn, ok: n === 0, resumen: r,
+        muestra: { discrepancias: aud.discrepanciasConsignacion.slice(0, 20), negativos: aud.negativos.slice(0, 20), totalDescuadrado: aud.totalDescuadrado.slice(0, 20), huerfanas: aud.consHuerfanas.slice(0, 20) } }).catch(() => {});
+      if (n > 0) {
+        const top = (arr, f) => arr.slice(0, 8).map(f).join("\n") + (arr.length > 8 ? `\n… y ${arr.length - 8} más` : "");
+        const partes = [];
+        if (aud.totalDescuadrado.length) partes.push(`• ${aud.totalDescuadrado.length} con stock_total que no suma:\n${top(aud.totalDescuadrado, x => `   ${x.codigo}: total ${x.stock_total}, suma ${x.suma}`)}`);
+        if (aud.negativos.length) partes.push(`• ${aud.negativos.length} con cantidades negativas:\n${top(aud.negativos, x => `   ${x.codigo}`)}`);
+        if (aud.discrepanciasConsignacion.length) partes.push(`• ${aud.discrepanciasConsignacion.length} donde Stock no coincide con lo que tienen los vendedores:\n${top(aud.discrepanciasConsignacion, x => `   ${x.codigo}: Stock ${x.stock_consignacion_registrado}, vendedores ${x.consignacion_real}`)}`);
+        if (aud.consHuerfanas.length) partes.push(`• ${aud.consHuerfanas.length} consignaciones de códigos que ya no existen en Stock`);
+        secciones.push(`🔎 Auditoría de stock: ${n} producto(s) con descuadre\n${partes.join("\n")}\nDetalle: Consignación → Stock → 🔍 Auditoría`);
+      }
+      // Categorías de la tienda: un anillo (dúo, trío o suelto) nunca debe estar en «Conjuntos», ni nada fuera de su categoría
+      if (aud.categoriasDudosas.length) {
+        const cd = aud.categoriasDudosas, top8 = cd.slice(0, 8).map(x => `   ${x.codigo}: ${x.motivo}`).join("\n") + (cd.length > 8 ? `\n… y ${cd.length - 8} más` : "");
+        secciones.push(`🧩 ${cd.length} producto(s) en la categoría equivocada de la tienda:\n${top8}\nCorregir: Consignación → Stock → 🧩 Categorías`);
+      }
+    } catch (audErr) {
+      console.error("Auditoría diaria de stock falló:", audErr);
+      secciones.push("🔎 La auditoría diaria de stock NO pudo ejecutarse (" + String(audErr && audErr.message || audErr).slice(0, 120) + "). Revisa el Worker.");
+    }
+
     if (secciones.length) {
       const msg = encodeURIComponent(
         `VEREX — avisos del día:\n\n${secciones.join("\n\n")}\n\n📋 Revisa todo en: https://admin-tienda.pages.dev`
@@ -137,7 +188,7 @@ export default {
           backupData._fecha = new Date().toISOString();
           const json = JSON.stringify(backupData);
           const contentB64 = btoa(unescape(encodeURIComponent(json)));
-          await fetch("https://api.resend.com/emails", {
+          await fetchResend("https://api.resend.com/emails", {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
             body: JSON.stringify({
@@ -158,10 +209,22 @@ export default {
     }
   },
 
+  // Envoltorio: aplica la lista blanca de CORS (si hay ALLOWED_ORIGINS) a TODA respuesta.
   async fetch(request, env) {
+    const res = await this.handle(request, env);
+    return aplicarCors(request, env, res);
+  },
+
+  async handle(request, env) {
     if (request.method === "OPTIONS") return new Response("", { headers: CORS });
 
     const sb = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
+    _sbCorreo = sb;
+    let ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    // Las Functions de Pages llaman desde servidores de Cloudflare (IP compartida). Reenvían la IP real
+    // del cliente y solo se les cree si presentan el secreto interno; sin él, cualquiera podría falsificarla.
+    const ipReenviada = request.headers.get("X-Verex-Client-IP");
+    if (ipReenviada && env.INTERNAL_SECRET && safeEq(request.headers.get("X-Verex-Internal") || "", env.INTERNAL_SECRET)) ip = ipReenviada.slice(0, 64);
 
     // ── GET: rutas ────────────────────────────────────────────────
     if (request.method === "GET") {
@@ -283,6 +346,10 @@ async function enviar(){
       if (request.method === "POST" && urlPost.pathname === `/webhook-wompi/${env.WOMPI_WEBHOOK_SECRET}`) {
         return manejarWebhookWompi(request, env, sb);
       }
+      // PayPal firma sus webhooks: la autenticación es la verificación de esa firma (ver manejarWebhookPayPal).
+      if (request.method === "POST" && urlPost.pathname === "/webhook-paypal") {
+        return manejarWebhookPayPal(request, env, sb);
+      }
     }
 
     try {
@@ -306,7 +373,10 @@ async function enviar(){
       // si mostrar "ingresa tu código" o la pantalla de configuración
       // inicial (QR + secreto).
       if (d.accion === "VERIFICAR_PASS") {
-        const ok = await verificarPassword(d._pass, env, sb);
+        const bloq = await rlBlocked(sb, "login:" + ip);
+        if (bloq) return tooMany(bloq);
+        const ok = await verificarPassword(d._pass, env, sb, ip, "login");
+        if (!ok && d._pass && await rlBlocked(sb, "login:" + ip)) return tooMany(await rlBlocked(sb, "login:" + ip));
         let totpConfigurado = false;
         if (ok) {
           const cfg = await sb.get("config", "settings");
@@ -323,7 +393,7 @@ async function enviar(){
       // se pierde, volver a correr esto (con la contraseña) es el mismo
       // nivel de recuperación que ya existía.
       if (d.accion === "TOTP_INICIAR_SETUP") {
-        const ok = await verificarPassword(d._pass, env, sb);
+        const ok = await verificarPassword(d._pass, env, sb, ip, "login");
         if (!ok) return json({ ok: false, error: "No autorizado" }, 403);
         const secret = base32Encode(crypto.getRandomValues(new Uint8Array(20)));
         await sb.update("config", "settings", { totpSecret: secret });
@@ -334,12 +404,20 @@ async function enviar(){
       // ── 2FA: verificar código TOTP (login normal, y también confirma
       // que la configuración recién hecha quedó bien escaneada) ──────
       if (d.accion === "TOTP_VERIFICAR") {
-        const ok = await verificarPassword(d._pass, env, sb);
+        const ok = await verificarPassword(d._pass, env, sb, ip, "login");
         if (!ok) return json({ ok: false, error: "No autorizado" }, 403);
+        // Límite propio del código de 6 dígitos: por IP y global (una botnet no lo evita)
+        const bTotp = (await rlBlocked(sb, "totp:" + ip)) || (await rlBlocked(sb, "totp:all"));
+        if (bTotp) return tooMany(bTotp);
         const cfg = await sb.get("config", "settings");
         if (!cfg || !cfg.totpSecret) return json({ ok: false, error: "TOTP no configurado" });
         const valido = await totpVerificar(cfg.totpSecret, d.codigo);
-        if (!valido) return json({ ok: false, error: "Código incorrecto" });
+        if (!valido) {
+          await rlFail(sb, "totp:" + ip, RL_LOGIN);
+          await rlFail(sb, "totp:all", RL_TOTP_ALL);
+          return json({ ok: false, error: "Código incorrecto" });
+        }
+        await rlReset(sb, "totp:" + ip);
         return json({ ok: true });
       }
 
@@ -348,7 +426,7 @@ async function enviar(){
       // código TOTP — el login normal de Admin (password + TOTP) sigue
       // intacto si se entra directo a su URL sin pasar por el Hub. ──
       if (d.accion === "SSO_CREAR_TOKEN") {
-        const ok = await verificarPassword(d._pass, env, sb);
+        const ok = await verificarPassword(d._pass, env, sb, ip, "login");
         if (!ok) return json({ ok: false, error: "No autorizado" }, 403);
         const token = crypto.randomUUID();
         const cfgSso = (await sb.get("config", "settings")) || {};
@@ -377,8 +455,8 @@ async function enviar(){
       }
 
       // esAdmin: acepta SECRET_PASS (env var) O el hash guardado en Supabase
-      const esAdmin = (await verificarPassword(d._pass, env, sb)) ||
-                      (d.key && d.key === env.SECRET_KEY);
+      const esAdmin = (await verificarPassword(d._pass, env, sb, ip, "api")) ||
+                      (await claveLegacyValida(d.key, env, sb, ip));
 
       let result;
 
@@ -630,11 +708,11 @@ async function enviar(){
         case "GET_LEADS_PORTAL_AFILIADO": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
-          if (!vend.tokenPedidos || String(vend.tokenPedidos) !== String(d.token)) {
+          if (!vend.tokenPedidos || !safeEq(vend.tokenPedidos, d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
           }
           // Si el afiliado tiene PIN configurado, validarlo
-          if (vend.pin && String(vend.pin) !== String(d.pin || "")) {
+          if (await pinIncorrecto(sb, vend, d.pin, d.vendedor)) {
             result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
           }
           const todos = await sb.getAll("leads");
@@ -647,10 +725,10 @@ async function enviar(){
         case "GET_HISTORIAL_AFILIADO": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
-          if (!vend.tokenPedidos || String(vend.tokenPedidos) !== String(d.token)) {
+          if (!vend.tokenPedidos || !safeEq(vend.tokenPedidos, d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
           }
-          if (vend.pin && String(vend.pin) !== String(d.pin || "")) {
+          if (await pinIncorrecto(sb, vend, d.pin, d.vendedor)) {
             result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
           }
           const todosH = await sb.getAll("leads");
@@ -686,10 +764,10 @@ async function enviar(){
         case "COMPLETAR_PEDIDO_LEADS": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
-          if (!vend.tokenPedidos || String(vend.tokenPedidos) !== String(d.token)) {
+          if (!vend.tokenPedidos || !safeEq(vend.tokenPedidos, d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
           }
-          if (vend.pin && String(vend.pin) !== String(d.pin || "")) {
+          if (await pinIncorrecto(sb, vend, d.pin, d.vendedor)) {
             result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
           }
           const cliente = d.cliente || {};
@@ -736,7 +814,7 @@ async function enviar(){
         case "GET_VENDEDOR_FIRMA": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
-          if (!vend.tokenFirma || String(vend.tokenFirma) !== String(d.token)) {
+          if (!vend.tokenFirma || !safeEq(vend.tokenFirma, d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
           }
           result = { ok: true, vendedor: {
@@ -753,7 +831,7 @@ async function enviar(){
         case "FIRMAR_CONTRATO_REMOTO": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, error: "Vendedor no encontrado" }; break; }
-          if (!vend.tokenFirma || String(vend.tokenFirma) !== String(d.token)) {
+          if (!vend.tokenFirma || !safeEq(vend.tokenFirma, d.token)) {
             result = { ok: false, error: "Link inválido" }; break;
           }
           if (vend.firmaContrato) { result = { ok: false, error: "Este contrato ya fue firmado" }; break; }
@@ -787,10 +865,10 @@ async function enviar(){
         case "GET_INVENTARIO_VENDEDOR": {
           if (!d.vendedor || !d.token) return json({ ok: false, error: "vendedor y token requeridos" });
           const vendInv = await sb.get("vendedores", d.vendedor);
-          if (!vendInv || !vendInv.tokenInventario || String(vendInv.tokenInventario) !== String(d.token)) {
+          if (!vendInv || !vendInv.tokenInventario || !safeEq(vendInv.tokenInventario, d.token)) {
             return json({ ok: false, error: "Token inválido" });
           }
-          if (vendInv.pin && String(vendInv.pin) !== String(d.pin || "")) {
+          if (await pinIncorrecto(sb, vendInv, d.pin, d.vendedor)) {
             return json({ ok: false, error: "PIN incorrecto" });
           }
           const consV2 = await sb.query("consignacion", "vendedor", "==", d.vendedor);
@@ -912,40 +990,7 @@ async function enviar(){
 
         case "REGISTRAR_ENTREGA": {
           if (!esAdmin) return forbidden();
-          const items = d.items || [];
-          // Borrador: se descuenta stock y queda respaldado en BD, pero invisible
-          // en el link del vendedor y demás vistas hasta FINALIZAR_ENTREGA_VENDEDOR.
-          const estadoInicial = d.borrador ? "borrador" : "activo";
-          // A prueba de fallos: un item con datos raros NO debe abortar el lote
-          // entero silenciosamente (causaba items "escaneados" que nunca se
-          // guardaban sin ningún aviso). Se procesan todos y se reporta cuáles
-          // fallaron para que el frontend pueda avisar exactamente qué faltó.
-          const guardados = [];
-          const fallidos = [];
-          for (const item of items) {
-            try {
-              const id = item.id || `CONS_${Date.now()}_${item.codigo}`;
-              await sb.set("consignacion", id, {
-                id, vendedor: d.vendedor, codigo: item.codigo,
-                nombre: item.nombre, codigoBase: item.codigoBase || item.codigo,
-                talla: item.talla || "", nombre_base: item.nombre_base || item.nombre,
-                categoria: item.categoria || "", precio: item.precio || 0,
-                cantidad: item.cantidad || 1, vendido: 0,
-                foto: item.foto || "", fecha: new Date().toISOString(), estado: estadoInicial
-              });
-              const s = await sb.get("stock", item.codigo);
-              if (s) {
-                await sb.update("stock", item.codigo, {
-                  stock_bodega:       Math.max(0, (parseInt(s.stock_bodega)||0) - (item.cantidad||1)),
-                  stock_consignacion: (parseInt(s.stock_consignacion)||0) + (item.cantidad||1)
-                });
-              }
-              guardados.push(item.codigo);
-            } catch (errItem) {
-              fallidos.push({ codigo: item.codigo, error: errItem.message || String(errItem) });
-            }
-          }
-          result = { ok: fallidos.length === 0, guardados, fallidos };
+          result = await registrarEntregaEnBloque(sb, d);
           break;
         }
 
@@ -1056,30 +1101,7 @@ async function enviar(){
 
         case "REGISTRAR_DEVOLUCION": {
           if (!esAdmin) return forbidden();
-          const items = d.items || [];
-          const devId = `DEV_${Date.now()}`;
-          await sb.set("devoluciones", devId, {
-            id: devId, vendedor: d.vendedor,
-            fecha: new Date().toISOString(), items: JSON.stringify(items)
-          });
-          for (const item of items) {
-            const cons = await sb.get("consignacion", item.id);
-            if (cons) {
-              const nuevaCant = Math.max(0, (parseInt(cons.cantidad)||0) - (item.cantidad||1));
-              await sb.update("consignacion", item.id, {
-                cantidad: nuevaCant,
-                estado: nuevaCant <= parseInt(cons.vendido||0) ? "devuelto" : "activo"
-              });
-            }
-            const s = await sb.get("stock", item.codigo);
-            if (s) {
-              await sb.update("stock", item.codigo, {
-                stock_bodega:       (parseInt(s.stock_bodega)||0) + (item.cantidad||1),
-                stock_consignacion: Math.max(0, (parseInt(s.stock_consignacion)||0) - (item.cantidad||1))
-              });
-            }
-          }
-          result = { ok: true, devolucionId: devId, fecha: new Date().toISOString() };
+          result = await registrarDevolucionEnBloque(sb, d);
           break;
         }
 
@@ -1360,33 +1382,10 @@ async function enviar(){
               });
             }
           }
-          const itemsSinStock = [];
-          for (const item of (d.items || [])) {
-            if (!item.codigo) { itemsSinStock.push("SIN_CODIGO"); continue; }
-            const s = await sb.get("stock", item.codigo);
-            if (s) {
-              const cant     = parseInt(item.cantidad) || 1;
-              const bodega   = parseInt(s.stock_bodega)   || 0;
-              const tienda   = parseInt(s.stock_tienda)   || 0;
-              const vendido  = parseInt(s.stock_vendido)  || 0;
-              // Descontar primero de tienda si hay, luego de bodega
-              let descBodega = 0, descTienda = 0;
-              if (tienda >= cant) {
-                descTienda = cant;
-              } else {
-                descTienda = tienda;
-                descBodega = cant - tienda;
-              }
-              await sb.update("stock", item.codigo, {
-                stock_tienda:  Math.max(0, tienda  - descTienda),
-                stock_bodega:  Math.max(0, bodega  - descBodega),
-                stock_vendido: vendido + cant
-              });
-            } else {
-              itemsSinStock.push(item.codigo);
-            }
-          }
-          result = { ok: true, itemsSinStock };
+          // Descuento de inventario ATÓMICO (misma reserva que la tienda online): dos ventas simultáneas de la última unidad
+          // ya no pueden vender de más. Ver descontarStockVentaDirecta.
+          const { itemsSinStock, faltantes } = await descontarStockVentaDirecta(sb, d.items || []);
+          result = { ok: true, itemsSinStock, faltantes };
           break;
         }
 
@@ -1443,6 +1442,8 @@ async function enviar(){
             descuentoTipo:  d.descuentoTipo  || "monto",
             descuentoValor: d.descuentoValor || descNuevo,
             saldoPendiente: Math.max(0, totalNuevo - pagadoHastaAhora),
+            // si al cambiar el descuento ya no se debe nada, la venta a crédito pasa a pagada (antes quedaba "crédito" con saldo $0)
+            estado: Math.max(0, totalNuevo - pagadoHastaAhora) <= 0.005 ? "pagado" : "credito",
           });
           result = { ok: true };
           break;
@@ -1605,6 +1606,63 @@ async function enviar(){
           break;
         }
 
+        // Devolución (total o parcial) de una pieza de una venta directa: la pieza vuelve a bodega, la venta baja por lo que se pagó por ella
+        // y el saldo se recalcula (si el cliente ya había pagado más de lo que queda, el sobrante se avisa como "a favor del cliente").
+        case "DEVOLVER_PIEZA_VD": {
+          if (!esAdmin) return forbidden();
+          const vdDev = await sb.get("ventas_directas", d.id);
+          if (!vdDev) { result = { ok: false, error: "Venta no encontrada" }; break; }
+          let itemsOrigDev = [];
+          try { itemsOrigDev = JSON.parse(vdDev.items || "[]"); } catch (_) {}
+          const itemsDev = completarPrecioPagadoVD(itemsOrigDev, vdDev.descuento);
+          const idxDev = itemsDev.findIndex(it => it.codigo === String(d.codigo || ""));
+          if (idxDev === -1) { result = { ok: false, error: "Esa pieza no está en esta venta" }; break; }
+          const itDev = itemsDev[idxDev];
+          const cantItemDev = parseInt(itDev.cantidad) || 1;
+          const cantDev = Math.min(cantItemDev, Math.max(1, parseInt(d.cantidad) || cantItemDev));
+          const listaDev = (parseFloat(itDev.precio) || 0) * cantDev;
+          const pagadoDev = (parseFloat(itDev.precioPagado) || 0) * cantDev;   // lo que costó la pieza ya con su parte del descuento
+          const saldoCrudoDev = r2VD((parseFloat(vdDev.saldoPendiente) || 0) - pagadoDev);
+          const itemsQuedan = itemsDev.map((it, i) => i === idxDev ? { ...it, cantidad: cantItemDev - cantDev } : it).filter(it => (parseInt(it.cantidad) || 0) > 0);
+          const resumenDev = {
+            pieza: itDev.nombre || itDev.codigo, cantidad: cantDev, valor: r2VD(pagadoDev),
+            pagadoHastaAhora: Math.max(0, r2VD((parseFloat(vdDev.total) || 0) - (parseFloat(vdDev.saldoPendiente) || 0))),
+            totalAntes: r2VD(parseFloat(vdDev.total) || 0), nuevoTotal: Math.max(0, r2VD((parseFloat(vdDev.total) || 0) - pagadoDev)),
+            nuevoSaldo: Math.max(0, saldoCrudoDev), aFavorCliente: saldoCrudoDev < 0 ? r2VD(-saldoCrudoDev) : 0,
+            quedanPiezas: itemsQuedan.length
+          };
+          if (d.soloCalcular) { result = { ok: true, preview: true, ...resumenDev }; break; }
+
+          const stDev = await sb.get("stock", itDev.codigo);
+          if (stDev) {
+            await sb.update("stock", itDev.codigo, {
+              stock_bodega: (parseInt(stDev.stock_bodega) || 0) + cantDev,
+              stock_vendido: Math.max(0, (parseInt(stDev.stock_vendido) || 0) - cantDev)
+            });
+          }
+          const fechaDev = new Date().toLocaleDateString("es-SV", { day: "numeric", month: "short", year: "numeric" });
+          const motivoDev = String(d.motivo || "").trim().slice(0, 200);
+          const notaDev = `↩️ Devolución el ${fechaDev}: "${itDev.nombre || itDev.codigo}" (${itDev.codigo}) x${cantDev} — $${r2VD(pagadoDev).toFixed(2)}` +
+            (motivoDev ? " — Motivo: " + motivoDev : "") + " — vuelve a bodega" +
+            (resumenDev.aFavorCliente > 0 ? `\n⚠️ A favor del cliente: $${resumenDev.aFavorCliente.toFixed(2)}` : "");
+          const patchDev = {
+            items: JSON.stringify(itemsQuedan),
+            total: resumenDev.nuevoTotal,
+            subtotal: Math.max(0, r2VD((parseFloat(vdDev.subtotal) || 0) - listaDev)),
+            saldoPendiente: resumenDev.nuevoSaldo,
+            estado: itemsQuedan.length === 0 ? "devuelto" : (resumenDev.nuevoSaldo <= 0.005 ? "pagado" : "credito"),
+            nota: (vdDev.nota ? vdDev.nota + "\n" : "") + notaDev,
+            devoluciones: [...(Array.isArray(vdDev.devoluciones) ? vdDev.devoluciones : []), {
+              fecha: new Date().toISOString(), codigo: itDev.codigo, nombre: itDev.nombre || "", cantidad: cantDev, valor: r2VD(pagadoDev), motivo: motivoDev
+            }]
+          };
+          const descNuevoDev = Math.max(0, r2VD((parseFloat(vdDev.descuento) || 0) - (listaDev - pagadoDev)));
+          if (descNuevoDev !== r2VD(vdDev.descuento)) { patchDev.descuento = descNuevoDev; patchDev.descuentoTipo = "monto"; patchDev.descuentoValor = descNuevoDev; }
+          await sb.update("ventas_directas", d.id, patchDev);
+          result = { ok: true, ...resumenDev };
+          break;
+        }
+
         case "CAMBIAR_FORMA_PAGO_VD": {
           // Corrige una venta registrada con la forma de pago equivocada
           // (Contado cuando en realidad quedó a crédito, o viceversa) — a
@@ -1721,94 +1779,7 @@ async function enviar(){
         // Ese drift fue exactamente la causa del caso Jaime/PUP035.
         case "AUDITORIA_STOCK": {
           if (!esAdmin) return forbidden();
-          const [stockAud, consAud, vendAud] = await Promise.all([
-            sb.getAll("stock"), sb.getAll("consignacion"), sb.getAll("vendedores")
-          ]);
-          const vendMapAud = new Map(vendAud.map(v => [v.codigo, v.nombre || v.codigo]));
-
-          // Consignación real por código: suma de (cantidad - vendido) de
-          // items activos, más el detalle de qué vendedor tiene cuánto.
-          const consRealPorCodigo = new Map();
-          for (const c of consAud) {
-            if (c.estado !== "activo") continue;
-            const restante = Math.max(0, (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0));
-            if (restante <= 0) continue;
-            const cod = String(c.codigo||"").toUpperCase();
-            if (!consRealPorCodigo.has(cod)) consRealPorCodigo.set(cod, { total: 0, detalle: [] });
-            const entry = consRealPorCodigo.get(cod);
-            entry.total += restante;
-            entry.detalle.push({
-              id: c.id, vendedor: c.vendedor,
-              vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor,
-              vendedorExiste: vendMapAud.has(c.vendedor),
-              cantidad: restante
-            });
-          }
-
-          const discrepanciasConsignacion = [];
-          for (const s of stockAud) {
-            const cod = String(s.codigo||"").toUpperCase();
-            const registrado = parseInt(s.stock_consignacion) || 0;
-            const real = consRealPorCodigo.get(cod)?.total || 0;
-            if (registrado !== real) {
-              discrepanciasConsignacion.push({
-                codigo: s.codigo, nombre: s.nombre || "",
-                stock_consignacion_registrado: registrado,
-                consignacion_real: real,
-                diferencia: registrado - real,
-                detalleVendedores: consRealPorCodigo.get(cod)?.detalle || []
-              });
-            }
-          }
-
-          // Chequeos de sanidad básicos: negativos no deberían existir nunca.
-          const negativos = stockAud.filter(s =>
-            (parseInt(s.stock_bodega)||0) < 0 || (parseInt(s.stock_tienda)||0) < 0 ||
-            (parseInt(s.stock_consignacion)||0) < 0 || (parseInt(s.stock_reservado)||0) < 0
-          ).map(s => ({
-            codigo: s.codigo, nombre: s.nombre || "",
-            stock_bodega: parseInt(s.stock_bodega)||0, stock_tienda: parseInt(s.stock_tienda)||0,
-            stock_consignacion: parseInt(s.stock_consignacion)||0, stock_reservado: parseInt(s.stock_reservado)||0
-          }));
-
-          // Consignación "activa" pero cuyo código ya no existe en stock —
-          // huérfanos que pueden confundir reportes futuros.
-          const codigosStock = new Set(stockAud.map(s => String(s.codigo||"").toUpperCase()));
-          const consHuerfanas = consAud.filter(c =>
-            c.estado === "activo" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0 &&
-            !codigosStock.has(String(c.codigo||"").toUpperCase())
-          ).map(c => ({ id: c.id, codigo: c.codigo, vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor, cantidad: c.cantidad, vendido: c.vendido }));
-
-          // Piezas cerradas con "Ya vendida" (MARCAR_CONSIGNACION_VENDIDA) que
-          // en realidad nunca llegaron a contarse como venta real — típico de
-          // confundir esa opción (pensada solo para piezas YA liquidadas
-          // antes) con una venta nueva. Quedan invisibles para siempre: ya no
-          // aparecen en el inventario activo del vendedor (por eso "no
-          // aparece"), pero el stock nunca se movió y la comisión nunca se
-          // contó, y sin este chequeo no hay ninguna pantalla en la app para
-          // volver a encontrarlas.
-          const cerradosSinContar = consAud.filter(c =>
-            c.estado === "vendido" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0
-          ).map(c => ({
-            id: c.id, codigo: c.codigo, nombre: c.nombre || "",
-            vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor,
-            precio: c.precio || 0,
-            cantidad: parseInt(c.cantidad)||0, vendido: parseInt(c.vendido)||0,
-            pendiente: (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0)
-          }));
-
-          result = {
-            ok: true,
-            generadoEn: new Date().toISOString(),
-            discrepanciasConsignacion, negativos, consHuerfanas, cerradosSinContar,
-            resumen: {
-              productosRevisados: stockAud.length,
-              discrepancias: discrepanciasConsignacion.length,
-              negativos: negativos.length,
-              huerfanas: consHuerfanas.length,
-              cerradosSinContar: cerradosSinContar.length
-            }
-          };
+          result = await auditarStock(sb);
           break;
         }
 
@@ -2158,7 +2129,7 @@ async function enviar(){
             try {
               const RESEND_KEY = env.RESEND_KEY;
               if (RESEND_KEY) {
-                await fetch("https://api.resend.com/emails", {
+                await fetchResend("https://api.resend.com/emails", {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
                   body: JSON.stringify({
@@ -2247,6 +2218,10 @@ async function enviar(){
 
         case "GUARDAR_CONFIG": {
           if (!esAdmin) return forbidden();
+          if (d.config && d.config.categorias !== undefined) {                 // lista de categorías del Editor de la página
+            const errCat = validarCategorias(d.config.categorias);
+            if (errCat) { result = { ok: false, error: errCat }; break; }
+          }
           await sb.update("config", "settings", d.config || {});
           result = { ok: true };
           break;
@@ -2288,7 +2263,8 @@ async function enviar(){
 
           let activos = prods.filter(p =>
             (p.enCatalogo === true || p.enCatalogo === "true" || p.enCatalogo === "TRUE") &&
-            p.estado !== "inactivo"
+            p.estado !== "inactivo" &&
+            (!p.esPrueba || (d.incluirPrueba === true && env.PAYPAL_ENV !== "live"))   // el producto de prueba solo se ve con ?prueba=1 y en Sandbox
           );
 
           // Separar destacados del resto
@@ -2488,7 +2464,7 @@ async function enviar(){
           try {
             const RESEND_KEY = env.RESEND_KEY;
             if (!RESEND_KEY) throw new Error("RESEND_KEY no configurada en Cloudflare Secrets");
-            await fetch("https://api.resend.com/emails", {
+            await fetchResend("https://api.resend.com/emails", {
               method: "POST",
               headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
               body: JSON.stringify({
@@ -2527,7 +2503,7 @@ async function enviar(){
             try {
               const RESEND_KEY = env.RESEND_KEY;
               if (RESEND_KEY) {
-                await fetch("https://api.resend.com/emails", {
+                await fetchResend("https://api.resend.com/emails", {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
                   body: JSON.stringify({
@@ -2640,6 +2616,11 @@ async function enviar(){
         case "REGISTRAR_LEAD": {
           if (!d.codigo) { result = { ok: false, error: "Datos incompletos" }; break; }
           const qtyLead = parseInt(d.qty) || 1;
+          // Producto de PRUEBA (ver CREAR_PRODUCTO_PRUEBA): solo se puede pedir mientras PayPal esté en Sandbox, y el pedido
+          // queda marcado esPrueba para no contar en ingresos. Con cobros reales (live) se rechaza.
+          const prodPrueba = await sb.get("stock", d.codigo).catch(() => null);
+          const esPruebaLead = !!(prodPrueba && prodPrueba.esPrueba);
+          if (esPruebaLead && env.PAYPAL_ENV === "live") { result = { ok: false, error: "producto_de_prueba" }; break; }
           // Reserva atómica al momento del pedido (no cuando un admin lo
           // confirma después) — así el catálogo deja de mostrar la pieza
           // como disponible de inmediato, en vez de dejar una ventana donde
@@ -2657,8 +2638,10 @@ async function enviar(){
             break;
           }
           const leadId = "LEAD_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+          const numeroUS = d.pais === "US" ? await numeroGuardadoPedidoUSA(sb, d.pedidoId) : "";
           await sb.set("leads", leadId, {
             id: leadId,
+            ...(esPruebaLead ? { esPrueba: true } : {}),
             afiliado: d.afiliado || "",
             codigo: d.codigo,
             nombre: d.nombre || "",
@@ -2672,7 +2655,7 @@ async function enviar(){
             // reserva vence sin confirmarse o el pedido se cancela.
             reservaDescTienda: resReservaLead.desc_tienda || 0,
             reservaDescBodega: resReservaLead.desc_bodega || 0,
-            reservaExpiraEn: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+            reservaExpiraEn: new Date(Date.now() + ttlReservaLeadMs(d)).toISOString(),
             // Capturados ANTES de que el cliente abra WhatsApp — si el envío
             // falla o nunca lo manda, estos datos son lo único que queda
             // para poder contactarlo. No se guardan en "cliente" (eso sigue
@@ -2696,6 +2679,9 @@ async function enviar(){
             // Link de PayPal.me con el monto exacto del pedido, armado en el
             // checkout — el panel de Logística USA lo muestra para copiarlo.
             pagoLink: d.pagoLink || "",
+            // Orden del checkout oficial de PayPal (si pagó por ahí) — se usa para capturar y para reconocer su webhook.
+            paypalOrderId: /^[A-Z0-9]{8,30}$/.test(d.paypalOrderId || "") ? d.paypalOrderId : "",
+            numeroPedidoUSA: numeroUS,
             // Idioma elegido en el catálogo — para poder mandar el correo de
             // pago confirmado en el mismo idioma que el cliente ya venía usando.
             lang: d.lang || "",
@@ -2718,7 +2704,7 @@ async function enviar(){
                 const vend = await sb.get("vendedores", d.afiliado);
                 origenTxt = `🎯 Afiliado: ${vend?.nombre || d.afiliado}`;
               }
-              await fetch("https://api.resend.com/emails", {
+              await fetchResend("https://api.resend.com/emails", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
                 body: JSON.stringify({
@@ -2763,6 +2749,7 @@ async function enviar(){
         // (el catálogo es una página pública, no el panel de Admin).
         case "ENVIAR_PEDIDO_USA": {
           if (!Array.isArray(d.items) || !d.items.length) { result = { ok: false, error: "Pedido vacío" }; break; }
+          const numPed = await numeroGuardadoPedidoUSA(sb, d.pedidoId);   // número corto US-DDMM-NNN (si la página mandó el pedidoId)
           try {
             const RESEND_KEY = env.RESEND_KEY;
             if (RESEND_KEY) {
@@ -2784,21 +2771,22 @@ async function enviar(){
               // se acepta un paypal.me/usuario/monto bien formado.
               const esWompi = d.metodoPago === "wompi";
               const pagoLinkOk = /^https:\/\/paypal\.me\/[A-Za-z0-9_.]{1,50}\/\d+\.\d{2}[A-Z]{0,3}$/.test(d.pagoLink || "")
+                || /^https:\/\/www\.(sandbox\.)?paypal\.com\/[A-Za-z0-9\/_\-?=&%.]{1,200}$/.test(d.pagoLink || "")
                 || /^https:\/\/([a-z0-9-]+\.)*wompi\.sv\//.test(d.pagoLink || "");
               const correoValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.correo || "");
               const pagoLinkHtml = pagoLinkOk ? `
                         <div style="margin:0 0 16px;padding:12px 14px;background:#fef9e7;border:1px solid #f0d98c;border-radius:8px;text-align:center;">
-                          <div style="font-size:11px;color:#8a6d1a;font-weight:700;margin-bottom:6px;">💳 LINK DE PAGO (${esWompi ? "Wompi" : "PayPal.me"})${correoValido ? "" : " — MANDAR AL CLIENTE"}</div>
+                          <div style="font-size:11px;color:#8a6d1a;font-weight:700;margin-bottom:6px;">💳 LINK DE PAGO (${esWompi ? "Wompi" : "PayPal"})${correoValido ? "" : " — MANDAR AL CLIENTE"}</div>
                           <a href="${d.pagoLink}" style="font-size:13px;color:#1a5fb4;word-break:break-all;">${d.pagoLink}</a>
                         </div>` : "";
-              await fetch("https://api.resend.com/emails", {
+              await fetchResend("https://api.resend.com/emails", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
                 body: JSON.stringify({
                   from: "VEREX Store <hola@notificaciones.verexstore.com>",
                   reply_to: "hola@verexstore.com",
                   to:   ["verex.pedidos@verexstore.com"],
-                  subject: `🇺🇸 Pedido USA — ${d.nombreCliente || "cliente"} — $${(total ?? 0).toFixed(2)}`,
+                  subject: `🇺🇸 Pedido USA${numPed ? " " + numPed : ""} — ${d.nombreCliente || "cliente"} — $${(total ?? 0).toFixed(2)}`,
                   html: `
                     <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;background:#fff;border:2px solid #C9A84C;border-radius:12px;overflow:hidden;">
                       <div style="background:linear-gradient(135deg,#aaa,#d0d0d0);padding:24px;text-align:center;">
@@ -2889,25 +2877,25 @@ async function enviar(){
                   .map(it => en ? { ...it, nombre: traducirNombreEN(it.nombre) } : it)
                   .map(filaProducto).join("");
                 const txt = en ? {
-                  preheader: "New order from the USA catalog",
+                  preheader: "We received your order",
                   hola: `Hi ${d.nombreCliente || ""},`,
-                  gracias: "Thanks for your order! Here's your summary:",
+                  gracias: "Thanks for your order! We received it. Here's your summary:",
                   envioLbl: "Shipping (DHL)", freeLbl: "FREE", totalLbl: "Total",
-                  pagoTitulo: "You should already be able to pay directly on our site. If you closed the page before finishing, here's your payment link:",
+                  pagoTitulo: "If you already paid, there's nothing else you need to do. If not — or if you closed the page before finishing — here's your payment link:",
                   siguiente: "Once we confirm your payment, we'll prepare your order and ship it via DHL — delivery takes 5–7 business days.",
                   direccionLbl: "Shipping to:",
                   dudas: "Questions? Just reply to this email.",
-                  subject: `🛍️ Your VEREX Store order — complete your payment`
+                  subject: `🛍️ We received your VEREX Store order${numPed ? " " + numPed : ""}`
                 } : {
-                  preheader: "Nuevo pedido del catálogo de Estados Unidos",
+                  preheader: "Recibimos tu pedido",
                   hola: `Hola ${d.nombreCliente || ""},`,
-                  gracias: "¡Gracias por tu pedido! Aquí está tu resumen:",
+                  gracias: "¡Gracias por tu pedido! Lo recibimos. Aquí está tu resumen:",
                   envioLbl: "Envío (DHL)", freeLbl: "GRATIS", totalLbl: "Total",
-                  pagoTitulo: "Ya deberías poder pagar directo desde nuestra página. Si cerraste la página antes de terminar, este es tu link de pago:",
+                  pagoTitulo: "Si ya pagaste, no necesitas hacer nada más. Si aún no, o si cerraste la página antes de terminar, este es tu link de pago:",
                   siguiente: "Cuando confirmemos tu pago, preparamos tu pedido y lo enviamos por DHL — la entrega toma entre 5 y 7 días hábiles.",
                   direccionLbl: "Dirección de envío:",
                   dudas: "¿Dudas? Responde este mismo correo.",
-                  subject: `🛍️ Tu pedido en VEREX Store — completa tu pago`
+                  subject: `🛍️ Recibimos tu pedido${numPed ? " " + numPed : ""} en VEREX Store`
                 };
                 // Ya no es un botón grande de "pagar aquí": el pago se completa
                 // directo en la página al hacer el pedido (link de respaldo
@@ -2920,7 +2908,7 @@ async function enviar(){
                     <p style="font-size:12px;color:#777;margin:0 0 6px;">${txt.pagoTitulo}</p>
                     <a href="${d.pagoLink}" style="font-size:13px;color:#1a5fb4;word-break:break-all;">${d.pagoLink}</a>
                   </div>` : "";
-                await fetch("https://api.resend.com/emails", {
+                await fetchResend("https://api.resend.com/emails", {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
                   body: JSON.stringify({
@@ -2937,6 +2925,7 @@ async function enviar(){
                         <div style="padding:24px;">
                           <p style="margin:0 0 14px;font-size:14px;color:#111;">${txt.hola}</p>
                           <p style="margin:0 0 16px;font-size:13px;color:#555;">${txt.gracias}</p>
+                          ${numPed ? `<p style="margin:0 0 14px;font-size:14px;color:#111;"><span style="color:#888;">${en ? "Order number" : "Número de pedido"}:</span> <b>${numPed}</b></p>` : ""}
                           <table style="width:100%;border-collapse:collapse;font-size:13px;border-top:1px solid #eee;padding-top:8px;">
                             ${filasCliente}
                             <tr><td style="padding:8px 0 2px;color:#888;">${txt.envioLbl}</td><td style="padding:8px 0 2px;color:#111;text-align:right;">${envio > 0 ? "$" + envio.toFixed(2) : txt.freeLbl}</td></tr>
@@ -3018,7 +3007,7 @@ async function enviar(){
               console.error("Wompi enlace error:", dataEnlace);
               result = { ok: false, error: "No se pudo generar el link de pago" }; break;
             }
-            result = { ok: true, urlEnlace: dataEnlace.urlEnlace, idEnlace: dataEnlace.idEnlace };
+            result = { ok: true, urlEnlace: dataEnlace.urlEnlace, idEnlace: dataEnlace.idEnlace, numeroPedido: await numeroPedidoUSA(sb, String(d.pedidoId)) };
           } catch(wompiErr) {
             console.error("Wompi error:", wompiErr);
             result = { ok: false, error: "No se pudo generar el link de pago" };
@@ -3034,10 +3023,10 @@ async function enviar(){
           // del afiliado, que no es secreto).
           if (!esAdmin) {
             const vendGLA = await sb.get("vendedores", d.vendedor);
-            if (!vendGLA || !vendGLA.tokenPedidos || String(vendGLA.tokenPedidos) !== String(d.token)) {
+            if (!vendGLA || !vendGLA.tokenPedidos || !safeEq(vendGLA.tokenPedidos, d.token)) {
               result = { ok: false, error: "Link inválido" }; break;
             }
-            if (vendGLA.pin && String(vendGLA.pin) !== String(d.pin || "")) {
+            if (await pinIncorrecto(sb, vendGLA, d.pin, d.vendedor)) {
               result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
             }
           }
@@ -3058,10 +3047,10 @@ async function enviar(){
           // conociera podia marcar leads ajenos como vendidos.
           if (!esAdmin) {
             const vendMLV = await sb.get("vendedores", d.vendedor);
-            if (!vendMLV || !vendMLV.tokenPedidos || String(vendMLV.tokenPedidos) !== String(d.token)) {
+            if (!vendMLV || !vendMLV.tokenPedidos || !safeEq(vendMLV.tokenPedidos, d.token)) {
               result = { ok: false, error: "Link inválido" }; break;
             }
-            if (vendMLV.pin && String(vendMLV.pin) !== String(d.pin || "")) {
+            if (await pinIncorrecto(sb, vendMLV, d.pin, d.vendedor)) {
               result = { ok: false, error: "PIN incorrecto", pinRequerido: true }; break;
             }
           }
@@ -3085,6 +3074,193 @@ async function enviar(){
         // que llegan. El stock SÍ se mueve en las transiciones de pago/
         // entrega (ver abajo), para que no dependa de que el admin se
         // acuerde de descontarlo aparte.
+        // Público (lo usa us.verexstore.com): ¿ya se confirmó el pago de este pedido? No devuelve datos del
+        // cliente, solo un estado. El pedidoId lo genera el catálogo al hacer el pedido (no es adivinable a la ligera).
+        case "GET_ESTADO_PEDIDO_USA": {
+          const pid = String(d.pedidoId || "");
+          if (!/^US[a-z0-9]{4,40}$/.test(pid)) { result = { ok: false, error: "pedido_invalido" }; break; }
+          const lds = (await sb.query("leads", "pedidoId", "eq", pid)).filter(l => l.pais === "US");
+          let estadoPed = "no_encontrado";
+          if (lds.length) {
+            estadoPed = lds.some(l => l.pagadoUSA) ? "pagado"
+              : lds.every(l => l.estado === "cancelado") ? "cancelado" : "pendiente";
+          }
+          result = { ok: true, estado: estadoPed, numero: lds.find(l => l.numeroPedidoUSA)?.numeroPedidoUSA || "" };
+          break;
+        }
+
+        // Checkout oficial de PayPal (público, lo usa us.verexstore.com): crea la orden y devuelve a dónde mandar al cliente.
+        case "CREAR_ORDEN_PAYPAL": {
+          if (!paypalConfigurado(env)) { result = { ok: false, error: "paypal_no_configurado" }; break; }
+          const pid = String(d.pedidoId || "");
+          const montoPP = Math.round(parseFloat(d.monto) * 100) / 100;
+          if (!RE_PEDIDO_USA.test(pid) || !(montoPP > 0) || montoPP > 50000) { result = { ok: false, error: "pedido_invalido" }; break; }
+          const baseRet = (env.PAYPAL_RETURN_BASE || "https://us.verexstore.com/").replace(/\/?$/, "/");
+          const numeroPP = await numeroPedidoUSA(sb, pid);
+          try {
+            const o = await paypalApi(env, "POST", "/v2/checkout/orders", {
+              intent: "CAPTURE",
+              purchase_units: [{
+                reference_id: pid, custom_id: pid,
+                description: ((numeroPP ? numeroPP + " — " : "") + String(d.descripcion || "VEREX Store order")).slice(0, 120),
+                amount: { currency_code: "USD", value: montoPP.toFixed(2) }
+              }],
+              payment_source: { paypal: { experience_context: {
+                brand_name: "VEREX Store", landing_page: "NO_PREFERENCE", user_action: "PAY_NOW", shipping_preference: "NO_SHIPPING",
+                return_url: `${baseRet}?pp=return&pedido=${pid}`, cancel_url: `${baseRet}?pp=cancel&pedido=${pid}`
+              } } }
+            }, pid);
+            const link = (o.data?.links || []).find(l => l.rel === "payer-action") || (o.data?.links || []).find(l => l.rel === "approve");
+            if (!o.ok || !o.data?.id || !link?.href) {
+              console.error("PayPal crear orden:", o.status, JSON.stringify(o.data).slice(0, 300));
+              result = { ok: false, error: "paypal_error" }; break;
+            }
+            result = { ok: true, orderId: o.data.id, urlAprobar: link.href, numeroPedido: numeroPP };
+          } catch (ePP) {
+            console.error("PayPal crear orden error:", ePP);
+            result = { ok: false, error: "paypal_error" };
+          }
+          break;
+        }
+
+        // El cliente volvió de PayPal tras aprobar: se cobra de verdad (captura) y el pedido queda pagado.
+        // Idempotente — si ya estaba capturado (otra pestaña, el webhook) solo confirma el estado.
+        case "CAPTURAR_ORDEN_PAYPAL": {
+          if (!paypalConfigurado(env)) { result = { ok: false, error: "paypal_no_configurado" }; break; }
+          const pid = String(d.pedidoId || ""), oid = String(d.orderId || "");
+          if (!RE_PEDIDO_USA.test(pid) || !RE_PAYPAL_ORDER.test(oid)) { result = { ok: false, error: "pedido_invalido" }; break; }
+          const lds = (await sb.query("leads", "pedidoId", "eq", pid)).filter(l => l.pais === "US");
+          if (!lds.length || !lds.some(l => l.paypalOrderId === oid)) { result = { ok: false, error: "orden_no_coincide" }; break; }
+          if (lds.every(l => l.pagadoUSA)) { result = { ok: true, estado: "pagado", numero: lds.find(l => l.numeroPedidoUSA)?.numeroPedidoUSA || "" }; break; }
+          try {
+            let cap = null;
+            const c = await paypalApi(env, "POST", `/v2/checkout/orders/${oid}/capture`, {}, "cap-" + oid);
+            if (c.ok && c.data?.status === "COMPLETED") cap = paypalCapturaDe(c.data);
+            else {
+              // ¿ya estaba capturada? (doble clic, otra pestaña) — se consulta el estado real de la orden
+              const g = await paypalApi(env, "GET", `/v2/checkout/orders/${oid}`);
+              if (g.ok && g.data?.status === "COMPLETED") cap = paypalCapturaDe(g.data);
+              else if (g.ok && (g.data?.status === "APPROVED" || g.data?.status === "PAYER_ACTION_REQUIRED" || g.data?.status === "CREATED")) { result = { ok: true, estado: "pendiente" }; break; }
+              else { console.error("PayPal capturar:", c.status, JSON.stringify(c.data).slice(0, 300)); result = { ok: false, error: "no_se_pudo_cobrar" }; break; }
+            }
+            if (!cap) { result = { ok: true, estado: "pendiente" }; break; }
+            if (!montoCoincide(lds, cap)) {
+              await avisarAdminUSA(env, `⚠️ PayPal: el monto cobrado no coincide — ${pid}`, `<p>PayPal cobró <b>${cap.amount?.value} ${cap.amount?.currency_code}</b> en el pedido <b>${pid}</b>, pero el total registrado es <b>${lds.find(l => l.totalPedidoUSD != null)?.totalPedidoUSD}</b>. No se marcó como pagado: revísalo en PayPal.</p>`);
+              result = { ok: false, error: "monto_distinto" }; break;
+            }
+            await confirmarPagoPedidoUSA(env, sb, pid, { metodo: "paypal", idTransaccion: cap.id, extra: { paypalCaptureId: cap.id, paypalOrderId: oid } });
+            result = { ok: true, estado: "pagado", numero: lds.find(l => l.numeroPedidoUSA)?.numeroPedidoUSA || "" };
+          } catch (eCap) {
+            console.error("PayPal capturar error:", eCap);
+            result = { ok: false, error: "paypal_error" };
+          }
+          break;
+        }
+
+        // Reembolso total de un pedido USA pagado por PayPal (solo admin): devuelve el dinero, cancela el pedido y libera el stock.
+        // Paso 1 del reembolso: valida que se pueda reembolsar y manda un código de 6 dígitos por correo (y WhatsApp si hay).
+        case "SOLICITAR_CODIGO_REEMBOLSO": {
+          if (!esAdmin) return forbidden();
+          const pid = String(d.pedidoId || "");
+          const lds = RE_PEDIDO_USA.test(pid) ? (await sb.query("leads", "pedidoId", "eq", pid)).filter(l => l.pais === "US") : [];
+          if (!lds.length) { result = { ok: false, error: "pedido_no_encontrado" }; break; }
+          if (lds.every(l => l.reembolsadoUSA)) { result = { ok: false, error: "ya_reembolsado" }; break; }
+          if (!lds.some(l => l.pagadoUSA) || !lds.find(l => l.paypalCaptureId)) { result = { ok: false, error: "no_reembolsable_por_aqui" }; break; }
+          if (lds.some(l => l.trackingDHL || l.entregadoUSA)) { result = { ok: false, error: "ya_enviado" }; break; }
+          const previo = await sb.get("config", "otp_reemb_" + pid);
+          if (previo && previo.creado && Date.now() - previo.creado < 30000) { result = { ok: false, error: "espera_un_momento" }; break; }
+          const codigo = codigoAleatorio6();
+          await sb.set("config", "otp_reemb_" + pid, { hash: await huellaCodigoReembolso(env, pid, codigo), exp: Date.now() + OTP_REEMB_VIGENCIA_MS, intentos: 0, creado: Date.now() });
+          const total = lds.find(l => l.totalPedidoUSD != null)?.totalPedidoUSD;
+          const envio = await enviarCodigoReembolso(env, lds.find(l => l.numeroPedidoUSA)?.numeroPedidoUSA || pid, total, codigo);
+          if (!envio.ok) {
+            try { await sb.delete("config", "otp_reemb_" + pid); } catch (_) {}   // sin envío no queda ningún código activo
+            result = { ok: false, error: envio.motivo };
+            break;
+          }
+          result = { ok: true, venceEnMin: OTP_REEMB_VIGENCIA_MS / 60000, canales: envio.canales, destino: envio.destino };
+          break;
+        }
+
+        case "REEMBOLSAR_PEDIDO_USA": {
+          if (!esAdmin) return forbidden();
+          if (!paypalConfigurado(env)) { result = { ok: false, error: "paypal_no_configurado" }; break; }
+          const pid = String(d.pedidoId || "");
+          const lds = (await sb.query("leads", "pedidoId", "eq", pid)).filter(l => l.pais === "US");
+          const capId = lds.find(l => l.paypalCaptureId)?.paypalCaptureId;
+          if (!lds.length) { result = { ok: false, error: "pedido_no_encontrado" }; break; }
+          if (lds.every(l => l.reembolsadoUSA)) { result = { ok: false, error: "ya_reembolsado" }; break; }
+          if (!lds.some(l => l.pagadoUSA) || !capId) { result = { ok: false, error: "no_reembolsable_por_aqui" }; break; }   // tarjeta (Wompi) o sin pago: se hace aparte
+          // Política: una vez enviado el paquete (tiene tracking) o entregado, ya no se reembolsa ni se libera stock desde aquí.
+          // Si algún día hay que hacer una excepción, se hace directamente en PayPal (el webhook lo marca como reembolsado).
+          if (lds.some(l => l.trackingDHL || l.entregadoUSA)) { result = { ok: false, error: "ya_enviado" }; break; }
+          // Segundo paso: el código de un solo uso que llegó por correo/WhatsApp (ver SOLICITAR_CODIGO_REEMBOLSO)
+          const codigoIngresado = String(d.codigo || "").trim();
+          if (!/^\d{6}$/.test(codigoIngresado)) { result = { ok: false, error: "codigo_requerido" }; break; }
+          const otp = await sb.get("config", "otp_reemb_" + pid);
+          if (!otp || !otp.hash) { result = { ok: false, error: "codigo_invalido" }; break; }
+          if (Date.now() > otp.exp) { await sb.delete("config", "otp_reemb_" + pid).catch(() => {}); result = { ok: false, error: "codigo_vencido" }; break; }
+          if ((otp.intentos || 0) >= OTP_REEMB_MAX_INTENTOS) { result = { ok: false, error: "demasiados_intentos" }; break; }
+          if (!safeEq(otp.hash, await huellaCodigoReembolso(env, pid, codigoIngresado))) {
+            const n = (otp.intentos || 0) + 1;
+            await sb.update("config", "otp_reemb_" + pid, { intentos: n });
+            result = { ok: false, error: n >= OTP_REEMB_MAX_INTENTOS ? "demasiados_intentos" : "codigo_invalido", intentosRestantes: Math.max(0, OTP_REEMB_MAX_INTENTOS - n) };
+            break;
+          }
+          await sb.delete("config", "otp_reemb_" + pid).catch(() => {});   // se gasta: un solo uso
+          try {
+            const rf = await paypalApi(env, "POST", `/v2/payments/captures/${capId}/refund`, { note_to_payer: "VEREX Store refund" }, "refund-" + capId);
+            if (!rf.ok || !["COMPLETED", "PENDING"].includes(rf.data?.status)) {
+              console.error("PayPal reembolso:", rf.status, JSON.stringify(rf.data).slice(0, 300));
+              result = { ok: false, error: "paypal_error", detalle: String(rf.data?.message || rf.data?.name || "").slice(0, 160) }; break;
+            }
+            for (const l of lds) {
+              const patch = { reembolsadoUSA: true, paypalReembolsoId: rf.data.id || "" };
+              if (!l.entregadoUSA && l.estado !== "cancelado") {
+                if (l.reservaDescTienda || l.reservaDescBodega) { try { await sb.liberar(l.codigo, l.reservaDescTienda || 0, l.reservaDescBodega || 0); } catch (eLib) { console.error("Reembolso: error liberando " + l.codigo, eLib); } }
+                patch.estado = "cancelado"; patch.reservaDescTienda = 0; patch.reservaDescBodega = 0; patch.reservaExpiraEn = null;
+                patch.historial = [...(l.historial || []), { estado: "cancelado", fecha: new Date().toISOString(), motivo: "Reembolsado por PayPal" }];
+              }
+              await sb.update("leads", l.id, patch);
+            }
+            result = { ok: true, reembolsoId: rf.data.id || "", estado: rf.data.status };
+          } catch (eRf) {
+            console.error("PayPal reembolso error:", eRf);
+            result = { ok: false, error: "paypal_error" };
+          }
+          break;
+        }
+
+        // Diagnóstico de PayPal (solo admin): comprueba que las claves existan y que PayPal las acepte. No revela ningún valor.
+        case "PROBAR_PAYPAL": {
+          if (!esAdmin) return forbidden();
+          const info = { tieneClientId: !!env.PAYPAL_CLIENT_ID, tieneSecret: !!env.PAYPAL_SECRET, tieneWebhookId: !!env.PAYPAL_WEBHOOK_ID, entorno: env.PAYPAL_ENV === "live" ? "live" : "sandbox",
+            // Nunca se devuelve el valor tal cual (por si alguien pegó ahí una clave por error): solo si es válido o no.
+            entornoDefinido: env.PAYPAL_ENV === "live" ? "live" : env.PAYPAL_ENV === "sandbox" ? "sandbox" : (env.PAYPAL_ENV ? "valor_invalido" : "") };
+          if (!info.tieneClientId || !info.tieneSecret) { result = { ok: false, ...info, motivo: "faltan_claves" }; break; }
+          try {
+            _ppTokenCache.clear();
+            await paypalToken(env);
+            result = { ok: true, ...info };
+          } catch (ePP) {
+            result = { ok: false, ...info, motivo: "paypal_rechazo", detalle: String(ePP && ePP.message || ePP).slice(0, 200) };
+          }
+          break;
+        }
+
+        case "GET_ESTADO_CORREO": {
+          if (!esAdmin) return forbidden();
+          result = { ok: true, estado: (await sb.get("config", "correo_estado")) || null };
+          break;
+        }
+
+        case "PROBAR_CORREO": {
+          if (!esAdmin) return forbidden();
+          const para = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.para || "") ? d.para : "verex.pedidos@verexstore.com";
+          result = { ...(await probarCorreo(env, para)), para };
+          break;
+        }
+
         case "ACTUALIZAR_LEAD_USA": {
           if (!esAdmin) return forbidden();
           if (!d.id) { result = { ok: false, error: "Falta el id del pedido" }; break; }
@@ -3110,6 +3286,13 @@ async function enviar(){
               patch.reservaDescBodega = resPago.desc_bodega || 0;
             }
             patch.reservaExpiraEn = null;
+            // Si la reserva ya había vencido y el lead quedó "cancelado", este
+            // pago lo reactiva (ya se volvió a reservar arriba) — si no, el
+            // pedido pagado seguía figurando como cancelado.
+            if (leadUSA.estado === "cancelado") {
+              patch.estado = "interesado";
+              patch.historial = [...(leadUSA.historial || []), { estado: "interesado", fecha: new Date().toISOString(), motivo: "Pago confirmado tras vencer la reserva" }];
+            }
           }
           // "Marcar entregado" cierra la venta: pasa de reservado a vendido —
           // mismo criterio que CONFIRMAR_LEAD_ENTREGA. Solo si de verdad
@@ -3117,17 +3300,33 @@ async function enviar(){
           // como exige el orden del panel).
           if (patch.entregadoUSA === true && !leadUSA.entregadoUSA && (leadUSA.pagadoUSA || patch.pagadoUSA)) {
             const sEntrega = await sb.get("stock", leadUSA.codigo);
+            const qtyEntrega = Math.max(1, parseInt(leadUSA.qty) || 1); // antes se descontaba siempre 1, aunque el pedido fuera de 2 o más
             if (sEntrega) {
               await sb.update("stock", leadUSA.codigo, {
-                stock_reservado: Math.max(0, (parseInt(sEntrega.stock_reservado)||0) - 1),
-                stock_vendido:   (parseInt(sEntrega.stock_vendido)||0) + 1
+                stock_reservado: Math.max(0, (parseInt(sEntrega.stock_reservado)||0) - qtyEntrega),
+                stock_vendido:   (parseInt(sEntrega.stock_vendido)||0) + qtyEntrega
               });
             }
           }
 
+          // Reembolso hecho fuera del panel (PayPal.me, Wompi, etc.): solo deja constancia.
+          // No toca dinero ni stock. Solo para pedidos cancelados, pagados y sin captura de PayPal Checkout
+          // (esos se reembolsan desde el panel con código).
+          if (d.reembolsadoManual === true) {
+            if (!leadUSA.pagadoUSA || leadUSA.estado !== "cancelado" || leadUSA.paypalCaptureId || leadUSA.reembolsadoUSA) {
+              result = { ok: false, error: "No se puede marcar como reembolsado este pedido" }; break;
+            }
+            patch.reembolsadoUSA = true;
+            patch.reembolsoManual = true;
+            patch.historial = [...(leadUSA.historial || []), { estado: "cancelado", fecha: new Date().toISOString(), motivo: "Reembolso hecho aparte (marcado manualmente)" }];
+          }
           await sb.update("leads", d.id, patch);
           if (patch.pagadoUSA === true && !leadUSA.pagadoUSA) {
             await enviarCorreoPagoConfirmadoUSA(env, sb, leadUSA.pedidoId);
+          }
+          // Primer tracking de DHL de un pedido pagado → aviso de envío al cliente.
+          if (patch.trackingDHL && !leadUSA.trackingDHL && (leadUSA.pagadoUSA || patch.pagadoUSA)) {
+            await enviarCorreoEnvioUSA(env, sb, leadUSA, patch.trackingDHL);
           }
           result = { ok: true };
           break;
@@ -3372,18 +3571,73 @@ async function enviar(){
           break;
         }
 
+        // Borra del panel de Logística USA los pedidos CANCELADOS que ya no deben cobrarse ni devolverse (pruebas, reservas vencidas).
+        // Seguro: no toca stock; omite lo que tenga reserva activa, entrega, o dinero cobrado sin reembolsar (esos se resuelven antes).
+        case "ELIMINAR_CANCELADOS_USA": {
+          if (!esAdmin) return forbidden();
+          const pids = Array.isArray(d.pedidoIds) ? d.pedidoIds.map(String).slice(0, 200) : [];
+          let borrados = 0; const omitidos = [];
+          for (const pid of pids) {
+            const lds = (await sb.query("leads", "pedidoId", "eq", pid)).filter(l => l.pais === "US");
+            const ok = lds.length && lds.every(l => l.estado === "cancelado" && !l.entregadoUSA && !l.reservaDescTienda && !l.reservaDescBodega
+              && (!l.pagadoUSA || l.reembolsadoUSA));
+            if (!ok) { omitidos.push(pid); continue; }
+            for (const l of lds) await sb.delete("leads", l.id);
+            borrados++;
+          }
+          result = { ok: true, borrados, omitidos };
+          break;
+        }
+
+        // Producto de PRUEBA con su propio stock (no toca el inventario real). Se crea/reinicia con esta acción y se pide
+        // en el catálogo con ?prueba=1. Nunca pisa un producto real (si el código ya existe y no es de prueba, se rechaza).
+        case "CREAR_PRODUCTO_PRUEBA": {
+          if (!esAdmin) return forbidden();
+          if (env.PAYPAL_ENV === "live") { result = { ok: false, error: "solo_en_sandbox" }; break; }
+          const codP = String(d.codigo || "W78RE").trim().toUpperCase();
+          if (!/^[A-Z0-9-]{3,20}$/.test(codP)) { result = { ok: false, error: "codigo_invalido" }; break; }
+          const existeP = await sb.get("stock", codP);
+          if (existeP && !existeP.esPrueba) { result = { ok: false, error: "codigo_en_uso_por_producto_real" }; break; }
+          const cantP = Math.min(500, Math.max(1, parseInt(d.cantidad) || 50));
+          await sb.set("stock", codP, {
+            ...(existeP || {}),
+            codigo: codP, nombre: "PRUEBA - no es un producto real", nombre_base: "PRUEBA - no es un producto real",
+            categoria: "CO", precio: Math.round((parseFloat(d.precio) || 50) * 100) / 100,
+            esPrueba: true, enCatalogo: true, estado: "bodega", fechaRegistro: existeP?.fechaRegistro || new Date().toISOString(),
+            stock_bodega: cantP, stock_tienda: 0, stock_consignacion: 0, stock_reservado: 0, stock_vendido: 0, stock_total: cantP,
+          });
+          result = { ok: true, codigo: codP, cantidad: cantP };
+          break;
+        }
+
+        // Borra TODOS los pedidos de prueba (leads esPrueba, en cualquier estado) y deja el producto de prueba con su stock inicial.
+        // No toca ningún producto real. Solo en Sandbox.
+        case "LIMPIAR_PEDIDOS_PRUEBA": {
+          if (!esAdmin) return forbidden();
+          if (env.PAYPAL_ENV === "live") { result = { ok: false, error: "solo_en_sandbox" }; break; }
+          const leadsP = (await sb.getAll("leads")).filter(l => l.esPrueba === true);
+          for (const l of leadsP) await sb.delete("leads", l.id);
+          const prodsP = (await sb.getAll("stock")).filter(x => x.esPrueba === true);
+          for (const x of prodsP) {
+            const base = Math.max(1, parseInt(x.stock_total) || 50);
+            await sb.update("stock", x.codigo, { stock_bodega: base, stock_reservado: 0, stock_vendido: 0, stock_tienda: 0, stock_consignacion: 0 });
+          }
+          result = { ok: true, pedidosBorrados: new Set(leadsP.map(l => l.pedidoId || l.id)).size, productosReiniciados: prodsP.length };
+          break;
+        }
+
         case "VERIFICAR_TOKEN": {
           const vend = await sb.get("vendedores", d.vendedor);
           if (!vend) { result = { ok: false, razon: "no_encontrado" }; break; }
           // Sin token guardado (nunca tuvo link, o se cerró) nadie entra: antes,
           // String(undefined) === "undefined" dejaba pasar a quien mandara ese texto.
-          if (!vend.tokenInventario || String(vend.tokenInventario) !== String(d.token)) {
+          if (!vend.tokenInventario || !safeEq(vend.tokenInventario, d.token)) {
             result = { ok: false, razon: "token_invalido" }; break;
           }
           // Segunda capa: si el vendedor tiene PIN configurado, también se
           // exige — así, aunque el link (con token) se comparta por error,
           // no basta para entrar a ver ventas ni tocar el inventario.
-          if (vend.pin && String(vend.pin) !== String(d.pin || "")) {
+          if (await pinIncorrecto(sb, vend, d.pin, d.vendedor)) {
             result = { ok: false, razon: "pin_requerido", tienePin: true }; break;
           }
           // Validar 30 días desde último corte
@@ -3436,7 +3690,8 @@ async function enviar(){
             foto:               d.img || d.foto || "",
             descripcion:        d.caracteristicas || "",
             descripcionTienda:  d.caracteristicas || "",
-            categoria:          d.categoria || "",
+            categoria:          String(d.categoria || "").toUpperCase(),
+            material:           d.material || "",
             talla:              "",
             stock_bodega:       parseInt(d.cantidad) || 0,
             stock_tienda:       0,
@@ -3525,100 +3780,97 @@ async function enviar(){
         // ══ STOCK MOVIMIENTOS ════════════════════════════════════
         case "STOCK_ASIGNAR_TIENDA": {
           if (!esAdmin) return forbidden();
-          for (const codigo of (d.codigos || [])) {
-            const s = await sb.get("stock", codigo);
-            if (s) {
-              const disponible = parseInt(s.stock_bodega) || 0;
-              const cant = Math.min(d.cantidad || 1, disponible); // no mover más de lo que hay
-              if (cant <= 0) continue;
-              await sb.update("stock", codigo, {
-                stock_bodega: disponible - cant,
-                stock_tienda: (parseInt(s.stock_tienda)||0) + cant,
-                enCatalogo:   true,
-                estado:       "tienda"
-              });
-            }
-          }
-          result = { ok: true };
+          result = await stockAsignarTiendaEnBloque(sb, d);
           break;
         }
 
         case "STOCK_ASIGNAR_VENDEDOR": {
           if (!esAdmin) return forbidden();
           if (!d.vendedor) return json({ ok: false, error: "vendedor requerido" });
-          // Antes solo movía el contador stock_bodega -> stock_consignacion y
-          // marcaba estado:"consignacion", pero nunca creaba el registro en
-          // la colección "consignacion" que liga la pieza a d.vendedor — el
-          // campo vendedor que manda el frontend se ignoraba por completo.
-          // Resultado: la pieza quedaba en un contador sin dueño, invisible
-          // en el perfil de cualquier vendedor, en sus ventas o en su corte
-          // (caso real: PUP105 "asignado" a Jaime Solórzano nunca apareció
-          // en su inventario). Ahora crea el mismo tipo de registro que ya
-          // genera REGISTRAR_ENTREGA (Nueva Entrega), para que ambos caminos
-          // dejen la pieza igual de rastreable.
-          const asignados = [];
-          const sinStock = [];
-          for (const codigo of (d.codigos || [])) {
-            try {
-              const s = await sb.get("stock", codigo);
-              if (!s) { sinStock.push(codigo); continue; }
-              const disponible = parseInt(s.stock_bodega) || 0;
-              const cant = Math.min(d.cantidad || 1, disponible);
-              if (cant <= 0) { sinStock.push(codigo); continue; }
-              const id = `CONS_${Date.now()}_${codigo}`;
-              await sb.set("consignacion", id, {
-                id, vendedor: d.vendedor, codigo,
-                codigoBase:  s.codigoBase || codigo,
-                talla:       s.talla || "",
-                nombre:      s.nombre || "",
-                nombre_base: s.nombre_base || s.nombre || "",
-                categoria:   s.categoria || "",
-                precio:      s.precio || 0,
-                cantidad:    cant, vendido: 0,
-                foto:        s.foto || "",
-                fecha:       new Date().toISOString(),
-                estado:      "activo"
-              });
-              await sb.update("stock", codigo, {
-                stock_bodega:       disponible - cant,
-                stock_consignacion: (parseInt(s.stock_consignacion)||0) + cant,
-                estado:             "consignacion"
-              });
-              asignados.push(codigo);
-            } catch (errAsig) {
-              sinStock.push(codigo);
-            }
+          // Crea el registro de consignación del vendedor (para que la pieza sea rastreable en su inventario, ventas y
+          // corte) y mueve el stock bodega -> consignación. En bloque: ~4 peticiones sin importar cuántos códigos.
+          result = await stockAsignarVendedorEnBloque(sb, d);
+          break;
+        }
+
+        // Hace visibles (o oculta) productos en la tienda online SIN mover inventario: solo cambia enCatalogo. La tienda vende
+        // con stock_tienda + stock_bodega (reserva atómica: primero tienda, luego bodega), así que el inventario sigue siendo
+        // uno solo para todos los canales. En bloque: 2 peticiones sin importar cuántos códigos.
+        case "STOCK_PUBLICAR_VISIBLE": {
+          if (!esAdmin) return forbidden();
+          const cods = Array.from(new Set((Array.isArray(d.codigos) ? d.codigos : []).map(String).filter(Boolean))).slice(0, 1000);
+          if (!cods.length) { result = { ok: false, error: "codigos requeridos" }; break; }
+          const visible = d.visible !== false;
+          const docs = new Map((await sb.getMany("stock", cods)).map(x => [String(x.id), x]));
+          const cambiar = [], yaEstaban = [], noExisten = [], inactivos = [];
+          for (const c of cods) {
+            const x = docs.get(c);
+            if (!x) { noExisten.push(c); continue; }
+            if (x.estado === "inactivo") { inactivos.push(c); continue; }
+            const actual = x.enCatalogo === true || x.enCatalogo === "true" || x.enCatalogo === "TRUE";
+            if (actual === visible) { yaEstaban.push(c); continue; }
+            cambiar.push({ ...x, enCatalogo: visible });
           }
-          result = { ok: true, asignados, sinStock };
+          if (cambiar.length) await sb.setMany("stock", cambiar);
+          result = { ok: true, visible, cambiados: cambiar.map(x => x.id), yaEstaban, noExisten, inactivos };
+          break;
+        }
+
+        // Revisa en qué categoría está cada producto y detecta los mal clasificados (solo lectura).
+        case "AUDITORIA_CATEGORIAS": {
+          if (!esAdmin) return forbidden();
+          const catsA = await categoriasTiendaActual(sb);
+          const a = analizarCategorias(await sb.getAll("stock"), catsA);
+          result = { ok: true, categorias: catsA, ...a };
+          break;
+        }
+
+        // Cambia la categoría de los productos indicados (bloque: 2 peticiones). Solo categorías válidas; el resto no se toca.
+        case "CORREGIR_CATEGORIAS": {
+          if (!esAdmin) return forbidden();
+          const catsC = await categoriasTiendaActual(sb);
+          const cambios = (Array.isArray(d.cambios) ? d.cambios : []).filter(c => c && c.codigo && catsC[String(c.categoria || "").toUpperCase()]).slice(0, 1000);
+          if (!cambios.length) { result = { ok: false, error: "cambios requeridos" }; break; }
+          const docsC = new Map((await sb.getMany("stock", cambios.map(c => String(c.codigo)))).map(x => [String(x.id), x]));
+          const nuevos = [], noExisten = [];
+          for (const c of cambios) { const x = docsC.get(String(c.codigo)); if (!x) { noExisten.push(c.codigo); continue; } nuevos.push({ ...x, categoria: String(c.categoria).toUpperCase() }); }
+          if (nuevos.length) await sb.setMany("stock", nuevos);
+          result = { ok: true, corregidos: nuevos.map(x => x.id), noExisten };
+          break;
+        }
+
+        // Qué código nuevo recibiría cada diseño (no escribe nada). El código siempre lo sugiere el sistema.
+        case "SUGERIR_CODIGOS": {
+          if (!esAdmin) return forbidden();
+          const its = (Array.isArray(d.items) ? d.items : []).filter(x => x && x.codigo).slice(0, 40);
+          if (!its.length) { result = { ok: false, error: "items requeridos" }; break; }
+          result = { ok: true, sugerencias: await sugerirCodigos(sb, its) };
+          break;
+        }
+
+        // Cambia el código de los diseños indicados (todas sus tallas), todo o nada por diseño. Máx. 4 diseños por llamada.
+        case "CAMBIAR_CODIGOS": {
+          if (!esAdmin) return forbidden();
+          const its = (Array.isArray(d.items) ? d.items : []).filter(x => x && x.codigo);
+          if (!its.length) { result = { ok: false, error: "items requeridos" }; break; }
+          if (new Set(its.map(x => _baseDeCodigo(x.codigo).toUpperCase())).size > 4) { result = { ok: false, error: "máximo 4 diseños por llamada" }; break; }
+          result = { ok: true, resultados: await cambiarCodigos(sb, its) };
+          break;
+        }
+
+        // Quita el aviso «cambiar etiqueta» una vez que la etiqueta física ya se reemplazó.
+        case "MARCAR_ETIQUETA_CAMBIADA": {
+          if (!esAdmin) return forbidden();
+          const cs = Array.from(new Set((Array.isArray(d.codigos) ? d.codigos : []).map(String).filter(Boolean))).slice(0, 200);
+          const dc = (await sb.getMany("stock", cs)).filter(x => x.etiquetaPendiente);
+          if (dc.length) await sb.setMany("stock", dc.map(x => ({ ...x, etiquetaPendiente: false, etiquetaCambiadaEn: new Date().toISOString() })));
+          result = { ok: true, actualizados: dc.map(x => x.id) };
           break;
         }
 
         case "STOCK_DEVOLVER_BODEGA": {
           if (!esAdmin) return forbidden();
-          for (const codigo of (d.codigos || [])) {
-            const s = await sb.get("stock", codigo);
-            if (s) {
-              const origen = d.origen || "tienda";
-              // Determinar cuánto hay realmente en el origen para no inventar stock
-              const enOrigen = origen === "tienda"
-                ? (parseInt(s.stock_tienda)||0)
-                : (parseInt(s.stock_consignacion)||0);
-              const cant = Math.min(d.cantidad || 1, enOrigen);
-              if (cant <= 0) continue; // ya no hay nada que devolver
-              const updates = {
-                stock_bodega: (parseInt(s.stock_bodega)||0) + cant,
-                estado: "bodega"
-              };
-              if (origen === "tienda") {
-                updates.stock_tienda  = enOrigen - cant;
-                updates.enCatalogo    = false;
-              } else {
-                updates.stock_consignacion = enOrigen - cant;
-              }
-              await sb.update("stock", codigo, updates);
-            }
-          }
-          result = { ok: true };
+          result = await stockDevolverBodegaEnBloque(sb, d);
           break;
         }
 
@@ -3633,6 +3885,12 @@ async function enviar(){
           if (d.nombre_base     !== undefined) upd.nombre_base       = d.nombre_base;
           if (d.precio          !== undefined) upd.precio            = Math.round((parseFloat(d.precio) || 0) * 100) / 100;
           if (d.img             !== undefined) upd.foto              = d.img;
+          // Si la foto CAMBIA, la versión mejorada guardada es de la foto anterior y las pantallas la muestran antes que
+          // `foto`: el cambio parecía no aplicarse. Se borra salvo que la petición traiga una mejorada nueva.
+          if (d.img !== undefined && d.fotoMejorada === undefined) {
+            const actual = await sb.get("stock", d.codigo);
+            if (actual && actual.fotoMejorada && String(actual.foto || "") !== String(d.img || "")) { upd.fotoMejorada = ""; upd.fotoMejoraNivel = ""; }
+          }
           // Foto "Mejorada" (nitidez vía ImageKit, desde el botón ✨ del
           // admin) — nunca toca `foto` (la original), se guarda aparte.
           if (d.fotoMejorada    !== undefined) upd.fotoMejorada      = d.fotoMejorada;
@@ -3985,7 +4243,8 @@ async function enviar(){
           const ikData = await ikRes.json();
           if (ikData.url) {
             const urlBase = ikData.url.split("?")[0];
-            result = { ok: true, url: urlBase + "?tr=w-900,h-900,c-maintain_ratio" };
+            // d.original = la foto tal cual (sin reducir a 900 px): para el hero de la tienda, que necesita ~2000 px
+            result = { ok: true, url: d.original === true ? urlBase : urlBase + "?tr=w-900,h-900,c-maintain_ratio" };
           } else {
             result = { ok: false, error: ikData.message || "Error subiendo foto" };
           }
@@ -4430,6 +4689,76 @@ class Supabase {
     }
   }
 
+  // Inserta SOLO si el id no existe (atómico: ON CONFLICT DO NOTHING). Devuelve true si este llamado lo creó.
+  // Sirve de candado para que una tarea de una sola vez no se ejecute dos veces a la vez.
+  async insertIfAbsent(table, id, obj) {
+    const { id: _id, ...data } = obj;
+    const res = await fetch(`${this.url}/rest/v1/${table}`, {
+      method:  "POST",
+      headers: this._headers("resolution=ignore-duplicates,return=representation"),
+      body:    JSON.stringify({ id, data }),
+      cf: { cacheTtl: 0, cacheEverything: false }
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`SB insertIfAbsent ${table}: ${res.status} ${txt}`);
+    }
+    const rows = await res.json().catch(() => []);
+    return Array.isArray(rows) && rows.length > 0;
+  }
+
+  // Lee VARIOS documentos por id con una sola petición (en bloques de 60 ids).
+  // Sirve para no gastar el límite de 50 subrequests por invocación del plan gratuito.
+  async getMany(table, ids) {
+    const uniq = Array.from(new Set((ids || []).map(String).filter(Boolean)));
+    const out = [];
+    for (let i = 0; i < uniq.length; i += 60) {
+      const lista = uniq.slice(i, i + 60).map(x => '"' + encodeURIComponent(x) + '"').join(",");
+      const res = await fetch(
+        `${this.url}/rest/v1/${table}?id=in.(${lista})&select=id,data`,
+        { headers: this._headers(), cf: { cacheTtl: 0, cacheEverything: false } }
+      );
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`SB getMany ${table}: ${res.status} ${txt}`);
+      }
+      const rows = await res.json();
+      if (Array.isArray(rows)) for (const r of rows) out.push({ id: r.id, ...r.data });
+    }
+    return out;
+  }
+
+  // Borra VARIOS documentos por id con una sola petición por bloque de 60.
+  async deleteMany(table, ids) {
+    const uniq = Array.from(new Set((ids || []).map(String).filter(Boolean)));
+    for (let i = 0; i < uniq.length; i += 60) {
+      const lista = uniq.slice(i, i + 60).map(x => '"' + encodeURIComponent(x) + '"').join(",");
+      const res = await fetch(`${this.url}/rest/v1/${table}?id=in.(${lista})`, { method: "DELETE", headers: this._headers() });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`SB deleteMany ${table}: ${res.status} ${txt}`);
+      }
+    }
+  }
+
+  // Guarda VARIOS documentos COMPLETOS con una sola petición por bloque de 100 (upsert).
+  // Cada doc debe traer todos sus campos: reemplaza el JSON de datos, igual que set().
+  async setMany(table, docs) {
+    for (let i = 0; i < docs.length; i += 100) {
+      const rows = docs.slice(i, i + 100).map(({ id, ...data }) => ({ id, data }));
+      const res = await fetch(`${this.url}/rest/v1/${table}`, {
+        method:  "POST",
+        headers: this._headers("resolution=merge-duplicates"),
+        body:    JSON.stringify(rows),
+        cf: { cacheTtl: 0, cacheEverything: false }
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`SB setMany ${table}: ${res.status} ${txt}`);
+      }
+    }
+  }
+
   // stock_total es un DERIVADO de las unidades reales: bodega + tienda +
   // consignación (misma fórmula que _stockTotalProd() en el admin).
   //
@@ -4601,24 +4930,60 @@ async function hashStr(str) {
 // Verifica la contraseña: primero contra SECRET_PASS (env var),
 // si no coincide intenta con el hash guardado en Supabase
 // (permite cambiar contraseña sin editar el env var de Cloudflare).
-async function verificarPassword(pass, env, sb) {
+//
+// Protegida contra fuerza bruta: se comprueba el bloqueo ANTES de comparar
+// (si no, el intento correcto tras el bloqueo seguiría entrando) y cada fallo
+// se cuenta por IP. scope "login" (endpoints de acceso, 5 fallos) o "api"
+// (acciones con _pass, 15 fallos: tolera pestañas viejas con clave antigua).
+async function verificarPassword(pass, env, sb, ip, scope) {
   if (!pass) return false;
+  const key = (scope === "login" ? "login:" : "api:") + (ip || "unknown");
+  if (await rlBlocked(sb, key)) return false;
+  const ok = await compararPassword(pass, env, sb);
+  if (ok) await rlReset(sb, key);
+  else await rlFail(sb, key, scope === "login" ? RL_LOGIN : RL_API);
+  return ok;
+}
+
+async function compararPassword(pass, env, sb) {
+  const secret = env.SECRET_PASS || "";
   // Aceptar texto plano (SECRET_PASS del env) o su hash SHA-256
-  if (pass === env.SECRET_PASS) return true;
-  const hashDeSecret = await hashStr(env.SECRET_PASS || "");
-  if (pass === hashDeSecret) return true;
+  let ok = secret ? safeEq(pass, secret) : false;
+  if (secret && safeEq(pass, await hashStr(secret))) ok = true;
+  if (ok) return true;
   // También verificar contra passHash guardado en Supabase
   try {
     const cfg = await sb.get("config", "settings");
     if (cfg && cfg.passHash) {
       // Aceptar el hash directamente (frontend ya lo hasheó)
-      if (pass === cfg.passHash) return true;
+      let okDb = safeEq(pass, cfg.passHash);
       // O hashear lo que llegó (compatibilidad con texto plano)
-      const hash = await hashStr(pass);
-      if (hash === cfg.passHash) return true;
+      if (safeEq(await hashStr(pass), cfg.passHash)) okDb = true;
+      if (okDb) return true;
     }
   } catch(_) {}
   return false;
+}
+
+// Clave legacy de vendedores (d.key): mismo trato — comparación segura y límite de intentos.
+async function claveLegacyValida(key, env, sb, ip) {
+  if (!key || !env.SECRET_KEY) return false;
+  const rk = "api:" + (ip || "unknown");
+  if (await rlBlocked(sb, rk)) return false;
+  if (safeEq(key, env.SECRET_KEY)) return true;
+  await rlFail(sb, rk, RL_API);
+  return false;
+}
+
+// PIN de vendedor: true si es incorrecto O si está bloqueado por demasiados fallos.
+// El token ya se validó antes, así que el contador es por vendedor (no por IP).
+async function pinIncorrecto(sb, vend, pin, vendedorId) {
+  if (!vend || !vend.pin) return false;
+  const key = "pin:" + String(vendedorId || vend.id || "?");
+  if (await rlBlocked(sb, key)) return true;
+  if (safeEq(vend.pin, pin || "")) { await rlReset(sb, key); return false; }
+  await rlFail(sb, key, RL_PIN);
+  return true;
 }
 
 // ── TOTP (RFC 6238) — 2FA del Admin sin depender de ningún token de
@@ -4671,12 +5036,638 @@ async function totpVerificar(secretBase32, codigo) {
   return false;
 }
 
+// ── SEGURIDAD: comparación segura, límite de intentos, CORS ───────
+// Comparación en tiempo constante (no revela cuántos caracteres coinciden).
+function safeEq(a, b) {
+  const x = new TextEncoder().encode(String(a ?? "")), y = new TextEncoder().encode(String(b ?? ""));
+  let r = x.length ^ y.length;
+  const n = Math.max(x.length, y.length);
+  for (let i = 0; i < n; i++) r |= (x[i] || 0) ^ (y[i] || 0);
+  return r === 0;
+}
+
+// Límite de intentos. Estado en Supabase config/rl_<clave> ({n, start, until, strikes}).
+// Cada bloqueo dura el doble que el anterior (hasta 24 h). Si Supabase falla, NO se bloquea
+// (mejor abierto que dejar al admin fuera por una caída). Caché local 20 s para no leer
+// la base en cada petición.
+const MIN = 60 * 1000;
+const RL_LOGIN     = { max: 5,  windowMs: 15 * MIN, baseLockMs: 15 * MIN };
+const RL_API       = { max: 15, windowMs: 15 * MIN, baseLockMs: 15 * MIN };
+const RL_TOTP_ALL  = { max: 10, windowMs: 15 * MIN, baseLockMs: 15 * MIN };
+const RL_PIN       = { max: 8,  windowMs: 15 * MIN, baseLockMs: 15 * MIN };
+const RL_CACHE = new Map();
+const RL_TTL = 20 * 1000;
+
+/** Devuelve el instante (ms) hasta el que está bloqueada la clave, o 0 si no lo está. */
+async function rlBlocked(sb, key) {
+  const now = Date.now(), c = RL_CACHE.get(key);
+  if (c && c.exp > now) return c.until > now ? c.until : 0;
+  let rec = null;
+  try { rec = await sb.get("config", "rl_" + key); } catch (_) { /* fail-open */ }
+  const until = rec && rec.until > now ? rec.until : 0;
+  RL_CACHE.set(key, { until, n: rec ? rec.n || 0 : 0, exp: now + RL_TTL });
+  return until;
+}
+
+async function rlFail(sb, key, cfg) {
+  const now = Date.now();
+  let rec = null;
+  try { rec = await sb.get("config", "rl_" + key); } catch (_) { /* fail-open */ }
+  rec = rec ? { n: rec.n || 0, start: rec.start || now, until: rec.until || 0, strikes: rec.strikes || 0 } : { n: 0, start: now, until: 0, strikes: 0 };
+  if (rec.until && now - rec.until > 24 * 60 * MIN) rec.strikes = 0;      // el historial se olvida tras 24 h limpio
+  if (now - rec.start > cfg.windowMs) { rec.n = 0; rec.start = now; }
+  rec.n++;
+  if (rec.n >= cfg.max) {
+    rec.strikes++;
+    rec.until = now + Math.min(cfg.baseLockMs * Math.pow(2, rec.strikes - 1), 24 * 60 * MIN);
+    rec.n = 0; rec.start = now;
+  }
+  try { await sb.set("config", "rl_" + key, rec); } catch (_) { /* fail-open */ }
+  RL_CACHE.set(key, { until: rec.until > now ? rec.until : 0, n: rec.n, exp: now + RL_TTL });
+}
+
+/** Tras un acceso correcto: borra los fallos pendientes (solo escribe si había alguno). */
+async function rlReset(sb, key) {
+  const c = RL_CACHE.get(key), now = Date.now();
+  if (c && c.exp > now && !c.n && !c.until) return;
+  let rec = null;
+  try { rec = await sb.get("config", "rl_" + key); } catch (_) { return; }
+  if (rec && (rec.n || 0) > 0 && !(rec.until > now)) {
+    try { await sb.set("config", "rl_" + key, { n: 0, start: now, until: rec.until || 0, strikes: rec.strikes || 0 }); } catch (_) {}
+  }
+  RL_CACHE.set(key, { until: rec && rec.until > now ? rec.until : 0, n: 0, exp: now + RL_TTL });
+}
+
+function tooMany(until) {
+  const sec = Math.max(1, Math.ceil((until - Date.now()) / 1000));
+  return new Response(JSON.stringify({
+    ok: false, bloqueado: true, retryAfter: sec,
+    error: "Demasiados intentos. Intenta de nuevo en " + Math.ceil(sec / 60) + " min."
+  }), { status: 429, headers: { ...CORS, "Retry-After": String(sec) } });
+}
+
+// CORS con lista blanca (env.ALLOWED_ORIGINS). Sin la variable: comportamiento anterior (*).
+// Tolerante al pegar la lista: separa por coma, punto y coma, espacios o saltos de línea, y compara sin
+// distinguir mayúsculas, sin barra final y sin comillas (el navegador envía el origen sin barra: "https://x.com").
+// OJO: CORS solo protege a navegadores; no sustituye la autenticación.
+function normalizarOrigen(o) {
+  return String(o || "").trim().replace(/^["']+|["']+$/g, "").replace(/\/+$/, "").toLowerCase();
+}
+function aplicarCors(request, env, res) {
+  const lista = String(env.ALLOWED_ORIGINS || "").split(/[\s,;]+/).map(normalizarOrigen).filter(Boolean);
+  if (!lista.length) return res;
+  const origin = request.headers.get("Origin");
+  const h = new Headers(res.headers);
+  h.append("Vary", "Origin");
+  if (origin && lista.includes(normalizarOrigen(origin))) h.set("Access-Control-Allow-Origin", origin);
+  else h.delete("Access-Control-Allow-Origin");
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
+}
+
+// ── DEVOLUCIÓN EN BLOQUE ───────────────────────────────────────────
+// Antes: 5 peticiones a Supabase POR PRODUCTO (leer/actualizar consignación, leer/actualizar stock y
+// una lectura extra del total) → con más de ~9 productos se pasaba del límite de 50 subrequests del
+// plan gratuito ("Too many subrequests by single Worker invocation"). Ahora son ~8 peticiones sin
+// importar cuántos productos: 2 lecturas en bloque, 2 escrituras en bloque y el registro.
+//
+// Garantías: (1) todo lo devuelto sube a stock_bodega y baja de stock_consignacion, con stock_total
+// recalculado; (2) todo o nada: si falta un producto en Stock no se toca nada; si falla la escritura del
+// stock se deshace la de consignación; (3) idempotente: reenviar el mismo devId no aplica dos veces.
+async function registrarDevolucionEnBloque(sb, d) {
+  const itemsRaw = Array.isArray(d.items) ? d.items : [];
+  const int = (v) => parseInt(v) || 0;
+  const devIdOk = /^DEV_[A-Za-z0-9_-]{6,60}$/.test(String(d.devId || ""));
+  const devId = devIdOk ? String(d.devId) : `DEV_${Date.now()}`;
+
+  if (devIdOk) {
+    const previo = await sb.get("devoluciones", devId);
+    if (previo) return { ok: true, duplicado: true, devolucionId: devId, fecha: previo.fecha };
+  }
+
+  // Une líneas repetidas del mismo registro de consignación
+  const lineas = new Map();
+  for (const it of itemsRaw) {
+    const id = String(it && it.id != null ? it.id : "");
+    const cant = Math.max(0, int(it && it.cantidad));
+    if (!id || cant <= 0) continue;
+    const l = lineas.get(id) || { id, codigo: it.codigo, nombre: it.nombre, cantidad: 0, efectivo: 0 };
+    l.cantidad += cant; lineas.set(id, l);
+  }
+  if (!lineas.size) return { ok: false, error: "No hay productos con cantidad para devolver" };
+
+  const consDocs = new Map((await sb.getMany("consignacion", [...lineas.keys()])).map(c => [String(c.id), c]));
+  const advertencias = [];
+  const consNuevas = [], consOriginales = [], deltaPorCodigo = new Map();
+  for (const l of lineas.values()) {
+    const cons = consDocs.get(l.id);
+    const codigo = String((cons && cons.codigo) || l.codigo || "");
+    if (!codigo) return { ok: false, error: "Falta el código de un producto (id " + l.id + "). No se registró nada." };
+    let efectivo = l.cantidad;
+    if (cons) {
+      const disponible = Math.max(0, int(cons.cantidad) - int(cons.vendido));
+      if (efectivo > disponible) {
+        advertencias.push(`${codigo}: se pidieron ${l.cantidad} pero solo había ${disponible} disponibles; se devolvieron ${disponible}`);
+        efectivo = disponible;
+      }
+      const nuevaCant = int(cons.cantidad) - efectivo;
+      consOriginales.push(cons);
+      consNuevas.push({ ...cons, cantidad: nuevaCant, estado: nuevaCant <= int(cons.vendido) ? "devuelto" : "activo" });
+    } else {
+      advertencias.push(`${codigo}: no se encontró su registro de consignación; se devolvió igual a bodega`);
+    }
+    l.efectivo = efectivo; l.codigoFinal = codigo; if (!l.nombre && cons) l.nombre = cons.nombre;
+    if (efectivo > 0) deltaPorCodigo.set(codigo, (deltaPorCodigo.get(codigo) || 0) + efectivo);
+  }
+
+  const stockDocs = new Map((await sb.getMany("stock", [...deltaPorCodigo.keys()])).map(s => [String(s.id), s]));
+  const sinStock = [...deltaPorCodigo.keys()].filter(c => !stockDocs.has(c));
+  if (sinStock.length) {
+    return { ok: false, error: "Estos productos no existen en Stock, así que no se pueden regresar a bodega: " + sinStock.join(", ") + ". No se registró nada; desmárcalos e inténtalo de nuevo." };
+  }
+  const stockNuevos = [], stockOriginales = [], devuelto = [];
+  for (const [codigo, delta] of deltaPorCodigo) {
+    const st = stockDocs.get(codigo);
+    const nuevo = { ...st,
+      stock_bodega:       int(st.stock_bodega) + delta,
+      stock_consignacion: Math.max(0, int(st.stock_consignacion) - delta) };
+    nuevo.stock_total = Supabase.COMPONENTES_STOCK.reduce((a, c) => a + int(nuevo[c]), 0);
+    stockOriginales.push(st); stockNuevos.push(nuevo);
+    devuelto.push({ codigo, cantidad: delta, stock_bodega: nuevo.stock_bodega });
+  }
+
+  const fecha = new Date().toISOString();
+  // El historial guarda lo REALMENTE devuelto (no lo pedido) y su total de unidades. Se escribe ANTES de tocar
+  // consignación/stock: sirve de candado por devId (un reenvío se detecta como duplicado) y, si no se puede guardar,
+  // no se aplica nada.
+  const registro = [...lineas.values()].filter(l => l.efectivo > 0).map(l => ({ id: l.id, codigo: l.codigoFinal, nombre: l.nombre || "", cantidad: l.efectivo }));
+  const totalUnidades = registro.reduce((a, x) => a + x.cantidad, 0);
+  try {
+    await sb.set("devoluciones", devId, { id: devId, vendedor: d.vendedor, fecha, total_unidades: totalUnidades, items: JSON.stringify(registro) });
+  } catch (e) {
+    return { ok: false, error: "No se pudo guardar el registro de la devolución; no se aplicó nada. Inténtalo de nuevo. (" + e.message + ")" };
+  }
+  const quitarRegistro = async () => { try { await sb.deleteMany("devoluciones", [devId]); } catch (e3) { console.error("REGISTRAR_DEVOLUCION: no se pudo quitar el registro", e3); } };
+  try { await sb.setMany("consignacion", consNuevas); }
+  catch (e) { await quitarRegistro(); return { ok: false, error: "No se pudo actualizar la consignación; no se registró la devolución. Inténtalo de nuevo. (" + e.message + ")" }; }
+  try {
+    await sb.setMany("stock", stockNuevos);
+  } catch (e) {
+    // Deshacer todo para no dejar piezas "devueltas" que no llegaron a bodega (incluye bloques de stock ya escritos)
+    try { await sb.setMany("consignacion", consOriginales); }
+    catch (e2) { console.error("REGISTRAR_DEVOLUCION: no se pudo deshacer consignación", e2); }
+    try { await sb.setMany("stock", stockOriginales); }
+    catch (e2) { console.error("REGISTRAR_DEVOLUCION: no se pudo restaurar el stock", e2); }
+    await quitarRegistro();
+    return { ok: false, error: "No se pudo actualizar el stock; no se registró la devolución. Inténtalo de nuevo. (" + e.message + ")" };
+  }
+  return { ok: true, devolucionId: devId, fecha, devuelto, registro, advertencias };
+}
+
+// ── VENTA DIRECTA: descuento atómico de inventario ─────────────────────────────────────────────────
+// La venta física ya ocurrió, así que SIEMPRE se registra; lo que cambia es que el descuento de stock sale de la misma reserva
+// atómica de la tienda online (reservar_stock_pedido: primero tienda, luego bodega, con bloqueo de fila). Si hay menos stock del
+// vendido, se descuenta lo que haya y se informa en `faltantes` para que se revise el inventario (antes se descontaba de más
+// sin aviso o, con dos ventas simultáneas, ambas "vendían" la misma unidad).
+// La reserva suma a stock_reservado; aquí se pasa a stock_vendido y se recalcula stock_total.
+async function descontarStockVentaDirecta(sb, items) {
+  const itemsSinStock = [], faltantes = [], pedido = new Map();
+  for (const it of items) {
+    if (!it || !it.codigo) { itemsSinStock.push("SIN_CODIGO"); continue; }
+    const c = String(it.codigo); pedido.set(c, (pedido.get(c) || 0) + (parseInt(it.cantidad) || 1));
+  }
+  if (!pedido.size) return { itemsSinStock, faltantes };
+  const fichas = new Map((await sb.getMany("stock", [...pedido.keys()])).map(x => [String(x.id), x]));
+  const descontado = new Map(), clasico = new Set();
+  for (const [codigo, cant] of pedido) {
+    const f = fichas.get(codigo);
+    if (!f) { itemsSinStock.push(codigo); continue; }
+    let desc = 0;
+    try {
+      let r = await sb.reservar(codigo, cant);
+      if (r && r.ok) desc = cant;
+      else {                                                  // no alcanza: tomar lo que haya (máx. 2 intentos por carreras)
+        for (let intento = 0; intento < 2 && !desc; intento++) {
+          const fr = await sb.get("stock", codigo), disp = Math.max(0, _int(fr && fr.stock_tienda) + _int(fr && fr.stock_bodega));
+          const parcial = Math.min(cant, disp); if (parcial <= 0) break;
+          r = await sb.reservar(codigo, parcial); if (r && r.ok) desc = parcial;
+        }
+      }
+    } catch (e) {
+      // Si la reserva atómica falla por un error de comunicación/Supabase (no por falta de stock), no se deja la venta sin
+      // descontar: se usa el descuento anterior (lee y escribe: primero tienda, luego bodega) para ESTE producto.
+      console.error("descontarStockVentaDirecta: reservar falló, descuento clásico", codigo, e);
+      try {
+        const fr = await sb.get("stock", codigo), tienda = _int(fr && fr.stock_tienda), bodega = _int(fr && fr.stock_bodega);
+        const dT = Math.min(tienda, cant), dB = Math.min(bodega, cant - dT);
+        await sb.update("stock", codigo, { stock_tienda: tienda - dT, stock_bodega: bodega - dB });
+        desc = dT + dB; clasico.add(codigo);
+      } catch (e2) { console.error("descontarStockVentaDirecta: descuento clásico falló", codigo, e2); }
+    }
+    descontado.set(codigo, desc);
+    if (desc < cant) faltantes.push({ codigo, vendido: cant, descontado: desc });
+  }
+  // Pasar de reservado a vendido y recalcular el total (lectura fresca, una sola petición)
+  const frescas = new Map((await sb.getMany("stock", [...descontado.keys()])).map(x => [String(x.id), x]));
+  for (const [codigo, desc] of descontado) {
+    const fr = frescas.get(codigo); if (!fr) continue;
+    const total = Supabase.COMPONENTES_STOCK.reduce((a, c) => a + _int(fr[c]), 0);
+    await sb.update("stock", codigo, { stock_reservado: clasico.has(codigo) ? _int(fr.stock_reservado) : Math.max(0, _int(fr.stock_reservado) - desc), stock_vendido: _int(fr.stock_vendido) + (pedido.get(codigo) || 0), stock_total: total });
+  }
+  return { itemsSinStock, faltantes };
+}
+
+// ── MOVIMIENTOS DE STOCK EN BLOQUE ─────────────────────────────────
+// Antes cada código/producto hacía de 2 a 4 peticiones a Supabase y el plan gratuito de Cloudflare limita a 50 por
+// operación (~11-15 productos). Ahora: lectura en bloque + cálculo en memoria (en el mismo orden y con las mismas
+// reglas que antes) + escritura en bloque. ~4 peticiones sin importar cuántos productos.
+const _int = (v) => parseInt(v) || 0;
+function conPatchStock(st, patch) {
+  const n = { ...st, ...patch };
+  if (Supabase.COMPONENTES_STOCK.some(c => patch[c] !== undefined)) n.stock_total = Supabase.COMPONENTES_STOCK.reduce((a, c) => a + _int(n[c]), 0);
+  return n;
+}
+async function cargarStockMap(sb, codigos) {
+  return new Map((await sb.getMany("stock", (codigos || []).map(String))).map(x => [String(x.id), x]));
+}
+
+async function stockAsignarTiendaEnBloque(sb, d) {
+  const codigos = Array.isArray(d.codigos) ? d.codigos.map(String) : [];
+  const stock = await cargarStockMap(sb, codigos), originales = new Map(stock), tocados = new Set();
+  for (const codigo of codigos) {
+    const s = stock.get(codigo); if (!s) continue;
+    const disponible = _int(s.stock_bodega);
+    const cant = Math.min(d.cantidad || 1, disponible);                       // no mover más de lo que hay
+    if (cant <= 0) continue;
+    stock.set(codigo, conPatchStock(s, { stock_bodega: disponible - cant, stock_tienda: _int(s.stock_tienda) + cant, enCatalogo: true, estado: "tienda" }));
+    tocados.add(codigo);
+  }
+  if (tocados.size) {
+    const orig = [...tocados].map(c => originales.get(c));
+    try { await guardarStockAtomico(sb, orig, [...tocados].map(c => stock.get(c))); }
+    catch (e) { return { ok: false, error: "No se pudo actualizar el stock (no se guardó nada): " + e.message }; }
+  }
+  return { ok: true };
+}
+
+async function stockDevolverBodegaEnBloque(sb, d) {
+  const codigos = Array.isArray(d.codigos) ? d.codigos.map(String) : [];
+  const origen = d.origen || "tienda";
+  const stock = await cargarStockMap(sb, codigos), originales = new Map(stock), tocados = new Set();
+  for (const codigo of codigos) {
+    const s = stock.get(codigo); if (!s) continue;
+    const enOrigen = origen === "tienda" ? _int(s.stock_tienda) : _int(s.stock_consignacion);   // no inventar stock
+    const cant = Math.min(d.cantidad || 1, enOrigen);
+    if (cant <= 0) continue;                                                   // ya no hay nada que devolver
+    const patch = { stock_bodega: _int(s.stock_bodega) + cant, estado: "bodega" };
+    if (origen === "tienda") { patch.stock_tienda = enOrigen - cant; patch.enCatalogo = false; }
+    else patch.stock_consignacion = enOrigen - cant;
+    stock.set(codigo, conPatchStock(s, patch)); tocados.add(codigo);
+  }
+  if (tocados.size) {
+    const orig = [...tocados].map(c => originales.get(c));
+    try { await guardarStockAtomico(sb, orig, [...tocados].map(c => stock.get(c))); }
+    catch (e) { return { ok: false, error: "No se pudo actualizar el stock (no se guardó nada): " + e.message }; }
+  }
+  return { ok: true };
+}
+
+/** Guarda stock; si falla a mitad (varios bloques de 100), restaura los originales de lo ya escrito y relanza el error. */
+async function guardarStockAtomico(sb, originales, nuevos) {
+  try { await sb.setMany("stock", nuevos); }
+  catch (e) {
+    try { await sb.setMany("stock", originales); } catch (e2) { console.error("guardarStockAtomico: no se pudo restaurar", e2); }
+    throw e;
+  }
+}
+
+/** Escribe consignación y stock "todo o nada": si el stock falla, se restauran/borran las filas de consignación. */
+async function guardarConsignacionYStock(sb, consNuevos, stockDocs, stockOrig) {
+  const prev = new Map((await sb.getMany("consignacion", consNuevos.map(c => c.id))).map(c => [String(c.id), c]));
+  await sb.setMany("consignacion", consNuevos);
+  try {
+    if (stockDocs.length) await guardarStockAtomico(sb, stockOrig || [], stockDocs);
+  } catch (e) {
+    try {
+      const restaurar = consNuevos.map(c => prev.get(String(c.id))).filter(Boolean);
+      if (restaurar.length) await sb.setMany("consignacion", restaurar);
+      const borrar = consNuevos.filter(c => !prev.has(String(c.id))).map(c => c.id);
+      if (borrar.length) await sb.deleteMany("consignacion", borrar);
+    } catch (e2) { console.error("guardarConsignacionYStock: no se pudo deshacer", e2); }
+    throw e;
+  }
+}
+
+async function stockAsignarVendedorEnBloque(sb, d) {
+  const codigos = Array.isArray(d.codigos) ? d.codigos.map(String) : [];
+  const stock = await cargarStockMap(sb, codigos), originales = new Map(stock), tocados = new Set();
+  const asignados = [], sinStock = [], consNuevos = [], ids = new Set();
+  const ahora = Date.now(), fecha = new Date().toISOString();
+  for (const codigo of codigos) {
+    const s = stock.get(codigo);
+    if (!s) { sinStock.push(codigo); continue; }
+    const disponible = _int(s.stock_bodega);
+    const cant = Math.min(d.cantidad || 1, disponible);
+    if (cant <= 0) { sinStock.push(codigo); continue; }
+    let id = `CONS_${ahora}_${codigo}_${Math.random().toString(36).slice(2, 7)}`; while (ids.has(id)) id += "x"; ids.add(id);
+    consNuevos.push({ id, vendedor: d.vendedor, codigo, codigoBase: s.codigoBase || codigo, talla: s.talla || "", nombre: s.nombre || "",
+      nombre_base: s.nombre_base || s.nombre || "", categoria: s.categoria || "", precio: s.precio || 0, cantidad: cant, vendido: 0,
+      foto: s.foto || "", fecha, estado: "activo" });
+    stock.set(codigo, conPatchStock(s, { stock_bodega: disponible - cant, stock_consignacion: _int(s.stock_consignacion) + cant, estado: "consignacion" }));
+    tocados.add(codigo); asignados.push(codigo);
+  }
+  if (!consNuevos.length) return { ok: true, asignados, sinStock };
+  try { await guardarConsignacionYStock(sb, consNuevos, [...tocados].map(c => stock.get(c)), [...tocados].map(c => originales.get(c))); }
+  catch (e) { return { ok: false, error: "No se pudo asignar (no se guardó nada): " + e.message, asignados: [], sinStock: codigos }; }
+  return { ok: true, asignados, sinStock };
+}
+
+async function registrarEntregaEnBloque(sb, d) {
+  const items = Array.isArray(d.items) ? d.items : [];
+  const estadoInicial = d.borrador ? "borrador" : "activo";          // borrador: descuenta stock pero invisible hasta FINALIZAR_ENTREGA_VENDEDOR
+  const fallidos = [], validos = [], usados = new Set();
+  const ahora = Date.now(), fecha = new Date().toISOString();
+  for (const item of items) {
+    const codigo = item && item.codigo != null ? String(item.codigo) : "";
+    if (!codigo) { fallidos.push({ codigo: "(sin código)", error: "falta el código del producto" }); continue; }
+    const cant = _int(item.cantidad) || 1;
+    if (cant < 1) { fallidos.push({ codigo, error: "cantidad inválida" }); continue; }
+    const id = item.id || `CONS_${ahora}_${codigo}_${Math.random().toString(36).slice(2, 7)}`;
+    if (usados.has(String(id))) { fallidos.push({ codigo, error: "registro repetido en la misma entrega" }); continue; }
+    usados.add(String(id)); validos.push({ item, codigo, cant, id });
+  }
+  if (!validos.length) return { ok: fallidos.length === 0, guardados: [], fallidos };
+  const stock = await cargarStockMap(sb, validos.map(v => v.codigo)), originales = new Map(stock), tocados = new Set();
+  const consNuevos = [], guardados = [];
+  for (const { item, codigo, cant, id } of validos) {
+    consNuevos.push({ id, vendedor: d.vendedor, codigo, nombre: item.nombre, codigoBase: item.codigoBase || codigo, talla: item.talla || "",
+      nombre_base: item.nombre_base || item.nombre, categoria: item.categoria || "", precio: item.precio || 0, cantidad: cant, vendido: 0,
+      foto: item.foto || "", fecha, estado: estadoInicial });
+    const s = stock.get(codigo);
+    if (s) { stock.set(codigo, conPatchStock(s, { stock_bodega: Math.max(0, _int(s.stock_bodega) - cant), stock_consignacion: _int(s.stock_consignacion) + cant })); tocados.add(codigo); }
+    guardados.push(codigo);
+  }
+  try { await guardarConsignacionYStock(sb, consNuevos, [...tocados].map(c => stock.get(c)), [...tocados].map(c => originales.get(c))); }
+  catch (e) {
+    const motivo = "No se pudo guardar la entrega (no se guardó nada): " + e.message;
+    return { ok: false, guardados: [], fallidos: [...validos.map(v => ({ codigo: v.codigo, error: motivo })), ...fallidos] };
+  }
+  return { ok: fallidos.length === 0, guardados, fallidos };
+}
+
+// ── CATEGORÍAS: detecta productos mal clasificados (p. ej. un anillo en «Conjuntos») ─────────────────────────────
+// Los anillos (sueltos, dúo o trío) son SIEMPRE «Anillos»; «Conjuntos» es otra cosa (collar + aretes, etc.). Dos reglas de alta
+// confianza: 1) el nombre es de anillo/alianza/argolla y la categoría no es AN; 2) el código empieza con una categoría conocida
+// distinta a la guardada. Solo propone: quien confirma es el usuario (CORREGIR_CATEGORIAS).
+const CATEGORIAS_TIENDA = { AN: "Anillos", CO: "Collares", AR: "Aretes", PU: "Pulseras", CJ: "Conjuntos", CD: "Cadenas", DJ: "Dijes", TB: "Tobilleras", RS: "Rosarios" };
+// El Admin Tienda usaba otros códigos (CN conjunto, PL pulsera) y generaba «XX-1234» al azar; Stock usa CJ/PU y [CAT][MAT][NNN].
+const CATEGORIAS_ANTIGUAS = { CN: "CJ", PL: "PU" };
+// Categorías vigentes: las de arriba + las agregadas/renombradas desde el «Editor de la página» (config.categorias).
+async function categoriasTiendaActual(sb) {
+  const out = { ...CATEGORIAS_TIENDA };
+  try { const cfg = await sb.get("config", "settings"); for (const c of (cfg && Array.isArray(cfg.categorias) ? cfg.categorias : [])) if (c && /^[A-Z]{2}$/.test(String(c.codigo))) out[c.codigo] = String(c.es || c.codigo); } catch (_) {}
+  return out;
+}
+// Valida la lista de categorías que llega desde el editor (se rechaza completa si algo no cumple)
+function validarCategorias(lista) {
+  if (!Array.isArray(lista) || lista.length > 40) return "lista de categorías inválida";
+  const vistos = new Set();
+  for (const c of lista) {
+    if (!c || typeof c !== "object") return "categoría inválida";
+    if (!/^[A-Z]{2}$/.test(String(c.codigo || ""))) return `código inválido «${c.codigo}»: deben ser 2 letras mayúsculas`;
+    if (vistos.has(c.codigo)) return `código repetido: ${c.codigo}`; vistos.add(c.codigo);
+    if (!String(c.es || "").trim() || String(c.es).length > 40 || String(c.en || "").length > 40) return `nombre inválido en ${c.codigo}`;
+  }
+  return null;
+}
+const _codigoFormatoAdmin = (c) => /^[A-Za-z]{2}-\d+/.test(String(c || ""));
+function analizarCategorias(items, cats) {
+  cats = cats || CATEGORIAS_TIENDA;
+  const activos = items.filter(p => p && p.estado !== "inactivo");
+  const publicados = activos.filter(p => p.enCatalogo === true || p.enCatalogo === "true" || p.enCatalogo === "TRUE");
+  const cuenta = {}; for (const p of publicados) { const c = String(p.categoria || "").toUpperCase().trim() || "(sin categoría)"; cuenta[c] = (cuenta[c] || 0) + 1; }
+  const dudosas = [];
+  for (const p of activos) {
+    const catRaw = String(p.categoria || "").toUpperCase().trim(), cat = CATEGORIAS_ANTIGUAS[catRaw] || catRaw, cod = String(p.codigo || p.id || ""), prefRaw = (cod.match(/^[A-Za-z]{2}/) || [""])[0].toUpperCase(), pref = CATEGORIAS_ANTIGUAS[prefRaw] || prefRaw;
+    const nombre = String(p.nombre_base || p.nombre || ""), antiguo = _codigoFormatoAdmin(cod);
+    let propuesta = null, motivo = "";
+    if (/^\s*(anillo|alianza|argolla|sortija)s?\b/i.test(nombre) && cat !== "AN") { propuesta = "AN"; motivo = `Es un anillo («${nombre}») pero está en ${cats[cat] || cat || "sin categoría"}`; }
+    else if (antiguo && pref === "CD" && /^\s*(collar|gargantilla)/i.test(nombre)) { propuesta = "CO"; motivo = `Es un collar («${nombre}») con código de cadena del Admin (${cod})`; }
+    else if (cats[pref] && cat !== pref) { propuesta = pref; motivo = catRaw ? `El código empieza por ${prefRaw} pero su categoría es ${cats[catRaw] || catRaw}` : "Sin categoría"; }
+    else if (antiguo && cats[cat]) { propuesta = cat; motivo = `Código con formato antiguo del Admin (${cod}): no coincide con el que genera Stock para la etiqueta`; }
+    if (propuesta) dudosas.push({ codigo: cod, nombre, categoria: catRaw, propuesta, motivo, publicado: publicados.includes(p), codigoAntiguo: antiguo || !!CATEGORIAS_ANTIGUAS[prefRaw] });
+  }
+  return { publicados: publicados.length, porCategoria: cuenta, dudosas };
+}
+
+// ── CAMBIO DE CÓDIGO SEGURO ──────────────────────────────────────────────────────────────────────────────────
+// Corrige el código de un diseño (todas sus tallas juntas) cuando está mal codificado (p. ej. un anillo con código CJ…).
+// Formato del código: [CAT2][MAT1][NNN] + talla (ANP174T7). El código nuevo SIEMPRE lo asigna el sistema: el siguiente número libre
+// de ese prefijo, mirando TODOS los productos (también inactivos, que conservan su código). Cada código nuevo se crea con
+// insertIfAbsent (ON CONFLICT DO NOTHING): si alguien lo tomó a la vez, se deshace y se prueba el siguiente. Todo o nada.
+// El producto viejo queda inactivo y en cero (reemplazadoPor) y el nuevo lleva codigoAnterior + etiquetaPendiente para que se
+// cambie la etiqueta física. Las consignaciones activas pasan al código nuevo; pedidos y ventas pasadas quedan como histórico.
+const _baseDeCodigo = (c) => String(c || "").replace(/[DCU]?T\d+(\.\d+)?$/i, "").trim();
+function _planCambioCodigo(ctx, codigo, categoria, matForzado) {
+  const cat = String(categoria || "").toUpperCase();
+  if (!(ctx.cats || CATEGORIAS_TIENDA)[cat]) return { ok: false, codigo, error: "categoría inválida" };
+  const base = _baseDeCodigo(codigo).toUpperCase();
+  const skus = ctx.stock.filter(x => x.estado !== "inactivo" && _baseDeCodigo(x.codigo).toUpperCase() === base);
+  if (!skus.length) return { ok: false, codigo, error: "el producto no existe o está inactivo" };
+  const mm = /^[A-Z]{2}([A-Z])\d+$/.exec(base);
+  const mat = String(skus[0].material || skus[0].nombre_base || skus[0].nombre || "").toLowerCase();
+  const delCampo = mat.includes("laminado") ? "L" : mat.includes("oro") ? "O" : mat.includes("acero") ? "A" : mat.includes("reloj") ? "W" : mat.includes("plata") ? "P" : "X";
+  const forz = String(matForzado || "").toUpperCase();
+  // Letra de material: la que elige el usuario > la del código (si no es X) > la del campo material > X (sin definir)
+  const matChar = /^[POLAW]$/.test(forz) ? forz : (mm && mm[1] !== "X") ? mm[1] : delCampo;
+  const prefijo = cat + matChar;
+  let maxN = 0;
+  for (const code of ctx.codigos) { const b = _baseDeCodigo(code).toUpperCase(); if (b.startsWith(prefijo) && /^\d+$/.test(b.slice(prefijo.length))) maxN = Math.max(maxN, parseInt(b.slice(prefijo.length), 10)); }
+  for (const code of ctx.reservados) { const b = _baseDeCodigo(code).toUpperCase(); if (b.startsWith(prefijo) && /^\d+$/.test(b.slice(prefijo.length))) maxN = Math.max(maxN, parseInt(b.slice(prefijo.length), 10)); }
+  for (let intento = 0; intento < 50; intento++) {
+    const nuevoBase = prefijo + String(++maxN).padStart(3, "0");
+    const mapa = skus.map(x => ({ viejo: x.codigo, nuevo: nuevoBase + String(x.codigo).slice(_baseDeCodigo(x.codigo).length) }));
+    if (mapa.every(m => !ctx.codigos.has(m.nuevo.toUpperCase()) && !ctx.reservados.has(m.nuevo.toUpperCase()))) return { ok: true, codigo, base, nuevoBase, categoria: cat, mapa, skus, matChar, materialSinDefinir: matChar === "X" };
+  }
+  return { ok: false, codigo, error: "no se encontró un código libre" };
+}
+async function _contextoCambioCodigo(sb) {
+  const stock = await sb.getAll("stock");
+  return { stock, cats: await categoriasTiendaActual(sb), codigos: new Set(stock.map(x => String(x.codigo || x.id).toUpperCase())), reservados: new Set() };
+}
+// Solo calcula (no escribe): qué código nuevo recibiría cada diseño
+async function sugerirCodigos(sb, items) {
+  const ctx = await _contextoCambioCodigo(sb), out = [], vistos = new Set();
+  for (const it of items) {
+    const b = _baseDeCodigo(it.codigo).toUpperCase(); if (vistos.has(b)) continue; vistos.add(b);
+    const p = _planCambioCodigo(ctx, it.codigo, it.categoria, it.material);
+    if (p.ok) { p.mapa.forEach(m => ctx.reservados.add(m.nuevo.toUpperCase())); out.push({ ok: true, codigoBase: p.base, nuevoBase: p.nuevoBase, categoria: p.categoria, mapa: p.mapa, materialSinDefinir: p.materialSinDefinir }); }
+    else out.push({ ok: false, codigo: it.codigo, error: p.error });
+  }
+  return out;
+}
+async function cambiarCodigos(sb, items) {
+  const ctx = await _contextoCambioCodigo(sb), consig = await sb.getAll("consignacion"), resultados = [], vistos = new Set();
+  for (const it of items) {
+    const b = _baseDeCodigo(it.codigo).toUpperCase(); if (vistos.has(b)) continue; vistos.add(b);
+    let hecho = null;
+    for (let intento = 0; intento < 3 && !hecho; intento++) {
+      const p = _planCambioCodigo(ctx, it.codigo, it.categoria, it.material);
+      if (!p.ok) { resultados.push({ ok: false, codigo: it.codigo, error: p.error }); hecho = "error"; break; }
+      if (p.materialSinDefinir) { resultados.push({ ok: false, codigo: it.codigo, error: "el material no está definido: elige la letra (P plata, O oro, L laminado, A acero, W reloj)" }); hecho = "error"; break; }
+      const ahora = new Date().toISOString(), creados = [];
+      const matElegido = ({ P: "Plata", O: "Oro", L: "Oro laminado", A: "Acero", W: "Reloj" })[String(it.material || "").toUpperCase()] || "";   // si el usuario eligió la letra, el producto también recibe ese material
+      let choque = false;
+      try {
+        for (const m of p.mapa) {                                                // 1) crear los nuevos (candado atómico)
+          const viejo = p.skus.find(x => x.codigo === m.viejo), { id, ...datos } = viejo;
+          const nuevo = { ...datos, ...(matElegido ? { material: matElegido } : {}), codigo: m.nuevo, codigoBase: p.nuevoBase, categoria: p.categoria, codigoAnterior: m.viejo, codigoCorregidoEn: ahora, etiquetaPendiente: true };
+          if (!(await sb.insertIfAbsent("stock", m.nuevo, nuevo))) { choque = true; break; }
+          creados.push(m.nuevo);
+        }
+      } catch (e) { if (creados.length) await sb.deleteMany("stock", creados).catch(() => {}); resultados.push({ ok: false, codigo: it.codigo, error: "no se pudo crear el código nuevo: " + e.message }); hecho = "error"; break; }
+      if (choque) { if (creados.length) await sb.deleteMany("stock", creados).catch(() => {}); p.mapa.forEach(m => ctx.reservados.add(m.nuevo.toUpperCase())); continue; }   // otro lo tomó: siguiente número
+      const viejos = new Map(p.mapa.map(m => [m.viejo, m.nuevo]));
+      const consOrig = consig.filter(c => viejos.has(String(c.codigo))), consNuevas = consOrig.map(c => ({ ...c, codigo: viejos.get(String(c.codigo)), ...(c.codigoBase !== undefined ? { codigoBase: p.nuevoBase } : {}) }));
+      try {
+        if (consNuevas.length) await sb.setMany("consignacion", consNuevas);       // 2) consignaciones activas → código nuevo
+        await sb.setMany("stock", p.skus.map(x => ({ ...x, estado: "inactivo", enCatalogo: false, reemplazadoPor: viejos.get(x.codigo), stock_bodega: 0, stock_tienda: 0, stock_consignacion: 0, stock_reservado: 0, stock_total: 0 })));   // 3) el viejo queda inactivo y en cero
+      } catch (e) {                                                              // deshacer todo
+        if (consOrig.length) await sb.setMany("consignacion", consOrig).catch(() => {});
+        await sb.deleteMany("stock", creados).catch(() => {});
+        resultados.push({ ok: false, codigo: it.codigo, error: "no se pudo completar el cambio (se deshizo): " + e.message }); hecho = "error"; break;
+      }
+      p.mapa.forEach(m => { ctx.codigos.add(m.nuevo.toUpperCase()); });
+      try { await sb.set("cambios_codigo", `CC_${Date.now()}_${p.base}`, { fecha: ahora, desdeBase: p.base, haciaBase: p.nuevoBase, categoria: p.categoria, mapa: JSON.stringify(p.mapa), consignaciones: consNuevas.length }); } catch (_) {}
+      resultados.push({ ok: true, desde: p.base, hacia: p.nuevoBase, categoria: p.categoria, mapa: p.mapa, consignaciones: consNuevas.length }); hecho = "ok";
+    }
+    if (!hecho) resultados.push({ ok: false, codigo: it.codigo, error: "otro cambio ocupó los códigos a la vez; inténtalo de nuevo" });
+  }
+  return resultados;
+}
+
+// Auditoría de consistencia del stock (solo lectura). La usan la acción AUDITORIA_STOCK y el cron diario.
+async function auditarStock(sb) {
+  const [stockAud, consAud, vendAud] = await Promise.all([
+    sb.getAll("stock"), sb.getAll("consignacion"), sb.getAll("vendedores")
+  ]);
+  const vendMapAud = new Map(vendAud.map(v => [v.codigo, v.nombre || v.codigo]));
+
+  // Consignación real por código: suma de (cantidad - vendido) de
+  // items activos, más el detalle de qué vendedor tiene cuánto.
+  const consRealPorCodigo = new Map();
+  for (const c of consAud) {
+    if (c.estado !== "activo") continue;
+    const restante = Math.max(0, (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0));
+    if (restante <= 0) continue;
+    const cod = String(c.codigo||"").toUpperCase();
+    if (!consRealPorCodigo.has(cod)) consRealPorCodigo.set(cod, { total: 0, detalle: [] });
+    const entry = consRealPorCodigo.get(cod);
+    entry.total += restante;
+    entry.detalle.push({
+      id: c.id, vendedor: c.vendedor,
+      vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor,
+      vendedorExiste: vendMapAud.has(c.vendedor),
+      cantidad: restante
+    });
+  }
+
+  const discrepanciasConsignacion = [];
+  for (const s of stockAud) {
+    const cod = String(s.codigo||"").toUpperCase();
+    const registrado = parseInt(s.stock_consignacion) || 0;
+    const real = consRealPorCodigo.get(cod)?.total || 0;
+    if (registrado !== real) {
+      discrepanciasConsignacion.push({
+        codigo: s.codigo, nombre: s.nombre || "",
+        stock_consignacion_registrado: registrado,
+        consignacion_real: real,
+        diferencia: registrado - real,
+        detalleVendedores: consRealPorCodigo.get(cod)?.detalle || []
+      });
+    }
+  }
+
+  // Chequeos de sanidad básicos: negativos no deberían existir nunca.
+  const negativos = stockAud.filter(s =>
+    (parseInt(s.stock_bodega)||0) < 0 || (parseInt(s.stock_tienda)||0) < 0 ||
+    (parseInt(s.stock_consignacion)||0) < 0 || (parseInt(s.stock_reservado)||0) < 0
+  ).map(s => ({
+    codigo: s.codigo, nombre: s.nombre || "",
+    stock_bodega: parseInt(s.stock_bodega)||0, stock_tienda: parseInt(s.stock_tienda)||0,
+    stock_consignacion: parseInt(s.stock_consignacion)||0, stock_reservado: parseInt(s.stock_reservado)||0
+  }));
+
+  // Consignación "activa" pero cuyo código ya no existe en stock —
+  // huérfanos que pueden confundir reportes futuros.
+  const codigosStock = new Set(stockAud.map(s => String(s.codigo||"").toUpperCase()));
+  const consHuerfanas = consAud.filter(c =>
+    c.estado === "activo" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0 &&
+    !codigosStock.has(String(c.codigo||"").toUpperCase())
+  ).map(c => ({ id: c.id, codigo: c.codigo, vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor, cantidad: c.cantidad, vendido: c.vendido }));
+
+  // Piezas cerradas con "Ya vendida" (MARCAR_CONSIGNACION_VENDIDA) que
+  // en realidad nunca llegaron a contarse como venta real — típico de
+  // confundir esa opción (pensada solo para piezas YA liquidadas
+  // antes) con una venta nueva. Quedan invisibles para siempre: ya no
+  // aparecen en el inventario activo del vendedor (por eso "no
+  // aparece"), pero el stock nunca se movió y la comisión nunca se
+  // contó, y sin este chequeo no hay ninguna pantalla en la app para
+  // volver a encontrarlas.
+  const cerradosSinContar = consAud.filter(c =>
+    c.estado === "vendido" && (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0) > 0
+  ).map(c => ({
+    id: c.id, codigo: c.codigo, nombre: c.nombre || "",
+    vendedor: c.vendedor, vendedorNombre: vendMapAud.get(c.vendedor) || c.vendedor,
+    precio: c.precio || 0,
+    cantidad: parseInt(c.cantidad)||0, vendido: parseInt(c.vendido)||0,
+    pendiente: (parseInt(c.cantidad)||0) - (parseInt(c.vendido)||0)
+  }));
+
+  // stock_total debe ser bodega + tienda + consignación (así lo recalculan todas las operaciones)
+  const totalDescuadrado = stockAud.filter(s => (parseInt(s.stock_total)||0) !== Supabase.COMPONENTES_STOCK.reduce((a, c) => a + (parseInt(s[c])||0), 0))
+    .map(s => ({ codigo: s.codigo, nombre: s.nombre || "", stock_total: parseInt(s.stock_total)||0, suma: Supabase.COMPONENTES_STOCK.reduce((a, c) => a + (parseInt(s[c])||0), 0) }));
+
+  const categoriasDudosas = analizarCategorias(stockAud, await categoriasTiendaActual(sb)).dudosas;
+  return {
+    ok: true,
+    generadoEn: new Date().toISOString(),
+    discrepanciasConsignacion, negativos, consHuerfanas, cerradosSinContar, totalDescuadrado, categoriasDudosas,
+    resumen: {
+      productosRevisados: stockAud.length,
+      discrepancias: discrepanciasConsignacion.length,
+      negativos: negativos.length,
+      huerfanas: consHuerfanas.length,
+      cerradosSinContar: cerradosSinContar.length,
+      totalDescuadrado: totalDescuadrado.length,
+      categoriasDudosas: categoriasDudosas.length
+    }
+  };
+}
+
 // ── HELPERS HTTP ──────────────────────────────────────────────────
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: CORS });
 }
 function forbidden() {
   return json({ ok: false, error: "No autorizado" }, 403);
+}
+
+// ── VIGENCIA DE LA RESERVA DE UN LEAD ──────────────────────────────
+// 30 min por defecto: si el cliente no completa el pedido, la pieza vuelve a
+// stock rápido. Excepción: pedidos USA pagados con PayPal.me — PayPal no le
+// avisa al sistema cuando el cliente paga, así que el pedido queda "sin pagar"
+// hasta que el admin revisa PayPal y lo marca a mano; con solo 30 min el
+// pedido se cancelaba solo aunque el cliente ya hubiera pagado. Esos tienen
+// 12 h. Los de tarjeta (Wompi) siguen en 30 min: el webhook los confirma en
+// segundos. El método se deduce del link de pago que armó el catálogo
+// (mismo formato que valida ENVIAR_PEDIDO_USA).
+const RESERVA_NORMAL_MS = 30 * 60 * 1000;
+const RESERVA_PAYPAL_USA_MS = 12 * 3600 * 1000;
+const RE_PAYPAL_ME_LINK = /^https:\/\/paypal\.me\/[A-Za-z0-9_.]{1,50}\/\d+\.\d{2}[A-Z]{0,3}$/;
+const RESERVA_PAYPAL_CHECKOUT_MS = 2 * 3600 * 1000;   // el cliente tiene tiempo de aprobar el pago en PayPal; luego se confirma sola
+function ttlReservaLeadMs(d) {
+  if (d && d.pais === "US" && /^[A-Z0-9]{8,30}$/.test(d.paypalOrderId || "")) return RESERVA_PAYPAL_CHECKOUT_MS;
+  return (d && d.pais === "US" && RE_PAYPAL_ME_LINK.test(d.pagoLink || "")) ? RESERVA_PAYPAL_USA_MS : RESERVA_NORMAL_MS;
 }
 
 // ── RESERVAS DE STOCK: liberar las vencidas ────────────────────────
@@ -4727,6 +5718,210 @@ async function liberarReservasVencidas(sb) {
 // en los leads del grupo para no reenviarlo si esto se llama de nuevo
 // (reintento del webhook de Wompi, o el admin marca cada artículo por
 // separado en vez de todo el pedido junto).
+// Envío por Resend. Antes ninguna llamada revisaba la respuesta: si Resend rechazaba el correo
+// (clave inválida, dominio sin verificar, límite diario) no quedaba rastro y parecía que "no pasó nada".
+// Ahora cualquier rechazo se registra en los logs del Worker con el motivo exacto.
+let _sbCorreo = null;            // conexión a la base, para guardar el estado de los correos
+let _correoOkConocido = null;    // último estado visto por esta instancia (evita escribir en cada correo)
+async function registrarEstadoCorreo(ok, info) {
+  if (_correoOkConocido === ok && ok === true) return;
+  _correoOkConocido = ok;
+  if (!_sbCorreo) return;
+  try {
+    await _sbCorreo.set("config", "correo_estado", ok
+      ? { ok: true, fecha: new Date().toISOString() }
+      : { ok: false, fecha: new Date().toISOString(), status: info?.status || null, detalle: String(info?.detalle || info?.motivo || "").slice(0, 300) });
+  } catch (e) { console.error("No se pudo guardar el estado de los correos:", e); }
+}
+
+async function fetchResend(url, opts) {
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    let detalle = "";
+    try { detalle = (await res.clone().text()).slice(0, 300); } catch (_) {}
+    let para = "";
+    try { para = JSON.parse(opts.body).to; } catch (_) {}
+    console.error(`Resend rechazó el correo (HTTP ${res.status}) para ${JSON.stringify(para)}: ${detalle}`);
+    await registrarEstadoCorreo(false, { status: res.status, detalle });
+  } else {
+    await registrarEstadoCorreo(true);
+  }
+  return res;
+}
+
+// Diagnóstico de correos (solo admin): manda un correo de prueba y devuelve el motivo exacto si falla.
+async function probarCorreo(env, para) {
+  const tieneClave = !!env.RESEND_KEY;
+  if (!tieneClave) {
+    await registrarEstadoCorreo(false, { motivo: "falta_clave", detalle: "El Worker no tiene el secreto RESEND_KEY configurado en Cloudflare." });
+    return { ok: false, tieneClave, motivo: "falta_clave", detalle: "El Worker no tiene el secreto RESEND_KEY configurado en Cloudflare." };
+  }
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.RESEND_KEY}` },
+      body: JSON.stringify({
+        from: "VEREX Store <hola@notificaciones.verexstore.com>",
+        reply_to: "hola@verexstore.com",
+        to: [para],
+        subject: "✅ Prueba de correo — VEREX",
+        html: "<p>Este es un correo de prueba del sistema VEREX. Si lo ves, el envío de correos funciona.</p>"
+      })
+    });
+    const txt = (await res.text()).slice(0, 400);
+    await registrarEstadoCorreo(res.ok, { status: res.status, detalle: txt });
+    return { ok: res.ok, tieneClave, status: res.status, detalle: txt };
+  } catch (e) {
+    await registrarEstadoCorreo(false, { motivo: "red", detalle: String(e && e.message || e) });
+    return { ok: false, tieneClave, motivo: "red", detalle: String(e && e.message || e) };
+  }
+}
+
+// ── CÓDIGO DE UN SOLO USO para autorizar reembolsos ────────────────────────
+// Un reembolso devuelve dinero y no se puede deshacer: además de la sesión de admin, pide un código de 6 dígitos
+// que llega por correo (y por WhatsApp si CALLMEBOT_KEY está configurada). Vale 10 min, se usa una sola vez,
+// está atado a UN pedido y se bloquea tras 5 intentos fallidos. Solo se guarda su huella (hash), nunca el código.
+const OTP_REEMB_VIGENCIA_MS = 10 * 60 * 1000;
+const OTP_REEMB_MAX_INTENTOS = 5;
+async function huellaCodigoReembolso(env, pedidoId, codigo) {
+  const sal = String(env.SECRET_PASS || env.SUPABASE_SERVICE_KEY || "");
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`reembolso|${pedidoId}|${codigo}|${sal}`));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+function codigoAleatorio6() {
+  const n = new Uint32Array(1); crypto.getRandomValues(n);
+  return String(n[0] % 1000000).padStart(6, "0");
+}
+// Correo al que llega el código de autorización (buzón personal del dueño, NO el compartido de pedidos).
+// Se puede cambiar sin tocar el código creando el secreto CORREO_CODIGOS en Cloudflare.
+const CORREO_CODIGOS_DEFECTO = "eramayanavarro@gmail.com";
+function correoCodigos(env) {
+  const c = String(env.CORREO_CODIGOS || "").trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c) ? c : CORREO_CODIGOS_DEFECTO;
+}
+function correoOculto(c) { const [u, d] = String(c).split("@"); return (u || "").slice(0, 2) + "•••@" + (d || ""); }
+// Manda el código por correo (canal principal) y también por WhatsApp si CALLMEBOT_KEY está configurada.
+// Basta con que UNO de los canales funcione; si ninguno, el reembolso no se puede autorizar (falla cerrado).
+async function enviarCodigoReembolso(env, pid, total, codigo) {
+  const canales = [];
+  const monto = total != null ? ` ($${parseFloat(total).toFixed(2)})` : "";
+  if (env.RESEND_KEY) {
+    try {
+      const res = await fetchResend("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.RESEND_KEY}` },
+        body: JSON.stringify({
+          from: "VEREX Store <hola@notificaciones.verexstore.com>",
+          to: [correoCodigos(env)],
+          subject: `🔐 Código para autorizar el reembolso — pedido ${pid}`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;border:2px solid #C9A84C;border-radius:12px;">
+            <h2 style="margin:0 0 12px;color:#111;">Autorizar reembolso</h2>
+            <p style="font-size:14px;color:#444;">Pedido <b>${pid}</b>${monto}. Escribe este código en el panel de Logística USA:</p>
+            <p style="font-size:34px;font-weight:800;letter-spacing:8px;text-align:center;margin:20px 0;color:#111;">${codigo}</p>
+            <p style="font-size:12px;color:#888;">Vale 10 minutos y se usa una sola vez. Si tú no pediste este reembolso, ignora este correo y avisa: alguien con acceso al panel lo intentó.</p></div>`
+        })
+      });
+      if (res.ok) canales.push("correo");
+    } catch (e) { console.error("Código de reembolso por correo falló:", e); }
+  }
+  if (env.CALLMEBOT_KEY) {
+    const wa = await enviarWhatsAppAdmin(env, `VEREX — código para autorizar el REEMBOLSO del pedido ${pid}${monto}: ${codigo}\nVale 10 minutos y se usa una sola vez. Si no lo pediste, ignóralo.`);
+    if (wa.ok) canales.push("whatsapp");
+  }
+  if (!canales.length) return { ok: false, motivo: (env.RESEND_KEY || env.CALLMEBOT_KEY) ? "envio_fallo" : "sin_canal" };
+  return { ok: true, canales, destino: canales.includes("correo") ? correoOculto(correoCodigos(env)) : "" };
+}
+
+async function enviarWhatsAppAdmin(env, texto) {
+  const apikey = env.CALLMEBOT_KEY || "";
+  if (!apikey) return { ok: false, motivo: "sin_whatsapp" };
+  try {
+    const res = await fetch(`https://api.callmebot.com/whatsapp.php?phone=${ADMIN_WA}&text=${encodeURIComponent(texto)}&apikey=${apikey}`);
+    return res.ok ? { ok: true } : { ok: false, motivo: "whatsapp_fallo", status: res.status };
+  } catch (e) { return { ok: false, motivo: "whatsapp_fallo" }; }
+}
+
+// Aviso interno por correo al equipo (pedidos USA que requieren atención).
+async function avisarAdminUSA(env, asunto, htmlCuerpo) {
+  const RESEND_KEY = env.RESEND_KEY;
+  if (!RESEND_KEY) return;
+  try {
+    await fetchResend("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
+      body: JSON.stringify({
+        from: "VEREX Store <hola@notificaciones.verexstore.com>",
+        reply_to: "hola@verexstore.com",
+        to: ["verex.pedidos@verexstore.com"],
+        subject: asunto,
+        html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:20px;border:2px solid #e74c3c;border-radius:12px;">${htmlCuerpo}</div>`
+      })
+    });
+  } catch (e) { console.error("avisarAdminUSA:", e); }
+}
+
+// Correo al cliente cuando se agrega el tracking de DHL de su pedido. Se manda UNO por
+// pedido: el panel actualiza todos los productos a la vez (peticiones paralelas), así que
+// solo lo dispara el primer lead del grupo (por id) para no duplicarlo.
+async function enviarCorreoEnvioUSA(env, sb, lead, tracking) {
+  const RESEND_KEY = env.RESEND_KEY;
+  if (!RESEND_KEY) return;
+  try {
+    const todos = await sb.getAll("leads");
+    const grupo = lead.pedidoId ? todos.filter(l => l.pedidoId === lead.pedidoId && l.pais === "US") : [lead];
+    const idsOrdenados = grupo.map(l => String(l.id)).sort();
+    if (idsOrdenados.length && String(lead.id) !== idsOrdenados[0]) return;   // lo manda otro lead del grupo
+    if (grupo.some(l => l.correoEnvioEnviado)) return;
+    const correo = lead.correoCliente || "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) return;
+    const trk = String(tracking || "").replace(/[^A-Za-z0-9 \-]/g, "").trim();
+    if (!trk) return;
+    const en = lead.lang === "en";
+    const nombre = lead.nombreCliente || "";
+    const linkTrk = `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${encodeURIComponent(trk.replace(/\s+/g, ""))}`;
+    const txt = en ? {
+      subject: `📦 Your VEREX Store order${lead.numeroPedidoUSA ? " " + lead.numeroPedidoUSA : ""} has shipped`,
+      pre: "Your order is on its way",
+      hola: `Hi ${nombre},`,
+      msg: "Your order has shipped via DHL — delivery takes 5–7 business days.",
+      lbl: "DHL tracking number", btn: "Track my package", dudas: "Questions? Just reply to this email."
+    } : {
+      subject: `📦 Tu pedido de VEREX Store${lead.numeroPedidoUSA ? " " + lead.numeroPedidoUSA : ""} ya fue enviado`,
+      pre: "Tu pedido va en camino",
+      hola: `Hola ${nombre},`,
+      msg: "Tu pedido ya salió por DHL — la entrega toma de 5 a 7 días hábiles.",
+      lbl: "Número de tracking DHL", btn: "Rastrear mi paquete", dudas: "¿Dudas? Responde este correo."
+    };
+    await fetchResend("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
+      body: JSON.stringify({
+        from: "VEREX Store <hola@notificaciones.verexstore.com>",
+        reply_to: "hola@verexstore.com",
+        to: [correo],
+        subject: txt.subject,
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#fff;border:2px solid #C9A84C;border-radius:12px;overflow:hidden;">
+            <div style="background:linear-gradient(135deg,#aaa,#d0d0d0);padding:24px;text-align:center;">
+              <h1 style="margin:0;font-size:22px;letter-spacing:3px;color:#111;">VEREX STORE</h1>
+              <p style="margin:6px 0 0;font-size:13px;color:#444;">${txt.pre}</p>
+            </div>
+            <div style="padding:24px;">
+              <p style="margin:0 0 16px;font-size:15px;color:#111;">${txt.hola}</p>
+              <p style="margin:0 0 16px;font-size:14px;color:#444;">${txt.msg}</p>
+              <p style="margin:0 0 4px;font-size:12px;color:#888;">${txt.lbl}</p>
+              <p style="margin:0 0 16px;font-size:16px;font-weight:700;color:#111;">${trk}</p>
+              <p style="margin:0 0 16px;text-align:center;"><a href="${linkTrk}" style="display:inline-block;padding:12px 22px;background:#C9A84C;color:#111;font-weight:700;text-decoration:none;border-radius:8px;">${txt.btn}</a></p>
+              <p style="margin:20px 0 0;font-size:13px;color:#444;">${txt.dudas}</p>
+            </div>
+            <div style="padding:16px 24px;background:#f5f5f5;border-top:2px solid #C9A84C;text-align:center;font-size:12px;color:#888;">El mundo es mejor cuando brillas tú ✨</div>
+          </div>`
+      })
+    });
+    for (const l of grupo) await sb.update("leads", l.id, { correoEnvioEnviado: true });
+  } catch (e) { console.error("Error enviando correo de envío USA:", e); }
+}
+
 async function enviarCorreoPagoConfirmadoUSA(env, sb, pedidoId) {
   if (!pedidoId) return;
   const RESEND_KEY = env.RESEND_KEY;
@@ -4753,14 +5948,14 @@ async function enviarCorreoPagoConfirmadoUSA(env, sb, pedidoId) {
       : leadsPedido.reduce((s, l) => s + (parseFloat(l.precio) || 0), 0);
 
     const txt = en ? {
-      subject: "✅ Payment received — your VEREX Store order is on its way",
+      subject: `✅ Payment received${primero.numeroPedidoUSA ? " — " + primero.numeroPedidoUSA : ""} — your VEREX Store order is on its way`,
       preheader: "Payment confirmed",
       hola: `Hi ${nombreCliente},`,
       msg: "We've received your payment! Your order is now being prepared and will ship via DHL — delivery takes 5–7 business days.",
       totalLbl: "Total paid",
       dudas: "Questions? Just reply to this email."
     } : {
-      subject: "✅ Pago recibido — tu pedido de VEREX Store va en camino",
+      subject: `✅ Pago recibido${primero.numeroPedidoUSA ? " — " + primero.numeroPedidoUSA : ""} — tu pedido de VEREX Store va en camino`,
       preheader: "Pago confirmado",
       hola: `Hola ${nombreCliente},`,
       msg: "¡Recibimos tu pago! Tu pedido ya se está preparando y saldrá por DHL — la entrega toma de 5 a 7 días hábiles.",
@@ -4768,7 +5963,7 @@ async function enviarCorreoPagoConfirmadoUSA(env, sb, pedidoId) {
       dudas: "¿Dudas? Responde este correo."
     };
 
-    await fetch("https://api.resend.com/emails", {
+    await fetchResend("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_KEY}` },
       body: JSON.stringify({
@@ -4828,6 +6023,53 @@ async function wompiToken(env) {
 // El webhook llega apenas Wompi resuelve la transacción (aprobada o no).
 // Como no hay firma documentada para validarlo, la URL secreta (ver arriba)
 // es la única autenticación — así que acá sí se confía en el body.
+// Marca como pagado TODO el pedido USA (un lead por producto), ya sea por tarjeta (webhook de Wompi) o por
+// PayPal (captura / webhook). Idempotente: los leads ya pagados se saltan. Si el pago llega con la reserva vencida
+// reactiva el pedido cuando todavía hay stock; si ya no hay, queda "pagado sin stock" y se avisa al equipo.
+async function confirmarPagoPedidoUSA(env, sb, pedidoId, { metodo, idTransaccion, extra }) {
+  const etiqueta = metodo === "paypal" ? "PayPal" : "tarjeta (Wompi)";
+  const leadsPedido = (await sb.query("leads", "pedidoId", "eq", pedidoId)).filter(l => l.pais === "US");
+  const avisosSinStock = [];
+  let nuevos = 0;
+  for (const lead of leadsPedido) {
+    if (lead.pagadoUSA) continue; // ya procesado — evita reservar dos veces
+    nuevos++;
+    const patch = { pagadoUSA: true, metodoPagoUSA: metodo, reservaExpiraEn: null, ...(extra || {}) };
+    if (metodo === "wompi") patch.wompiIdTransaccion = idTransaccion;
+    let sinStock = null;
+    // La reserva normalmente ya se hizo en REGISTRAR_LEAD (antes de pagar) — acá solo se confirma. Si por algo
+    // el lead nunca llegó a reservar, o la reserva ya se liberó, se reserva recién ahora como respaldo.
+    if (!lead.reservaDescTienda && !lead.reservaDescBodega) {
+      try {
+        const res = await sb.reservar(lead.codigo, lead.qty || 1);
+        if (res.ok) {
+          patch.reservaDescTienda = res.desc_tienda || 0;
+          patch.reservaDescBodega = res.desc_bodega || 0;
+        } else {
+          sinStock = "sin stock";
+          console.error("Pago " + etiqueta + ": sin stock para " + lead.codigo + " (pedido " + pedidoId + ")");
+        }
+      } catch (eRes) {
+        sinStock = "error al reservar";
+        console.error("Pago " + etiqueta + ": error reservando " + lead.codigo, eRes);
+      }
+    }
+    if (lead.estado === "cancelado" && !sinStock) {
+      patch.estado = "interesado";
+      patch.historial = [...(lead.historial || []), { estado: "interesado", fecha: new Date().toISOString(), motivo: "Pago con " + etiqueta + " confirmado tras vencer la reserva" }];
+    }
+    if (sinStock) { patch.pagadoSinStock = true; avisosSinStock.push(`${lead.nombre || lead.codigo} (${lead.codigo})`); }
+    await sb.update("leads", lead.id, patch);
+  }
+  if (avisosSinStock.length) {
+    await avisarAdminUSA(env, `⚠️ Pedido USA pagado SIN STOCK — ${pedidoId}`,
+      `<p>El cliente pagó con ${etiqueta} el pedido <b>${pedidoId}</b>, pero no se pudo reservar stock de: <b>${avisosSinStock.join(", ")}</b>.</p>
+       <p>Revisa el panel de Logística USA: hay que conseguir la pieza o reembolsar el pago${metodo === "paypal" ? " (botón «Reembolsar» del panel)" : " en Wompi"}.</p>`);
+  }
+  if (nuevos) await enviarCorreoPagoConfirmadoUSA(env, sb, pedidoId);
+  return { leads: leadsPedido.length, nuevos };
+}
+
 async function manejarWebhookWompi(request, env, sb) {
   try {
     const payload = await request.json();
@@ -4835,39 +6077,125 @@ async function manejarWebhookWompi(request, env, sb) {
     const pedidoId = payload.EnlacePago?.IdentificadorEnlaceComercio;
     if (!idTransaccion || !pedidoId) return json({ ok: true });
     if (payload.ResultadoTransaccion !== "ExitosaAprobada") return json({ ok: true });
-
-    // La reserva normalmente ya se hizo en REGISTRAR_LEAD, al momento del
-    // pedido (antes de que el cliente llegara a pagar) — acá solo se
-    // confirma. Igual que ACTUALIZAR_LEAD_USA, si por algo el lead nunca
-    // llegó a reservar (ej. el fetch fire-and-forget del catálogo falló),
-    // se reserva recién ahora como respaldo.
-    const todosLeads = await sb.getAll("leads");
-    const leadsPedido = todosLeads.filter(l => l.pedidoId === pedidoId && l.pais === "US");
-    for (const lead of leadsPedido) {
-      if (lead.pagadoUSA) continue; // ya procesado — evita reservar dos veces
-      const patchWompi = { pagadoUSA: true, metodoPagoUSA: "wompi", wompiIdTransaccion: idTransaccion, reservaExpiraEn: null };
-      if (!lead.reservaDescTienda && !lead.reservaDescBodega) {
-        try {
-          const resWompi = await sb.reservar(lead.codigo, lead.qty || 1);
-          if (resWompi.ok) {
-            patchWompi.reservaDescTienda = resWompi.desc_tienda || 0;
-            patchWompi.reservaDescBodega = resWompi.desc_bodega || 0;
-          } else {
-            console.error("Webhook Wompi: sin stock para " + lead.codigo + " (pedido " + pedidoId + ")");
-          }
-        } catch (eResWompi) {
-          console.error("Webhook Wompi: error reservando " + lead.codigo, eResWompi);
-        }
-      }
-      await sb.update("leads", lead.id, patchWompi);
-    }
-    await enviarCorreoPagoConfirmadoUSA(env, sb, pedidoId);
+    await confirmarPagoPedidoUSA(env, sb, pedidoId, { metodo: "wompi", idTransaccion });
     return json({ ok: true });
   } catch(e) {
     console.error("Webhook Wompi error:", e);
     // Siempre 200 — un error nuestro no debe hacer que Wompi reintente
     // indefinidamente el mismo webhook.
     return json({ ok: true });
+  }
+}
+
+// ── PAYPAL (checkout oficial, catálogo USA) ───────────────────────
+// Flujo: la página pide CREAR_ORDEN_PAYPAL → el cliente aprueba el pago en PayPal → vuelve a la página, que pide
+// CAPTURAR_ORDEN_PAYPAL (cobra de verdad) → el pedido queda pagado y sale el correo. El webhook de PayPal es el
+// respaldo por si el cliente cierra la pestaña después de aprobar. Para pruebas: PAYPAL_ENV distinto de "live" = Sandbox.
+const _ppTokenCache = new Map();
+function paypalBase(env) { return env.PAYPAL_ENV === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com"; }
+function paypalConfigurado(env) { return !!(env.PAYPAL_CLIENT_ID && env.PAYPAL_SECRET); }
+async function paypalToken(env) {
+  const base = paypalBase(env), c = _ppTokenCache.get(base);
+  if (c && c.exp > Date.now() + 60000) return c.token;
+  const res = await fetch(base + "/v1/oauth2/token", {
+    method: "POST",
+    headers: { "Authorization": "Basic " + btoa(`${env.PAYPAL_CLIENT_ID}:${env.PAYPAL_SECRET}`), "Content-Type": "application/x-www-form-urlencoded" },
+    body: "grant_type=client_credentials"
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.access_token) throw new Error("PayPal token: " + res.status + " " + String(data.error_description || data.error || "").slice(0, 120));
+  _ppTokenCache.set(base, { token: data.access_token, exp: Date.now() + (parseInt(data.expires_in) || 300) * 1000 });
+  return data.access_token;
+}
+async function paypalApi(env, method, path, body, requestId) {
+  const token = await paypalToken(env);
+  const headers = { "Authorization": "Bearer " + token, "Content-Type": "application/json" };
+  if (requestId) headers["PayPal-Request-Id"] = requestId;
+  const res = await fetch(paypalBase(env) + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, data };
+}
+const RE_PEDIDO_USA = /^US[a-z0-9]{4,40}$/;
+
+// ── NÚMERO CORTO DE PEDIDO USA (legible para el cliente y para el equipo): US-DDMM-NNN ───────────────
+// El id largo (USmusun96u5ap8) sigue siendo la llave interna de los pagos; este es el que se ve en pantallas,
+// correos y etiqueta. Día y mes en hora de El Salvador (UTC-6) y un contador del día. La unicidad la garantiza la
+// base (insertIfAbsent): si dos pedidos piden el mismo número a la vez, uno gana y el otro toma el siguiente.
+function ddmmSV() { const d = new Date(Date.now() - 6 * 3600 * 1000); return String(d.getUTCDate()).padStart(2, "0") + String(d.getUTCMonth() + 1).padStart(2, "0"); }
+async function numeroPedidoUSA(sb, pedidoId) {
+  try {
+    const previo = await sb.get("config", "usnum_ped_" + pedidoId);
+    if (previo && previo.numero) return previo.numero;
+    const ddmm = ddmmSV();
+    const ctr = await sb.get("config", "usnum_ctr_" + ddmm);
+    let n = ((ctr && ctr.n) || 0) + 1;
+    for (let i = 0; i < 25; i++, n++) {
+      const numero = `US-${ddmm}-${String(n).padStart(3, "0")}`;
+      if (await sb.insertIfAbsent("config", "usnum_" + numero, { pedidoId, creado: Date.now() })) {
+        await sb.set("config", "usnum_ctr_" + ddmm, { n });
+        await sb.set("config", "usnum_ped_" + pedidoId, { numero });
+        return numero;
+      }
+    }
+  } catch (e) { console.error("numeroPedidoUSA:", e); }
+  return "";     // sin número corto: las pantallas usan el id largo
+}
+async function numeroGuardadoPedidoUSA(sb, pedidoId) {
+  try { return (RE_PEDIDO_USA.test(pedidoId || "") && (await sb.get("config", "usnum_ped_" + pedidoId))?.numero) || ""; } catch (_) { return ""; }
+}
+const RE_PAYPAL_ORDER = /^[A-Z0-9]{8,30}$/;
+function paypalCapturaDe(order) {
+  const caps = order?.purchase_units?.[0]?.payments?.captures;
+  return Array.isArray(caps) ? (caps.find(c => c.status === "COMPLETED") || null) : null;
+}
+// ¿El monto cobrado coincide con el total que quedó registrado en el pedido? (evita marcar pagado un pago por menos)
+function montoCoincide(leads, captura) {
+  const esperado = leads.find(l => l.totalPedidoUSD != null)?.totalPedidoUSD;
+  if (esperado == null) return true;   // pedidos viejos sin total guardado
+  const cobrado = parseFloat(captura?.amount?.value);
+  return captura?.amount?.currency_code === "USD" && Math.abs(cobrado - parseFloat(esperado)) < 0.011;
+}
+
+async function manejarWebhookPayPal(request, env, sb) {
+  try {
+    const raw = await request.text();
+    let evento; try { evento = JSON.parse(raw); } catch (_) { return json({ ok: false, error: "json" }, 400); }
+    if (!paypalConfigurado(env) || !env.PAYPAL_WEBHOOK_ID) return json({ ok: false, error: "no_configurado" }, 400);
+    const h = n => request.headers.get(n) || "";
+    const v = await paypalApi(env, "POST", "/v1/notifications/verify-webhook-signature", {
+      auth_algo: h("paypal-auth-algo"), cert_url: h("paypal-cert-url"), transmission_id: h("paypal-transmission-id"),
+      transmission_sig: h("paypal-transmission-sig"), transmission_time: h("paypal-transmission-time"),
+      webhook_id: env.PAYPAL_WEBHOOK_ID, webhook_event: evento
+    });
+    if (!v.ok || v.data?.verification_status !== "SUCCESS") {
+      console.error("Webhook PayPal: firma no válida", v.status, JSON.stringify(v.data).slice(0, 200));
+      return json({ ok: false, error: "firma" }, 400);
+    }
+    const r = evento.resource || {};
+    if (evento.event_type === "PAYMENT.CAPTURE.COMPLETED") {
+      const orderId = r.supplementary_data?.related_ids?.order_id || "";
+      let pedidoId = RE_PEDIDO_USA.test(r.custom_id || "") ? r.custom_id : "";
+      if (!pedidoId && RE_PAYPAL_ORDER.test(orderId)) {
+        const porOrden = (await sb.query("leads", "paypalOrderId", "eq", orderId))[0];
+        pedidoId = porOrden?.pedidoId || "";
+      }
+      if (pedidoId) {
+        const leads = (await sb.query("leads", "pedidoId", "eq", pedidoId)).filter(l => l.pais === "US");
+        if (leads.length && montoCoincide(leads, r)) {
+          await confirmarPagoPedidoUSA(env, sb, pedidoId, { metodo: "paypal", idTransaccion: r.id, extra: { paypalCaptureId: r.id, paypalOrderId: orderId || leads[0].paypalOrderId || "" } });
+        } else if (leads.length) {
+          await avisarAdminUSA(env, `⚠️ PayPal: el monto cobrado no coincide — ${pedidoId}`, `<p>PayPal cobró <b>${r.amount?.value} ${r.amount?.currency_code}</b> en el pedido <b>${pedidoId}</b>, pero el total registrado es <b>${leads.find(l => l.totalPedidoUSD != null)?.totalPedidoUSD}</b>. No se marcó como pagado: revísalo en PayPal.</p>`);
+        }
+      }
+    } else if (evento.event_type === "PAYMENT.CAPTURE.REFUNDED" || evento.event_type === "PAYMENT.CAPTURE.REVERSED") {
+      // Reembolso o contracargo hechos desde el panel de PayPal: se marca en el pedido para que se vea en Logística USA.
+      const cap = (await sb.query("leads", "paypalCaptureId", "eq", r.id || ""));
+      for (const l of cap) await sb.update("leads", l.id, { reembolsadoUSA: true });
+    }
+    return json({ ok: true });
+  } catch (e) {
+    console.error("Webhook PayPal error:", e);
+    return json({ ok: false, error: "interno" }, 500);   // 5xx: PayPal reintenta el aviso
   }
 }
 
@@ -5071,10 +6399,10 @@ function sanearConfigPublico(cfg) {
 async function validarVendedorToken(sb, vendedor, token, pin) {
   if (!vendedor || !token) return { ok: false, error: "vendedor y token requeridos" };
   const vend = await sb.get("vendedores", vendedor);
-  if (!vend || !vend.tokenInventario || String(vend.tokenInventario) !== String(token)) {
+  if (!vend || !vend.tokenInventario || !safeEq(vend.tokenInventario, token)) {
     return { ok: false, error: "Token inválido" };
   }
-  if (vend.pin && String(vend.pin) !== String(pin || "")) {
+  if (await pinIncorrecto(sb, vend, pin, vendedor)) {
     return { ok: false, error: "PIN incorrecto" };
   }
   return { ok: true, vend };

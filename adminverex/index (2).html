@@ -10,6 +10,10 @@
     <script src="lib/qrcode.min.js"></script>
     <script>var LZString=function(){var r=String.fromCharCode,o="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=",n="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-$",e={};function t(r,o){if(!e[r]){e[r]={};for(var n=0;n<r.length;n++)e[r][r.charAt(n)]=n}return e[r][o]}var i={compressToBase64:function(r){if(null==r)return"";var n=i._compress(r,6,function(r){return o.charAt(r)});switch(n.length%4){default:case 0:return n;case 1:return n+"===";case 2:return n+"==";case 3:return n+"="}},decompressFromBase64:function(r){return null==r?"":""==r?null:i._decompress(r.length,32,function(n){return t(o,r.charAt(n))})},compressToUTF16:function(o){return null==o?"":i._compress(o,15,function(o){return r(o+32)})+" "},decompressFromUTF16:function(r){return null==r?"":""==r?null:i._decompress(r.length,16384,function(o){return r.charCodeAt(o)-32})},compressToUint8Array:function(r){for(var o=i.compress(r),n=new Uint8Array(2*o.length),e=0,t=o.length;e<t;e++){var s=o.charCodeAt(e);n[2*e]=s>>>8,n[2*e+1]=s%256}return n},decompressFromUint8Array:function(o){if(null==o)return i.decompress(o);for(var n=new Array(o.length/2),e=0,t=n.length;e<t;e++)n[e]=256*o[2*e]+o[2*e+1];var s=[];return n.forEach(function(o){s.push(r(o))}),i.decompress(s.join(""))},compressToEncodedURIComponent:function(r){return null==r?"":i._compress(r,6,function(r){return n.charAt(r)})},decompressFromEncodedURIComponent:function(r){return null==r?"":""==r?null:(r=r.replace(/ /g,"+"),i._decompress(r.length,32,function(o){return t(n,r.charAt(o))}))},compress:function(o){return i._compress(o,16,function(o){return r(o)})},_compress:function(r,o,n){if(null==r)return"";var e,t,i,s={},u={},a="",p="",c="",l=2,f=3,h=2,d=[],m=0,v=0;for(i=0;i<r.length;i+=1)if(a=r.charAt(i),Object.prototype.hasOwnProperty.call(s,a)||(s[a]=f++,u[a]=!0),p=c+a,Object.prototype.hasOwnProperty.call(s,p))c=p;else{if(Object.prototype.hasOwnProperty.call(u,c)){if(c.charCodeAt(0)<256){for(e=0;e<h;e++)m<<=1,v==o-1?(v=0,d.push(n(m)),m=0):v++;for(t=c.charCodeAt(0),e=0;e<8;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}else{for(t=1,e=0;e<h;e++)m=m<<1|t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t=0;for(t=c.charCodeAt(0),e=0;e<16;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}0==--l&&(l=Math.pow(2,h),h++),delete u[c]}else for(t=s[c],e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;0==--l&&(l=Math.pow(2,h),h++),s[p]=f++,c=String(a)}if(""!==c){if(Object.prototype.hasOwnProperty.call(u,c)){if(c.charCodeAt(0)<256){for(e=0;e<h;e++)m<<=1,v==o-1?(v=0,d.push(n(m)),m=0):v++;for(t=c.charCodeAt(0),e=0;e<8;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}else{for(t=1,e=0;e<h;e++)m=m<<1|t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t=0;for(t=c.charCodeAt(0),e=0;e<16;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}0==--l&&(l=Math.pow(2,h),h++),delete u[c]}else for(t=s[c],e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;0==--l&&(l=Math.pow(2,h),h++)}for(t=2,e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;for(;;){if(m<<=1,v==o-1){d.push(n(m));break}v++}return d.join("")},decompress:function(r){return null==r?"":""==r?null:i._decompress(r.length,32768,function(o){return r.charCodeAt(o)})},_decompress:function(o,n,e){var t,i,s,u,a,p,c,l=[],f=4,h=4,d=3,m="",v=[],g={val:e(0),position:n,index:1};for(t=0;t<3;t+=1)l[t]=t;for(s=0,a=Math.pow(2,2),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;switch(s){case 0:for(s=0,a=Math.pow(2,8),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;c=r(s);break;case 1:for(s=0,a=Math.pow(2,16),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;c=r(s);break;case 2:return""}for(l[3]=c,i=c,v.push(c);;){if(g.index>o)return"";for(s=0,a=Math.pow(2,d),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;switch(c=s){case 0:for(s=0,a=Math.pow(2,8),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;l[h++]=r(s),c=h-1,f--;break;case 1:for(s=0,a=Math.pow(2,16),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;l[h++]=r(s),c=h-1,f--;break;case 2:return v.join("")}if(0==f&&(f=Math.pow(2,d),d++),l[c])m=l[c];else{if(c!==h)return null;m=i+i.charAt(0)}v.push(m),l[h++]=i+m.charAt(0),i=m,0==--f&&(f=Math.pow(2,d),d++)}}};return i}();"function"==typeof define&&define.amd?define(function(){return LZString}):"undefined"!=typeof module&&null!=module?module.exports=LZString:"undefined"!=typeof angular&&null!=angular&&angular.module("LZString",[]).factory("LZString",function(){return LZString});</script>
     <style>
+/* Móvil/tablet: la página no se desplaza hacia los lados — todo queda dentro del ancho de la pantalla */
+html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
+@supports not (overflow:clip){ html,body{ overflow-x:hidden; } }
+
         :root {
             --azul:#00BFFF; --azul-d:#009ACD; --fondo:#f0f2f5;
             --card:#fff; --borde:#e2e2e2; --texto:#1a1a1a;
@@ -57,6 +61,14 @@
         .btn-header{background:none;border:1px solid #555;color:#aaa;padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;transition:all .2s;text-decoration:none;display:inline-block;}
         .btn-header:hover{border-color:var(--azul);color:var(--azul);}
         .btn-logout:hover{border-color:var(--rojo)!important;color:var(--rojo)!important;}
+        /* Teléfono / tablet: título arriba centrado y botones en cuadrícula pareja (antes se apilaban desordenados a la derecha) */
+        @media (max-width:900px){
+            header{flex-direction:column;align-items:stretch;gap:12px;padding:14px 14px 16px;position:static;}
+            header h1{text-align:center;font-size:16px;margin:0;}
+            .h-right{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;justify-content:stretch;align-items:stretch;}
+            .h-right .btn-header{display:flex;align-items:center;justify-content:center;text-align:center;min-height:42px;padding:8px 10px;font-size:13px;white-space:normal;line-height:1.2;box-sizing:border-box;}
+            .h-right > :last-child:nth-child(odd){grid-column:1/-1;}   /* si queda uno solo en la última fila, ocupa todo el ancho */
+        }
 
         /* NOTIF */
         #notif-btn{position:relative;}
@@ -73,10 +85,19 @@
         /* TABS */
         .tabs{display:flex;background:#0d0d0d;border-bottom:2px solid #222;padding:8px 16px;gap:6px;overflow-x:auto;scrollbar-width:none;}
         .tabs::-webkit-scrollbar{display:none;}
+        /* Barra principal: tabs a los lados, logo al centro */
+        .hub-wrap{background:#0d0d0d;border-bottom:2px solid #222;padding:14px 16px;}
+        .hub-wrap.limpio{display:grid;align-content:center;box-sizing:border-box;min-height:calc(100vh - var(--hh,64px));}
+        .hub-bar{display:grid;grid-template-columns:1fr minmax(420px,44%) 1fr;gap:14px;align-items:stretch;max-width:1500px;width:100%;margin:0 auto;}
+        .hub-col{display:flex;flex-direction:column;gap:6px;}
+        .hub-col .tab{flex:1;display:flex;align-items:center;justify-content:center;font-size:15px;padding:9px 12px;}
+        .hub-logo{cursor:pointer;display:flex;align-items:center;}
+        .hub-logo img{width:100%;display:block;border-radius:12px;}
+        @media (max-width:1000px){.hub-bar{grid-template-columns:1fr 1fr;}.hub-logo{grid-column:1/-1;order:-1;}}
         .tab{
             padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;
             border-radius:8px;white-space:nowrap;transition:all .2s;
-            border:1px solid #333;color:#888;background:#1a1a1a;
+            border:1px solid #333;color:#fff;background:#1a1a1a;
             letter-spacing:0.3px;
         }
         .tab:hover{filter:brightness(1.3);color:#fff;border-color:#555;}
@@ -366,22 +387,30 @@
     </div>
 
     <!-- TABS -->
-    <div class="tabs">
-        <div class="tab active" onclick="tab(0)">🏠 Dashboard</div>
-        <div class="tab" onclick="tab(1)">📋 Pedidos</div>
-        <div class="tab" onclick="tab(2)">📦 Productos</div>
-        <div class="tab" onclick="tab(5)">👥 Clientes</div>
-        <div class="tab" onclick="tab(3)">🚚 Envío</div>
-        <div class="tab" onclick="tab(4)">🎟️ Cupones</div>
-        <div class="tab" onclick="tab(6);cargarConsignacion()">👤 Vendedores</div>
-        <div class="tab" onclick="abrirModalCatalogo('cliente')">📋 Catálogo Cliente</div>
-        <div class="tab" onclick="abrirModalCatalogo('afiliado')">🤝 Catálogo Afiliado</div>
-        <div class="tab" onclick="tab(7);cargarVentasAdmin();cargarCierresMensuales()">💰 Ventas</div>
-        <div class="tab" onclick="tab(8);cargarPanelLinks()">🔗 Links</div>
+    <!-- TABS: 6 a la izquierda, logo al centro, 5 a la derecha -->
+    <div class="hub-wrap limpio" id="hub-wrap">
+        <div class="hub-bar">
+            <div class="hub-col">
+            <div class="tab" onclick="tab(0)">🏠 Dashboard</div>
+            <div class="tab" onclick="tab(1)">📋 Pedidos</div>
+            <div class="tab" onclick="tab(2)">📦 Productos</div>
+            <div class="tab" onclick="tab(5)">👥 Clientes</div>
+            <div class="tab" onclick="tab(3)">🚚 Envío</div>
+            <div class="tab" onclick="tab(4)">🎟️ Cupones</div>
+            </div>
+            <div class="hub-logo" onclick="tab(-1)" title="Pantalla limpia"><img src="images/logo-verex.webp" alt="VEREX — La expresión de tu mejor versión"></div>
+            <div class="hub-col">
+            <div class="tab" onclick="tab(6);cargarConsignacion()">👤 Vendedores</div>
+            <div class="tab" onclick="abrirModalCatalogo('cliente')">📋 Catálogo Cliente</div>
+            <div class="tab" onclick="abrirModalCatalogo('afiliado')">🤝 Catálogo Afiliado</div>
+            <div class="tab" onclick="tab(7);cargarVentasAdmin();cargarCierresMensuales()">💰 Ventas</div>
+            <div class="tab" onclick="tab(8);cargarPanelLinks()">🔗 Links</div>
+            </div>
+        </div>
     </div>
 
     <!-- TAB 0: DASHBOARD -->
-    <div class="tab-content active" id="tab-0">
+    <div class="tab-content" id="tab-0">
         <div class="card">
             <h2>🏠 Control de Tienda</h2>
             <div class="tog-wrap">
@@ -425,7 +454,12 @@
             <div style="margin-top:14px;padding-top:14px;border-top:1px solid #333;">
                 <div style="font-size:13px;font-weight:600;margin-bottom:6px;">🇺🇸 Apariencia del home — Catálogo USA</div>
                 <div style="font-size:11px;color:#888;margin-bottom:8px;">Foto y textos del hero de us.verexstore.com. Vacío = se queda el actual.</div>
-                <input id="inp-us-hero-foto" placeholder="URL de la foto del hero (ImageKit)"
+                <div style="font-size:11px;color:#888;margin-bottom:4px;">Carrusel del hero: hasta 3 fotos (se cambian solas cada 5 s). Con una sola foto no hay carrusel.</div>
+                <input id="inp-us-hero-foto" placeholder="Foto 1 del hero — URL (ImageKit)"
+                    style="width:100%;padding:8px;margin-bottom:6px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;font-family:inherit;">
+                <input id="inp-us-hero-foto-2" placeholder="Foto 2 del hero — URL (opcional)"
+                    style="width:100%;padding:8px;margin-bottom:6px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;font-family:inherit;">
+                <input id="inp-us-hero-foto-3" placeholder="Foto 3 del hero — URL (opcional)"
                     style="width:100%;padding:8px;margin-bottom:6px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;font-family:inherit;">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
                     <input id="inp-us-hero-titulo-es" placeholder="Título del hero (ES)"
@@ -666,11 +700,13 @@
                     <select id="sel-tipo" onchange="actualizarNombre()">
                         <option value="AN">Anillo (AN)</option>
                         <option value="AR">Aretes (AR)</option>
+                        <option value="CO">Collar (CO)</option>
                         <option value="CD">Cadena (CD)</option>
-                        <option value="PL">Pulsera (PL)</option>
-                        <option value="CN">Conjunto (CN)</option>
-                        <option value="RL">Reloj (RL)</option>
-                        <option value="OT">Otro (OT)</option>
+                        <option value="PU">Pulsera (PU)</option>
+                        <option value="CJ">Conjunto (CJ)</option>
+                        <option value="DJ">Dije (DJ)</option>
+                        <option value="TB">Tobillera (TB)</option>
+                        <option value="RS">Rosario (RS)</option>
                     </select>
                 </div>
                 <div>
@@ -1764,7 +1800,19 @@ function tab(i) {
         const id = parseInt(c.id.replace("tab-",""));
         c.classList.toggle("active", i === id);
     });
+    // i = -1 → pantalla limpia (solo logo y botones, centrados en vertical)
+    const hw = document.getElementById("hub-wrap");
+    if (hw) {
+        const hd = document.querySelector("header");
+        if (hd) document.documentElement.style.setProperty("--hh", hd.offsetHeight + "px");
+        hw.classList.toggle("limpio", i === -1);
+    }
 }
+// Clic sobre la pestaña ya abierta = cerrarla (pantalla limpia)
+document.getElementById("hub-wrap")?.addEventListener("click", e => {
+    const t = e.target.closest(".tab");
+    if (t && t.classList.contains("active")) { e.stopPropagation(); tab(-1); }
+}, true);
 
 // ═════════════════════════════════════════════
 //  TOAST
@@ -1818,7 +1866,10 @@ async function cargarDatos(silencioso=false) {
         if (inpFraseC) inpFraseC.value = cfg.fraseConfianza || "";
         const cUS = cfg.contenidoUS || {};
         const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ""; };
-        setVal("inp-us-hero-foto", cUS.heroFoto);
+        const fotosHero = Array.isArray(cUS.heroFotos) && cUS.heroFotos.length ? cUS.heroFotos : (cUS.heroFoto ? [cUS.heroFoto] : []);
+        setVal("inp-us-hero-foto", fotosHero[0]);
+        setVal("inp-us-hero-foto-2", fotosHero[1]);
+        setVal("inp-us-hero-foto-3", fotosHero[2]);
         setVal("inp-us-hero-titulo-es", cUS.heroTitulo?.es);
         setVal("inp-us-hero-titulo-en", cUS.heroTitulo?.en);
         setVal("inp-us-hero-subtitulo-es", cUS.heroSubtitulo?.es);
@@ -2962,10 +3013,19 @@ function actualizarNombre() {
     // Nombre: Tipo + Característica + Material  (ej: "Anillo Mariposa Plata Fina 925")
     const partes = [tipo, det, mat].filter(Boolean);
     document.getElementById("out-nom").textContent = partes.join(" ");
-    // Código único por tipo (regenera si cambia el tipo)
-    if (!window._c || !window._c.startsWith(pref+"-"))
-        window._c = `${pref}-${Math.floor(1000+Math.random()*9000)}`;
-    document.getElementById("out-cod").textContent = window._c;
+    // Código = el mismo que genera Stock (categoría + material + siguiente número libre, p. ej. ANP175), porque de ahí sale la
+    // etiqueta. Antes se inventaba uno al azar («CN-4821») que no coincidía con Stock ni con las categorías de la tienda.
+    const clave = pref + "|" + mat;
+    if (window._cClave !== clave) {
+        window._cClave = clave; window._c = null;
+        document.getElementById("out-cod").textContent = "calculando…";
+        fetch(API_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accion: "GENERAR_CODIGO", categoria: pref, material: mat }) })
+            .then(r => r.json()).then(r => {
+                if (window._cClave !== clave) return;               // cambió el tipo/material mientras tanto
+                if (r && r.ok && r.codigo) { window._c = r.codigo; document.getElementById("out-cod").textContent = r.codigo; }
+                else document.getElementById("out-cod").textContent = "⚠️ no se pudo generar";
+            }).catch(() => { if (window._cClave === clave) document.getElementById("out-cod").textContent = "⚠️ sin conexión"; });
+    }
     // Tallas solo para Anillos
     document.getElementById("sec-tallas").style.display = pref==="AN" ? "block" : "none";
 }
@@ -2974,7 +3034,8 @@ async function publicarProducto() {
     const nombre=document.getElementById("out-nom").textContent;
     const precio=document.getElementById("in-prec").value;
     const img=document.getElementById("in-img").value.trim();
-    const codigo=document.getElementById("out-cod").textContent;
+    const codigo=window._c||"";
+    if (!codigo) return toast("⚠️ Espera a que se genere el código (o revisa la conexión)","#f97316");
     if (!precio||!img) return toast("⚠️ Falta precio o imagen","#f97316");
     const esPareja = document.getElementById("chk-pareja")?.checked;
     const stocks = {};
@@ -2988,11 +3049,12 @@ async function publicarProducto() {
     const btn=document.querySelector("#tab-2 .bfull");
     btn.textContent="Publicando..."; btn.disabled=true;
     try {
-        await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accion:"CREAR_PRODUCTO",_pass:ADMIN_PASS,nombre,precio,img,codigo,caracteristicas:JSON.stringify(stocks)})});
+        const rp = await (await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accion:"CREAR_PRODUCTO",_pass:ADMIN_PASS,nombre,precio,img,codigo,categoria:document.getElementById("sel-tipo").value,material:document.getElementById("sel-mat").value,caracteristicas:JSON.stringify(stocks)})})).json();
+        if (!rp || rp.ok === false) { toast("❌ "+((rp && rp.error)||"No se pudo publicar"),"#ef4444"); window._c=null; window._cClave=null; actualizarNombre(); return; }
         toast("✅ Producto publicado","#22c55e");
         document.getElementById("in-prec").value=document.getElementById("in-img").value=document.getElementById("in-det").value="";
         document.querySelectorAll(".ts").forEach(i=>i.value=0);
-        window._c=null;
+        window._c=null; window._cClave=null;   // fuerza pedir el siguiente código libre
         const chkP = document.getElementById("chk-pareja");
         if (chkP) { chkP.checked=false; togglePareja(); }
         actualizarNombre();
@@ -3245,8 +3307,11 @@ function guardarFraseConfianza() {
 // (el catálogo hace fallback a su texto por defecto si la clave no viene).
 function guardarApariciaUS() {
     const val = id => document.getElementById(id).value.trim();
-    cfg.contenidoUS = {
-        heroFoto: val("inp-us-hero-foto") || undefined,
+    const fotosHero = ["inp-us-hero-foto", "inp-us-hero-foto-2", "inp-us-hero-foto-3"].map(val).filter(Boolean);
+    // Se conserva lo que edita el «Editor de la página» del Hub (preguntas frecuentes, textos del pie, WhatsApp…): aquí solo se pisan estos campos
+    cfg.contenidoUS = { ...(cfg.contenidoUS || {}),
+        heroFoto: fotosHero[0] || undefined,                         // la 1.ª también va aquí por compatibilidad
+        heroFotos: fotosHero.length ? fotosHero : undefined,
         heroTitulo: {
             es: val("inp-us-hero-titulo-es") || undefined,
             en: val("inp-us-hero-titulo-en") || undefined,
@@ -6350,6 +6415,7 @@ async function autoSeleccionarVariado(evitarCodigos) {
 // tocar la foto guardada.
 function ikSharp(url) {
     if (!url || !url.includes("imagekit.io")) return url;
+    if (url.includes("e-sharpen") || /,q-90(?=,|$)/.test(url)) return url;   // foto ya mejorada (también el nivel Suave, sin e-sharpen): sumar otra nitidez la hacía verse exagerada
     return url.includes("?tr=") ? url + ",e-sharpen" : url + "?tr=e-sharpen";
 }
 

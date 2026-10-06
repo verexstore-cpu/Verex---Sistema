@@ -110,6 +110,8 @@ function createWindow() {
       mainWindow.show()
       mainWindow.focus()
       mainWindow.moveTop()
+      const tabInicial = pestanaDeArgs(process.argv)   // arranque con --tab=N (acceso directo)
+      if (tabInicial !== null) mainWindow.webContents.executeJavaScript(`setTab(${tabInicial})`).catch(() => {})
     })
   }
 
@@ -173,12 +175,30 @@ app.on('open-url', (event, url) => {
   }
 })
 
+// Trae la ventana al frente y abre una pestaña (0 Guía/Etiqueta, 1 Joyería, 2 Recibo, 3 Cualquier PDF). Lo usa el acceso directo "Guías VEREX".
+function abrirEnPestana(n) {
+  if (!mainWindow) return false
+  try {
+    mainWindow.setSkipTaskbar(false)
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show(); mainWindow.focus()
+    if (Number.isInteger(n) && n >= 0 && n <= 3) mainWindow.webContents.executeJavaScript(`setTab(${n})`).catch(() => {})
+    return true
+  } catch { return false }
+}
+function pestanaDeArgs(argv) {
+  const a = (argv || []).find(x => /^--tab=\d+$/.test(x))
+  return a ? parseInt(a.split('=')[1]) : null
+}
+
 // En Windows: segunda instancia por protocolo verex://
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_e, argv) => {
+    const tab = pestanaDeArgs(argv)
+    if (tab !== null) { abrirEnPestana(tab); return }
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.focus()
@@ -364,6 +384,8 @@ function startPrintServer() {
         try {
           const body = JSON.parse(Buffer.concat(chunks).toString())
           const { png_base64, formato, rollo } = body
+          // Grosor del texto (0 normal · 1 negrita · 2 extra): engrosa la letra de guías de terceros (PDF) que sale delgada en la térmica
+          const negrita = Math.max(0, Math.min(3, parseInt(body.negrita)))
           if (!png_base64) { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'png_base64 vacío' })); return }
 
           const cfg = loadConfig()
@@ -395,7 +417,8 @@ function startPrintServer() {
           const r = await new Promise(resolve => {
             execFile('python', [
               pyScript, '--png', tmpPng, '--ip', printerIp, '--label', labelId,
-              '--target-w', String(fm.w), '--target-h', String(fm.h), '--rotate', String(fm.rotate)
+              '--target-w', String(fm.w), '--target-h', String(fm.h), '--rotate', String(fm.rotate),
+              '--bold', String(isNaN(negrita) ? (formato === 'guia' ? 1 : 0) : negrita)
             ], { timeout: 30000 }, (err, stdout, stderr) => {
               if (err) resolve({ ok: false, error: parsePrintError(stderr, err.message) })
               else     resolve({ ok: true, ip: printerIp })
@@ -419,6 +442,7 @@ function startPrintServer() {
         try {
           const body   = JSON.parse(Buffer.concat(chunks).toString())
           const { formato, rollo, pdf_base64, pageCount } = body
+          const negritaPdf = Math.max(0, Math.min(3, parseInt(body.negrita) || 0))   // solo si la pantalla lo pide (pestaña "Cualquier PDF"); 0 = sin cambio
           const pages  = parseInt(pageCount) || 1
           if (!pdf_base64) {
             res.writeHead(400, { 'Content-Type': 'application/json' })
@@ -667,6 +691,7 @@ const url='file:///${pdfPath.replace(/\\/g,'/')}';
                     '--target-w', String(px.w), '--target-h', String(px.h), '--rotate', String(rotateDeg)
                   ]
                   if (formato === 'dk1204' || formato === 'mini') args.push('--no-crop')
+                  if (negritaPdf > 0) args.push('--bold', String(negritaPdf))   // engrosa la letra de guías de terceros
 
                   // Cada página del PDF es una etiqueta física distinta. El PNG las
                   // trae apiladas (pdfjs las dibuja en un solo canvas), así que hay
@@ -903,6 +928,15 @@ const url='file:///${pdfPath.replace(/\\/g,'/')}';
         }
         checkUrl('/')
       })
+      return
+    }
+
+    // GET /abrir?tab=3 — trae la app al frente y abre esa pestaña (acceso directo del escritorio)
+    if (req.method === 'GET' && req.url.startsWith('/abrir')) {
+      const t = parseInt(new URL(req.url, 'http://127.0.0.1').searchParams.get('tab'))
+      const ok = abrirEnPestana(isNaN(t) ? null : t)
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ok }))
       return
     }
 

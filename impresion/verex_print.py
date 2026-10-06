@@ -3,7 +3,7 @@ verex_print.py - Impresión directa Brother QL via TCP usando brother_ql
 Uso: python verex_print.py --png <path> --ip <ip> --label <label> --target-w W --target-h H
 """
 import sys, argparse, socket
-from PIL import Image, ImageOps, ImageEnhance
+from PIL import Image, ImageOps, ImageEnhance, ImageFilter
 if not hasattr(Image, 'ANTIALIAS'):
     Image.ANTIALIAS = Image.LANCZOS
 
@@ -27,7 +27,18 @@ def crop_to_content(img):
         img = img.crop((x0, y0, x1, y1))
     return img
 
-def _preparar(img, roll_w, target_w, target_h, rotate, crop):
+def engrosar(img, nivel):
+    """Hace el texto y los trazos mas NEGROS/gruesos: cada nivel ensancha lo oscuro 1 punto por lado (filtro de minimo).
+    Sirve para guias de terceros (PDF que no se puede editar) cuya letra sale delgada y palida en la termica."""
+    if nivel <= 0:
+        return img
+    gris = img.convert('L')
+    for _ in range(nivel):
+        gris = gris.filter(ImageFilter.MinFilter(3))
+    return gris.convert('RGB')
+
+
+def _preparar(img, roll_w, target_w, target_h, rotate, crop, bold=0):
     """Rota, recorta y redimensiona UNA pagina al tamano de la etiqueta."""
     if rotate:
         img = img.rotate(-rotate, expand=True)  # negativo = sentido horario
@@ -50,6 +61,8 @@ def _preparar(img, roll_w, target_w, target_h, rotate, crop):
             ratio = target_w / img.width
             img = img.resize((target_w, max(1, int(img.height * ratio))), Image.LANCZOS)
 
+    img = engrosar(img, bold)
+
     # Centrar en el canvas del rollo (ancho varía según label_id)
     if target_w < roll_w:
         canvas = Image.new('RGB', (roll_w, img.height), (255, 255, 255))
@@ -61,7 +74,7 @@ def _preparar(img, roll_w, target_w, target_h, rotate, crop):
 
 
 def print_label(png_path, ip, label_id, target_w, target_h, rotate=0, crop=True,
-                dither=True, threshold=70, pages=1):
+                dither=True, threshold=70, pages=1, bold=0):
     roll_w = LABEL_WIDTH_DOTS.get(label_id, 696)
 
     original = Image.open(png_path).convert('RGB')
@@ -80,7 +93,7 @@ def print_label(png_path, ip, label_id, target_w, target_h, rotate=0, crop=True,
     else:
         paginas = [original]
 
-    imgs = [_preparar(p, roll_w, target_w, target_h, rotate, crop) for p in paginas]
+    imgs = [_preparar(p, roll_w, target_w, target_h, rotate, crop, bold) for p in paginas]
 
     # dither=True (Floyd-Steinberg) esta pensado para FOTOS. Con texto y codigos
     # QR convierte los bordes suavizados en puntos salteados: el texto sale gris
@@ -138,12 +151,15 @@ if __name__ == '__main__':
                    help='Cuantas paginas vienen apiladas en el PNG. Necesario en '
                         'papel TROQUELADO: se parte la imagen y se manda una '
                         'etiqueta por pagina, en vez de aplastarlas en una sola')
+    p.add_argument('--bold', type=int, default=0,
+                   help='Engrosar el texto 0-3 (cada nivel = 1 punto mas por lado). '
+                        'Para guias de terceros con letra delgada')
     args = p.parse_args()
     try:
         print_label(args.png, args.ip, args.label, args.target_w, args.target_h,
                     args.rotate, crop=not args.no_crop,
                     dither=not args.no_dither, threshold=args.threshold,
-                    pages=max(1, args.pages))
+                    pages=max(1, args.pages), bold=max(0, min(3, args.bold)))
     except Exception as e:
         print(f'ERROR: {e}', file=sys.stderr)
         sys.exit(1)
