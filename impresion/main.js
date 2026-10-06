@@ -931,6 +931,24 @@ const url='file:///${pdfPath.replace(/\\/g,'/')}';
       return
     }
 
+    // POST /cargar-pdf {pdfBase64, nombre} — carga ese PDF en la pestaña "Cualquier PDF" (lo usa "clic derecho > Enviar a > Imprimir guía VEREX")
+    if (req.method === 'POST' && req.url === '/cargar-pdf') {
+      const chunks = []
+      req.on('data', c => chunks.push(c))
+      req.on('end', async () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString())
+          if (!body.pdfBase64) { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'pdfBase64 vacío' })); return }
+          abrirEnPestana(3)
+          await mainWindow.webContents.executeJavaScript(`cargarPdfAnyDesdeBase64(${JSON.stringify(body.pdfBase64)}, ${JSON.stringify(String(body.nombre || 'guia.pdf'))})`)
+          res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: true }))
+        } catch (e) {
+          res.writeHead(500); res.end(JSON.stringify({ ok: false, error: e.message }))
+        }
+      })
+      return
+    }
+
     // GET /abrir?tab=3 — trae la app al frente y abre esa pestaña (acceso directo del escritorio)
     if (req.method === 'GET' && req.url.startsWith('/abrir')) {
       const t = parseInt(new URL(req.url, 'http://127.0.0.1').searchParams.get('tab'))

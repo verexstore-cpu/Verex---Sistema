@@ -1940,6 +1940,15 @@ function onDropAny(e) {
 }
 function onFileSelectedAny(e) { if (e.target.files[0]) cargarPdfAny(e.target.files[0]); }
 
+// Lo llama la app cuando se manda un PDF por "clic derecho -> Enviar a -> Imprimir guía VEREX" (sin arrastrar).
+function cargarPdfAnyDesdeBase64(b64, nombre) {
+  const bin = atob(b64), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  setTab(3);
+  cargarPdfAny(new File([bytes], nombre || 'guia.pdf', { type: 'application/pdf' }));
+  toast('✅ PDF recibido: ' + (nombre || 'guia.pdf'));
+}
+
 function cargarPdfAny(file) {
   const reader = new FileReader();
   reader.onload = e => {
@@ -2046,8 +2055,9 @@ async function imprimirPdfAny58() {
     e.preventDefault(); e.stopPropagation();
     zone.classList.remove('drag-over');
     const f = e.dataTransfer.files[0];
-    if (f && (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'))) cargarPdfAny(f);
-    else toast('Solo se aceptan archivos PDF', true);
+    if (!f) { toast('El arrastre llegó SIN archivo. Si lo sacas del navegador/correo, guárdalo primero en una carpeta y arrastra desde ahí; o usa "o haz clic para seleccionar".', true); return; }
+    if (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')) cargarPdfAny(f);
+    else toast('Eso no es un PDF: ' + f.name, true);
   });
   zone.addEventListener('click', e => {
     if (e.target.tagName !== 'INPUT') document.getElementById('pdfany-file-input').click();
