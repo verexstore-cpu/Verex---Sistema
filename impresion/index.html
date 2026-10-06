@@ -806,7 +806,16 @@
 
 <script>
 // PDF.js worker local
-pdfjsLib.GlobalWorkerOptions.workerSrc = './node_modules/pdfjs-dist/build/pdf.worker.min.js';
+// Si la librería de PDF (node_modules/pdfjs-dist) falta o está dañada, antes este renglón fallaba y TODO lo que sigue
+// (incluido arrastrar el PDF en "Cualquier PDF") dejaba de funcionar. Ahora solo se avisa y el resto sigue andando.
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = './node_modules/pdfjs-dist/build/pdf.worker.min.js';
+} else {
+  console.error('pdfjsLib no cargo: falta node_modules/pdfjs-dist. Las pestanas que previsualizan PDF no van a funcionar.');
+  window.addEventListener('DOMContentLoaded', () => setTimeout(() => {
+    try { toast('⚠️ Falta la librería de PDF (node_modules). Corre "Revisar app de impresion.bat". "Cualquier PDF" sigue funcionando.', true); } catch(_) {}
+  }, 1200));
+}
 
 // Evitar que Electron navegue y habilitar drag & drop de archivos desde el Explorador
 document.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
