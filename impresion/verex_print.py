@@ -28,13 +28,19 @@ def crop_to_content(img):
     return img
 
 def engrosar(img, nivel):
-    """Hace el texto y los trazos mas NEGROS/gruesos: cada nivel ensancha lo oscuro 1 punto por lado (filtro de minimo).
-    Sirve para guias de terceros (PDF que no se puede editar) cuya letra sale delgada y palida en la termica."""
+    """Hace el texto y los trazos mas NEGROS/gruesos. nivel puede tener decimales: 0 = igual, 0.5 = punto medio entre normal y
+    negrita, 1 = ensancha lo oscuro 1 punto por lado, 2 = extra. Sirve para guias de terceros (PDF que no se puede editar)
+    cuya letra sale delgada y palida en la termica."""
     if nivel <= 0:
         return img
     gris = img.convert('L')
-    for _ in range(nivel):
+    enteros = int(nivel)
+    frac = nivel - enteros
+    for _ in range(enteros):
         gris = gris.filter(ImageFilter.MinFilter(3))
+    if frac > 0:
+        # una pasada mas, pero mezclada con lo anterior: engrosa solo "una parte" de punto
+        gris = Image.blend(gris, gris.filter(ImageFilter.MinFilter(3)), frac)
     return gris.convert('RGB')
 
 
@@ -151,15 +157,15 @@ if __name__ == '__main__':
                    help='Cuantas paginas vienen apiladas en el PNG. Necesario en '
                         'papel TROQUELADO: se parte la imagen y se manda una '
                         'etiqueta por pagina, en vez de aplastarlas en una sola')
-    p.add_argument('--bold', type=int, default=0,
-                   help='Engrosar el texto 0-3 (cada nivel = 1 punto mas por lado). '
+    p.add_argument('--bold', type=float, default=0,
+                   help='Engrosar el texto 0-3 (admite decimales: 0.5 = punto medio; 1 = 1 punto mas por lado). '
                         'Para guias de terceros con letra delgada')
     args = p.parse_args()
     try:
         print_label(args.png, args.ip, args.label, args.target_w, args.target_h,
                     args.rotate, crop=not args.no_crop,
                     dither=not args.no_dither, threshold=args.threshold,
-                    pages=max(1, args.pages), bold=max(0, min(3, args.bold)))
+                    pages=max(1, args.pages), bold=max(0.0, min(3.0, args.bold)))
     except Exception as e:
         print(f'ERROR: {e}', file=sys.stderr)
         sys.exit(1)
