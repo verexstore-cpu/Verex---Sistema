@@ -47,7 +47,15 @@ class VerexHub(ctk.CTk):
         # ── Secciones desde config ──────────────────────────────────
         for seccion in self.config_data["secciones"]:
             self._seccion(seccion["nombre"], seccion["color"])
-            for btn in seccion["botones"]:
+            botones = list(seccion["botones"])
+            # "Recibir cambios" va justo después de "Sincronizar Sistema" (si el config no lo trae ya)
+            hay_recibir = any("recibir" in b["texto"].lower() for s2 in self.config_data["secciones"] for b in s2["botones"])
+            if not hay_recibir:
+                for i, b in enumerate(botones):
+                    if "sincronizar" in b["texto"].lower():
+                        botones.insert(i + 1, {"emoji": "📥", "texto": "Recibir cambios", "archivo": "__recibir__", "url": ""})
+                        break
+            for btn in botones:
                 texto = f"{btn['emoji']}  {btn['texto']}"
                 archivo = btn["archivo"]
                 t = btn["texto"].lower()
@@ -56,7 +64,8 @@ class VerexHub(ctk.CTk):
                     archivo = "imprimir"             # → app de impresión en la pestaña "Cualquier PDF"
                 elif "impresión verex" in t or "impresion verex" in t:
                     archivo = "__app_impresion__"    # → app de impresión (ventana normal)
-                self._boton(texto, archivo, btn.get("url", ""), "#1a1a2e", seccion["color"])
+                self._boton(texto, archivo, btn.get("url", ""), "#1a1a2e", seccion["color"],
+                            nota=btn.get("nota") or self._nota_para(btn["texto"]))
 
     def _seccion(self, titulo, color):
         frame = ctk.CTkFrame(self.scroll, fg_color="transparent")
@@ -71,7 +80,29 @@ class VerexHub(ctk.CTk):
             side="left", fill="x", expand=True, padx=(10, 0), pady=6
         )
 
-    def _boton(self, texto, nombre_archivo, url, bg, accent):
+    # Nota corta (qué hace cada botón). Si en hub_config.json un botón trae su propio campo "nota", esa gana.
+    NOTAS = [
+        ("sincronizar", "SUBE lo de esta PC a GitHub y publica las páginas. Úsalo solo si editaste archivos aquí. "
+                        "Si Claude cambió algo desde la nube, usa antes «Recibir cambios»."),
+        ("recibir",     "BAJA a esta PC lo que hay en GitHub (los cambios hechos desde la nube). No borra tus archivos. "
+                        "Úsalo antes de «Sincronizar Sistema»."),
+        ("supabase",    "Abre la base de datos (Supabase): productos, stock, pedidos y clientes."),
+        ("optimizador", "Mejora las fotos de producto: nitidez, fondo y color, listas para la tienda."),
+        ("foto qr",     "Toma la foto del producto y genera o lee su código QR."),
+        ("impresión verex", "Abre la app de impresión: etiquetas, recibos y guías en la Brother QL."),
+        ("impresion verex", "Abre la app de impresión: etiquetas, recibos y guías en la Brother QL."),
+        ("imprimir pdf", "Abre la app de impresión en «Cualquier PDF»: arrastra la guía de envío, elige el grosor del texto e imprime."),
+        ("obs",         "Abre OBS Studio para grabar o transmitir en vivo."),
+    ]
+
+    def _nota_para(self, texto):
+        t = texto.lower()
+        for clave, nota in self.NOTAS:
+            if clave in t:
+                return nota
+        return ""
+
+    def _boton(self, texto, nombre_archivo, url, bg, accent, nota=""):
         btn = ctk.CTkButton(
             self.scroll,
             text=texto,
@@ -86,7 +117,30 @@ class VerexHub(ctk.CTk):
             anchor="w",
             command=lambda n=nombre_archivo, u=url: self._abrir(n, u)
         )
-        btn.pack(pady=4, padx=4, fill="x")
+        btn.pack(pady=(4, 0 if nota else 4), padx=4, fill="x")
+        if nota:
+            ctk.CTkLabel(
+                self.scroll, text=nota, font=("Arial", 10), text_color="#8a8a8a",
+                anchor="w", justify="left", wraplength=470
+            ).pack(pady=(0, 6), padx=10, fill="x")
+
+    def _recibir_cambios(self):
+        """Trae a esta PC lo que hay en GitHub (abre «RECIBIR CAMBIOS DE GITHUB.bat», que no borra archivos)."""
+        bat = os.path.join(os.path.expanduser("~"), "Desktop", "SISTEMA VEREX OFICIAL MAY2026",
+                           "hub-escritorio", "RECIBIR CAMBIOS DE GITHUB.bat")
+        if os.path.exists(bat):
+            try:
+                subprocess.Popen(['cmd', '/c', 'start', '"Recibir cambios"', bat])
+                return
+            except Exception:
+                pass
+        try:
+            from tkinter import messagebox
+            messagebox.showinfo("Recibir cambios",
+                "No se encontró «RECIBIR CAMBIOS DE GITHUB.bat» en\n" + bat +
+                "\n\nGuárdalo en esa carpeta (hub-escritorio) y vuelve a intentar.")
+        except Exception:
+            print("No encontrado:", bat)
 
     def _abrir(self, nombre_base, url=""):
         # "Imprimir PDF (Guías)" necesita que la app de impresión esté
@@ -94,6 +148,9 @@ class VerexHub(ctk.CTk):
         # vez de abrirla siempre con el Hub (aunque no se vaya a imprimir
         # nada esa sesión), se arranca sola justo aquí, un instante antes de
         # abrir la página, solo si todavía no está activa.
+        if nombre_base == "__recibir__":
+            self._recibir_cambios()
+            return
         if nombre_base == "__app_impresion__":
             self._asegurar_impresion_activa()
             if self._traer_app_impresion_al_frente():
