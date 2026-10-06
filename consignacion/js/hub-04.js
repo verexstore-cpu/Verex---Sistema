@@ -1198,6 +1198,18 @@ function notaCodigoCorregido(g) {
         🏷️ <b>CÓDIGO CORREGIDO</b><br>Antes <b>${sanitizar(antes)}</b> → ahora <b>${sanitizar(ahora)}</b><br>Cambia la etiqueta física de ${pend.length > 1 ? "las " + pend.length + " tallas" : "la pieza"}.
         <button onclick="event.stopPropagation();marcarEtiquetaCambiada(${jsArgArr(cods)})" style="display:block;margin-top:5px;padding:4px 8px;font-size:11px;font-weight:700;background:#f59e0b;color:#111;border:none;border-radius:6px;cursor:pointer;">✓ Etiqueta ya cambiada</button></div>`;
 }
+// Alerta en la tarjeta: un par/trío (tiene tallas D de dama y C/H de caballero) con alguna talla
+// SIN la letra D/C/H en el código (ej. ANP311T11). Se cuenta como pieza aparte y el catálogo no la reconoce.
+function notaCodigoSinLetra(g) {
+    const cods = (g.items || []).map(i => String(i.codigo || ""));
+    const conLetra = L => cods.some(c => new RegExp("[\\dB]" + L + "T\\d+(\\.\\d+)?$", "i").test(c));
+    if (!(conLetra("D") && conLetra("[CH]"))) return "";
+    const sueltas = cods.filter(c => /\dT\d+(\.\d+)?$/i.test(c));
+    if (!sueltas.length) return "";
+    return `<div onclick="event.stopPropagation()" style="margin:5px 0;padding:6px 8px;border-radius:8px;background:rgba(245,158,11,.14);border:1px solid #f59e0b;color:#fcd34d;font-size:11px;line-height:1.4;">
+        ⚠️ <b>Falta D o C en el código</b><br>${sueltas.map(c => "<b>" + sanitizar(c) + "</b>").join(", ")} no dice si es dama (D) o caballero (C). Se cuenta como una pieza extra. Corrígelo con ✏️.
+    </div>`;
+}
 async function marcarEtiquetaCambiada(codigos) {
     try {
         const r = await apiPost({ accion: "MARCAR_ETIQUETA_CAMBIADA", codigos });
@@ -1317,7 +1329,7 @@ function renderStock(items) {
                         <div style="color:#34D399;font-size:11px;font-weight:700;">$${precioTotal.toFixed(2)}</div>
                     </div>
                     <div style="color:#fff;font-size:11px;font-weight:600;margin:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sanitizar(g.nombre)}</div>
-                    ${notaCodigoCorregido(g)}
+                    ${notaCodigoCorregido(g)}${notaCodigoSinLetra(g)}
                     ${g.material ? `<div style="display:inline-block;font-size:9px;font-weight:700;margin-bottom:3px;background:${colorMaterial(g.material).bg};border:1px solid ${colorMaterial(g.material).border};color:${colorMaterial(g.material).color};border-radius:4px;padding:1px 6px;">${sanitizar(g.material)}</div>` : ''}
                     ${g.caracterEspecial ? `<div style="display:inline-block;font-size:9px;font-weight:700;margin-bottom:3px;margin-left:3px;background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.4);color:#c9a8ff;border-radius:4px;padding:1px 6px;" title="Característica especial">✨ ${sanitizar(g.caracterEspecial)}</div>` : ''}
                     ${agotadoGrupo
@@ -1438,7 +1450,7 @@ function renderStock(items) {
                 ${g.foto ? `<img src="${sanitizar(ikFoto(g.fotoMejorada||g.foto,200))}" onerror="fotoNoDisponible(this)" onclick="event.stopPropagation();abrirFotoZoom(${jsArg(g.fotoMejorada||g.foto)},${jsArg(g.nombre)})" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;background:#3a3a3c;">` : '<div style="width:64px;height:64px;background:#3a3a3c;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">💍</div>'}
                 <div style="flex:1;min-width:0;">
                     <div style="color:#fff;font-size:14px;font-weight:600;">${sanitizar(g.nombre)}</div>
-                    ${notaCodigoCorregido(g)}
+                    ${notaCodigoCorregido(g)}${notaCodigoSinLetra(g)}
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;">
                         ${g.material ? `<span style="font-size:10px;font-weight:700;color:${colorMaterial(g.material).color};background:${colorMaterial(g.material).bg};border:1px solid ${colorMaterial(g.material).border};border-radius:4px;padding:1px 7px;">${sanitizar(g.material)}</span>` : ''}
                         ${g.caracterEspecial ? `<span style="font-size:10px;font-weight:700;color:#c9a8ff;background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.4);border-radius:4px;padding:1px 7px;" title="Característica especial">✨ ${sanitizar(g.caracterEspecial)}</span>` : ''}
