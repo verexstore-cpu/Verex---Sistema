@@ -6,6 +6,7 @@ rem Trae a ESTA PC lo que hay en GitHub (lo contrario de "Sincronizar Sistema", 
 rem Hace, en la carpeta principal y en _admin-repo, _consig-repo y _inventario-repo:
 rem   1) guarda un respaldo de cualquier cambio local sin subir (git stash)
 rem   2) descarta los commits locales atascados y deja el repo igual que GitHub
+rem (Se desactiva la limpieza automatica de git: en Windows a veces pregunta 'Should I try again? (y/n)' si una carpeta esta en uso.)
 rem Despues copia verex_hub.py a "VEREX - Accesos Directos".
 rem ------------------------------------------------------------------------------------------
 set "BASE=%USERPROFILE%\Desktop\SISTEMA VEREX OFICIAL MAY2026"
@@ -50,8 +51,8 @@ exit /b 0
 pushd "%~1" >nul
 echo.
 echo  === %~1
-git stash push -m "respaldo antes de recibir cambios de GitHub" >nul 2>&1
-git fetch origin
+git -c gc.auto=0 -c maintenance.auto=false stash push -m "respaldo antes de recibir cambios de GitHub" >nul 2>&1
+git -c gc.auto=0 -c maintenance.auto=false fetch origin
 if errorlevel 1 (
   echo  ^(!^) No se pudo conectar con GitHub en esta carpeta.
   popd >nul
@@ -65,6 +66,6 @@ if not defined RAMA (
   popd >nul
   exit /b 1
 )
-git reset --hard !RAMA!
+git -c gc.auto=0 -c maintenance.auto=false reset --hard !RAMA!
 popd >nul
 exit /b 0
