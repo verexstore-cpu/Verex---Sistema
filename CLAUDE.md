@@ -33,6 +33,7 @@ Worker (worker-firebase.js) → npx wrangler deploy (manual)
 | `consignacion/worker-firebase.js` | `verex-consignacion` → `_consig-repo/worker-firebase.js` | ❌ Manual wrangler | `verex-api.verexstore.workers.dev` |
 | `verex-catalogo/index.html` | `verex-catalogo` → `index.html` | ✅ Cloudflare Pages | `verexstore.com` |
 | `inventario-sellers/index (5).html` | `inventario-sellers` → `_inventario-repo/index.html` | ✅ Cloudflare Pages | — |
+| — (repo propio, sin copia aquí) | `verex-catalogo-us` → `index.html`, `assistant/`, `functions/` | ✅ Cloudflare Pages (+ Pages Functions `/api/*`) | `us.verexstore.com` |
 
 **Siempre hacer push a los repos de deploy además del repo principal.**
 
@@ -42,6 +43,13 @@ Worker (worker-firebase.js) → npx wrangler deploy (manual)
 - Para cambiar el catálogo: editar `verex-catalogo/index.html` directamente y hacer `git push` dentro de `verex-catalogo/`
 - Google Sheets **ya no se usa** — el catálogo lee desde Supabase via `verex-api.verexstore.workers.dev`
 - El catálogo tiene diseño propio: drawer cart, tarjetas premium, filtros por material/talla — no reemplazar con versiones de otros sistemas
+
+### VEREX AI Jewelry Assistant (tienda USA)
+- Vive en el repo `verex-catalogo-us`: widget en `assistant/`, backend en `functions/` (Pages Functions `/api/chat`, `/api/products`, `/api/search`).
+- Lee el inventario real del Worker (`GET_CATALOGO`); no tiene productos escritos en el código.
+- La clave `OPENAI_API_KEY` va SOLO como Secret en Cloudflare Pages (proyecto verex-catalogo-us). Sin clave funciona por reglas.
+- Si cambian tarifas de envío / mínimo de compra en `verex-catalogo-us/index.html`, actualizar también `functions/_lib/knowledge.js`.
+- Guía completa: `verex-catalogo-us/docs/AI-ASSISTANT.md`.
 
 ---
 
