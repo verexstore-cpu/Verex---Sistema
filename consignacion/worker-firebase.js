@@ -463,7 +463,11 @@ async function enviar(){
       switch (d.accion) {
 
         // ══ STOCK ════════════════════════════════════════════════
+        // Inventario COMPLETO (publicado o no, con costos y consignación): solo admin.
+        // Lo usan el Hub de consignación (apiPost manda _pass) y foto-qr.html (login con _pass).
+        // El catálogo público usa GET_CATALOGO, que solo devuelve lo publicado.
         case "STOCK_GET_ALL": {
+          if (!esAdmin) return forbidden();
           const docs = await sb.getAll("stock");
           result = { ok: true, stock: docs.filter(p => p.estado !== "inactivo") };
           break;
