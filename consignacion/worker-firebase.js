@@ -4582,6 +4582,77 @@ async function enviar(){
           break;
         }
 
+        // ══ VEREX AI (asistente de us.verexstore.com) — demanda no cubierta ══
+        // Registra, sin datos personales, lo que los clientes buscan y no encuentran
+        // ("sin_resultados"), lo que piden que se les consiga ("pedido_cliente") y las
+        // preguntas que el asistente no pudo responder ("pregunta"). Solo lo llaman las
+        // Pages Functions de verex-catalogo-us, con el secreto interno compartido
+        // (INTERNAL_SECRET, el mismo valor en el Worker y en ese proyecto de Pages).
+        // Se agrega por mes en config/ia_demanda_AAAA-MM (máx. 400 entradas por mes).
+        case "IA_DEMANDA_REGISTRAR": {
+          if (!env.INTERNAL_SECRET || !safeEq(request.headers.get("X-Verex-Internal") || "", env.INTERNAL_SECRET)) return forbidden();
+          const limpiarIA = (v, n) => String(v || "")
+            .replace(/[\u0000-\u001f<>]/g, " ")
+            .replace(/\S+@\S+\.\S+/g, "[correo]")                  // nunca guardar correos ni teléfonos
+            .replace(/\+?\d[\d\s().-]{6,}\d/g, "[teléfono]")
+            .replace(/\s+/g, " ").trim().slice(0, n);
+          const tipoIA = ["sin_resultados", "pedido_cliente", "pregunta"].includes(d.tipo) ? d.tipo : "sin_resultados";
+          const claveIA = limpiarIA(d.clave, 90).toLowerCase();
+          if (!claveIA) { result = { ok: false, error: "clave vacía" }; break; }
+          const mesIA = new Date().toISOString().slice(0, 7);
+          const docIdIA = `ia_demanda_${mesIA}`;
+          const docIA = (await sb.get("config", docIdIA)) || { mes: mesIA, items: {} };
+          docIA.items = docIA.items || {};
+          const kIA = `${tipoIA === "pregunta" ? "p" : "b"}:${claveIA}`;
+          const itIA = docIA.items[kIA] || { tipo: tipoIA === "pregunta" ? "pregunta" : "producto", descripcion: limpiarIA(d.descripcion || d.clave, 140), veces: 0, pedidos: 0, ejemplos: [], idiomas: {} };
+          if (tipoIA === "pedido_cliente") itIA.pedidos = (itIA.pedidos || 0) + 1; else itIA.veces = (itIA.veces || 0) + 1;
+          itIA.ultima = new Date().toISOString();
+          const ejIA = limpiarIA(d.consulta, 160);
+          if (ejIA && !itIA.ejemplos.includes(ejIA)) itIA.ejemplos = [ejIA, ...itIA.ejemplos].slice(0, 3);
+          const langIA = d.idioma === "es" ? "es" : "en";
+          itIA.idiomas[langIA] = (itIA.idiomas[langIA] || 0) + 1;
+          docIA.items[kIA] = itIA;
+          const clavesIA = Object.keys(docIA.items);
+          if (clavesIA.length > 400) {
+            clavesIA.sort((a, b) => ((docIA.items[a].pedidos || 0) * 3 + (docIA.items[a].veces || 0)) - ((docIA.items[b].pedidos || 0) * 3 + (docIA.items[b].veces || 0)))
+              .slice(0, clavesIA.length - 400).forEach(k => delete docIA.items[k]);
+          }
+          await sb.set("config", docIdIA, docIA);
+          result = { ok: true };
+          break;
+        }
+
+        // Reporte para Admin VEREX: lo más buscado sin resultado, lo más pedido y las preguntas sin respuesta.
+        case "IA_DEMANDA_LISTAR": {
+          if (!esAdmin) return forbidden();
+          const mesesIA = Math.min(Math.max(parseInt(d.meses, 10) || 1, 1), 6);
+          const ahoraIA = new Date();
+          const idsIA = [];
+          for (let i = 0; i < mesesIA; i++) {
+            const f = new Date(Date.UTC(ahoraIA.getUTCFullYear(), ahoraIA.getUTCMonth() - i, 1));
+            idsIA.push(`ia_demanda_${f.toISOString().slice(0, 7)}`);
+          }
+          const docsIA = await Promise.all(idsIA.map(id => sb.get("config", id).catch(() => null)));
+          const juntosIA = {};
+          for (const doc of docsIA) {
+            for (const [k, it] of Object.entries((doc && doc.items) || {})) {
+              const acc = juntosIA[k] || (juntosIA[k] = { tipo: it.tipo, descripcion: it.descripcion, veces: 0, pedidos: 0, ejemplos: [], idiomas: {}, ultima: "" });
+              acc.veces += it.veces || 0;
+              acc.pedidos += it.pedidos || 0;
+              for (const e of it.ejemplos || []) if (!acc.ejemplos.includes(e) && acc.ejemplos.length < 3) acc.ejemplos.push(e);
+              for (const [l, n] of Object.entries(it.idiomas || {})) acc.idiomas[l] = (acc.idiomas[l] || 0) + n;
+              if ((it.ultima || "") > acc.ultima) acc.ultima = it.ultima;
+            }
+          }
+          const listaIA = Object.values(juntosIA).sort((a, b) => (b.pedidos * 3 + b.veces) - (a.pedidos * 3 + a.veces));
+          result = {
+            ok: true, meses: mesesIA,
+            productos: listaIA.filter(x => x.tipo !== "pregunta").slice(0, 100),
+            preguntas: listaIA.filter(x => x.tipo === "pregunta").slice(0, 50),
+          };
+          break;
+        }
+
         case "GET_VISITAS": {
           if (!esAdmin) return forbidden();
           const vis = await sb.get("config", "visitas_catalogo") || { total: 0, porDia: {} };

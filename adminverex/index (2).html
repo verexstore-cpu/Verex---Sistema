@@ -483,6 +483,22 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
                     <button onclick="guardarApariciaUS()" style="padding:6px 12px;background:#C9A84C;color:#111;border:none;border-radius:7px;cursor:pointer;font-weight:700;font-size:12px;white-space:nowrap;">💾 Guardar apariencia USA</button>
                 </div>
             </div>
+            <!-- VEREX AI — lo que los clientes buscan y no encuentran (reporte del asistente de us.verexstore.com) -->
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid #333;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <div>
+                        <div style="font-size:13px;font-weight:600;">🤖 VEREX AI — lo que buscan y no encuentran</div>
+                        <div style="font-size:11px;color:#888;margin-top:3px;">Búsquedas del asistente de us.verexstore.com sin resultado, piezas que pidieron conseguir y preguntas sin respuesta. Anónimo.</div>
+                    </div>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <select id="sel-demanda-ia-meses" style="padding:6px;background:#1a1a1a;border:1px solid #444;border-radius:7px;color:#fff;font-size:12px;">
+                            <option value="1">Este mes</option><option value="3">Últimos 3 meses</option><option value="6">Últimos 6 meses</option>
+                        </select>
+                        <button onclick="cargarDemandaIA()" style="padding:6px 12px;background:#C9A84C;color:#111;border:none;border-radius:7px;cursor:pointer;font-weight:700;font-size:12px;white-space:nowrap;">🔎 Ver reporte</button>
+                    </div>
+                </div>
+                <div id="demanda-ia" style="margin-top:10px;font-size:12px;"></div>
+            </div>
         </div>
 
         <div class="stats" id="stats-grid">
@@ -3305,6 +3321,37 @@ function guardarFraseConfianza() {
 // clave "contenidoUS" para no pisar nada del catálogo domestico. El campo
 // vacío en el formulario simplemente no sobreescribe lo que ya había
 // (el catálogo hace fallback a su texto por defecto si la clave no viene).
+// Reporte de demanda de VEREX AI (asistente de us.verexstore.com): lo más buscado sin resultado,
+// lo que los clientes pidieron conseguir y las preguntas que no tenían respuesta publicada.
+// Sirve para decidir qué publicar / traer y qué preguntas frecuentes agregar en el Editor de la página.
+async function cargarDemandaIA() {
+    const box = document.getElementById("demanda-ia");
+    const meses = document.getElementById("sel-demanda-ia-meses").value;
+    box.innerHTML = '<div style="color:#888;">Cargando…</div>';
+    let r;
+    try {
+        r = await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "IA_DEMANDA_LISTAR", _pass: ADMIN_PASS, meses }) }).then(x => x.json());
+    } catch (e) { r = { ok: false }; }
+    if (!r || !r.ok) { box.innerHTML = '<div style="color:#f87171;">No se pudo cargar el reporte. Revisa que el Worker esté actualizado.</div>'; return; }
+    const fecha = iso => iso ? new Date(iso).toLocaleDateString("es-SV", { day: "2-digit", month: "short" }) : "";
+    const fila = (x, conPedidos) => `
+        <div style="padding:8px 10px;border:1px solid #333;border-radius:8px;margin-bottom:6px;background:#161616;">
+            <div style="display:flex;justify-content:space-between;gap:8px;">
+                <b style="color:#fff;">${esc(x.descripcion)}</b>
+                <span style="white-space:nowrap;color:#C9A84C;font-weight:700;">${x.veces} ${x.veces === 1 ? "vez" : "veces"}${conPedidos && x.pedidos ? ` · <span style="color:#22c55e;">${x.pedidos} ${x.pedidos === 1 ? "pidió" : "pidieron"} conseguirlo</span>` : ""}</span>
+            </div>
+            ${(x.ejemplos || []).length ? `<div style="color:#999;margin-top:4px;">${x.ejemplos.map(e => "“" + esc(e) + "”").join(" · ")}</div>` : ""}
+            <div style="color:#666;margin-top:3px;font-size:11px;">Última: ${fecha(x.ultima)}${x.idiomas ? " · " + Object.entries(x.idiomas).map(([l, n]) => `${l.toUpperCase()} ${n}`).join(" / ") : ""}</div>
+        </div>`;
+    const prods = r.productos || [], preg = r.preguntas || [];
+    box.innerHTML = `
+        <div style="font-weight:700;margin:6px 0;">🛍️ Productos buscados sin resultado (${prods.length})</div>
+        ${prods.length ? prods.map(x => fila(x, true)).join("") : '<div style="color:#888;">Nada todavía.</div>'}
+        <div style="font-weight:700;margin:12px 0 6px;">❓ Preguntas sin respuesta (${preg.length})</div>
+        <div style="color:#888;font-size:11px;margin-bottom:6px;">Agrégalas en el Hub → Editor de la página → Preguntas frecuentes y el asistente las responderá.</div>
+        ${preg.length ? preg.map(x => fila(x, false)).join("") : '<div style="color:#888;">Nada todavía.</div>'}`;
+}
+
 function guardarApariciaUS() {
     const val = id => document.getElementById(id).value.trim();
     const fotosHero = ["inp-us-hero-foto", "inp-us-hero-foto-2", "inp-us-hero-foto-3"].map(val).filter(Boolean);
