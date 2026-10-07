@@ -2579,7 +2579,11 @@ async function enviar(){
           break;
         }
 
+        // Datos personales de un cliente (por código CVX-### o teléfono): solo admin. Los códigos son
+        // consecutivos, así que siendo pública cualquiera podía recorrer CVX-001, CVX-002… y bajar nombre,
+        // teléfono, dirección y correo de todos. El autocompletado del catálogo que la usaba ya no se muestra.
         case "BUSCAR_CLIENTE": {
+          if (!esAdmin) return forbidden();
           const cliAll = await sb.getAll("clientes");
           const cli = cliAll.find(c =>
             String(c.codigo) === String(d.codigo) ||
@@ -3772,12 +3776,16 @@ async function enviar(){
         // ══ ALIAS ════════════════════════════════════════════════
         case "GET_STOCK": {
           const stock = await sb.getAll("stock");
+          // Admin (Hub con _pass): inventario completo. Público (links de producto /p, catálogos /c de
+          // afiliados, vista previa de links): solo los campos de producto que esas páginas usan —
+          // nunca consignación, ventas, reservas internas ni otros campos que el Hub guarde.
           // Se incluye config (ej. fraseConfianza del catálogo) porque
           // catalogo.html (los links /c/:id) ya llama GET_STOCK para el
           // chequeo de disponibilidad en vivo — reutilizar esa llamada evita
           // un fetch extra solo para leer la frase editable de envíos/pago.
           const cfgStock = await sb.get("config", "settings");
-          result = { ok: true, stock: stock.filter(p => p.estado !== "inactivo"), config: sanearConfigPublico(cfgStock) };
+          const activos = stock.filter(p => p.estado !== "inactivo");
+          result = { ok: true, stock: esAdmin ? activos : activos.map(stockPublico), config: sanearConfigPublico(cfgStock) };
           break;
         }
 
@@ -5041,8 +5049,15 @@ async function compararPassword(pass, env, sb) {
 }
 
 // Clave legacy de vendedores (d.key): mismo trato — comparación segura y límite de intentos.
+// Valores que viajan dentro del código PÚBLICO de los catálogos (verexstore.com y us.verexstore.com):
+// cualquiera puede verlos, así que nunca dan acceso de admin aunque SECRET_KEY tuviera ese valor, y
+// tampoco cuentan como intento fallido (si no, los pedidos de clientes desde una misma IP podían
+// bloquear el acceso del admin). Si SECRET_KEY en Cloudflare es uno de estos, cambiarlo.
+const CLAVES_LEGACY_PUBLICAS = new Set(["VEREX_2026_PRO"]);
+
 async function claveLegacyValida(key, env, sb, ip) {
   if (!key || !env.SECRET_KEY) return false;
+  if (CLAVES_LEGACY_PUBLICAS.has(String(key))) return false;
   const rk = "api:" + (ip || "unknown");
   if (await rlBlocked(sb, rk)) return false;
   if (safeEq(key, env.SECRET_KEY)) return true;
@@ -6458,6 +6473,17 @@ async function planearCambioVD(sb, vd, cambios) {
 // Sin este filtro, cualquiera obtenía passHash con una sola petición sin
 // autenticarse, y ese mismo hash es aceptado como contraseña válida en
 // verificarPassword() — bypaseaba contraseña + OTP + SSO por completo.
+// Campos de un producto que pueden salir en respuestas públicas (GET_STOCK sin contraseña).
+const CAMPOS_STOCK_PUBLICOS = ["id", "codigo", "codigoBase", "talla", "nombre", "nombre_base", "nombreEN", "categoria",
+  "material", "precio", "precio_caballero", "set_config", "foto", "fotoMejorada", "img", "descripcion", "descripcionTienda",
+  "descripcionTiendaEN", "caracterEspecial", "estado", "enCatalogo", "destacado", "fechaRegistro", "reservado",
+  "stock_tienda", "stock_bodega"];
+function stockPublico(p) {
+  const o = {};
+  for (const k of CAMPOS_STOCK_PUBLICOS) if (p[k] !== undefined) o[k] = p[k];
+  return o;
+}
+
 function sanearConfigPublico(cfg) {
   if (!cfg || typeof cfg !== "object") return {};
   const { passHash, otp, otpExp, ssoTokens, ...publico } = cfg;
