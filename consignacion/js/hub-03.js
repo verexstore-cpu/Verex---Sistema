@@ -176,11 +176,12 @@ function generarReciboPDF(vendedor, items, firmaImg, codigoFirma, esMensajeria) 
 
     // Con muchas piezas la tabla sigue en otra hoja (antes las filas pasadas del borde, el total y la firma se perdían)
     const limiteY = 272;
-    let total = 0;
+    let total = 0, totalPiezas = 0;
     items.forEach((item, idx) => {
         if (y + rowH > limiteY) { doc.addPage(); y = 20; dibujarEncabezadoTabla(); }
         const subtotal = parseFloat(item.precio) * parseInt(item.cantidad);
         total += subtotal;
+        totalPiezas += parseInt(item.cantidad) || 0;
         doc.setFillColor(idx % 2 === 0 ? 248 : 255, idx % 2 === 0 ? 248 : 255, idx % 2 === 0 ? 248 : 255);
         doc.rect(mL, y, textW, rowH, 'F');
         doc.setTextColor(40, 40, 40);
@@ -202,7 +203,7 @@ function generarReciboPDF(vendedor, items, firmaImg, codigoFirma, esMensajeria) 
     doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    doc.text("TOTAL CONSIGNADO:", mL + 2, y + 5);
+    doc.text("TOTAL CONSIGNADO: " + totalPiezas + (totalPiezas === 1 ? " pieza" : " piezas"), mL + 2, y + 5);
     doc.text("$" + total.toFixed(2), pageW - mR - 2, y + 5, { align: "right" });
     y += rowH + 10;
 
