@@ -370,6 +370,7 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
             <a href="https://verexstore.com" target="_blank" class="btn-header" title="Abre la tienda pública en una pestaña nueva">👁️ Ver Tienda</a>
             <a href="https://verex-nexus.pages.dev" target="_blank" class="btn-header" title="Abre VEREX Nexus (vendedores, afiliados, stock físico, venta directa)">📦 Nexus</a>
             <a href="logistica-usa.html" target="_blank" class="btn-header" style="border-color:#16a34a;color:#16a34a;" title="Pedidos, pagos y tracking DHL del catálogo de Estados Unidos">🇺🇸 Logística USA</a>
+            <button class="btn-header" onclick="abrirEditorUS()" style="border-color:#c9a84c;color:#c9a84c;" title="Editar us.verexstore.com: fotos, textos y secciones, con vista previa">✏️ Página USA</button>
             <a href="chats.html" target="_blank" class="btn-header" style="border-color:#c9a84c;color:#c9a84c;" title="VEREX Chats: chat en vivo con clientes de us.verexstore.com (Lyra traduce inglés ↔ español)">💬 Chats</a>
             <button class="btn-header" onclick="abrirModalGarantia()" style="border-color:#0ea5e9;color:#0ea5e9;" title="Ver/copiar el link o QR de la página pública de Garantía Limitada, y editar su contenido">🛡️ Link/QR Garantía</button>
             <button class="btn-header" onclick="abrirModalCambios()" style="border-color:#7c3aed;color:#7c3aed;" title="Ver/copiar el link o QR de la página pública de Política de Cambios, y editar su contenido">🔄 Link/QR Cambios</button>
@@ -451,38 +452,13 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
                 </div>
                 <label class="tog"><input type="checkbox" id="tog-varios" onchange="guardarToggleVarios()"><span class="sl"></span></label>
             </div>
-            <!-- Apariencia del home — Catálogo USA -->
-            <div style="margin-top:14px;padding-top:14px;border-top:1px solid #333;">
-                <div style="font-size:13px;font-weight:600;margin-bottom:6px;">🇺🇸 Apariencia del home — Catálogo USA</div>
-                <div style="font-size:11px;color:#888;margin-bottom:8px;">Foto y textos del hero de us.verexstore.com. Vacío = se queda el actual.</div>
-                <div style="font-size:11px;color:#888;margin-bottom:4px;">Carrusel del hero: hasta 3 fotos (se cambian solas cada 5 s). Con una sola foto no hay carrusel.</div>
-                <input id="inp-us-hero-foto" placeholder="Foto 1 del hero — URL (ImageKit)"
-                    style="width:100%;padding:8px;margin-bottom:6px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;font-family:inherit;">
-                <input id="inp-us-hero-foto-2" placeholder="Foto 2 del hero — URL (opcional)"
-                    style="width:100%;padding:8px;margin-bottom:6px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;font-family:inherit;">
-                <input id="inp-us-hero-foto-3" placeholder="Foto 3 del hero — URL (opcional)"
-                    style="width:100%;padding:8px;margin-bottom:6px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;font-family:inherit;">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
-                    <input id="inp-us-hero-titulo-es" placeholder="Título del hero (ES)"
-                        style="padding:8px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;font-family:inherit;">
-                    <input id="inp-us-hero-titulo-en" placeholder="Título del hero (EN)"
-                        style="padding:8px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;font-family:inherit;">
+            <!-- Página USA — editor con vista previa (editor-us.js) -->
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid #333;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+                <div>
+                    <div style="font-size:13px;font-weight:600;">🇺🇸 Página USA — us.verexstore.com</div>
+                    <div style="font-size:11px;color:#888;margin-top:3px;">Fotos de la portada (hasta 10), textos, orden de las secciones, categorías, preguntas y políticas, con vista previa en vivo.</div>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
-                    <input id="inp-us-hero-subtitulo-es" placeholder="Subtítulo del hero (ES)"
-                        style="padding:8px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;font-family:inherit;">
-                    <input id="inp-us-hero-subtitulo-en" placeholder="Subtítulo del hero (EN)"
-                        style="padding:8px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;font-family:inherit;">
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-                    <input id="inp-us-footer-tag-es" placeholder="Tagline del footer (ES)"
-                        style="padding:8px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;font-family:inherit;">
-                    <input id="inp-us-footer-tag-en" placeholder="Tagline del footer (EN)"
-                        style="padding:8px;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;font-size:13px;font-family:inherit;">
-                </div>
-                <div style="display:flex;justify-content:flex-end;margin-top:6px;">
-                    <button onclick="guardarApariciaUS()" style="padding:6px 12px;background:#C9A84C;color:#111;border:none;border-radius:7px;cursor:pointer;font-weight:700;font-size:12px;white-space:nowrap;">💾 Guardar apariencia USA</button>
-                </div>
+                <button onclick="abrirEditorUS()" style="padding:8px 14px;background:#C9A84C;color:#111;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px;white-space:nowrap;">✏️ Editar página USA</button>
             </div>
             <!-- VEREX AI — lo que los clientes buscan y no encuentran (reporte del asistente de us.verexstore.com) -->
             <div style="margin-top:14px;padding-top:14px;border-top:1px solid #333;">
@@ -1855,6 +1831,7 @@ async function init() {
     // Acceso rápido desde el panel de Logística USA ("Generar nuevo
     // catálogo"): abre directo el modal de Catálogo Cliente con la casilla
     // de Estados Unidos ya marcada, en vez de duplicar ese formulario allá.
+    if (location.hash === "#editar-us") { history.replaceState(null, "", location.pathname + location.search); abrirEditorUS(); }
     if (location.hash === "#catalogo-us") {
         abrirModalCatalogo("cliente");
         const chkUS = document.getElementById("cat-es-us");
@@ -1881,18 +1858,6 @@ async function cargarDatos(silencioso=false) {
         }
         const inpFraseC = document.getElementById("inp-frase-confianza");
         if (inpFraseC) inpFraseC.value = cfg.fraseConfianza || "";
-        const cUS = cfg.contenidoUS || {};
-        const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ""; };
-        const fotosHero = Array.isArray(cUS.heroFotos) && cUS.heroFotos.length ? cUS.heroFotos : (cUS.heroFoto ? [cUS.heroFoto] : []);
-        setVal("inp-us-hero-foto", fotosHero[0]);
-        setVal("inp-us-hero-foto-2", fotosHero[1]);
-        setVal("inp-us-hero-foto-3", fotosHero[2]);
-        setVal("inp-us-hero-titulo-es", cUS.heroTitulo?.es);
-        setVal("inp-us-hero-titulo-en", cUS.heroTitulo?.en);
-        setVal("inp-us-hero-subtitulo-es", cUS.heroSubtitulo?.es);
-        setVal("inp-us-hero-subtitulo-en", cUS.heroSubtitulo?.en);
-        setVal("inp-us-footer-tag-es", cUS.footerTagline?.es);
-        setVal("inp-us-footer-tag-en", cUS.footerTagline?.en);
         renderAll(silencioso);
         cargarVentasUnificadas().then(() => renderStats());
     } catch(e) {
@@ -3317,14 +3282,10 @@ function guardarFraseConfianza() {
     toast("✅ Franja de confianza actualizada", "#22c55e");
 }
 
-// Apariencia del home de us.verexstore.com (foto y textos del hero, tagline
-// del footer) — vive en config/settings junto al resto, bajo su propia
-// clave "contenidoUS" para no pisar nada del catálogo domestico. El campo
-// vacío en el formulario simplemente no sobreescribe lo que ya había
-// (el catálogo hace fallback a su texto por defecto si la clave no viene).
+// La apariencia de us.verexstore.com (fotos, textos, secciones…) se edita en ✏️ Editar página USA (editor-us.js).
 // Reporte de demanda de VEREX AI (asistente de us.verexstore.com): lo más buscado sin resultado,
 // lo que los clientes pidieron conseguir y las preguntas que no tenían respuesta publicada.
-// Sirve para decidir qué publicar / traer y qué preguntas frecuentes agregar en el Editor de la página.
+// Sirve para decidir qué publicar / traer y qué preguntas frecuentes agregar en ✏️ Editar página USA.
 async function cargarDemandaIA() {
     const box = document.getElementById("demanda-ia");
     const meses = document.getElementById("sel-demanda-ia-meses").value;
@@ -3349,32 +3310,8 @@ async function cargarDemandaIA() {
         <div style="font-weight:700;margin:6px 0;">🛍️ Productos buscados sin resultado (${prods.length})</div>
         ${prods.length ? prods.map(x => fila(x, true)).join("") : '<div style="color:#888;">Nada todavía.</div>'}
         <div style="font-weight:700;margin:12px 0 6px;">❓ Preguntas sin respuesta (${preg.length})</div>
-        <div style="color:#888;font-size:11px;margin-bottom:6px;">Agrégalas en el Hub → Editor de la página → Preguntas frecuentes y el asistente las responderá.</div>
+        <div style="color:#888;font-size:11px;margin-bottom:6px;">Agrégalas en ✏️ Editar página USA → Preguntas y el asistente las responderá.</div>
         ${preg.length ? preg.map(x => fila(x, false)).join("") : '<div style="color:#888;">Nada todavía.</div>'}`;
-}
-
-function guardarApariciaUS() {
-    const val = id => document.getElementById(id).value.trim();
-    const fotosHero = ["inp-us-hero-foto", "inp-us-hero-foto-2", "inp-us-hero-foto-3"].map(val).filter(Boolean);
-    // Se conserva lo que edita el «Editor de la página» del Hub (preguntas frecuentes, textos del pie, WhatsApp…): aquí solo se pisan estos campos
-    cfg.contenidoUS = { ...(cfg.contenidoUS || {}),
-        heroFoto: fotosHero[0] || undefined,                         // la 1.ª también va aquí por compatibilidad
-        heroFotos: fotosHero.length ? fotosHero : undefined,
-        heroTitulo: {
-            es: val("inp-us-hero-titulo-es") || undefined,
-            en: val("inp-us-hero-titulo-en") || undefined,
-        },
-        heroSubtitulo: {
-            es: val("inp-us-hero-subtitulo-es") || undefined,
-            en: val("inp-us-hero-subtitulo-en") || undefined,
-        },
-        footerTagline: {
-            es: val("inp-us-footer-tag-es") || undefined,
-            en: val("inp-us-footer-tag-en") || undefined,
-        },
-    };
-    saveConfig();
-    toast("✅ Apariencia del catálogo USA actualizada", "#22c55e");
 }
 
 function exportarExcel() {
@@ -7284,5 +7221,6 @@ async function generarPDFCatalogo() {
     </div>
 </div>
 
+<script src="editor-us.js"></script>
 </body>
 </html>
