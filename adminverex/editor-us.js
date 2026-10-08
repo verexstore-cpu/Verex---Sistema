@@ -338,7 +338,7 @@ function edusPFotos() {
     const cats = edus.cats.filter(c => c.visible);
     return `
 <div class="edus-h">Portada — hasta ${EDUS_MAX_FOTOS} fotos</div>
-<p class="edus-nota">Se pasan solas cada 5 segundos (con flechas y puntos). Con una sola foto no hay carrusel. Medida ideal: <b>2000 × 1667 px</b>, horizontal, producto centrado. Sin ninguna, queda la foto de siempre.</p>
+<p class="edus-nota">Se pasan solas cada 2.5 segundos (con flechas y puntos). Con una sola foto no hay carrusel. Medida ideal: <b>2000 × 1667 px</b>, horizontal, producto centrado. Sin ninguna, queda la foto de siempre.</p>
 <div class="edus-fotos">${slots.map((u, i) => `
   <div class="edus-foto">
     <div class="edus-mini" style="${u ? `background-image:url('${esc(u)}')` : ""}">${u ? "" : (i === 0 ? "Foto de siempre" : "+ Foto " + (i + 1))}</div>
