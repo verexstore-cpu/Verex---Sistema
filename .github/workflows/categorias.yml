@@ -4,6 +4,7 @@ on:
   push:
     paths: [".github/verificacion/categorias.mjs", ".github/workflows/categorias.yml"]
 jobs:
+  cat:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
