@@ -16,11 +16,8 @@ jobs:
         with: { node-version: 22 }
       - run: node .github/verificacion/foto-producto.mjs
         env: { FOTO: "${{ github.event.inputs.foto || 'https://ik.imagekit.io/agxhbnabg/consignacion/ANP013T7_XUKP_ob5VJ.jpg' }}" }
-      - name: Reducir a 2000 px y guardar en la rama
+      - name: Guardar en la rama
         run: |
-          ls -la salida
-          if [ -f salida/original.jpg ]; then identify salida/original.jpg || true; convert salida/original.jpg -resize '2000x2000>' -quality 88 salida/ANP013-2000px.jpg; identify salida/ANP013-2000px.jpg; fi
-          mkdir -p .github/fotos-recuperadas && cp salida/*.jpg .github/fotos-recuperadas/ 2>/dev/null || true
-          rm -f .github/fotos-recuperadas/original.jpg
+          mkdir -p .github/fotos-recuperadas && cp salida/*.jpg .github/fotos-recuperadas/
           git config user.name "github-actions" && git config user.email "actions@github.com"
-          git add .github/fotos-recuperadas && git commit -m "Foto recuperada ANP013 [skip ci]" && git push || echo "nada que guardar"
+          git add .github/fotos-recuperadas && git commit -m "Foto recuperada [skip ci]" && git push || echo "nada que guardar"

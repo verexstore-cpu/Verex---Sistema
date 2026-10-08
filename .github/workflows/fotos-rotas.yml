@@ -1,0 +1,13 @@
+name: Revisar fotos rotas del inventario
+on:
+  workflow_dispatch:
+  push:
+    paths: [".github/verificacion/fotos-rotas.mjs", ".github/workflows/fotos-rotas.yml"]
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node .github/verificacion/fotos-rotas.mjs
