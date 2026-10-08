@@ -2,7 +2,7 @@ name: Buscar producto publicado
 on:
   workflow_dispatch:
     inputs:
-      buscar: { description: "texto(s) a buscar, separados por coma", required: true, default: "brielle,square" }
+      buscar: { description: "texto(s) a buscar, separados por coma", required: true, default: "brielle,anp013" }
   push:
     paths: [".github/verificacion/buscar-producto.mjs", ".github/workflows/buscar-producto.yml"]
 jobs:
@@ -13,4 +13,4 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: node .github/verificacion/buscar-producto.mjs
-        env: { BUSCAR: "${{ github.event.inputs.buscar || 'brielle,square' }}" }
+        env: { BUSCAR: "${{ github.event.inputs.buscar || 'brielle,anp013' }}" }
