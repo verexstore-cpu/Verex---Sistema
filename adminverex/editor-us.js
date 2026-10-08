@@ -30,11 +30,11 @@ const EDUS_LEGADO = { heroTitle: "heroTitulo", heroSubtitle: "heroSubtitulo", fo
 const EDUS_DEF_CATS = [{ codigo: "AN", es: "Anillos", en: "Rings" }, { codigo: "CO", es: "Collares", en: "Necklaces" }, { codigo: "CD", es: "Cadenas", en: "Chains" }, { codigo: "AR", es: "Aretes", en: "Earrings" }, { codigo: "PU", es: "Pulseras", en: "Bracelets" }, { codigo: "CJ", es: "Conjuntos", en: "Sets" }];
 
 const edus = {
-    abierto: false, sucio: false, tab: "fotos", lang: "es",
+    abierto: false, sucio: false, tab: "publicados", lang: "es",
     base: {}, catsGuardadas: [], catsTocadas: false,
     fotos: [], fotosCat: {}, textos: {}, secciones: [], cats: [], faqs: [], pols: {}, wa: "",
     pagina: null,            // lo que manda la vista previa: { textos:{es,en}, enPagina:[], noEditables:[] }
-    previewOk: false, elegir: false, timer: null, holaTimer: null, busqueda: "",
+    previewOk: false, elegir: false, conteo: null, conteoTimer: null, conteoAbierta: "", timer: null, holaTimer: null, busqueda: "",
 };
 const $e = (id) => document.getElementById(id);
 const edG = (o, ...ks) => ks.reduce((a, k) => (a && a[k] != null ? a[k] : undefined), o);
@@ -50,6 +50,9 @@ function edusMontar() {
 #edus.abierto{display:flex}
 #edus *{box-sizing:border-box}
 #edus label,#edus button,#edus input{text-transform:none;letter-spacing:normal}
+#edus table,#edus thead,#edus tbody,#edus tr,#edus th,#edus td{background:transparent !important;color:inherit;border-color:#222}
+#edus thead th{color:#888 !important;position:static}
+#edus tbody tr:hover{background:#151515 !important}
 .edus-top{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid #2a2a2a;background:#111;flex-wrap:wrap}
 .edus-top h2{margin:0;font-size:16px;color:#C9A84C;letter-spacing:.5px;margin-right:auto;white-space:nowrap}
 .edus-b{padding:7px 12px;border-radius:8px;border:1px solid #444;background:#1a1a1a;color:#ddd;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
@@ -137,7 +140,7 @@ function edusMontar() {
     window.addEventListener("beforeunload", (e) => { if (edus.abierto && edus.sucio) { e.preventDefault(); e.returnValue = ""; } });
 }
 
-const EDUS_TABS = [["fotos", "📸 Fotos"], ["textos", "📝 Textos"], ["secciones", "🧩 Secciones"], ["cats", "🗂️ Categorías"], ["faqs", "❓ Preguntas"], ["pols", "📄 Políticas"], ["contacto", "📞 Contacto"]];
+const EDUS_TABS = [["publicados", "📊 Publicados"], ["fotos", "📸 Fotos"], ["textos", "📝 Textos"], ["secciones", "🧩 Secciones"], ["cats", "🗂️ Categorías"], ["faqs", "❓ Preguntas"], ["pols", "📄 Políticas"], ["contacto", "📞 Contacto"]];
 function edusPintarTabs() {
     $e("edus-tabs").innerHTML = EDUS_TABS.map(([k, t]) => `<button class="edus-tab${edus.tab === k ? " activa" : ""}" onclick="edusTab('${k}')">${t}</button>`).join("");
 }
@@ -285,7 +288,13 @@ function edusMensaje(e) {
         edus.pagina = { textos: d.textos || { es: {}, en: {} }, enPagina: d.enPagina || [], noEditables: d.noEditables || [] };
         if (edus.tab === "textos") edusPintar();
         edusPrevia();
+        edusPedirConteo();
         if (edus.elegir) $e("edus-frame").contentWindow.postMessage({ type: "vx-editor-elegir", on: true }, EDUS_PREVIEW_ORIGEN);
+    } else if (e.data.type === "vx-editor-conteo") {
+        clearTimeout(edus.conteoTimer);
+        if (e.data.cargando) { edus.conteoTimer = setTimeout(edusPedirConteo, 1000); return; }
+        edus.conteo = { items: Array.isArray(e.data.items) ? e.data.items : [], nombres: e.data.nombres || {}, visibles: e.data.visibles || [], registros: e.data.registros || 0, hora: new Date() };
+        if (edus.tab === "publicados") edusPintar();
     } else if (e.data.type === "vx-editor-elegido" && typeof e.data.clave === "string") {
         if (edus.elegir) edusElegir();          // un toque = un texto: se apaga solo y el cursor queda en su campo
         edusIrATexto(e.data.clave);
@@ -319,7 +328,7 @@ function edusIrATexto(clave) {
 // ───────── pestañas ─────────
 function edusPintar() {
     const c = $e("edus-cuerpo"); if (!c) return;
-    const f = { fotos: edusPFotos, textos: edusPTextos, secciones: edusPSecciones, cats: edusPCats, faqs: edusPFaqs, pols: edusPPols, contacto: edusPContacto }[edus.tab];
+    const f = { publicados: edusPPublicados, fotos: edusPFotos, textos: edusPTextos, secciones: edusPSecciones, cats: edusPCats, faqs: edusPFaqs, pols: edusPPols, contacto: edusPContacto }[edus.tab];
     c.innerHTML = f ? f() : "";
 }
 
@@ -543,4 +552,61 @@ function edusPContacto() {
 <div class="edus-h">WhatsApp de la tienda USA</div>
 <p class="edus-nota">Con código de país, solo números (ej. 50371250725). Vacío = el de siempre.</p>
 <input class="edus-in" inputmode="tel" value="${esc(edus.wa)}" placeholder="50371250725" oninput="edus.wa=this.value; edusCambio()">`;
+}
+
+// Publicados: lo que ve el cliente, contado por la propia página (vista previa) — una tarjeta = una pieza
+function edusPedirConteo() {
+    if (!edus.previewOk) return;
+    $e("edus-frame").contentWindow.postMessage({ type: "vx-editor-conteo" }, EDUS_PREVIEW_ORIGEN);
+}
+function edusActualizarConteo() { edus.conteo = null; edusPintar(); edusRecargarPrevia(); }
+function edusVerPieza(codigo) {
+    if (!edus.previewOk) return;
+    $e("edus-frame").contentWindow.postMessage({ type: "vx-editor-ir", codigo }, EDUS_PREVIEW_ORIGEN);
+    if (window.innerWidth <= 900 && !$e("edus").classList.contains("ver-previa")) edusVerPrevia();
+}
+function edusAbrirCat(c) { edus.conteoAbierta = edus.conteoAbierta === c ? "" : c; edusPintar(); }
+function edusPPublicados() {
+    const C = edus.conteo;
+    if (!C) return `<div class="edus-h">Productos publicados en la página</div><p class="edus-nota">Contando lo que ve el cliente en la vista previa…</p>`;
+    const porCat = {};
+    for (const it of C.items) (porCat[it.cat || ""] = porCat[it.cat || ""] || []).push(it);
+    const orden = edus.cats.map(c => c.codigo).concat(Object.keys(porCat).filter(k => k && !edus.cats.some(c => c.codigo === k)).sort());
+    if (porCat[""]) orden.push("");
+    const nombre = k => k === "" ? "Sin categoría" : ((edus.cats.find(c => c.codigo === k) || {}).es || C.nombres[k] || k);
+    const cuenta = l => ({ total: l.length, stock: l.filter(x => !x.agotado).length, agot: l.filter(x => x.agotado).length, dest: l.filter(x => x.destacado).length });
+    const tot = cuenta(C.items);
+    const limite = parseInt(cfg.limiteCatalogo) || 0;
+    const td = "padding:7px 6px;border-bottom:1px solid #222;text-align:center;";
+    const fila = k => {
+        const l = porCat[k] || [], n = cuenta(l), abierta = edus.conteoAbierta === k;
+        const oculta = k && !C.visibles.includes(k);
+        const det = abierta ? `<tr><td colspan="5" style="padding:4px 0 10px;">${l.length ? l.map(x => `
+          <div style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-bottom:1px solid #1c1c1c;">
+            <div class="edus-mini contain" style="width:38px;min-width:38px;margin:0;${x.foto ? `background-image:url('${esc(x.foto)}')` : ""}"></div>
+            <div style="flex:1;min-width:0;font-size:12px;"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(x.nombre)}</div>
+              <div style="color:#777;font-size:10px;">${esc(x.codigo)}${x.precio ? " · $" + esc(x.precio) : ""}${x.destacado ? ' · <span style="color:#C9A84C;">⭐ destacada</span>' : ""}${x.agotado ? ' · <span style="color:#f87171;">agotada</span>' : ""}</div></div>
+            <button class="edus-b mini" onclick="edusVerPieza('${esc(x.codigo)}')" title="Ver en la vista previa">👁️</button>
+          </div>`).join("") : '<div class="edus-nota" style="padding:6px;">Ninguna pieza publicada en esta categoría.</div>'}</td></tr>` : "";
+        return `<tr onclick="edusAbrirCat('${k}')" style="cursor:pointer;${abierta ? "background:#1a160c;" : ""}">
+          <td style="${td}text-align:left;">${abierta ? "▾" : "▸"} <b>${esc(nombre(k))}</b>${oculta ? ' <span style="color:#777;font-size:10px;">(sin tarjeta en el inicio)</span>' : ""}</td>
+          <td style="${td}font-weight:700;color:${n.total ? "#C9A84C" : "#666"};font-size:15px;">${n.total}</td>
+          <td style="${td}color:#22c55e;">${n.stock}</td><td style="${td}color:${n.agot ? "#f87171" : "#666"};">${n.agot}</td><td style="${td}">${n.dest}</td></tr>${det}`;
+    };
+    return `
+<div class="edus-h" style="display:flex;justify-content:space-between;align-items:center;">Productos publicados en la página <button class="edus-b mini" onclick="edusActualizarConteo()">⟳ Actualizar</button></div>
+<p class="edus-nota">Contado igual que lo ve el cliente: un anillo con varias tallas es <b>una</b> pieza. Toca una categoría para ver sus piezas. Se publica o se quita una pieza marcándola «en catálogo» en Nexus.</p>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;">
+  <div class="edus-caja" style="text-align:center;margin:0;"><div style="font-size:22px;font-weight:700;color:#C9A84C;">${tot.total}</div><div class="edus-nota" style="margin:0;">en la página</div></div>
+  <div class="edus-caja" style="text-align:center;margin:0;"><div style="font-size:22px;font-weight:700;color:#22c55e;">${tot.stock}</div><div class="edus-nota" style="margin:0;">con stock</div></div>
+  <div class="edus-caja" style="text-align:center;margin:0;"><div style="font-size:22px;font-weight:700;color:${tot.agot ? "#f87171" : "#666"};">${tot.agot}</div><div class="edus-nota" style="margin:0;">agotadas</div></div>
+</div>
+${limite && C.registros >= limite ? `<p class="edus-nota" style="color:#f59e0b;">⚠️ Tienes un límite de ${limite} productos en el catálogo (Admin → Dashboard): la página no muestra más que eso aunque haya más marcados.</p>` : ""}
+<table style="width:100%;border-collapse:collapse;font-size:12px;">
+  <thead><tr style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.5px;">
+    <th style="${td}text-align:left;">Categoría</th><th style="${td}">En la página</th><th style="${td}">Con stock</th><th style="${td}">Agotadas</th><th style="${td}">⭐ Destac.</th></tr></thead>
+  <tbody>${orden.map(fila).join("")}
+  <tr style="font-weight:700;"><td style="${td}text-align:left;">Total</td><td style="${td}color:#C9A84C;">${tot.total}</td><td style="${td}">${tot.stock}</td><td style="${td}">${tot.agot}</td><td style="${td}">${tot.dest}</td></tr></tbody>
+</table>
+<p class="edus-nota" style="margin-top:8px;">Actualizado ${C.hora.toLocaleTimeString("es-SV", { hour: "2-digit", minute: "2-digit" })}</p>`;
 }
