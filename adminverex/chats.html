@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="robots" content="noindex, nofollow">
+<title>VEREX Chats</title>
+<link rel="manifest" href="chats.webmanifest">
+<link rel="icon" href="images/chats-icon-192.png">
+<link rel="apple-touch-icon" href="images/chats-icon-192.png">
+<!--
+  VEREX Chats — app del asesor para el chat en vivo de us.verexstore.com.
+  El cliente (en inglés) escribe en la ventana de Lyra; aquí el asesor ve cada mensaje
+  en original + traducción al español y responde en español: Lyra lo traduce al inglés.
+  - Entra con la contraseña del Admin + código 2FA (igual que el Admin). Sesión: 7 días.
+  - Avisos push en Android/PC (botón 🔔), aunque la app esté cerrada (chats-sw.js).
+  - Todo el texto de clientes se pinta con textContent (sin innerHTML): sin XSS.
+  API: https://us.verexstore.com/api/live/agent/* (Pages Functions de verex-catalogo-us).
+-->
+<style>
+:root{
+  --negro:#0a0a0a; --tinta:#1b1b1d; --gris:#6b6b70; --gris2:#a3a3a8; --linea:#e7e5e0; --fondo:#f6f4ef; --blanco:#fff;
+  --oro:#c9a84c; --oro-d:#9c7a2e; --oro-claro:#faf5ea; --oro-linea:#e9d9b4;
+  --verde:#2e9e5b; --ambar:#d48a1a; --rojo:#c0392b;
+  --r:14px;
+  font-family:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--fondo);color:var(--tinta);-webkit-text-size-adjust:100%}
+body{overflow:hidden}
+button{font:inherit;cursor:pointer}
+input,textarea{font:inherit}
+[hidden]{display:none!important}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* ── Login ── */
+#login{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--negro);padding:20px}
+.login-box{width:100%;max-width:380px;background:var(--blanco);border-radius:18px;padding:30px 26px;box-shadow:0 24px 64px rgba(0,0,0,.5)}
+.login-logo{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.login-logo img{width:44px;height:44px;border-radius:12px}
+.login-logo h1{font-size:20px;letter-spacing:3px;font-weight:800}
+.login-box p.sub{color:var(--gris);font-size:13px;margin:4px 0 22px;line-height:1.45}
+.fld{display:block;margin-bottom:14px}
+.fld span{display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:var(--tinta)}
+.fld input{width:100%;padding:12px 14px;border:1.5px solid var(--linea);border-radius:10px;font-size:15px;background:#fafafa}
+.fld input:focus{outline:none;border-color:var(--oro);background:#fff;box-shadow:0 0 0 3px rgba(201,168,76,.18)}
+.fld small{display:block;color:var(--gris);font-size:11.5px;margin-top:5px}
+#code{letter-spacing:6px;font-size:20px;text-align:center;font-variant-numeric:tabular-nums}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:10px;padding:12px 16px;font-weight:700;font-size:14px}
+.btn-negro{background:var(--negro);color:#fff;width:100%}
+.btn-negro:disabled{opacity:.6}
+.btn-oro{background:linear-gradient(110deg,#b8893e,#d9b878 45%,#f3e2b8);color:#1c160c}
+.btn-linea{background:#fff;border:1.5px solid var(--linea);color:var(--tinta)}
+.err{color:var(--rojo);font-size:13px;margin-top:10px;min-height:1em}
+
+/* ── App ── */
+#app{display:flex;flex-direction:column;height:100%;height:100dvh}
+.top{display:flex;align-items:center;gap:10px;padding:10px 14px;padding-top:max(10px,env(safe-area-inset-top));background:var(--negro);color:#fff}
+.top img{width:30px;height:30px;border-radius:8px}
+.top h1{font-size:15px;letter-spacing:2px;font-weight:800;flex:1;display:flex;align-items:center;gap:8px;min-width:0}
+.pill{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:0}
+.pill-espera{background:var(--ambar);color:#fff}
+.top-btn{background:transparent;border:1px solid rgba(255,255,255,.18);color:#fff;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:600;white-space:nowrap}
+.top-btn.on{border-color:var(--oro);color:var(--oro)}
+.main{flex:1;display:flex;min-height:0}
+.lista{width:340px;flex:none;background:#fff;border-right:1px solid var(--linea);display:flex;flex-direction:column;min-height:0}
+.tabs{display:flex;gap:6px;padding:10px 12px;border-bottom:1px solid var(--linea)}
+.tab{flex:1;background:#f3f1ec;border:0;border-radius:999px;padding:8px;font-size:12.5px;font-weight:700;color:var(--gris)}
+.tab[aria-selected="true"]{background:var(--negro);color:#fff}
+.items{flex:1;overflow-y:auto}
+.item{display:block;width:100%;text-align:left;background:#fff;border:0;border-bottom:1px solid #f0eee9;padding:12px 14px;position:relative}
+.item:hover{background:#faf8f3}
+.item[aria-current="true"]{background:var(--oro-claro);box-shadow:inset 3px 0 0 var(--oro)}
+.item-l1{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.item-name{font-weight:700;font-size:14px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item-time{font-size:11px;color:var(--gris2);flex:none}
+.item-prev{font-size:13px;color:var(--gris);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:16px}
+.item .dot{position:absolute;right:14px;bottom:15px;width:9px;height:9px;border-radius:50%;background:var(--rojo)}
+.chip{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;border-radius:999px;padding:3px 8px;flex:none}
+.chip-esperando{background:#fdf0dc;color:#9a5c06}
+.chip-activo{background:#e3f4ea;color:#1f6f40}
+.chip-cerrado{background:#eeeeee;color:#777}
+.vacio{padding:40px 24px;text-align:center;color:var(--gris);font-size:13.5px;line-height:1.5;white-space:pre-line}
+
+.chat{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--fondo)}
+.chat-head{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#fff;border-bottom:1px solid var(--linea)}
+.atras{display:none;background:transparent;border:0;font-size:22px;line-height:1;padding:4px 8px 4px 0;color:var(--tinta)}
+.chat-who{flex:1;min-width:0}
+.chat-who b{display:block;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-who small{display:block;color:var(--gris);font-size:12px;margin-top:2px}
+.resumen{margin:12px 14px 0;background:var(--oro-claro);border:1px solid var(--oro-linea);border-radius:12px;padding:10px 12px;font-size:12.5px;color:#3a2c14}
+.resumen summary{cursor:pointer;font-weight:700;list-style:none}
+.resumen summary::-webkit-details-marker{display:none}
+.resumen dl{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin-top:8px}
+.resumen dt{font-weight:700;color:#5c4622}
+.resumen dd{word-break:break-word}
+.msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+.m{max-width:min(78%,560px);display:flex;flex-direction:column;gap:4px}
+.m-cli{align-self:flex-start}
+.m-ase{align-self:flex-end;align-items:flex-end}
+.b{border-radius:14px;padding:10px 13px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+.m-cli .b{background:#fff;border:1px solid var(--linea);border-top-left-radius:4px}
+.m-ase .b{background:var(--negro);color:#fff;border-top-right-radius:4px}
+.tr-orig{font-size:12px;color:var(--gris);display:block;margin-bottom:6px}
+.tr-orig::before{content:"🇺🇸 Original: "}
+.tr-es{font-weight:600;display:block}
+.tr-es::before{content:"🇪🇸 ";font-weight:400}
+.recibio{font-size:11.5px;color:var(--gris);max-width:100%}
+.recibio::before{content:"El cliente recibió 🇺🇸: "}
+.meta{font-size:10.5px;color:var(--gris2)}
+.aviso-tr{font-size:11.5px;color:var(--rojo);font-weight:600}
+.sistema{align-self:center;font-size:11.5px;color:var(--gris);background:#fff;border:1px dashed var(--linea);border-radius:999px;padding:5px 12px;text-align:center}
+.composer{background:#fff;border-top:1px solid var(--linea);padding:10px 12px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
+.preview{background:var(--oro-claro);border:1px solid var(--oro-linea);border-radius:10px;padding:8px 10px;font-size:12.5px;margin-bottom:8px;color:#3a2c14}
+.preview b{display:block;font-size:11px;margin-bottom:2px}
+.fila{display:flex;gap:8px;align-items:flex-end}
+.fila textarea{flex:1;resize:none;border:1.5px solid var(--linea);border-radius:12px;padding:10px 12px;font-size:15px;max-height:140px;min-height:44px;background:#fafafa}
+.fila textarea:focus{outline:none;border-color:var(--oro);background:#fff}
+.enviar{width:46px;height:46px;border-radius:50%;border:0;background:var(--negro);color:#fff;font-size:18px;flex:none}
+.enviar:disabled{opacity:.4}
+.opciones{display:flex;align-items:center;gap:12px;margin-top:8px;font-size:12px;color:var(--gris);flex-wrap:wrap}
+.opciones label{display:inline-flex;align-items:center;gap:6px}
+.link{background:none;border:0;color:var(--oro-d);font-weight:700;font-size:12px;padding:0;text-decoration:underline}
+.cerrado-nota{text-align:center;color:var(--gris);font-size:13px;padding:6px}
+.nada{flex:1;display:flex;align-items:center;justify-content:center;color:var(--gris);font-size:14px;text-align:center;padding:30px;line-height:1.5}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--negro);color:#fff;border-radius:999px;padding:10px 16px;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.3);z-index:20;max-width:calc(100vw - 32px)}
+
+@media (max-width:760px){
+  .lista{width:100%;border-right:0}
+  .main.ver-chat .lista{display:none}
+  .main:not(.ver-chat) .chat{display:none}
+  .atras{display:block}
+  .m{max-width:88%}
+  .top-btn .txt{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<section id="login" hidden>
+  <form class="login-box" id="login-form" autocomplete="on">
+    <div class="login-logo"><img src="images/chats-icon-192.png" alt=""><h1>VEREX CHATS</h1></div>
+    <p class="sub">Chat en vivo con los clientes de la tienda USA. Lyra traduce: tú lees y escribes en español.</p>
+    <label class="fld"><span>Tu nombre (lo ve el cliente)</span><input id="name" maxlength="40" autocomplete="given-name" placeholder="Ej. Erika" required></label>
+    <label class="fld"><span>Contraseña del Admin</span><input id="pass" type="password" autocomplete="current-password" required></label>
+    <label class="fld"><span>Código de verificación</span><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="\d{6}" placeholder="000000" required><small>Los 6 dígitos de tu app de autenticación (los mismos del Admin).</small></label>
+    <button class="btn btn-negro" id="login-btn" type="submit">Entrar</button>
+    <p class="err" id="login-err" role="alert"></p>
+  </form>
+</section>
+
+<!-- APP -->
+<div id="app" hidden>
+  <header class="top">
+    <img src="images/chats-icon-192.png" alt="">
+    <h1>VEREX CHATS <span class="pill pill-espera" id="espera-pill" hidden title="Clientes esperando"></span></h1>
+    <button class="top-btn" id="instalar" hidden>⬇ <span class="txt">Instalar</span></button>
+    <button class="top-btn" id="avisos" title="Avisos en este dispositivo">🔔 <span class="txt" id="avisos-txt">Activar avisos</span></button>
+    <button class="top-btn" id="salir" title="Salir">Salir</button>
+  </header>
+  <div class="main" id="main">
+    <aside class="lista" aria-label="Chats">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" aria-selected="true" data-tab="abiertos">Abiertos</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="cerrados">Cerrados</button>
+      </div>
+      <div class="items" id="items"></div>
+    </aside>
+    <section class="chat" id="chat" aria-live="polite">
+      <div class="nada" id="nada">Elige un chat de la lista.<br>Cuando un cliente escriba, te llegará un aviso. 🔔</div>
+      <div id="chat-on" hidden style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <div class="chat-head">
+          <button class="atras" id="atras" aria-label="Volver a la lista">‹</button>
+          <div class="chat-who"><b id="who"></b><small id="who-sub"></small></div>
+          <span class="chip" id="chat-chip"></span>
+          <button class="btn btn-linea" id="cerrar-chat" style="padding:8px 12px;font-size:12px">Cerrar chat</button>
+        </div>
+        <details class="resumen" id="resumen" open><summary>💬 Lo que habló con Lyra</summary><dl id="resumen-dl"></dl></details>
+        <div class="msgs" id="msgs"></div>
+        <div class="composer" id="composer">
+          <div class="preview" id="preview" hidden><b>Así lo leerá el cliente 🇺🇸</b><span id="preview-txt"></span></div>
+          <form class="fila" id="form">
+            <textarea id="txt" rows="1" maxlength="2000" placeholder="Escribe en español…" aria-label="Respuesta"></textarea>
+            <button class="enviar" id="enviar" type="submit" aria-label="Enviar">➤</button>
+          </form>
+          <div class="opciones">
+            <label id="traducir-wrap"><input type="checkbox" id="traducir" checked> Traducir al inglés</label>
+            <button class="link" type="button" id="ver-previa">👁 Ver cómo lo recibirá</button>
+          </div>
+        </div>
+        <p class="cerrado-nota" id="cerrado-nota" hidden>Este chat está cerrado.</p>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+(() => {
+  "use strict";
+  // ── Configuración ────────────────────────────────────────────────
+  // API de producción. Para pruebas locales: chats.html?api=http://127.0.0.1:8788/api/live/agent
+  // (solo se acepta localhost o *.verexstore.com, para que nadie pueda armar un enlace que robe la contraseña).
+  const PROD_API = "https://us.verexstore.com/api/live/agent";
+  const API = (() => {
+    const q = new URLSearchParams(location.search).get("api");
+    if (q && /^(https:\/\/([a-z0-9-]+\.)*verexstore\.com|http:\/\/(127\.0\.0\.1|localhost)(:\d+)?)\/api\/live\/agent$/.test(q)) return q;
+    return PROD_API;
+  })();
+  const LS = { session: "vx_chats_session", name: "vx_chats_name", seen: "vx_chats_seen", push: "vx_chats_push" };
+  const POLL = { list: 5000, listHidden: 20000, chat: 2500, chatHidden: 15000 };
+
+  // ── Utilidades ───────────────────────────────────────────────────
+  const $ = id => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const store = {
+    get(k, def) { try { const v = localStorage.getItem(k); return v == null ? def : JSON.parse(v); } catch (_) { return def; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+    del(k) { try { localStorage.removeItem(k); } catch (_) {} },
+  };
+  const sha256 = async s => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].map(b => b.toString(16).padStart(2, "0")).join("");
+  const newId = () => Date.now().toString(36).padStart(9, "0") + [...crypto.getRandomValues(new Uint8Array(8))].map(b => (b % 36).toString(36)).join("");
+  function toast(msg, ms = 2600) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => { t.hidden = true; }, ms); }
+  function hace(iso) {
+    if (!iso) return "";
+    const s = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (s < 60) return "ahora";
+    if (s < 3600) return `${Math.floor(s / 60)} min`;
+    if (s < 86400) return `${Math.floor(s / 3600)} h`;
+    return new Date(iso).toLocaleDateString("es", { day: "numeric", month: "short" });
+  }
+  const hora = iso => iso ? new Date(iso).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" }) : "";
+  const FLAG = { en: "🇺🇸", es: "🇲🇽" };
+  const ESTADO = { esperando: "Esperando", activo: "Activo", cerrado: "Cerrado" };
+
+  class ApiErr extends Error { constructor(code, status) { super(code); this.code = code; this.status = status; } }
+  async function api(path, body = {}) {
+    let res;
+    try {
+      res = await fetch(`${API}/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session: S.session, ...body }) });
+    } catch (_) { throw new ApiErr("network", 0); }
+    let data = null; try { data = await res.json(); } catch (_) {}
+    if (res.status === 401 && path !== "login") { logout("Tu sesión venció. Vuelve a entrar."); throw new ApiErr("session_expired", 401); }
+    if (!res.ok || !data?.ok) throw new ApiErr(data?.error || `http_${res.status}`, res.status);
+    return data;
+  }
+
+  // ── Estado ───────────────────────────────────────────────────────
+  const S = {
+    session: store.get(LS.session, null)?.session || null,
+    name: store.get(LS.name, ""),
+    vapid: store.get(LS.session, null)?.vapid || "",
+    chats: [], tab: "abiertos", current: null, chat: null, msgs: [], lastTs: "", seen: store.get(LS.seen, {}),
+    listTimer: null, chatTimer: null, installEvt: null,
+  };
+
+  // ── Login ────────────────────────────────────────────────────────
+  const LOGIN_ERR = {
+    bad_password: "Contraseña incorrecta.", bad_code: "Código incorrecto. Revisa tu app de autenticación.",
+    locked: "Demasiados intentos. Espera unos minutos.", totp_not_configured: "Primero configura la verificación en dos pasos en el Admin.",
+    bad_request: "Revisa los datos (el código son 6 dígitos).", network: "Sin conexión con el servidor.", rate_limited: "Demasiados intentos. Espera un minuto.",
+  };
+  function showLogin(msg) {
+    stopTimers();
+    $("app").hidden = true; $("login").hidden = false;
+    $("name").value = S.name || "";
+    $("login-err").textContent = msg || "";
+    (S.name ? $("pass") : $("name")).focus();
+  }
+  $("login-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const name = $("name").value.trim(), pass = $("pass").value, code = $("code").value.replace(/\s+/g, "");
+    if (!name || !pass || !/^\d{6}$/.test(code)) { $("login-err").textContent = LOGIN_ERR.bad_request; return; }
+    $("login-btn").disabled = true; $("login-err").textContent = "";
+    try {
+      const r = await api("login", { password: await sha256(pass), code, name });
+      S.session = r.session; S.name = r.name || name; S.vapid = r.vapidPublicKey || "";
+      store.set(LS.session, { session: r.session, expires: r.expires, vapid: S.vapid });
+      store.set(LS.name, S.name);
+      $("pass").value = ""; $("code").value = "";
+      startApp();
+    } catch (err) {
+      $("login-err").textContent = LOGIN_ERR[err.code] || "No se pudo entrar. Intenta de nuevo.";
+      $("code").value = ""; $("code").focus();
+    } finally { $("login-btn").disabled = false; }
+  });
+  function logout(msg) {
+    S.session = null; store.del(LS.session);
+    showLogin(msg);
+  }
+  $("salir").addEventListener("click", () => { if (confirm("¿Salir de VEREX Chats en este dispositivo?")) logout(); });
+
+  // ── App ──────────────────────────────────────────────────────────
+  function startApp() {
+    $("login").hidden = true; $("app").hidden = false;
+    refreshPushButton();
+    loadList();
+    const m = location.hash.match(/chat=([a-z0-9]{12,40})/);
+    if (m) openChat(m[1]);
+  }
+  function stopTimers() { clearTimeout(S.listTimer); clearTimeout(S.chatTimer); }
+
+  // Lista
+  document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => {
+    S.tab = b.dataset.tab;
+    document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected", String(x === b)));
+    renderList();
+  }));
+  async function loadList() {
+    clearTimeout(S.listTimer);
+    try {
+      const r = await api("chats", { days: 7 });
+      const prevWaiting = new Set(S.chats.filter(c => c.status === "esperando").map(c => c.id));
+      const nuevos = r.chats.filter(c => c.status === "esperando" && !prevWaiting.has(c.id));
+      if (S.chats.length && nuevos.length) ding();
+      S.chats = r.chats;
+      renderList();
+    } catch (_) {}
+    if (S.session) S.listTimer = setTimeout(loadList, document.hidden ? POLL.listHidden : POLL.list);
+  }
+  const unread = c => c.last && c.last.autor === "cliente" && (!S.seen[c.id] || S.seen[c.id] < c.last.ts);
+  function renderList() {
+    const box = $("items");
+    const list = S.chats.filter(c => S.tab === "abiertos" ? c.status !== "cerrado" : c.status === "cerrado");
+    const waiting = S.chats.filter(c => c.status === "esperando").length;
+    $("espera-pill").hidden = !waiting; $("espera-pill").textContent = waiting;
+    const unreadCount = S.chats.filter(c => c.status !== "cerrado" && unread(c)).length;
+    document.title = unreadCount ? `(${unreadCount}) VEREX Chats` : "VEREX Chats";
+    box.replaceChildren();
+    if (!list.length) {
+      box.append(el("div", "vacio", S.tab === "abiertos" ? "No hay chats abiertos.\nCuando un cliente pida hablar con el equipo aparecerá aquí." : "No hay chats cerrados en los últimos 7 días."));
+      return;
+    }
+    for (const c of list) {
+      const b = el("button", "item"); b.type = "button";
+      if (c.id === S.current) b.setAttribute("aria-current", "true");
+      const l1 = el("div", "item-l1");
+      l1.append(el("span", null, FLAG[c.lang] || "💬"), el("span", "item-name", c.name || c.email || "Cliente"), el("span", `chip chip-${c.status}`, ESTADO[c.status] || c.status), el("span", "item-time", hace(c.updated)));
+      const prev = c.last ? `${c.last.autor === "asesor" ? "Tú: " : ""}${c.last.texto}` : (c.summary?.pregunta || c.summary?.busca || "Quiere hablar con el equipo");
+      b.append(l1, el("div", "item-prev", prev));
+      if (c.status !== "cerrado" && unread(c)) b.append(el("span", "dot"));
+      b.addEventListener("click", () => openChat(c.id));
+      box.append(b);
+    }
+  }
+
+  // Chat abierto
+  async function openChat(id) {
+    S.current = id; S.msgs = []; S.lastTs = ""; S.chat = null;
+    history.replaceState(null, "", `#chat=${id}`);
+    $("main").classList.add("ver-chat");
+    $("nada").hidden = true; $("chat-on").hidden = false; $("chat-on").style.display = "flex";
+    $("msgs").replaceChildren(); $("preview").hidden = true;
+    renderList();
+    await loadChat(true);
+    if (!matchMedia("(max-width:760px)").matches) $("txt").focus();
+  }
+  $("atras").addEventListener("click", () => {
+    S.current = null; clearTimeout(S.chatTimer); history.replaceState(null, "", location.pathname + location.search);
+    $("main").classList.remove("ver-chat"); $("chat-on").hidden = true; $("chat-on").style.display = "none"; $("nada").hidden = false;
+    renderList();
+  });
+  async function loadChat(first = false) {
+    clearTimeout(S.chatTimer);
+    const id = S.current;
+    if (!id) return;
+    try {
+      const since = S.lastTs ? new Date(new Date(S.lastTs).getTime() - 3000).toISOString() : "";
+      const r = await api("messages", { chatId: id, since });
+      if (id !== S.current) return;
+      S.chat = r.chat;
+      let llegaron = 0;
+      for (const m of r.msgs) {
+        if (m.ts > S.lastTs) S.lastTs = m.ts;
+        if (S.msgs.some(x => x.id === m.id)) continue;
+        S.msgs.push(m);
+        if (m.from === "cliente") llegaron++;
+      }
+      renderChat(first);
+      if (llegaron && !first) ding();
+      if (S.chat.last) { S.seen[id] = S.chat.last.ts; store.set(LS.seen, S.seen); }
+      renderList();
+    } catch (err) {
+      if (err.status === 404) { toast("Ese chat ya no existe."); $("atras").click(); return; }
+    }
+    if (S.session && S.current === id) S.chatTimer = setTimeout(loadChat, document.hidden ? POLL.chatHidden : POLL.chat);
+  }
+  function renderChat(scroll) {
+    const c = S.chat; if (!c) return;
+    $("who").textContent = c.name || c.email || "Cliente";
+    $("who-sub").textContent = [c.lang === "en" ? "🇺🇸 Escribe en inglés · Lyra traduce" : "🇲🇽 Escribe en español", c.email, `desde ${hora(c.created)}`].filter(Boolean).join(" · ");
+    $("chat-chip").className = `chip chip-${c.status}`; $("chat-chip").textContent = ESTADO[c.status] || c.status;
+    // resumen de Lyra
+    const dl = $("resumen-dl"); dl.replaceChildren();
+    for (const [k, label] of [["busca", "Busca"], ["vio", "Vio"], ["pregunta", "Preguntó"]]) if (c.summary?.[k]) dl.append(el("dt", null, label), el("dd", null, c.summary[k]));
+    if (c.page) { const a = el("a", null, c.page.replace(/^https?:\/\//, "")); a.href = c.page; a.target = "_blank"; a.rel = "noopener"; const dd = el("dd"); dd.append(a); dl.append(el("dt", null, "Página"), dd); }
+    $("resumen").hidden = !dl.children.length;
+    // traducir: solo tiene sentido si el cliente escribe en inglés
+    $("traducir-wrap").hidden = c.lang !== "en"; $("ver-previa").hidden = c.lang !== "en";
+    const cerrado = c.status === "cerrado";
+    $("composer").hidden = cerrado; $("cerrado-nota").hidden = !cerrado; $("cerrar-chat").hidden = cerrado;
+    if (cerrado) $("cerrado-nota").textContent = `Chat cerrado${c.closedBy === "cliente" ? " por el cliente" : ""}.`;
+    // mensajes
+    const box = $("msgs");
+    const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+    box.replaceChildren(el("div", "sistema", `${FLAG[c.lang] || ""} Chat iniciado ${hora(c.created)}${c.lang === "en" ? " · el cliente escribe en inglés" : ""}`));
+    for (const m of S.msgs) box.append(renderMsg(m));
+    if (cerrado) box.append(el("div", "sistema", `Chat cerrado ${hora(c.closed)}`));
+    if (scroll || atBottom) box.scrollTop = box.scrollHeight;
+  }
+  function renderMsg(m) {
+    if (m.from === "cliente") {
+      const w = el("div", "m m-cli"), b = el("div", "b");
+      if (m.dir === "en>es" && m.translation) {
+        b.append(el("span", "tr-orig", m.original), el("span", "tr-es", m.translation));
+      } else b.textContent = m.original;
+      w.append(b);
+      if (m.translationError) w.append(el("span", "aviso-tr", "⚠️ No se pudo traducir — arriba está el texto original del cliente."));
+      w.append(el("span", "meta", hora(m.ts)));
+      return w;
+    }
+    const w = el("div", "m m-ase"), b = el("div", "b", m.original);
+    w.append(b);
+    if (m.translation) w.append(el("span", "recibio", m.translation));
+    if (m.translationError) w.append(el("span", "aviso-tr", "⚠️ No se pudo traducir: el cliente recibió tu mensaje en español."));
+    w.append(el("span", "meta", `${m.agent || "Equipo"} · ${hora(m.ts)}`));
+    return w;
+  }
+
+  // Responder
+  const txt = $("txt");
+  txt.addEventListener("input", () => { txt.style.height = "auto"; txt.style.height = Math.min(txt.scrollHeight, 140) + "px"; $("preview").hidden = true; });
+  txt.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing && !matchMedia("(max-width:760px)").matches) { e.preventDefault(); $("form").requestSubmit(); } });
+  $("form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const text = txt.value.trim();
+    if (!text || !S.current) return;
+    const msgId = newId();
+    $("enviar").disabled = true;
+    try {
+      const r = await api("reply", { chatId: S.current, msgId, text, agentName: S.name, translate: $("traducir").checked });
+      txt.value = ""; txt.style.height = ""; $("preview").hidden = true;
+      if (!S.msgs.some(x => x.id === r.msg.id)) S.msgs.push(r.msg);
+      if (S.chat && S.chat.status === "esperando") S.chat.status = "activo";   // la primera respuesta lo activa
+      renderChat(true);
+      if (r.msg.translationError) toast("No se pudo traducir: se envió en español.", 4000);
+      loadList();
+    } catch (err) {
+      toast(err.code === "closed" ? "El chat ya está cerrado." : "No se envió. Revisa la conexión e intenta de nuevo.", 4000);
+    } finally { $("enviar").disabled = false; txt.focus(); }
+  });
+  $("ver-previa").addEventListener("click", async () => {
+    const text = txt.value.trim();
+    if (!text) { toast("Escribe tu respuesta primero."); return; }
+    $("preview-txt").textContent = "Traduciendo…"; $("preview").hidden = false;
+    try { const r = await api("preview", { text, to: "en" }); $("preview-txt").textContent = r.text; }
+    catch (_) { $("preview-txt").textContent = "No se pudo traducir ahora."; }
+    txt.focus();      // listo para enviar con Enter
+  });
+  $("cerrar-chat").addEventListener("click", async () => {
+    if (!S.current || !confirm("¿Cerrar este chat? El cliente verá que terminó la conversación.")) return;
+    try { await api("close", { chatId: S.current }); toast("Chat cerrado."); await loadChat(); loadList(); } catch (_) { toast("No se pudo cerrar."); }
+  });
+
+  // Sonido corto cuando llega algo nuevo con la app a la vista
+  let audioCtx = null;
+  function ding() {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = "sine"; o.frequency.value = 880; g.gain.value = 0.0001;
+      o.connect(g); g.connect(audioCtx.destination); o.start();
+      g.gain.exponentialRampToValueAtTime(0.18, audioCtx.currentTime + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.35);
+      o.stop(audioCtx.currentTime + 0.4);
+    } catch (_) {}
+    if (navigator.vibrate) try { navigator.vibrate(80); } catch (_) {}
+  }
+
+  // ── Avisos push ──────────────────────────────────────────────────
+  const pushSupported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  let swReg = null;
+  async function getReg() {
+    if (!pushSupported) return null;
+    if (!swReg) swReg = await navigator.serviceWorker.register("chats-sw.js", { scope: "./chats" });
+    return swReg;
+  }
+  function b64ToBytes(b64) { const s = b64.replace(/-/g, "+").replace(/_/g, "/"); const bin = atob(s + "===".slice((s.length + 3) % 4)); return Uint8Array.from(bin, c => c.charCodeAt(0)); }
+  async function refreshPushButton() {
+    const btn = $("avisos"), t = $("avisos-txt");
+    if (!pushSupported) { btn.hidden = true; return; }
+    let on = false;
+    try { const reg = await getReg(); on = !!(reg && await reg.pushManager.getSubscription()) && Notification.permission === "granted"; } catch (_) {}
+    btn.classList.toggle("on", on);
+    t.textContent = on ? "Avisos activos" : "Activar avisos";
+    btn.title = on ? "Este dispositivo recibe avisos de chats nuevos (toca para desactivar)" : "Recibe un aviso en este dispositivo cuando un cliente escriba";
+  }
+  $("avisos").addEventListener("click", async () => {
+    try {
+      const reg = await getReg();
+      const current = await reg.pushManager.getSubscription();
+      if (current && Notification.permission === "granted") {
+        if (!confirm("¿Desactivar los avisos en este dispositivo?")) return;
+        await api("push", { action: "unsubscribe", subscription: current.toJSON() }).catch(() => {});
+        await current.unsubscribe();
+        store.del(LS.push);
+        toast("Avisos desactivados en este dispositivo.");
+        return refreshPushButton();
+      }
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") { toast("Para recibir avisos, permite las notificaciones en el navegador.", 4500); return; }
+      let key = S.vapid;
+      if (!key) { const st = await api("push", { action: "status" }); key = st.vapidPublicKey; }
+      if (!key) { toast("Los avisos aún no están configurados en el servidor (claves VAPID).", 5000); return; }
+      const sub = current || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) });
+      const r = await api("push", { action: "subscribe", subscription: sub.toJSON(), device: navigator.userAgent.slice(0, 80) });
+      store.set(LS.push, true);
+      toast(r.test ? "✅ Avisos activados — te llegó una notificación de prueba." : "Avisos activados.", 4500);
+    } catch (err) {
+      toast("No se pudieron activar los avisos en este dispositivo.", 4500);
+    }
+    refreshPushButton();
+  });
+  if (pushSupported) {
+    navigator.serviceWorker.addEventListener("message", e => {
+      if (e.data?.type === "verex-chats-push") { loadList(); if (e.data.chatId && e.data.chatId === S.current) loadChat(); }
+      if (e.data?.type === "verex-chats-open") { const m = String(e.data.url).match(/chat=([a-z0-9]{12,40})/); if (m && S.session) openChat(m[1]); }
+    });
+  }
+
+  // ── Instalar como app ────────────────────────────────────────────
+  window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); S.installEvt = e; $("instalar").hidden = false; });
+  $("instalar").addEventListener("click", async () => { if (!S.installEvt) return; S.installEvt.prompt(); await S.installEvt.userChoice.catch(() => {}); S.installEvt = null; $("instalar").hidden = true; });
+  window.addEventListener("appinstalled", () => { $("instalar").hidden = true; toast("VEREX Chats instalada ✓"); });
+
+  // Al volver a la app: actualizar enseguida
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && S.session) { loadList(); if (S.current) loadChat(); } });
+  window.addEventListener("hashchange", () => { const m = location.hash.match(/chat=([a-z0-9]{12,40})/); if (m && S.session && m[1] !== S.current) openChat(m[1]); });
+
+  // Inicio
+  const saved = store.get(LS.session, null);
+  if (saved?.session && saved.expires && new Date(saved.expires) > new Date()) startApp();
+  else { store.del(LS.session); S.session = null; showLogin(); }
+  if (pushSupported) getReg().catch(() => {});
+})();
+</script>
+</body>
+</html>

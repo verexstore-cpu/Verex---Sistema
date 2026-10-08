@@ -4674,9 +4674,27 @@ async function enviar(){
         //   config/livechat-<chatId>           → datos del chat (estado, idioma, resumen de Lyra…)
         //   config/livemsg-<chatId>-<msgId>    → un documento por mensaje (solo se insertan:
         //                                        nunca hay dos escrituras peleando por el mismo doc)
+        // Login de la app VEREX Chats: la MISMA seguridad que el Admin (contraseña + código TOTP de
+        // 6 dígitos, con los mismos límites de intentos). La IP real del asesor la manda la Pages
+        // Function (de confianza: trae el secreto interno), para que los límites sean por persona.
         case "LIVE_AGENTE_LOGIN": {
           if (!env.INTERNAL_SECRET || !safeEq(request.headers.get("X-Verex-Internal") || "", env.INTERNAL_SECRET)) return forbidden();
-          result = { ok: !!esAdmin };
+          const ipAg = String(d.ipCliente || ip).slice(0, 64);
+          const bloqAg = await rlBlocked(sb, "login:" + ipAg);
+          if (bloqAg) { result = { ok: false, error: "bloqueado", retryAfter: bloqAg }; break; }
+          if (!(await verificarPassword(d.pass, env, sb, ipAg, "login"))) { result = { ok: false, error: "credenciales" }; break; }
+          const cfgAg = await sb.get("config", "settings");
+          if (!cfgAg || !cfgAg.totpSecret) { result = { ok: false, error: "totp_no_configurado" }; break; }
+          const bTotpAg = (await rlBlocked(sb, "totp:" + ipAg)) || (await rlBlocked(sb, "totp:all"));
+          if (bTotpAg) { result = { ok: false, error: "bloqueado", retryAfter: bTotpAg }; break; }
+          if (!(await totpVerificar(cfgAg.totpSecret, d.codigo))) {
+            await rlFail(sb, "totp:" + ipAg, RL_LOGIN);
+            await rlFail(sb, "totp:all", RL_TOTP_ALL);
+            result = { ok: false, error: "codigo" };
+            break;
+          }
+          await rlReset(sb, "totp:" + ipAg);
+          result = { ok: true };
           break;
         }
 
@@ -4685,7 +4703,10 @@ async function enviar(){
         case "LIVE_CHAT_ESTADO":
         case "LIVE_MSG_AGREGAR":
         case "LIVE_MSGS":
-        case "LIVE_CHATS_LISTAR": {
+        case "LIVE_CHATS_LISTAR":
+        case "LIVE_PUSH_GUARDAR":
+        case "LIVE_PUSH_BORRAR":
+        case "LIVE_PUSH_LISTAR": {
           if (!env.INTERNAL_SECRET || !safeEq(request.headers.get("X-Verex-Internal") || "", env.INTERNAL_SECRET)) return forbidden();
           result = await liveChatAccion(sb, d);
           break;
@@ -4730,6 +4751,7 @@ const liveChatPublico = c => {
 };
 
 async function liveChatAccion(sb, d) {
+  if (d.accion.startsWith("LIVE_PUSH_")) return livePushAccion(sb, d);
   const chatId = String(d.chatId || "");
   if (d.accion !== "LIVE_CHATS_LISTAR" && !LIVE_ID_RE.test(chatId)) return { ok: false, error: "chat_invalido" };
   const ahora = new Date().toISOString();
@@ -4833,6 +4855,37 @@ async function liveChatAccion(sb, d) {
       const chats = await sb.listPrefix("config", "livechat-", { campo: "actualizado", mayorQue: desde, limite: 200 });
       chats.sort((a, b) => (a.actualizado < b.actualizado ? 1 : -1));
       return { ok: true, chats: chats.map(liveChatPublico) };
+    }
+  }
+  return { ok: false, error: "accion_invalida" };
+}
+
+// Teléfonos/PC de los asesores que reciben avisos push de chats nuevos (config/livepush-<hash del endpoint>).
+// Guarda solo la suscripción del navegador (endpoint + claves públicas), nunca datos del cliente.
+async function livePushAccion(sb, d) {
+  const endpoint = String(d.endpoint || d.sub?.endpoint || "");
+  const idPush = async () => "livepush-" + (await hashStr(endpoint)).slice(0, 40);
+  switch (d.accion) {
+    case "LIVE_PUSH_GUARDAR": {
+      const keys = d.sub?.keys || {};
+      if (!/^https:\/\/[^\s]{10,600}$/.test(endpoint) || !/^[A-Za-z0-9_-]{40,140}$/.test(keys.p256dh || "") || !/^[A-Za-z0-9_-]{8,60}$/.test(keys.auth || "")) {
+        return { ok: false, error: "suscripcion_invalida" };
+      }
+      const ahora = new Date().toISOString();
+      await sb.set("config", await idPush(), {
+        endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth },
+        nombre: liveTxt(d.nombre, 40), dispositivo: liveTxt(d.dispositivo, 80), actualizado: ahora,
+      });
+      return { ok: true };
+    }
+    case "LIVE_PUSH_BORRAR": {
+      if (!endpoint) return { ok: false, error: "suscripcion_invalida" };
+      await sb.delete("config", await idPush());
+      return { ok: true };
+    }
+    case "LIVE_PUSH_LISTAR": {
+      const subs = await sb.listPrefix("config", "livepush-", { limite: 50 });
+      return { ok: true, subs: subs.map(x => ({ endpoint: x.endpoint, keys: x.keys, nombre: x.nombre || "" })) };
     }
   }
   return { ok: false, error: "accion_invalida" };
