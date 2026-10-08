@@ -13,7 +13,7 @@ export async function onRequest(context) {
 
     try {
         const body = await context.request.json().catch(() => ({}));
-        if (!(await esAdminValido(body?._pass))) return noAutorizado(cors);
+        if (!(await esAdminValido(body?._pass, context))) return noAutorizado(cors);
         // Listar todos los __hist__ entries
         let cursor = undefined;
         const byAfiliado = new Map(); // codigo -> Set of catalog ids

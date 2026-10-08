@@ -1,4 +1,4 @@
-import { esAdminValido, noAutorizado } from "./_auth.js";
+import { esAdminValido, vendedorValido, noAutorizado } from "./_auth.js";
 
 export async function onRequest(context) {
     const cors = {
@@ -16,8 +16,34 @@ export async function onRequest(context) {
     const headers = { "Content-Type": "application/json", ...cors };
 
     try {
-        const body = await context.request.json();
-        if (!(await esAdminValido(body?._pass))) return noAutorizado(cors);
+        let body = await context.request.json();
+        if (!(await esAdminValido(body?._pass, context))) {
+            // Inventario Sellers → "Compartir mi catálogo": el vendedor no tiene
+            // la contraseña de admin, se valida con SU token (+ PIN). Solo puede
+            // crear un catálogo propio: nombre, nota y código salen del registro
+            // del vendedor (no de lo que mande el navegador), sin link fijo
+            // (customId) ni promos, y con los productos limitados a los campos
+            // que arma compartirMiCatalogo().
+            const vend = await vendedorValido(body?._vendedor, body?._token, body?._pin, context);
+            if (!vend) return noAutorizado(cors);
+            if (!Array.isArray(body.prods)) {
+                return new Response(JSON.stringify({ error: "Invalid payload" }), { status: 400, headers });
+            }
+            const codigoVend = String(vend.codigo || body._vendedor);
+            const CAMPOS_PROD = ["n", "p", "i", "m", "cat", "c", "sizes", "sizesD", "sizesH", "par", "piezas",
+                "pD", "pH", "cD", "cC", "avisoPieza", "bajoPedido", "tallasDisponibles"];
+            body = {
+                nombre: "Catálogo de " + (vend.nombre || "vendedor VEREX"),
+                nota_interna: "Auto-generado por el vendedor " + codigoVend,
+                afiliadoCodigo: codigoVend,
+                dias: body.dias,
+                prods: body.prods.slice(0, 500).map(pr => {
+                    const o = {};
+                    for (const k of CAMPOS_PROD) if (pr && pr[k] !== undefined) o[k] = pr[k];
+                    return o;
+                }),
+            };
+        }
         if (!body || !body.prods) {
             return new Response(JSON.stringify({ error: "Invalid payload" }), { status: 400, headers });
         }
@@ -34,6 +60,11 @@ export async function onRequest(context) {
         const createdAt = Date.now();
         const expiresAt = createdAt + dias * 86400000;
         const dataWithMeta = { ...body, expiry: expiresAt, dias };
+        // La contraseña de admin (y el token/PIN del vendedor) vienen en el
+        // body solo para autorizar — nunca se guardan: este objeto se publica
+        // tal cual en la página del link (window.__CATALOG_DATA__).
+        delete dataWithMeta._pass; delete dataWithMeta._vendedor;
+        delete dataWithMeta._token; delete dataWithMeta._pin;
 
         // Las promos (descuento, 2x50/3x2/monto fijo, envío gratis, regalo
         // sorpresa) son SOLO para catálogos de Cliente — nunca de Afiliado.

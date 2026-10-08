@@ -222,6 +222,18 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
             padding:3px 8px;border-radius:5px;letter-spacing:.3px;z-index:2;
         }
         .card.bajopedido .card-bajopedido-badge{display:block;}
+        /* Catálogo actual de un vendedor: la pieza la tiene él en la mano (entrega inmediata) */
+        .card-enmano-badge{
+            display:none;position:absolute;top:8px;left:8px;
+            background:#16a34a;color:#fff;font-size:10px;font-weight:800;
+            padding:3px 8px;border-radius:5px;letter-spacing:.3px;z-index:2;
+        }
+        .card.enmano .card-enmano-badge{display:block;}
+        .leyenda-entrega{margin-top:8px;font-size:11px;color:#6b7280;line-height:1.8;}
+        .leyenda-entrega span{display:inline-block;color:#fff;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:4px;letter-spacing:.3px;}
+        .leyenda-entrega .le-ya{background:#16a34a;}
+        .leyenda-entrega .le-bp{background:#f59e0b;}
+        .card.otrastallas .card-enmano-badge{display:none;}
 
         /* Talla exacta agotada pero el modelo sí tiene otras tallas en
            bodega — se avisa cuáles en vez de ocultar la pieza */
@@ -368,6 +380,7 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
     const params = new URLSearchParams(location.search);
     const c = params.get("c");
 
+    let _esMixto = false;   // catálogo actual de un vendedor: consignación (en mano) + afiliado (bajo pedido) — ver functions/seller-catalog.js
     let _prods = [], _waNum = "", _szIdx = -1, _szD = "", _szH = "", _descPct = 0, _afiliadoCodigo = "", _szParMode = false, _szTel = "", _szNombreCliente = "", _szDireccion = "", _szNoTalla = false, _szModo = "wa", _linkTalla = "";
     // Con pocas piezas el carrusel se ve mejor (una tarjeta grande a la
     // vez); con muchas, la cuadrícula sigue siendo más práctica para
@@ -496,6 +509,7 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
         const ordenar = o => Object.keys(o).filter(t => o[t].n > 0).sort((a, b) => parseFloat(a) - parseFloat(b));
         _prods.forEach((p, i) => {
             if (p.cat !== "AN") return;
+            if (_esMixto && p.origen === "consignacion") return;   // la talla es la que el vendedor tiene en la mano
             const v = tallasVivas(p.c);
             if (!v) return;
             const separado = !!(p.sizesD?.length || p.sizesH?.length);
@@ -653,6 +667,10 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
         // para un afiliado (que no necesariamente tiene nada en consignación
         // — cruzar contra su consignación real lo dejaría vacío por error).
         _esAutoGeneradoVendedor = /^Auto-generado por el vendedor/i.test(data.nota_interna || "");
+        // Catálogo actual (Nexus → "Ver Catálogo Actual"): cada pieza dice de dónde sale.
+        // Consignación = la tiene el vendedor («✓ DISPONIBLE YA»); afiliado = la despacha VEREX («📦 BAJO PEDIDO»).
+        _esMixto = !!data.mixto;
+        if (_esMixto) _prods.forEach(p => { if (p.origen === "afiliado") p.bajoPedido = true; });
 
         const exp    = new Date(data.expiry);
         const expStr = exp.toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"});
@@ -662,15 +680,19 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
         let subParts=[];
         if(nb)    subParts.push(`${data.afiliado?'Distribuidor:':'Para:'} <strong>${esc(nb)}</strong>`);
         if(talla) subParts.push(`Talla: <strong>${esc(talla)}</strong>`);
-        const subHTML = subParts.join(" &nbsp;·&nbsp; ");
+        let subHTML = subParts.join(" &nbsp;·&nbsp; ");
+        if (_esMixto && _prods.some(p => p.origen === "consignacion" && !p.bajoPedido) && _prods.some(p => p.bajoPedido)) {
+            subHTML += `<div class="leyenda-entrega"><span class="le-ya">✓ DISPONIBLE YA</span> entrega inmediata &nbsp;·&nbsp; <span class="le-bp">📦 BAJO PEDIDO</span> lo pedimos para ti</div>`;
+        }
 
         const cards = _prods.map((p,i)=>{
             const sizesHtml = `<div id="sizes-${i}">${sizesHtmlDe(p)}</div>`;
             return `
-            <div class="card${p.bajoPedido?' bajopedido':''}${(p.tallasDisponibles&&p.tallasDisponibles.length)?' otrastallas':''}" data-idx="${i}" data-cod="${esc(p.c||'')}">
+            <div class="card${p.bajoPedido?' bajopedido':''}${(_esMixto&&p.origen==='consignacion'&&!p.bajoPedido)?' enmano':''}${(p.tallasDisponibles&&p.tallasDisponibles.length)?' otrastallas':''}" data-idx="${i}" data-cod="${esc(p.c||'')}">
                 <div class="card-img-wrap">
                     <span class="card-agotado-badge">AGOTADO</span>
                     <span class="card-bajopedido-badge">📦 BAJO PEDIDO</span>
+                    <span class="card-enmano-badge">✓ DISPONIBLE YA</span>
                     <span class="card-otrastallas-badge" id="otrastallas-${i}">📏 Talla agotada — disponible: ${esc((p.tallasDisponibles||[]).join(", "))}</span>
                     ${p.i
                         ?`<img class="card-img" src="${esc(ikSharp(p.i))}" alt="${esc(p.n)}" loading="lazy" style="cursor:zoom-in;" onclick="abrirFotoZoom('${esc(ikSharp(p.i))}')" onerror="this.outerHTML='<div class=\'card-img-ph\'>💍</div>'">`
@@ -1136,9 +1158,9 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
                 p.sizesD?.length ? `Dama: ${p.sizesD.map(s=>'T'+s).join(', ')}` : '',
                 p.sizesH?.length ? `Caballero: ${p.sizesH.map(s=>'T'+s).join(', ')}` : ''
             ].filter(Boolean).join('\n');
-            msg = `Hola, me interesan estas argollas del catálogo VEREX:\n\n${p.n}\n${precioInfo}${sizesInfo ? `\n\nTallas disponibles:\n${sizesInfo}` : ''}\n\n¿Qué tallas necesita para dama y caballero?${telLinea}`;
+            msg = `Hola, me interesan estas argollas del catálogo VEREX:\n\n${p.n}${etqEntrega(p)}\n${precioInfo}${sizesInfo ? `\n\nTallas disponibles:\n${sizesInfo}` : ''}\n\n¿Qué tallas necesita para dama y caballero?${telLinea}`;
         } else if(_szNoTalla){
-            msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\nPrecio: $${precioFinal(p.p).toFixed(2)}${telLinea}`;
+            msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}${etqEntrega(p)}\nPrecio: $${precioFinal(p.p).toFixed(2)}${telLinea}`;
         } else if(_szParMode){
             const precioInfo = (p.pD != null && p.pH != null)
                 ? `Precio total: $${precioFinal(parseFloat(p.pD)+parseFloat(p.pH)).toFixed(2)}`
@@ -1147,9 +1169,9 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
                 _szD && _szD !== "N/A" ? `Talla dama: T${_szD}` : '',
                 _szH && _szH !== "N/A" ? `Talla caballero: T${_szH}` : ''
             ].filter(Boolean).join('\n');
-            msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\n${precioInfo}\n${tallasInfo}${telLinea}`;
+            msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}${etqEntrega(p)}\n${precioInfo}\n${tallasInfo}${telLinea}`;
         } else {
-            msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}\nPrecio: $${precioFinal(p.p).toFixed(2)}\nTalla: T${_szD}${telLinea}`;
+            msg = `Hola, me interesa este producto del catálogo VEREX:\n\n${p.n}${etqEntrega(p)}\nPrecio: $${precioFinal(p.p).toFixed(2)}\nTalla: T${_szD}${telLinea}`;
         }
         registrarLead(p, _szTel, _szNombreCliente, _szDireccion, _szNoTalla ? null : piezasDeSeleccion(p, _szD, _szH, _szParMode), 1, _labelYPrecioCarrito(p).label);
         cerrarTallas();
@@ -1316,12 +1338,17 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
         document.getElementById("cart-fab").classList.toggle("show", total > 0);
     }
 
+    // Catálogo mixto: en el pedido se aclara si la pieza la tiene el vendedor o hay que pedirla a VEREX.
+    function etqEntrega(p){
+        if(!_esMixto) return "";
+        return p.bajoPedido ? " (📦 bajo pedido)" : (p.origen === "consignacion" ? " (✓ disponible ya)" : "");
+    }
     function agregarACarrito(p, tallaLabel, precioUnit){
         const key = (p.c || p.n) + "|" + tallaLabel;
         const existente = _carrito.find(it => it.key === key);
         const piezas = _szNoTalla ? null : piezasDeSeleccion(p, _szD, _szH, _szParMode);
         if(existente) existente.qty++;
-        else _carrito.push({ key, codigo: p.c || "", nombre: p.n, tallaLabel, precioUnit, qty: 1, piezas });
+        else _carrito.push({ key, codigo: p.c || "", nombre: p.n + etqEntrega(p), tallaLabel, precioUnit, qty: 1, piezas });
         guardarCarrito();
         renderCarritoFab();
     }
@@ -1456,7 +1483,7 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
             const stock = data.stock || [];
             const mapa = new Map(stock.map(s => [s.codigo, s]));
             _stockVivo = stock;   // existencias en vivo por talla (ver tallasVivas)
-            if(!_esAutoGeneradoVendedor) refrescarTallasVivas();   // muestra en la tarjeta las tallas que hoy sí hay (p. ej. una talla nueva en Stock)
+            if(!_esAutoGeneradoVendedor) refrescarTallasVivas();   // (en catálogo mixto, solo las piezas de afiliado — ver refrescarTallasVivas)   // muestra en la tarjeta las tallas que hoy sí hay (p. ej. una talla nueva en Stock)
 
             // Reglas de envío globales — mismo dato que usa la tienda pública.
             if (data.config?.reglasEnvio) _reglasEnvioGlobal = data.config.reglasEnvio;
@@ -1482,7 +1509,7 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
             // talla en la clave no se puede saber CUÁL talla exacta sigue
             // viva y cuál se agotó (podía marcar todas o ninguna agotada).
             const claveVivo = (base, talla) => String(base||"").toUpperCase() + "|" + String(talla||"").trim();
-            if (_afiliadoCodigo && _esAutoGeneradoVendedor) {
+            if (_afiliadoCodigo && (_esAutoGeneradoVendedor || _esMixto)) {
                 try {
                     const resV = await fetch(API_URL, {
                         method: "POST", headers: {"Content-Type":"application/json"},
@@ -1510,10 +1537,22 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
 
                 // Refrescar la foto si cambió en Stock desde que se generó el link —
                 // así no hace falta regenerar el catálogo solo por una foto nueva.
-                if(s?.foto && s.foto !== p.i){
-                    p.i = s.foto;
+                // Piezas con talla (anillos): el link guarda el código base
+                // (ANL037) pero en Stock cada talla es su propia fila
+                // (ANL037T7, ANL037T8…), así que mapa.get(p.c) no la encuentra
+                // y la foto se quedaba congelada. Se busca por codigoBase —
+                // primero la misma talla, si no cualquier talla del modelo.
+                let filaFoto = s;
+                if(!filaFoto?.foto){
+                    const base = String(p.c).toUpperCase();
+                    const talla = String((p.sizes && p.sizes[0]) || "").trim();
+                    const hermanas = stock.filter(r => r.foto && String(r.codigoBase || infoCodigo(r.codigo).base).toUpperCase() === base);
+                    filaFoto = hermanas.find(r => talla && String(r.talla || infoCodigo(r.codigo).talla).trim() === talla) || hermanas[0];
+                }
+                if(filaFoto?.foto && filaFoto.foto !== p.i){
+                    p.i = filaFoto.foto;
                     const img = card?.querySelector(".card-img");
-                    if(img) img.src = ikSharp(s.foto);
+                    if(img) img.src = ikSharp(filaFoto.foto);
                 }
 
                 // Refrescar el precio si cambió en Stock — así un ajuste de precio
@@ -1565,20 +1604,23 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
                 const piezas = (p.par ? [...(p.cD||[]), ...(p.cC||[])] : []).filter(Boolean);
 
                 const claveCard = claveVivo(p.c, (p.sizes && p.sizes[0]) || "");
-                const vivoInfo = vivosVendedorPorClave ? vivosVendedorPorClave.get(claveCard) : undefined;
-                let agotado = vivosVendedorPorClave
+                // Catálogo mixto: lo de consignación se cruza con lo que el vendedor tiene; lo de afiliado, con bodega.
+                const vivos = (_esMixto && p.origen !== "consignacion") ? null : vivosVendedorPorClave;
+                const vivoInfo = vivos ? vivos.get(claveCard) : undefined;
+                let agotado = vivos
                     ? !vivoInfo
                     : (piezas.length
                         ? piezas.some(cod => sinUnidades(mapa.get(cod)))
                         : sinUnidades(s));
                 // Anillo suelto: solo está agotado si NINGUNA talla tiene existencia (antes bastaba con que se acabara la talla guardada en el link)
-                if(!vivosVendedorPorClave && !piezas.length && !p.par && p.cat === "AN"){
+                if(!vivos && !piezas.length && !p.par && p.cat === "AN"){
                     const vivaA = tallasVivas(p.c);
                     if(vivaA) agotado = !Object.values(vivaA).some(g => Object.values(g).some(e => e.n > 0));
                 }
 
-                if (vivosVendedorPorClave && card) {
+                if (vivos && card) {
                     p.bajoPedido = !!vivoInfo?.bajoPedido;
+                    card.classList.toggle("enmano", _esMixto && !p.bajoPedido);
                     p.tallasDisponibles = vivoInfo?.tallasDisponibles || [];
                     card.classList.toggle("bajopedido", p.bajoPedido);
                     card.classList.toggle("otrastallas", !p.bajoPedido && p.tallasDisponibles.length > 0);

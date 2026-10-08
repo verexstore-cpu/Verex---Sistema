@@ -12,7 +12,7 @@ export async function onRequest(context) {
 
     try {
         const body = await context.request.json();
-        if (!(await esAdminValido(body?._pass))) return noAutorizado(cors);
+        if (!(await esAdminValido(body?._pass, context))) return noAutorizado(cors);
         const id = String(body?.id || "").trim();
         const dias = Math.min(Math.max(parseInt(body?.dias) || 15, 1), 30);
         if (!id) return new Response(JSON.stringify({ error: "Falta el id" }), { status: 400, headers });

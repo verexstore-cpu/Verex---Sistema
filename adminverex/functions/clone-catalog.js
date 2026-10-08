@@ -17,7 +17,7 @@ export async function onRequest(context) {
 
     try {
         const { id, dias: diasRaw, expiresAt: expiresAtRaw, stripDescuento, stripPromos, _pass } = await context.request.json();
-        if (!(await esAdminValido(_pass))) return noAutorizado(cors);
+        if (!(await esAdminValido(_pass, context))) return noAutorizado(cors);
         if (!id) return new Response(JSON.stringify({ error: "id requerido" }), { status: 400, headers });
 
         const rawHist = await context.env.CATALOGS.get("__hist__" + id);
@@ -42,6 +42,7 @@ export async function onRequest(context) {
             : createdAt + Math.min(Math.max(parseInt(diasRaw) || 3, 1), 30) * 86400000;
         const dias = Math.max(1, Math.ceil((expiresAt - createdAt) / 86400000));
         const newData = { ...originalData, dias, expiry: expiresAt };
+        delete newData._pass;   // catálogos viejos la guardaban por error
         // Eliminar customId para que el afiliado no sobreescriba su link fijo
         delete newData.customId;
         // El banner/descuento del catálogo original NO se copia por defecto sin

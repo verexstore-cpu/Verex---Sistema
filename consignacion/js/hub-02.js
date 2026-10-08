@@ -567,8 +567,11 @@ function abrirPerfil(codigo) {
     // El portal de "Completar Pedidos" solo aplica a afiliados (catálogo digital + Leads)
     const btnLinkPedidos = document.getElementById("btn-menu-link-pedidos");
     if (btnLinkPedidos) btnLinkPedidos.style.display = esAfil ? "" : "none";
+    // "Ver Catálogo Actual": afiliados y también quien tiene piezas en consignación
+    // (arma el catálogo combinado — ver verCatalogoActualAfiliado).
     const btnVerCatalogo = document.getElementById("btn-menu-ver-catalogo");
-    if (btnVerCatalogo) btnVerCatalogo.style.display = esAfil ? "" : "none";
+    const tieneConsignacion = consignacion.some(c => c.vendedor === vendedorActual.codigo && c.estado === "activo");
+    if (btnVerCatalogo) btnVerCatalogo.style.display = (esAfil || tieneConsignacion) ? "" : "none";
 
     const corteReal = corteAplica(vendedorActual) ? corteRealDe(vendedorActual) : null;
     const recordatorio = document.getElementById("recordatorio-corte");
@@ -1939,7 +1942,11 @@ async function enviarLinkFirmaRemota() {
 // El link del catálogo de cada afiliado sigue siempre el mismo patrón fijo,
 // basado en su nombre (igual que generarIdAfiliado() en Admin) — así que se
 // puede reconstruir aquí sin necesidad de guardar/consultar nada extra.
-function verCatalogoActualAfiliado() {
+// Catálogo ACTUAL del vendedor en su link fijo (/c/<nombre>): lo arma en ese momento con
+// lo que tiene en consignación («✓ DISPONIBLE YA») + su selección de afiliado si la tiene
+// («📦 BAJO PEDIDO») — admin-tienda/functions/seller-catalog.js. Así el link nunca queda
+// vencido ni desactualizado. Si falla, abre el link tal cual (comportamiento anterior).
+async function verCatalogoActualAfiliado() {
     if (!vendedorActual) return;
     const slug = (vendedorActual.nombre || "")
         .toLowerCase()
@@ -1947,7 +1954,32 @@ function verCatalogoActualAfiliado() {
         .replace(/ó/g,'o').replace(/ú/g,'u').replace(/ü/g,'u').replace(/ñ/g,'n')
         .replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
     if (!slug) return toast("⚠️ No se pudo generar el link — falta el nombre del vendedor");
-    window.open("https://admin-tienda.pages.dev/c/" + slug, "_blank");
+    const link = "https://admin-tienda.pages.dev/c/" + slug;
+    // La ventana se abre YA (si se abre después de esperar, el navegador la bloquea).
+    const win = window.open("", "_blank");
+    if (win) win.document.write('<p style="font-family:sans-serif;text-align:center;padding:3rem;color:#888">⏳ Actualizando el catálogo…</p>');
+    toast("⏳ Actualizando catálogo con su inventario actual…");
+    try {
+        const res = await fetch("https://admin-tienda.pages.dev/seller-catalog", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                _pass: _sessionPass, slug,
+                vendedor: { codigo: vendedorActual.codigo, nombre: vendedorActual.nombre, telefono: vendedorActual.telefono || "" },
+            }),
+        });
+        const out = await res.json().catch(() => ({}));
+        if (out.ok) {
+            toast("✅ Catálogo al día: " + out.enMano + " disponibles ya · " + out.bajoPedido + " bajo pedido");
+        } else if (out.error === "sin_productos") {
+            if (win) win.close();
+            return toast("⚠️ " + vendedorActual.nombre + " no tiene piezas en consignación ni catálogo de afiliado");
+        } else {
+            toast("⚠️ No se pudo actualizar el catálogo — se abre el último guardado");
+        }
+    } catch (e) {
+        toast("⚠️ Sin conexión para actualizar — se abre el último guardado");
+    }
+    if (win) win.location.href = link; else window.open(link, "_blank");
 }
 
 async function enviarLinkPedidos() {

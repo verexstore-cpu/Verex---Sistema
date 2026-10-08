@@ -13,7 +13,7 @@ export async function onRequest(context) {
 
     try {
         const { afiliadoCodigo, _pass } = await context.request.json();
-        if (!(await esAdminValido(_pass))) return noAutorizado(cors);
+        if (!(await esAdminValido(_pass, context))) return noAutorizado(cors);
         if (!afiliadoCodigo) return new Response(JSON.stringify({ error: "afiliadoCodigo requerido" }), { status: 400, headers });
 
         const rawIdx = await context.env.CATALOGS.get("__affiliate__" + afiliadoCodigo);

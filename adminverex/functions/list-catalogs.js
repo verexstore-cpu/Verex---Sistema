@@ -13,7 +13,7 @@ export async function onRequest(context) {
 
     try {
         const body = await context.request.json().catch(() => ({}));
-        if (!(await esAdminValido(body?._pass))) return noAutorizado(cors);
+        if (!(await esAdminValido(body?._pass, context))) return noAutorizado(cors);
 
         // Listar todos los __hist__ entries — es el registro permanente (sin
         // TTL) que save-catalog.js escribe por cada link generado, así que

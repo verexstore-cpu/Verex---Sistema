@@ -22,6 +22,9 @@ export async function onRequest(context) {
     let catalogDesc = "La expresión de tu mejor versión";
     let data = null;
     try { data = JSON.parse(raw); } catch(_) {}
+    // Catálogos guardados antes de que save-catalog lo limpiara traen la
+    // contraseña de admin (_pass) adentro — nunca debe llegar a la página.
+    if (data) { delete data._pass; delete data._vendedor; delete data._token; delete data._pin; }
 
     // Catálogo bilingüe para EE. UU. (envío DHL por monto de compra) usa su
     // propia plantilla — se genera desde Admin con la casilla "🇺🇸 Catálogo
