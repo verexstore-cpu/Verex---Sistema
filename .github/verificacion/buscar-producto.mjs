@@ -18,6 +18,7 @@ for (const p of hits) {
   console.log(JSON.stringify(fila, null, 1));
   const ef = await estadoFoto(p.foto), em = p.fotoMejorada ? await estadoFoto(p.fotoMejorada) : "";
   console.log("foto:", ef, em ? " | fotoMejorada: " + em : "");
+  if (p.foto && !/HTTP 200/.test(ef) && p.foto.includes("?")) { const sin = p.foto.split("?")[0]; console.log("foto SIN recorte:", sin, "→", await estadoFoto(sin)); const meta = await estadoFoto(sin + "?tr=n-ik_ml_thumbnail"); console.log("miniatura:", meta); }
   md += `### ${p.codigo} — ${p.nombre || ""}\n\n\`\`\`json\n${JSON.stringify(fila, null, 1)}\n\`\`\`\nfoto: ${ef}${em ? " · mejorada: " + em : ""}\n\n`;
 }
 if (process.env.GITHUB_STEP_SUMMARY) (await import("node:fs")).appendFileSync(process.env.GITHUB_STEP_SUMMARY, md);
