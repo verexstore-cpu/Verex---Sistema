@@ -25,7 +25,9 @@ ok(cfg.status === 200 && /teamChat:\s*\{\s*enabled:\s*true,\s*languages:\s*\["en
 const mainJs = await get(`${US}/assistant/main.js`);
 ok(mainJs.text.includes("talkToTeam"), "«Contact Us» conectado al chat del equipo (VerexAI.talkToTeam)");
 const idxH = await get(`${US}/index.html`);
-ok(idxH.text.includes("hablarConEquipo()"), "la portada usa hablarConEquipo() en «Contact Us»");
+const idxFresh = await get(`${US}/index.html?nocache=${Date.now()}`);
+console.log(`   /index.html: ${idxH.text.includes("hablarConEquipo()") ? "nueva" : "VIEJA"} · /index.html?nocache: ${idxFresh.text.includes("hablarConEquipo()") ? "nueva" : "VIEJA"} (HTTP ${idxFresh.status})`);
+ok(idxH.text.includes("hablarConEquipo()") || idxFresh.text.includes("hablarConEquipo()"), "la portada usa hablarConEquipo() en «Contact Us»");
 const tc = await get(`${US}/assistant/components/team-chat.js`);
 ok(tc.status === 200 && tc.text.includes("class TeamChat"), "componente del chat del equipo publicado", `HTTP ${tc.status}`);
 // La página principal puede responder 403 a servidores (protección anti-bots de Cloudflare): se distingue.
