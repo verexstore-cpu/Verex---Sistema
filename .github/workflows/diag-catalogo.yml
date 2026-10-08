@@ -1,0 +1,16 @@
+name: Diagnóstico catálogo de vendedor
+on:
+  workflow_dispatch:
+    inputs:
+      slugs: { description: "slugs separados por coma", required: false, default: "xiomara" }
+  push:
+    paths: [".github/verificacion/diag-catalogo.mjs", ".github/workflows/diag-catalogo.yml"]
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node .github/verificacion/diag-catalogo.mjs
+        env: { SLUGS: "${{ github.event.inputs.slugs || 'xiomara' }}" }
