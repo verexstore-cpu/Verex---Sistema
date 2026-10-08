@@ -1,0 +1,12 @@
+name: Categorías de productos
+on:
+  workflow_dispatch: {}
+  push:
+    paths: [".github/verificacion/categorias.mjs", ".github/workflows/categorias.yml"]
+jobs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node .github/verificacion/categorias.mjs
