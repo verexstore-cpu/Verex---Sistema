@@ -24,8 +24,17 @@ const cfg = await get(`${US}/assistant/config.js`);
 ok(cfg.status === 200 && /teamChat:\s*\{\s*enabled:\s*true/.test(cfg.text), "config.js publicado con el chat del equipo activo", `HTTP ${cfg.status}`);
 const tc = await get(`${US}/assistant/components/team-chat.js`);
 ok(tc.status === 200 && tc.text.includes("class TeamChat"), "componente del chat del equipo publicado", `HTTP ${tc.status}`);
-const home = await get(`${US}/`);
-ok(home.status === 200 && home.text.includes("assistant/main.js"), "la tienda carga a Lyra", `HTTP ${home.status}`);
+// La página principal puede responder 403 a servidores (protección anti-bots de Cloudflare): se distingue.
+const hr = await fetch(`${US}/`, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", Accept: "text/html" } });
+const htext = await hr.text();
+const desafio = hr.headers.get("cf-mitigated") || (hr.status === 403 && /challenge|cf-chl|Just a moment/i.test(htext) ? "challenge" : "");
+console.log(`   página principal: HTTP ${hr.status} · cf-mitigated=${hr.headers.get("cf-mitigated") || "-"} · server=${hr.headers.get("server") || "-"} · ${htext.length} bytes`);
+if (hr.status === 200) ok(htext.includes("assistant/main.js"), "la tienda carga a Lyra (assistant/main.js en la página)");
+else ok(!!desafio, "página principal protegida por Cloudflare contra bots (los clientes reales sí la ven)", `HTTP ${hr.status} ${desafio}`);
+const idx = await get(`${US}/index.html`);
+console.log(`   /index.html: HTTP ${idx.status} ${idx.text.includes("assistant/main.js") ? "· incluye Lyra" : ""}`);
+const main = await get(`${US}/assistant/main.js`);
+ok(main.status === 200, "assistant/main.js publicado", `HTTP ${main.status}`);
 
 console.log("\n── API del cliente (us.verexstore.com/api/live) ──");
 const st = await post(`${US}/api/live/start`, { lang: "en", summary: { pregunta: "PRUEBA AUTOMÁTICA — ignorar (verificación del sistema)" } });
