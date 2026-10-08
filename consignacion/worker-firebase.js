@@ -463,7 +463,11 @@ async function enviar(){
       switch (d.accion) {
 
         // ══ STOCK ════════════════════════════════════════════════
+        // Inventario COMPLETO (publicado o no, con costos y consignación): solo admin.
+        // Lo usan el Hub de consignación (apiPost manda _pass) y foto-qr.html (login con _pass).
+        // El catálogo público usa GET_CATALOGO, que solo devuelve lo publicado.
         case "STOCK_GET_ALL": {
+          if (!esAdmin) return forbidden();
           const docs = await sb.getAll("stock");
           result = { ok: true, stock: docs.filter(p => p.estado !== "inactivo") };
           break;
@@ -2575,7 +2579,11 @@ async function enviar(){
           break;
         }
 
+        // Datos personales de un cliente (por código CVX-### o teléfono): solo admin. Los códigos son
+        // consecutivos, así que siendo pública cualquiera podía recorrer CVX-001, CVX-002… y bajar nombre,
+        // teléfono, dirección y correo de todos. El autocompletado del catálogo que la usaba ya no se muestra.
         case "BUSCAR_CLIENTE": {
+          if (!esAdmin) return forbidden();
           const cliAll = await sb.getAll("clientes");
           const cli = cliAll.find(c =>
             String(c.codigo) === String(d.codigo) ||
@@ -3768,12 +3776,16 @@ async function enviar(){
         // ══ ALIAS ════════════════════════════════════════════════
         case "GET_STOCK": {
           const stock = await sb.getAll("stock");
+          // Admin (Hub con _pass): inventario completo. Público (links de producto /p, catálogos /c de
+          // afiliados, vista previa de links): solo los campos de producto que esas páginas usan —
+          // nunca consignación, ventas, reservas internas ni otros campos que el Hub guarde.
           // Se incluye config (ej. fraseConfianza del catálogo) porque
           // catalogo.html (los links /c/:id) ya llama GET_STOCK para el
           // chequeo de disponibilidad en vivo — reutilizar esa llamada evita
           // un fetch extra solo para leer la frase editable de envíos/pago.
           const cfgStock = await sb.get("config", "settings");
-          result = { ok: true, stock: stock.filter(p => p.estado !== "inactivo"), config: sanearConfigPublico(cfgStock) };
+          const activos = stock.filter(p => p.estado !== "inactivo");
+          result = { ok: true, stock: esAdmin ? activos : activos.map(stockPublico), config: sanearConfigPublico(cfgStock) };
           break;
         }
 
@@ -4005,6 +4017,25 @@ async function enviar(){
           }
           const ents = await sb.query("entregas", "vendedor", "==", d.vendedor);
           result = { ok: true, entregas: ents.filter(e => e.estado === "pendiente") };
+          break;
+        }
+
+        // Lista TODAS las entregas de un vendedor (confirmadas, pendientes de firma y duplicadas)
+        // para la sección "Entregas / Recibos". No manda la firma (pesa) — solo si existe.
+        case "GET_ENTREGAS_VENDEDOR": {
+          if (!esAdmin) return forbidden();
+          if (!d.vendedor) { result = { ok: false, error: "Falta el vendedor" }; break; }
+          const entsV = await sb.query("entregas", "vendedor", "==", d.vendedor);
+          result = { ok: true, entregas: entsV.map(({ firmaImg, ...e }) => ({ ...e, tieneFirma: !!firmaImg })) };
+          break;
+        }
+
+        // Una entrega completa (con la firma) para regenerar su recibo PDF.
+        case "GET_ENTREGA_RECIBO": {
+          if (!esAdmin) return forbidden();
+          const entR = await sb.get("entregas", d.id);
+          if (!entR) { result = { ok: false, error: "Entrega no encontrada" }; break; }
+          result = { ok: true, entrega: entR };
           break;
         }
 
@@ -4582,6 +4613,124 @@ async function enviar(){
           break;
         }
 
+        // ══ VEREX AI (asistente de us.verexstore.com) — demanda no cubierta ══
+        // Registra, sin datos personales, lo que los clientes buscan y no encuentran
+        // ("sin_resultados"), lo que piden que se les consiga ("pedido_cliente") y las
+        // preguntas que el asistente no pudo responder ("pregunta"). Solo lo llaman las
+        // Pages Functions de verex-catalogo-us, con el secreto interno compartido
+        // (INTERNAL_SECRET, el mismo valor en el Worker y en ese proyecto de Pages).
+        // Se agrega por mes en config/ia_demanda_AAAA-MM (máx. 400 entradas por mes).
+        case "IA_DEMANDA_REGISTRAR": {
+          if (!env.INTERNAL_SECRET || !safeEq(request.headers.get("X-Verex-Internal") || "", env.INTERNAL_SECRET)) return forbidden();
+          const limpiarIA = (v, n) => String(v || "")
+            .replace(/[\u0000-\u001f<>]/g, " ")
+            .replace(/\S+@\S+\.\S+/g, "[correo]")                  // nunca guardar correos ni teléfonos
+            .replace(/\+?\d[\d\s().-]{6,}\d/g, "[teléfono]")
+            .replace(/\s+/g, " ").trim().slice(0, n);
+          const tipoIA = ["sin_resultados", "pedido_cliente", "pregunta"].includes(d.tipo) ? d.tipo : "sin_resultados";
+          const claveIA = limpiarIA(d.clave, 90).toLowerCase();
+          if (!claveIA) { result = { ok: false, error: "clave vacía" }; break; }
+          const mesIA = new Date().toISOString().slice(0, 7);
+          const docIdIA = `ia_demanda_${mesIA}`;
+          const docIA = (await sb.get("config", docIdIA)) || { mes: mesIA, items: {} };
+          docIA.items = docIA.items || {};
+          const kIA = `${tipoIA === "pregunta" ? "p" : "b"}:${claveIA}`;
+          const itIA = docIA.items[kIA] || { tipo: tipoIA === "pregunta" ? "pregunta" : "producto", descripcion: limpiarIA(d.descripcion || d.clave, 140), veces: 0, pedidos: 0, ejemplos: [], idiomas: {} };
+          if (tipoIA === "pedido_cliente") itIA.pedidos = (itIA.pedidos || 0) + 1; else itIA.veces = (itIA.veces || 0) + 1;
+          itIA.ultima = new Date().toISOString();
+          const ejIA = limpiarIA(d.consulta, 160);
+          if (ejIA && !itIA.ejemplos.includes(ejIA)) itIA.ejemplos = [ejIA, ...itIA.ejemplos].slice(0, 3);
+          const langIA = d.idioma === "es" ? "es" : "en";
+          itIA.idiomas[langIA] = (itIA.idiomas[langIA] || 0) + 1;
+          docIA.items[kIA] = itIA;
+          const clavesIA = Object.keys(docIA.items);
+          if (clavesIA.length > 400) {
+            clavesIA.sort((a, b) => ((docIA.items[a].pedidos || 0) * 3 + (docIA.items[a].veces || 0)) - ((docIA.items[b].pedidos || 0) * 3 + (docIA.items[b].veces || 0)))
+              .slice(0, clavesIA.length - 400).forEach(k => delete docIA.items[k]);
+          }
+          await sb.set("config", docIdIA, docIA);
+          result = { ok: true };
+          break;
+        }
+
+        // Reporte para Admin VEREX: lo más buscado sin resultado, lo más pedido y las preguntas sin respuesta.
+        case "IA_DEMANDA_LISTAR": {
+          if (!esAdmin) return forbidden();
+          const mesesIA = Math.min(Math.max(parseInt(d.meses, 10) || 1, 1), 6);
+          const ahoraIA = new Date();
+          const idsIA = [];
+          for (let i = 0; i < mesesIA; i++) {
+            const f = new Date(Date.UTC(ahoraIA.getUTCFullYear(), ahoraIA.getUTCMonth() - i, 1));
+            idsIA.push(`ia_demanda_${f.toISOString().slice(0, 7)}`);
+          }
+          const docsIA = await Promise.all(idsIA.map(id => sb.get("config", id).catch(() => null)));
+          const juntosIA = {};
+          for (const doc of docsIA) {
+            for (const [k, it] of Object.entries((doc && doc.items) || {})) {
+              const acc = juntosIA[k] || (juntosIA[k] = { tipo: it.tipo, descripcion: it.descripcion, veces: 0, pedidos: 0, ejemplos: [], idiomas: {}, ultima: "" });
+              acc.veces += it.veces || 0;
+              acc.pedidos += it.pedidos || 0;
+              for (const e of it.ejemplos || []) if (!acc.ejemplos.includes(e) && acc.ejemplos.length < 3) acc.ejemplos.push(e);
+              for (const [l, n] of Object.entries(it.idiomas || {})) acc.idiomas[l] = (acc.idiomas[l] || 0) + n;
+              if ((it.ultima || "") > acc.ultima) acc.ultima = it.ultima;
+            }
+          }
+          const listaIA = Object.values(juntosIA).sort((a, b) => (b.pedidos * 3 + b.veces) - (a.pedidos * 3 + a.veces));
+          result = {
+            ok: true, meses: mesesIA,
+            productos: listaIA.filter(x => x.tipo !== "pregunta").slice(0, 100),
+            preguntas: listaIA.filter(x => x.tipo === "pregunta").slice(0, 50),
+          };
+          break;
+        }
+
+        // ══ CHAT EN VIVO CON TRADUCCIÓN (Lyra de us.verexstore.com como intérprete) ══
+        // El cliente habla con el asesor dentro de la ventana de Lyra; las Pages Functions de
+        // verex-catalogo-us traducen (inglés ↔ español) y guardan aquí cada mensaje con su
+        // original y su traducción. Solo las llaman esas Pages Functions, con el secreto
+        // interno (INTERNAL_SECRET); la sesión del asesor la validan ellas y la contraseña
+        // solo se comprueba en LIVE_AGENTE_LOGIN.
+        //   config/livechat-<chatId>           → datos del chat (estado, idioma, resumen de Lyra…)
+        //   config/livemsg-<chatId>-<msgId>    → un documento por mensaje (solo se insertan:
+        //                                        nunca hay dos escrituras peleando por el mismo doc)
+        // Login de la app VEREX Chats: la MISMA seguridad que el Admin (contraseña + código TOTP de
+        // 6 dígitos, con los mismos límites de intentos). La IP real del asesor la manda la Pages
+        // Function (de confianza: trae el secreto interno), para que los límites sean por persona.
+        case "LIVE_AGENTE_LOGIN": {
+          if (!env.INTERNAL_SECRET || !safeEq(request.headers.get("X-Verex-Internal") || "", env.INTERNAL_SECRET)) return forbidden();
+          const ipAg = String(d.ipCliente || ip).slice(0, 64);
+          const bloqAg = await rlBlocked(sb, "login:" + ipAg);
+          if (bloqAg) { result = { ok: false, error: "bloqueado", retryAfter: bloqAg }; break; }
+          if (!(await verificarPassword(d.pass, env, sb, ipAg, "login"))) { result = { ok: false, error: "credenciales" }; break; }
+          const cfgAg = await sb.get("config", "settings");
+          if (!cfgAg || !cfgAg.totpSecret) { result = { ok: false, error: "totp_no_configurado" }; break; }
+          const bTotpAg = (await rlBlocked(sb, "totp:" + ipAg)) || (await rlBlocked(sb, "totp:all"));
+          if (bTotpAg) { result = { ok: false, error: "bloqueado", retryAfter: bTotpAg }; break; }
+          if (!(await totpVerificar(cfgAg.totpSecret, d.codigo))) {
+            await rlFail(sb, "totp:" + ipAg, RL_LOGIN);
+            await rlFail(sb, "totp:all", RL_TOTP_ALL);
+            result = { ok: false, error: "codigo" };
+            break;
+          }
+          await rlReset(sb, "totp:" + ipAg);
+          result = { ok: true };
+          break;
+        }
+
+        case "LIVE_CHAT_CREAR":
+        case "LIVE_CHAT_GET":
+        case "LIVE_CHAT_ESTADO":
+        case "LIVE_MSG_AGREGAR":
+        case "LIVE_MSGS":
+        case "LIVE_CHATS_LISTAR":
+        case "LIVE_PUSH_GUARDAR":
+        case "LIVE_PUSH_BORRAR":
+        case "LIVE_PUSH_LISTAR": {
+          if (!env.INTERNAL_SECRET || !safeEq(request.headers.get("X-Verex-Internal") || "", env.INTERNAL_SECRET)) return forbidden();
+          result = await liveChatAccion(sb, d);
+          break;
+        }
+
         case "GET_VISITAS": {
           if (!esAdmin) return forbidden();
           const vis = await sb.get("config", "visitas_catalogo") || { total: 0, porDia: {} };
@@ -4606,6 +4755,160 @@ async function enviar(){
     }
   }
 };
+
+// ── CHAT EN VIVO CON TRADUCCIÓN ───────────────────────────────────
+// Ver los case LIVE_* del switch. Aquí solo se guarda y se lee: la traducción y la sesión
+// del asesor las maneja verex-catalogo-us. El cliente se identifica con el hash de su
+// token (tokenHash), que se compara con el guardado al crear el chat.
+const LIVE_ID_RE = /^[a-z0-9]{12,40}$/;
+const LIVE_ESTADOS = ["esperando", "activo", "cerrado"];
+const liveTxt = (v, n) => String(v == null ? "" : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").trim().slice(0, n);
+const liveChatPublico = c => {
+  if (!c) return null;
+  const { tokenHash, ...resto } = c;
+  return resto;
+};
+
+async function liveChatAccion(sb, d) {
+  if (d.accion.startsWith("LIVE_PUSH_")) return livePushAccion(sb, d);
+  const chatId = String(d.chatId || "");
+  if (d.accion !== "LIVE_CHATS_LISTAR" && !LIVE_ID_RE.test(chatId)) return { ok: false, error: "chat_invalido" };
+  const ahora = new Date().toISOString();
+  // Si llega tokenHash, la acción es del CLIENTE: solo vale para SU chat (lo valida aquí mismo,
+  // en la misma lectura, para que cada sondeo cueste una sola llamada).
+  const delCliente = d.tokenHash !== undefined;
+  const tokenOk = chat => !!chat && !!chat.tokenHash && safeEq(String(d.tokenHash || ""), chat.tokenHash);
+
+  switch (d.accion) {
+    case "LIVE_CHAT_CREAR": {
+      const c = d.chat || {};
+      const resumen = {};
+      for (const k of ["busca", "vio", "pregunta"]) if (c.resumen && c.resumen[k]) resumen[k] = liveTxt(c.resumen[k], 250);
+      const chat = {
+        chatId, estado: "esperando",
+        idioma: c.idioma === "es" ? "es" : "en",
+        tokenHash: liveTxt(c.tokenHash, 128),
+        nombre: liveTxt(c.nombre, 60), email: liveTxt(c.email, 120),
+        resumen, pagina: liveTxt(c.pagina, 200),
+        creado: ahora, actualizado: ahora, ultimo: null, agente: "", mensajes: 0,
+      };
+      if (!chat.tokenHash) return { ok: false, error: "token_requerido" };
+      const creado = await sb.insertIfAbsent("config", `livechat-${chatId}`, chat);
+      return creado ? { ok: true, chat: liveChatPublico(chat) } : { ok: false, error: "chat_existe" };
+    }
+
+    case "LIVE_CHAT_GET": {
+      const chat = await sb.get("config", `livechat-${chatId}`);
+      if (!chat) return { ok: false, error: "chat_no_existe" };
+      if (delCliente && !tokenOk(chat)) return { ok: false, error: "token_invalido" };
+      return { ok: true, chat: liveChatPublico(chat) };
+    }
+
+    case "LIVE_CHAT_ESTADO": {
+      const estado = LIVE_ESTADOS.includes(d.estado) ? d.estado : null;
+      if (!estado) return { ok: false, error: "estado_invalido" };
+      const chat = await sb.get("config", `livechat-${chatId}`);
+      if (!chat) return { ok: false, error: "chat_no_existe" };
+      if (delCliente && (!tokenOk(chat) || estado !== "cerrado")) return { ok: false, error: "token_invalido" };
+      const patch = { estado, actualizado: ahora };
+      if (estado === "cerrado") { patch.cerrado = ahora; patch.cerradoPor = delCliente ? "cliente" : "asesor"; }
+      await sb.update("config", `livechat-${chatId}`, patch);
+      return { ok: true, chat: liveChatPublico({ ...chat, ...patch }) };
+    }
+
+    case "LIVE_MSG_AGREGAR": {
+      const m = d.msg || {};
+      const msgId = String(m.msgId || "");
+      if (!/^[a-z0-9]{8,40}$/.test(msgId)) return { ok: false, error: "mensaje_invalido" };
+      const autor = ["cliente", "asesor", "sistema"].includes(m.autor) ? m.autor : null;
+      const original = liveTxt(m.original, 2000);
+      if (!autor || !original) return { ok: false, error: "mensaje_invalido" };
+      const chat = await sb.get("config", `livechat-${chatId}`);
+      if (!chat) return { ok: false, error: "chat_no_existe" };
+      if (delCliente && (!tokenOk(chat) || autor !== "cliente")) return { ok: false, error: "token_invalido" };
+      if (chat.estado === "cerrado") return { ok: false, error: "chat_cerrado" };
+      const msg = {
+        chatId, msgId, autor, original, ts: ahora,
+        idioma: m.idioma === "es" ? "es" : m.idioma === "en" ? "en" : "",
+        traduccion: liveTxt(m.traduccion, 2000),
+        dir: ["en>es", "es>en"].includes(m.dir) ? m.dir : "",
+        errorTraduccion: liveTxt(m.errorTraduccion, 80),
+        agente: autor === "asesor" ? liveTxt(m.agente, 40) : "",
+      };
+      // El id del mensaje lo genera quien lo escribe: si un reintento llega dos veces, no se duplica.
+      const nuevo = await sb.insertIfAbsent("config", `livemsg-${chatId}-${msgId}`, msg);
+      if (!nuevo) {
+        const existente = await sb.get("config", `livemsg-${chatId}-${msgId}`);
+        return { ok: true, duplicado: true, msg: existente };
+      }
+      const patch = {
+        actualizado: ahora, mensajes: (chat.mensajes || 0) + 1,
+        ultimo: { autor, texto: (autor === "cliente" && msg.traduccion ? msg.traduccion : original).slice(0, 140), ts: ahora },
+      };
+      // El idioma del chat sigue al del cliente (si cambia de inglés a español, el asesor deja de traducir).
+      if (autor === "cliente" && msg.idioma && msg.idioma !== chat.idioma) patch.idioma = msg.idioma;
+      if (autor === "asesor") {
+        if (chat.estado === "esperando") { patch.estado = "activo"; patch.primeraRespuesta = ahora; }
+        if (msg.agente) patch.agente = msg.agente;
+      }
+      await sb.update("config", `livechat-${chatId}`, patch);
+      return { ok: true, msg };
+    }
+
+    case "LIVE_MSGS": {
+      const desde = /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(String(d.desde || "")) ? d.desde : "";
+      const conChat = d.conChat || delCliente;
+      const [msgs, chat] = await Promise.all([
+        sb.listPrefix("config", `livemsg-${chatId}-`, { campo: "ts", mayorQue: desde, limite: 300 }),
+        conChat ? sb.get("config", `livechat-${chatId}`) : null,
+      ]);
+      if (conChat && !chat) return { ok: false, error: "chat_no_existe" };
+      if (delCliente && !tokenOk(chat)) return { ok: false, error: "token_invalido" };
+      msgs.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+      return { ok: true, msgs, chat: conChat ? liveChatPublico(chat) : undefined };
+    }
+
+    case "LIVE_CHATS_LISTAR": {
+      const dias = Math.min(Math.max(parseInt(d.dias, 10) || 3, 1), 30);
+      const desde = new Date(Date.now() - dias * 86400000).toISOString();
+      const chats = await sb.listPrefix("config", "livechat-", { campo: "actualizado", mayorQue: desde, limite: 200 });
+      chats.sort((a, b) => (a.actualizado < b.actualizado ? 1 : -1));
+      return { ok: true, chats: chats.map(liveChatPublico) };
+    }
+  }
+  return { ok: false, error: "accion_invalida" };
+}
+
+// Teléfonos/PC de los asesores que reciben avisos push de chats nuevos (config/livepush-<hash del endpoint>).
+// Guarda solo la suscripción del navegador (endpoint + claves públicas), nunca datos del cliente.
+async function livePushAccion(sb, d) {
+  const endpoint = String(d.endpoint || d.sub?.endpoint || "");
+  const idPush = async () => "livepush-" + (await hashStr(endpoint)).slice(0, 40);
+  switch (d.accion) {
+    case "LIVE_PUSH_GUARDAR": {
+      const keys = d.sub?.keys || {};
+      if (!/^https:\/\/[^\s]{10,600}$/.test(endpoint) || !/^[A-Za-z0-9_-]{40,140}$/.test(keys.p256dh || "") || !/^[A-Za-z0-9_-]{8,60}$/.test(keys.auth || "")) {
+        return { ok: false, error: "suscripcion_invalida" };
+      }
+      const ahora = new Date().toISOString();
+      await sb.set("config", await idPush(), {
+        endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth },
+        nombre: liveTxt(d.nombre, 40), dispositivo: liveTxt(d.dispositivo, 80), actualizado: ahora,
+      });
+      return { ok: true };
+    }
+    case "LIVE_PUSH_BORRAR": {
+      if (!endpoint) return { ok: false, error: "suscripcion_invalida" };
+      await sb.delete("config", await idPush());
+      return { ok: true };
+    }
+    case "LIVE_PUSH_LISTAR": {
+      const subs = await sb.listPrefix("config", "livepush-", { limite: 50 });
+      return { ok: true, subs: subs.map(x => ({ endpoint: x.endpoint, keys: x.keys, nombre: x.nombre || "" })) };
+    }
+  }
+  return { ok: false, error: "accion_invalida" };
+}
 
 // ── CLASE SUPABASE ────────────────────────────────────────────────
 //
@@ -4848,6 +5151,21 @@ class Supabase {
     }
   }
 
+  // Documentos cuyo id empieza con `prefijo` (usar prefijos sin "_" ni "%": son comodines
+  // de LIKE). Opcional: solo los que tienen data->>campo > mayorQue (texto, p. ej. fechas ISO).
+  async listPrefix(table, prefijo, { campo = "", mayorQue = "", limite = 200 } = {}) {
+    if (/[_%*\\]/.test(prefijo)) throw new Error("listPrefix: prefijo con comodines");
+    let q = `${this.url}/rest/v1/${table}?select=id,data&id=like.${encodeURIComponent(prefijo)}*&order=id&limit=${Math.min(Math.max(limite, 1), 1000)}`;
+    if (campo && mayorQue) q += `&data->>${encodeURIComponent(campo)}=gt.${encodeURIComponent(mayorQue)}`;
+    const res = await fetch(q, { headers: this._headers(), cf: { cacheTtl: 0, cacheEverything: false } });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`SB listPrefix ${table}: ${res.status} ${txt}`);
+    }
+    const rows = await res.json();
+    return Array.isArray(rows) ? rows.map(r => ({ id: r.id, ...r.data })) : [];
+  }
+
   // Query con filtro sobre campo JSONB (campo == valor)
   async query(table, campo, _op, valor) {
     const res = await fetch(
@@ -4966,8 +5284,15 @@ async function compararPassword(pass, env, sb) {
 }
 
 // Clave legacy de vendedores (d.key): mismo trato — comparación segura y límite de intentos.
+// Valores que viajan dentro del código PÚBLICO de los catálogos (verexstore.com y us.verexstore.com):
+// cualquiera puede verlos, así que nunca dan acceso de admin aunque SECRET_KEY tuviera ese valor, y
+// tampoco cuentan como intento fallido (si no, los pedidos de clientes desde una misma IP podían
+// bloquear el acceso del admin). Si SECRET_KEY en Cloudflare es uno de estos, cambiarlo.
+const CLAVES_LEGACY_PUBLICAS = new Set(["VEREX_2026_PRO"]);
+
 async function claveLegacyValida(key, env, sb, ip) {
   if (!key || !env.SECRET_KEY) return false;
+  if (CLAVES_LEGACY_PUBLICAS.has(String(key))) return false;
   const rk = "api:" + (ip || "unknown");
   if (await rlBlocked(sb, rk)) return false;
   if (safeEq(key, env.SECRET_KEY)) return true;
@@ -6383,6 +6708,17 @@ async function planearCambioVD(sb, vd, cambios) {
 // Sin este filtro, cualquiera obtenía passHash con una sola petición sin
 // autenticarse, y ese mismo hash es aceptado como contraseña válida en
 // verificarPassword() — bypaseaba contraseña + OTP + SSO por completo.
+// Campos de un producto que pueden salir en respuestas públicas (GET_STOCK sin contraseña).
+const CAMPOS_STOCK_PUBLICOS = ["id", "codigo", "codigoBase", "talla", "nombre", "nombre_base", "nombreEN", "categoria",
+  "material", "precio", "precio_caballero", "set_config", "foto", "fotoMejorada", "img", "descripcion", "descripcionTienda",
+  "descripcionTiendaEN", "caracterEspecial", "estado", "enCatalogo", "destacado", "fechaRegistro", "reservado",
+  "stock_tienda", "stock_bodega"];
+function stockPublico(p) {
+  const o = {};
+  for (const k of CAMPOS_STOCK_PUBLICOS) if (p[k] !== undefined) o[k] = p[k];
+  return o;
+}
+
 function sanearConfigPublico(cfg) {
   if (!cfg || typeof cfg !== "object") return {};
   const { passHash, otp, otpExp, ssoTokens, ...publico } = cfg;

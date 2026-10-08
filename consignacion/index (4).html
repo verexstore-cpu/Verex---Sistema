@@ -579,6 +579,9 @@
                 <button class="menu-btn menu-btn-full" id="btn-menu-hist-entregas" data-color="#4a90d9" onclick="verHistorialEntregas()">
                     <span class="menu-ico">📦</span><span class="menu-txt">Historial de Entregas</span><span class="menu-arr">›</span>
                 </button>
+                <button class="menu-btn menu-btn-full" id="btn-menu-recibos" data-color="#2d7a4f" onclick="verEntregasRecibos()">
+                    <span class="menu-ico">🧾</span><span class="menu-txt">Entregas / Recibos</span><span class="menu-arr">›</span>
+                </button>
                 <button class="menu-btn menu-btn-full" id="btn-menu-devolucion" data-color="#e74c3c" onclick="abrirDevolucion()">
                     <span class="menu-ico">↩️</span><span class="menu-txt">Registrar Devolución</span><span class="menu-arr">›</span>
                 </button>
@@ -1413,6 +1416,19 @@
     </div>
 </div>
 
+
+<!-- Modal Entregas / Recibos -->
+<div class="modal-overlay" id="modal-entregas-recibos">
+    <div class="modal-box" style="max-width:560px;">
+        <div class="modal-header">
+            <h3>🧾 Entregas / Recibos</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-entregas-recibos')">×</button>
+        </div>
+        <div id="lista-entregas-recibos">
+            <p style="color:var(--plateado);font-size:13px;">⏳ Cargando...</p>
+        </div>
+    </div>
+</div>
 
 <!-- Modal Historial Entregas -->
 <div class="modal-overlay" id="modal-historial-entregas">
