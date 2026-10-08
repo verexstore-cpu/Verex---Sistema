@@ -2,7 +2,7 @@ name: Recuperar foto de producto
 on:
   workflow_dispatch:
     inputs:
-      foto: { description: "URL de la foto", required: true }
+      fotos: { description: "NOMBRE=url separados por coma", required: true }
   push:
     paths: [".github/verificacion/foto-producto.mjs", ".github/workflows/foto-producto.yml"]
 permissions:
@@ -15,9 +15,9 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: node .github/verificacion/foto-producto.mjs
-        env: { FOTO: "${{ github.event.inputs.foto || 'https://ik.imagekit.io/agxhbnabg/consignacion/ANP013T7_XUKP_ob5VJ.jpg' }}" }
+        env: { FOTOS: "${{ github.event.inputs.fotos || 'ANP060=https://ik.imagekit.io/agxhbnabg/consignacion/ANP060CT10_VGt06ypex.png,ANP240=https://ik.imagekit.io/agxhbnabg/consignacion/ANP240CT10_xq6VGlh-eT.png' }}" }
       - name: Guardar en la rama
         run: |
-          mkdir -p .github/fotos-recuperadas && cp salida/*.jpg .github/fotos-recuperadas/
+          mkdir -p .github/fotos-recuperadas && cp salida/* .github/fotos-recuperadas/
           git config user.name "github-actions" && git config user.email "actions@github.com"
           git add .github/fotos-recuperadas && git commit -m "Foto recuperada [skip ci]" && git push || echo "nada que guardar"
