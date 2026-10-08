@@ -1,0 +1,17 @@
+name: Verificar chat en vivo (producción)
+# Prueba automática contra los sitios reales (us.verexstore.com, admin-tienda.pages.dev, Worker).
+# Corre a mano (Actions → Run workflow) o al subir cambios a este archivo/script.
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - ".github/verificacion/chat-en-vivo.mjs"
+      - ".github/workflows/verificar-chat-en-vivo.yml"
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node .github/verificacion/chat-en-vivo.mjs
