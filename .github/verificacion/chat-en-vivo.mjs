@@ -21,7 +21,11 @@ ok((await get(`${ADMIN}/images/chats-icon-192.png`)).status === 200, "ícono de 
 
 console.log("\n── Tienda USA: widget de Lyra con chat del equipo ──");
 const cfg = await get(`${US}/assistant/config.js`);
-ok(cfg.status === 200 && /teamChat:\s*\{\s*enabled:\s*true/.test(cfg.text), "config.js publicado con el chat del equipo activo", `HTTP ${cfg.status}`);
+ok(cfg.status === 200 && /teamChat:\s*\{\s*enabled:\s*true,\s*languages:\s*\["en",\s*"es"\]/.test(cfg.text), "config.js publicado: chat del equipo activo en inglés y español", `HTTP ${cfg.status}`);
+const mainJs = await get(`${US}/assistant/main.js`);
+ok(mainJs.text.includes("talkToTeam"), "«Contact Us» conectado al chat del equipo (VerexAI.talkToTeam)");
+const idxH = await get(`${US}/index.html`);
+ok(idxH.text.includes("hablarConEquipo()"), "la portada usa hablarConEquipo() en «Contact Us»");
 const tc = await get(`${US}/assistant/components/team-chat.js`);
 ok(tc.status === 200 && tc.text.includes("class TeamChat"), "componente del chat del equipo publicado", `HTTP ${tc.status}`);
 // La página principal puede responder 403 a servidores (protección anti-bots de Cloudflare): se distingue.
