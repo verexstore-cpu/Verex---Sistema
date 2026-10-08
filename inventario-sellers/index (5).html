@@ -571,7 +571,10 @@ async function compartirMiCatalogo() {
                 nota_interna: "Auto-generado por el vendedor " + (vendedorData.codigo || ""),
                 afiliadoCodigo: vendedorData.codigo || "",
                 dias: 30,
-                prods
+                prods,
+                // Sin contraseña de admin: el servidor valida al vendedor con
+                // su token (+ PIN) y arma él mismo nombre/nota/código.
+                _vendedor: _miVendedorId, _token: _miToken, _pin: _pinIngresado
             })
         });
         const out = await res.json();
