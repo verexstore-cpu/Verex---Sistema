@@ -479,10 +479,11 @@ function renderPedidosHub() {
     leadsData.filter(l => {
         if (l.estado !== "cancelado" || l.esPrueba) return false;
         const h = l.historial || [], ult = h[h.length - 1];
-        return ult && ult.motivo === "Reserva vencida sin confirmar" && new Date(l.vencidoEn || ult.fecha || 0).getTime() >= hace48;
+        const pasoAVD = l.pendienteVD === true && ult && ult.motivo === "Pasado a venta directa";
+        return ult && (ult.motivo === "Reserva vencida sin confirmar" || pasoAVD) && new Date((pasoAVD ? ult.fecha : l.vencidoEn) || ult.fecha || 0).getTime() >= hace48;
     }).forEach(l => { const k = l.pedidoId || l.id; if (!vmap.has(k)) vmap.set(k, []); vmap.get(k).push(l); });
     const vencidos = [...vmap.values()]
-        .map(leads => ({ leads, f: leads[0], cuando: Math.max(...leads.map(l => new Date(l.vencidoEn || (l.historial || []).slice(-1)[0]?.fecha || 0).getTime())) }))
+        .map(leads => ({ leads, f: leads[0], cuando: Math.max(...leads.map(l => new Date((l.pendienteVD ? null : l.vencidoEn) || (l.historial || []).slice(-1)[0]?.fecha || 0).getTime())) }))
         .sort((a, b) => b.cuando - a.cuando);
 
     const total = tienda.length + nuevos.length + enCamino.length + sinCompletar.length + _usaGrupos.length;
@@ -678,8 +679,8 @@ function renderPedidosHub() {
 
     const bloqueVencidos = vencidos.length ? `
         <div class="card" style="border-color:#9ca3af;margin-bottom:14px;">
-            <h2 style="color:#d1d5db;">⌛ Vencidos sin confirmar — últimas 48 h (${vencidos.length})</h2>
-            <p style="font-size:11px;color:var(--plateado);margin:4px 0 0;">El sistema los canceló solo porque nadie los confirmó a tiempo y la pieza volvió al stock. Si el cliente sigue interesado, restáuralos (se vuelve a apartar la pieza si aún hay).</p>
+            <h2 style="color:#d1d5db;">⌛ Vencidos o sin registrar — últimas 48 h (${vencidos.length})</h2>
+            <p style="font-size:11px;color:var(--plateado);margin:4px 0 0;">Pedidos que salieron de la lista sin completarse: vencieron sin confirmar, o se pasaron a Venta Directa y la venta no se llegó a registrar. La pieza volvió al stock. Si el cliente sigue interesado, restáuralos (se vuelve a apartar la pieza si aún hay).</p>
             ${vencidos.map(g => {
                 const f = g.f;
                 const esUS = f.pais === "US";
@@ -696,7 +697,7 @@ function renderPedidosHub() {
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                         <div style="flex:1;min-width:0;">
                             <div style="font-size:13px;">${items}</div>
-                            <div style="font-size:11px;color:var(--plateado);margin-top:2px;">${origen} · venció ${hace_}</div>
+                            <div style="font-size:11px;color:var(--plateado);margin-top:2px;">${origen} · ${g.leads.some(l => l.pendienteVD) ? "📝 pasado a Venta Directa, sin registrar —" : "venció"} ${hace_}</div>
                             ${nombreCli ? `<div style="font-size:11px;color:#e8b400;font-weight:700;margin-top:3px;">👤 ${sanitizar(nombreCli)}</div>` : ""}
                             ${tel ? `<a href="https://wa.me/${esUS ? "" : "503"}${tel}" target="_blank" style="font-size:11px;color:#25D366;font-weight:700;text-decoration:none;">📱 ${sanitizar(telRaw)} — escribirle</a>` : ""}
                         </div>
@@ -1939,6 +1940,7 @@ async function cancelarLeadUI(id) {
 // Salta directo a Venta Directa con el producto del Lead ya agregado al
 // carrito — evita tener que buscarlo de nuevo a mano. El Lead se marca
 // resuelto de una vez (el admin ya está en proceso de cerrar la venta).
+let _vdLeadOrigenId = null;   // pedido de catálogo del que salió la venta directa en curso
 async function registrarVentaDesdeLead(id) {
     const lead = leadsData.find(l => l.id === id);
     if (!lead) return;
@@ -1989,7 +1991,10 @@ async function registrarVentaDesdeLead(id) {
         }
     }
 
-    await apiPost({ accion: "CANCELAR_LEAD", id });
+    // El pedido se cancela para liberar la pieza (la venta directa la vuelve a descontar al guardarse), pero queda
+    // marcado "pasado a venta directa": si la venta NO se registra, aparece en "Vencidos / sin registrar" para restaurarlo.
+    _vdLeadOrigenId = id;
+    await apiPost({ accion: "CANCELAR_LEAD", id, motivo: "Pasado a venta directa", pendienteVD: true });
     await cargarLeads();
     renderAlertasAfiliadosHub();
 }

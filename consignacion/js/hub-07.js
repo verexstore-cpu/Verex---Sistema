@@ -966,6 +966,17 @@ async function confirmarVentaDirecta() {
                         "\n\nRevisa el inventario de esos productos (pudo venderse a la vez por otro canal o el stock estaba desactualizado).");
                 }, 700);
             }
+            // Si la venta salió de un pedido de catálogo, ese pedido ya quedó cumplido (deja de ser restaurable)
+            if (typeof _vdLeadOrigenId !== "undefined" && _vdLeadOrigenId) {
+                const leadOrig = leadsData.find(l => l.id === _vdLeadOrigenId);
+                if (leadOrig && items.some(i => i.prod.codigo === leadOrig.codigo)) {
+                    apiPost({ accion: "CERRAR_LEAD_VD", id: _vdLeadOrigenId }).catch(() => {});
+                    leadOrig.pendienteVD = false;
+                    leadOrig.historial = [...(leadOrig.historial || []), { estado: "cancelado", fecha: new Date().toISOString(), motivo: "Venta directa registrada" }];
+                    _vdLeadOrigenId = null;
+                    renderPedidosHub();
+                }
+            }
             generarPDFVentaDirecta(payload, []);
             // Reflejar en memoria el mismo descuento que hace el worker
             // (REGISTRAR_VENTA_DIRECTA): primero de tienda, luego de bodega.

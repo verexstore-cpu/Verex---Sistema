@@ -3549,11 +3549,30 @@ async function enviar(){
             try { await liberarReservaLead(sb, lead); }
             catch (eCancela) { console.error("Error liberando reserva al cancelar lead " + d.id, eCancela); }
           }
-          const historial = [...(lead.historial || []), { estado: "cancelado", fecha: new Date().toISOString() }];
+          const motivoCancela = typeof d.motivo === "string" ? d.motivo.slice(0, 60) : "";
+          const historial = [...(lead.historial || []), { estado: "cancelado", fecha: new Date().toISOString(), ...(motivoCancela ? { motivo: motivoCancela } : {}) }];
           await sb.update("leads", d.id, {
             estado: "cancelado", historial,
+            // "Registrar venta" cancela el pedido para liberar la pieza (la venta directa la descuenta de nuevo);
+            // si la venta nunca se guarda, queda marcado para poder restaurarlo (ver CERRAR_LEAD_VD).
+            ...(d.pendienteVD === true ? { pendienteVD: true } : {}),
             reservaExpiraEn: null, reservaDescTienda: 0, reservaDescBodega: 0
           });
+          result = { ok: true };
+          break;
+        }
+
+        // La venta directa que salió de un pedido de catálogo ya se registró: el pedido deja de ser restaurable.
+        case "CERRAR_LEAD_VD": {
+          if (!esAdmin) return forbidden();
+          const leadCv = await sb.get("leads", d.id);
+          if (!leadCv) { result = { ok: false, error: "Lead no encontrado" }; break; }
+          if (leadCv.pendienteVD) {
+            await sb.update("leads", d.id, {
+              pendienteVD: false,
+              historial: [...(leadCv.historial || []), { estado: "cancelado", fecha: new Date().toISOString(), motivo: "Venta directa registrada" }]
+            });
+          }
           result = { ok: true };
           break;
         }
@@ -3568,7 +3587,8 @@ async function enviar(){
           for (const idR of idsR) {
             const lR = await sb.get("leads", idR);
             const ultR = lR && (lR.historial || [])[(lR.historial || []).length - 1];
-            if (!lR || lR.estado !== "cancelado" || !ultR || ultR.motivo !== "Reserva vencida sin confirmar" || lR.pagadoUSA) {
+            const restaurable = ultR && (ultR.motivo === "Reserva vencida sin confirmar" || (lR && lR.pendienteVD === true && ultR.motivo === "Pasado a venta directa"));
+            if (!lR || lR.estado !== "cancelado" || !restaurable || lR.pagadoUSA) {
               result = { ok: false, error: "no_restaurable", id: idR }; break;
             }
             lsR.push(lR);
@@ -3590,7 +3610,7 @@ async function enviar(){
           const ahoraR = new Date().toISOString();
           for (const { lead, rv } of hechasR) {
             await sb.update("leads", lead.id, {
-              estado: "interesado", vencidoEn: null,
+              estado: "interesado", vencidoEn: null, pendienteVD: false,
               reservaDescTienda: rv.desc_tienda || 0, reservaDescBodega: rv.desc_bodega || 0,
               reservaExpiraEn: new Date(Date.now() + ttlReservaLeadMs(lead)).toISOString(),
               historial: [...(lead.historial || []), { estado: "interesado", fecha: ahoraR, motivo: "Restaurado por el admin" }]
