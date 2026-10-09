@@ -6079,9 +6079,15 @@ async function liberarReservasVencidas(sb) {
   try { leads = await sb.getAll("leads"); }
   catch (e) { console.error("liberarReservasVencidas: no se pudo leer leads", e); return; }
 
+  // Pedidos locales (no USA) creados cuando el plazo era de 30 min: se les respeta el de 24 h desde que se hicieron.
+  const venceEn = l => {
+    let t = new Date(l.reservaExpiraEn).getTime();
+    if (l.pais !== "US" && l.fecha) t = Math.max(t, new Date(l.fecha).getTime() + RESERVA_LOCAL_MS);
+    return t;
+  };
   const vencidos = leads.filter(l =>
     (l.estado === "interesado" || l.estado === "reportado") &&
-    l.reservaExpiraEn && new Date(l.reservaExpiraEn).getTime() < ahora
+    l.reservaExpiraEn && venceEn(l) < ahora
   );
 
   for (const lead of vencidos) {
