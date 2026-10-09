@@ -411,6 +411,25 @@ async function probarCorreos(btn) {
     cargarEstadoCorreo();
 }
 
+async function restaurarVencidos(ids) {
+    if (!Array.isArray(ids) || !ids.length) return;
+    if (!confirm("¿Restaurar este pedido? Se vuelve a apartar la pieza (si todavía hay stock) y vuelve a la lista de pedidos.")) return;
+    try {
+        const res = await apiPost({ accion: "RESTAURAR_LEAD_VENCIDO", ids });
+        if (res && res.ok) {
+            toast("✅ Pedido restaurado", "#22c55e");
+        } else if (res && res.error === "sin_stock") {
+            alert(`⚠️ No se pudo restaurar: ya no hay stock de ${res.nombre || res.codigo || "una pieza"} (disponible: ${res.disponible || 0}).\n\nLa pieza se vendió o se apartó para otro cliente. No se restauró nada.`);
+        } else if (res && res.error === "no_restaurable") {
+            toast("⚠️ Ese pedido ya no se puede restaurar (cambió de estado)", "#c0392b");
+        } else {
+            toast("⚠️ " + ((res && res.error) || "No se pudo restaurar"), "#c0392b");
+        }
+    } catch (e) { toast("⚠️ " + e.message, "#c0392b"); }
+    await cargarLeads();
+    renderPedidosHub();
+}
+
 function renderPedidosHub() {
     const cont = document.getElementById("pedidos-hub");
     if (!cont) return;
@@ -452,6 +471,19 @@ function renderPedidosHub() {
         .forEach(l => { const k = l.pedidoId || l.id; if (!gmap.has(k)) gmap.set(k, []); gmap.get(k).push(l); });
     _usaGrupos = [...gmap.entries()].map(([id, leads]) => ({ id, leads, f: leads[0] }))
         .sort((a, b) => new Date(a.f.fecha || 0) - new Date(b.f.fecha || 0));
+
+    // ── Pedidos que el sistema canceló solo porque la reserva venció sin que nadie los confirmara
+    // (últimas 48 h). No cuentan en la alerta roja: son para revisar y, si aplica, restaurar.
+    const hace48 = ahora - 48 * 3600000;
+    const vmap = new Map();
+    leadsData.filter(l => {
+        if (l.estado !== "cancelado" || l.esPrueba) return false;
+        const h = l.historial || [], ult = h[h.length - 1];
+        return ult && ult.motivo === "Reserva vencida sin confirmar" && new Date(l.vencidoEn || ult.fecha || 0).getTime() >= hace48;
+    }).forEach(l => { const k = l.pedidoId || l.id; if (!vmap.has(k)) vmap.set(k, []); vmap.get(k).push(l); });
+    const vencidos = [...vmap.values()]
+        .map(leads => ({ leads, f: leads[0], cuando: Math.max(...leads.map(l => new Date(l.vencidoEn || (l.historial || []).slice(-1)[0]?.fecha || 0).getTime())) }))
+        .sort((a, b) => b.cuando - a.cuando);
 
     const total = tienda.length + nuevos.length + enCamino.length + sinCompletar.length + _usaGrupos.length;
     _tabAlertas.pedidos = total;
@@ -644,8 +676,38 @@ function renderPedidosHub() {
             }).join("")}
         </div>` : '';
 
+    const bloqueVencidos = vencidos.length ? `
+        <div class="card" style="border-color:#9ca3af;margin-bottom:14px;">
+            <h2 style="color:#d1d5db;">⌛ Vencidos sin confirmar — últimas 48 h (${vencidos.length})</h2>
+            <p style="font-size:11px;color:var(--plateado);margin:4px 0 0;">El sistema los canceló solo porque nadie los confirmó a tiempo y la pieza volvió al stock. Si el cliente sigue interesado, restáuralos (se vuelve a apartar la pieza si aún hay).</p>
+            ${vencidos.map(g => {
+                const f = g.f;
+                const esUS = f.pais === "US";
+                const vend = f.afiliado ? vendMap.get(f.afiliado) : null;
+                const origen = esUS ? "🇺🇸 USA" : f.afiliado ? `🎯 ${sanitizar(vend?.nombre || f.afiliado)}` : "👤 Catálogo / venta directa";
+                const items = g.leads.map(l => `<b>${sanitizar(l.nombre || l.codigo)}</b> ×${parseInt(l.qty) || 1}`).join(" · ");
+                const nombreCli = f.cliente?.nombre || f.nombreCliente || "";
+                const telRaw = f.cliente?.telefono || f.telefonoCliente || "";
+                const tel = String(telRaw).replace(/\D/g, "");
+                const horas = Math.max(0, Math.floor((ahora - g.cuando) / 3600000));
+                const hace_ = horas < 1 ? "hace menos de 1 h" : `hace ${horas} h`;
+                const ids = g.leads.map(l => l.id);
+                return `<div style="background:rgba(156,163,175,0.1);border:1px solid #6b7280;border-radius:10px;padding:10px 12px;margin-top:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-size:13px;">${items}</div>
+                            <div style="font-size:11px;color:var(--plateado);margin-top:2px;">${origen} · venció ${hace_}</div>
+                            ${nombreCli ? `<div style="font-size:11px;color:#e8b400;font-weight:700;margin-top:3px;">👤 ${sanitizar(nombreCli)}</div>` : ""}
+                            ${tel ? `<a href="https://wa.me/${esUS ? "" : "503"}${tel}" target="_blank" style="font-size:11px;color:#25D366;font-weight:700;text-decoration:none;">📱 ${sanitizar(telRaw)} — escribirle</a>` : ""}
+                        </div>
+                        <button onclick="restaurarVencidos(${jsArgArr(ids)})" style="${btnS}background:#16a34a;flex-shrink:0;">↩ Restaurar</button>
+                    </div>
+                </div>`;
+            }).join("")}
+        </div>` : '';
+
     cont.innerHTML = ((bloqueNuevos + bloqueTienda + bloqueEnCamino + bloqueSinCompletar + bloqueUSA) ||
-        '<div class="card"><h2>📋 Pedidos</h2><p style="color:#4ade80;font-size:14px;">✅ Todo al día — no hay pedidos pendientes de atender.</p></div>') +
+        '<div class="card"><h2>📋 Pedidos</h2><p style="color:#4ade80;font-size:14px;">✅ Todo al día — no hay pedidos pendientes de atender.</p></div>') + bloqueVencidos +
         `<div style="text-align:center;margin:6px 0 20px;"><button onclick="probarCorreos(this)" style="padding:6px 14px;font-size:11px;background:none;color:var(--plateado);border:1px solid var(--borde);border-radius:8px;cursor:pointer;">✉️ Probar el envío de correos</button> <button onclick="probarPayPal(this)" style="padding:6px 14px;font-size:11px;background:none;color:var(--plateado);border:1px solid var(--borde);border-radius:8px;cursor:pointer;">🅿️ Probar PayPal</button></div>`;
 }
 

@@ -3579,6 +3579,48 @@ async function enviar(){
           break;
         }
 
+        // Restaura pedidos que el sistema canceló solo por reserva vencida ("Reserva vencida sin confirmar"):
+        // vuelve a reservar la pieza y los deja "interesado". Todo o nada: si falta stock en alguna pieza, no restaura ninguna.
+        case "RESTAURAR_LEAD_VENCIDO": {
+          if (!esAdmin) return forbidden();
+          const idsR = Array.isArray(d.ids) ? [...new Set(d.ids.map(String))].slice(0, 20) : [];
+          if (!idsR.length) { result = { ok: false, error: "Faltan los pedidos a restaurar" }; break; }
+          const lsR = [];
+          for (const idR of idsR) {
+            const lR = await sb.get("leads", idR);
+            const ultR = lR && (lR.historial || [])[(lR.historial || []).length - 1];
+            if (!lR || lR.estado !== "cancelado" || !ultR || ultR.motivo !== "Reserva vencida sin confirmar" || lR.pagadoUSA) {
+              result = { ok: false, error: "no_restaurable", id: idR }; break;
+            }
+            lsR.push(lR);
+          }
+          if (result) break;
+          const hechasR = [];
+          let falloR = null;
+          for (const lR of lsR) {
+            let rv;
+            try { rv = await sb.reservar(lR.codigo, parseInt(lR.qty) || 1); } catch (eR) { rv = { ok: false, error: String(eR.message || eR) }; }
+            if (!rv.ok) { falloR = { codigo: lR.codigo, nombre: lR.nombre || lR.codigo, disponible: rv.disponible || 0 }; break; }
+            hechasR.push({ lead: lR, rv });
+          }
+          if (falloR) {
+            for (const h of hechasR) { try { await sb.liberar(h.lead.codigo, h.rv.desc_tienda || 0, h.rv.desc_bodega || 0); } catch (_) {} }
+            result = { ok: false, error: "sin_stock", ...falloR };
+            break;
+          }
+          const ahoraR = new Date().toISOString();
+          for (const { lead, rv } of hechasR) {
+            await sb.update("leads", lead.id, {
+              estado: "interesado", vencidoEn: null,
+              reservaDescTienda: rv.desc_tienda || 0, reservaDescBodega: rv.desc_bodega || 0,
+              reservaExpiraEn: new Date(Date.now() + ttlReservaLeadMs(lead)).toISOString(),
+              historial: [...(lead.historial || []), { estado: "interesado", fecha: ahoraR, motivo: "Restaurado por el admin" }]
+            });
+          }
+          result = { ok: true, restaurados: hechasR.length };
+          break;
+        }
+
         // Borra del panel de Logística USA los pedidos CANCELADOS que ya no deben cobrarse ni devolverse (pruebas, reservas vencidas).
         // Seguro: no toca stock; omite lo que tenga reserva activa, entrega, o dinero cobrado sin reembolsar (esos se resuelven antes).
         case "ELIMINAR_CANCELADOS_USA": {
@@ -5987,10 +6029,12 @@ function forbidden() {
 // segundos. El método se deduce del link de pago que armó el catálogo
 // (mismo formato que valida ENVIAR_PEDIDO_USA).
 const RESERVA_NORMAL_MS = 30 * 60 * 1000;
+const RESERVA_LOCAL_MS = 24 * 3600 * 1000;   // pedidos de afiliados / catálogo local: los confirma el admin a mano, no se pagan en línea
 const RESERVA_PAYPAL_USA_MS = 12 * 3600 * 1000;
 const RE_PAYPAL_ME_LINK = /^https:\/\/paypal\.me\/[A-Za-z0-9_.]{1,50}\/\d+\.\d{2}[A-Z]{0,3}$/;
 const RESERVA_PAYPAL_CHECKOUT_MS = 2 * 3600 * 1000;   // el cliente tiene tiempo de aprobar el pago en PayPal; luego se confirma sola
 function ttlReservaLeadMs(d) {
+  if (!d || d.pais !== "US") return RESERVA_LOCAL_MS;
   if (d && d.pais === "US" && /^[A-Z0-9]{8,30}$/.test(d.paypalOrderId || "")) return RESERVA_PAYPAL_CHECKOUT_MS;
   return (d && d.pais === "US" && RE_PAYPAL_ME_LINK.test(d.pagoLink || "")) ? RESERVA_PAYPAL_USA_MS : RESERVA_NORMAL_MS;
 }
@@ -6022,7 +6066,7 @@ async function liberarReservasVencidas(sb) {
         estado: "cancelado", fecha: new Date().toISOString(), motivo: "Reserva vencida sin confirmar"
       }];
       await sb.update("leads", lead.id, {
-        estado: "cancelado", historial,
+        estado: "cancelado", historial, vencidoEn: new Date().toISOString(),
         reservaExpiraEn: null, reservaDescTienda: 0, reservaDescBodega: 0
       });
     } catch (eLib) {
