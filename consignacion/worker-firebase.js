@@ -5787,7 +5787,10 @@ async function registrarEntregaEnBloque(sb, d) {
 // distinta a la guardada. Solo propone: quien confirma es el usuario (CORREGIR_CATEGORIAS).
 const CATEGORIAS_TIENDA = { AN: "Anillos", CO: "Collares", AR: "Aretes", PU: "Pulseras", CJ: "Conjuntos", CD: "Cadenas", DJ: "Dijes", TB: "Tobilleras", RS: "Rosarios" };
 // El Admin Tienda usaba otros códigos (CN conjunto, PL pulsera) y generaba «XX-1234» al azar; Stock usa CJ/PU y [CAT][MAT][NNN].
-const CATEGORIAS_ANTIGUAS = { CN: "CJ", PL: "PU" };
+const CATEGORIAS_ANTIGUAS = { CN: "CJ", CU: "CJ", PL: "PU" };   // CU: también se usó para conjuntos (CUP001 Conjunto Magic Mickey…)
+// Si la categoría guardada no existe en la tienda, se deduce por el nombre (igual que la tienda y Lyra)
+const CATEGORIA_POR_NOMBRE = [[/^\s*conjuntos?\b/i, "CJ"], [/^\s*(anillo|alianza|argolla|sortija)s?\b/i, "AN"], [/^\s*(collar|gargantilla)(es|s)?\b/i, "CO"],
+  [/^\s*(aretes?|aros?|argollitas?|topos?)\b/i, "AR"], [/^\s*(pulsera|brazalete|esclava)s?\b/i, "PU"], [/^\s*dijes?\b/i, "DJ"], [/^\s*tobilleras?\b/i, "TB"], [/^\s*rosarios?\b/i, "RS"]];
 // Categorías vigentes: las de arriba + las agregadas/renombradas desde el «Editor de la página» (config.categorias).
 async function categoriasTiendaActual(sb) {
   const out = { ...CATEGORIAS_TIENDA };
@@ -5821,6 +5824,10 @@ function analizarCategorias(items, cats) {
     else if (antiguo && pref === "CD" && /^\s*(collar|gargantilla)/i.test(nombre)) { propuesta = "CO"; motivo = `Es un collar («${nombre}») con código de cadena del Admin (${cod})`; }
     else if (cats[pref] && cat !== pref) { propuesta = pref; motivo = catRaw ? `El código empieza por ${prefRaw} pero su categoría es ${cats[catRaw] || catRaw}` : "Sin categoría"; }
     else if (antiguo && cats[cat]) { propuesta = cat; motivo = `Código con formato antiguo del Admin (${cod}): no coincide con el que genera Stock para la etiqueta`; }
+    // Categoría guardada con un código viejo del Admin (CN/CU → CJ, PL → PU): la tienda la entiende, pero se deja con el código real
+    else if (catRaw && catRaw !== cat && cats[cat]) { propuesta = cat; motivo = `Categoría antigua del Admin (${catRaw}): en la tienda es ${cats[cat]} (${cat})`; }
+    // Categoría que la tienda no conoce: se propone la que dice el nombre
+    else if (catRaw && !cats[cat]) { const n = CATEGORIA_POR_NOMBRE.find(([re]) => re.test(nombre)); if (n && cats[n[1]]) { propuesta = n[1]; motivo = `${catRaw ? `La categoría ${catRaw} no existe en la tienda` : "Sin categoría"}; por el nombre es ${cats[n[1]]}`; } }
     if (propuesta) dudosas.push({ codigo: cod, nombre, categoria: catRaw, propuesta, motivo, publicado: publicados.includes(p), codigoAntiguo: antiguo || !!CATEGORIAS_ANTIGUAS[prefRaw] });
   }
   return { publicados: publicados.length, porCategoria: cuenta, dudosas };
