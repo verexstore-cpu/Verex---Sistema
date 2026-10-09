@@ -1944,6 +1944,22 @@ let _vdLeadOrigenId = null;   // pedido de catálogo del que salió la venta dir
 async function registrarVentaDesdeLead(id) {
     const lead = leadsData.find(l => l.id === id);
     if (!lead) return;
+    // 1) Primero se libera la pieza apartada por este pedido (si no, el stock aparece en 0 y la venta no se puede armar).
+    //    El pedido queda marcado "pasado a venta directa": si la venta no se guarda, se puede restaurar desde PEDIDOS.
+    _vdLeadOrigenId = id;
+    const resLib = await apiPost({ accion: "CANCELAR_LEAD", id, motivo: "Pasado a venta directa", pendienteVD: true });
+    if (!resLib || resLib.ok === false) {
+        _vdLeadOrigenId = null;
+        toast("⚠️ No se pudo liberar la pieza del pedido — no se abrió la venta", "#c0392b");
+        return;
+    }
+    // 2) Stock fresco del servidor, ya con la pieza liberada.
+    try {
+        const resSt = await apiPost({ accion: "GET_STOCK" });
+        if (resSt && Array.isArray(resSt.stock)) stockData = resSt.stock;
+    } catch (_) {}
+    await cargarLeads();
+    renderAlertasAfiliadosHub();
     cambiarTab('ventadirecta');
     await iniciarVentaDirecta();
     const prod = stockData.find(s => s.codigo === lead.codigo);
@@ -1991,12 +2007,6 @@ async function registrarVentaDesdeLead(id) {
         }
     }
 
-    // El pedido se cancela para liberar la pieza (la venta directa la vuelve a descontar al guardarse), pero queda
-    // marcado "pasado a venta directa": si la venta NO se registra, aparece en "Vencidos / sin registrar" para restaurarlo.
-    _vdLeadOrigenId = id;
-    await apiPost({ accion: "CANCELAR_LEAD", id, motivo: "Pasado a venta directa", pendienteVD: true });
-    await cargarLeads();
-    renderAlertasAfiliadosHub();
 }
 
 async function resolverLeadClienteDirecto(id) {
