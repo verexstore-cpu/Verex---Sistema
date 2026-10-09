@@ -665,10 +665,12 @@ async function enviar(){
           const leadsVend = await sb.getAll("leads");
           for (const l of leadsVend) {
             if (l.afiliado === d.codigo && (l.estado === "interesado" || l.estado === "reportado" || l.estado === "en_camino")) {
-              // Si estaba "en camino" el stock quedó reservado (apartado del
-              // inventario disponible) — hay que devolverlo a bodega, si no
-              // queda atrapado en el balde de reservado para siempre.
-              if (l.estado === "en_camino") {
+              // La pieza quedó apartada (reservada) desde que el cliente pidió — hay que devolverla a donde salió,
+              // si no queda atrapada en el balde de reservado para siempre.
+              let liberadoVend = false;
+              try { liberadoVend = await liberarReservaLead(sb, l); } catch (eVend) { console.error("ELIMINAR_VENDEDOR: no se pudo liberar el lead " + l.id, eVend); }
+              // Lead "en camino" de antes de la reserva exacta: sin detalle de origen, vuelve a bodega.
+              if (!liberadoVend && l.estado === "en_camino") {
                 const codigoRes = l.codigoConfirmado || l.codigo;
                 const sRes = await sb.get("stock", codigoRes);
                 if (sRes) {
@@ -679,7 +681,7 @@ async function enviar(){
                 }
               }
               const historial = [...(l.historial || []), { estado: "cancelado", fecha: new Date().toISOString(), motivo: "Vendedor eliminado" }];
-              await sb.update("leads", l.id, { estado: "cancelado", historial });
+              await sb.update("leads", l.id, { estado: "cancelado", historial, reservaExpiraEn: null, reservaDescTienda: 0, reservaDescBodega: 0 });
             }
           }
           await sb.delete("vendedores", d.codigo);
@@ -2101,31 +2103,8 @@ async function enviar(){
             await sb.update("pedidos", d.numeroPedido, { stockActualizado: true });
 
           } else if ((d.estado === "Cancelado" || d.estado === "No entregado") && !pedidoActual.stockLiberado) {
-            // Reservado → regresa a stock. Si el pedido tiene el detalle
-            // exacto de dónde salió cada unidad (reservas, pedidos creados
-            // desde que existe la reserva atómica), se repone ahí mismo; si
-            // no (pedidos de antes de ese cambio), se usa el criterio
-            // anterior (todo de vuelta a tienda).
-            if (Array.isArray(pedidoActual.reservas) && pedidoActual.reservas.length) {
-              for (const r of pedidoActual.reservas) {
-                if (!r.codigo) continue;
-                try { await sb.liberar(r.codigo, r.descTienda || 0, r.descBodega || 0); } catch (_) {}
-                try { await sb.update("stock", r.codigo, { enCatalogo: true }); } catch (_) {}
-              }
-            } else {
-              for (const item of itemsEst) {
-                if (!item.codigo) continue;
-                const prod = await sb.get("stock", item.codigo);
-                if (!prod) continue;
-                const qty = parseInt(item.cantidad || 1);
-                await sb.update("stock", item.codigo, {
-                  stock_reservado: Math.max(0, (parseInt(prod.stock_reservado)||0) - qty),
-                  stock_tienda:    (parseInt(prod.stock_tienda)||0) + qty,
-                  enCatalogo:      true
-                });
-              }
-            }
-            await sb.update("pedidos", d.numeroPedido, { stockLiberado: true });
+            // Reservado → regresa a stock (ver liberarStockPedido)
+            await liberarStockPedido(sb, { ...pedidoActual, numeroPedido: d.numeroPedido });
           }
 
           // ── Notificar al cliente si fue Despachado, ordenó por correo y tiene correo ──
@@ -3566,8 +3545,8 @@ async function enviar(){
           // entregado todavía), se repone al cancelar — si no, la pieza queda
           // atascada en stock_reservado para siempre, sin poder venderse.
           const yaVendido = lead.estado === "vendido" || lead.entregadoUSA;
-          if (!yaVendido && (lead.reservaDescTienda || lead.reservaDescBodega)) {
-            try { await sb.liberar(lead.codigo, lead.reservaDescTienda || 0, lead.reservaDescBodega || 0); }
+          if (!yaVendido) {
+            try { await liberarReservaLead(sb, lead); }
             catch (eCancela) { console.error("Error liberando reserva al cancelar lead " + d.id, eCancela); }
           }
           const historial = [...(lead.historial || []), { estado: "cancelado", fecha: new Date().toISOString() }];
@@ -3757,6 +3736,12 @@ async function enviar(){
 
         case "ELIMINAR_PEDIDO": {
           if (!esAdmin) return forbidden();
+          // Un pedido activo (Pendiente / Despachado) tiene piezas apartadas: si se borra sin devolverlas quedan
+          // descontadas de bodega/tienda para siempre. Los Entregados / Cancelados / No entregados ya se resolvieron.
+          const pedEl = await sb.get("pedidos", d.numeroPedido);
+          if (pedEl && (pedEl.estado === "Pendiente" || pedEl.estado === "Despachado") && !pedEl.stockLiberado && !pedEl.stockActualizado) {
+            await liberarStockPedido(sb, { ...pedEl, numeroPedido: d.numeroPedido });
+          }
           await sb.delete("pedidos", d.numeroPedido);
           result = { ok: true };
           break;
@@ -6044,6 +6029,41 @@ function ttlReservaLeadMs(d) {
   if (!d || d.pais !== "US") return RESERVA_LOCAL_MS;
   if (d && d.pais === "US" && /^[A-Z0-9]{8,30}$/.test(d.paypalOrderId || "")) return RESERVA_PAYPAL_CHECKOUT_MS;
   return (d && d.pais === "US" && RE_PAYPAL_ME_LINK.test(d.pagoLink || "")) ? RESERVA_PAYPAL_USA_MS : RESERVA_NORMAL_MS;
+}
+
+// Devuelve a stock la reserva exacta de un lead (de dónde salió: tienda y/o bodega). Usa el código CONFIRMADO si el
+// admin cambió la pieza al confirmar el envío (si no, se repondría una pieza distinta a la que se apartó).
+async function liberarReservaLead(sb, lead) {
+  if (!(lead.reservaDescTienda || lead.reservaDescBodega)) return false;
+  await sb.liberar(lead.codigoConfirmado || lead.codigo, lead.reservaDescTienda || 0, lead.reservaDescBodega || 0);
+  return true;
+}
+
+// Repone el stock reservado de un pedido de la tienda (tabla "pedidos"): al cancelarlo, marcarlo "No entregado" o eliminarlo.
+// Con el detalle exacto (reservas) se repone donde salió; en pedidos viejos, todo vuelve a tienda. Marca stockLiberado.
+async function liberarStockPedido(sb, ped) {
+  let items = [];
+  try { items = typeof ped.items === "string" ? JSON.parse(ped.items) : (ped.items || []); } catch (_) {}
+  if (Array.isArray(ped.reservas) && ped.reservas.length) {
+    for (const r of ped.reservas) {
+      if (!r.codigo) continue;
+      try { await sb.liberar(r.codigo, r.descTienda || 0, r.descBodega || 0); } catch (_) {}
+      try { await sb.update("stock", r.codigo, { enCatalogo: true }); } catch (_) {}
+    }
+  } else {
+    for (const item of items) {
+      if (!item.codigo) continue;
+      const prod = await sb.get("stock", item.codigo);
+      if (!prod) continue;
+      const qty = parseInt(item.cantidad || 1);
+      await sb.update("stock", item.codigo, {
+        stock_reservado: Math.max(0, (parseInt(prod.stock_reservado)||0) - qty),
+        stock_tienda:    (parseInt(prod.stock_tienda)||0) + qty,
+        enCatalogo:      true
+      });
+    }
+  }
+  await sb.update("pedidos", ped.numeroPedido, { stockLiberado: true });
 }
 
 // ── RESERVAS DE STOCK: liberar las vencidas ────────────────────────
