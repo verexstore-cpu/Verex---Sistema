@@ -372,27 +372,9 @@ function activarEdicionProducto() {
     // anillos y conjuntos — antes ocultaban por error también la "Cantidad
     // a sumar" (compartían el mismo div contenedor vía .closest("div")).
     const esAnilloEP = p.categoria === "AN" || p.categoria === "CJ";
-    const tallaWrap = document.getElementById("ep-talla-add-wrap");
-    if (tallaWrap) tallaWrap.style.display = esAnilloEP ? "inline-block" : "none";
     const tallaHint = document.getElementById("ep-talla-hint");
     if (tallaHint) tallaHint.style.display = esAnilloEP ? "block" : "none";
-    if (!esAnilloEP && document.getElementById("ep-talla-add")) document.getElementById("ep-talla-add").value = "";
-    // Alianzas (par/trío): cada talla lleva D (dama), C (caballero) o U (unisex) en el código — ANP240DT6, ANP240CT10.
-    // Antes la talla nueva se registraba SIN esa letra (ANP240T11) y no aparecía en el grupo. Se elige aquí.
-    const baseEPTalla = getCodigoBase(p.codigo);
-    const letrasGrupo = new Set(stockData.filter(s => getCodigoBase(s.codigo) === baseEPTalla)
-        .map(s => (String(s.codigo || "").match(/([DCU])T\d+(\.\d+)?$/i) || [])[1]).filter(Boolean).map(x => x.toUpperCase()));
-    const opcionesTipo = [];
-    if (letrasGrupo.has("D") || letrasGrupo.has("C")) opcionesTipo.push(["D", "👩 Dama"], ["C", "👨 Caballero"]);
-    if (letrasGrupo.has("U")) opcionesTipo.push(["U", "Unisex"]);
-    const selTipo = document.getElementById("ep-talla-tipo");
-    if (selTipo) {
-        const letraActual = (String(p.codigo || "").match(/([DCU])T\d+(\.\d+)?$/i) || [])[1]?.toUpperCase();
-        selTipo.innerHTML = opcionesTipo.map(([v, t]) => `<option value="${v}">${t}</option>`).join("");
-        if (letraActual && opcionesTipo.some(o => o[0] === letraActual)) selTipo.value = letraActual;
-        selTipo.style.display = esAnilloEP && opcionesTipo.length ? "inline-block" : "none";
-    }
-    actualizarHintTallaEP();
+
     const setAnilloWrap = document.getElementById("ep-set-anillo-wrap");
     if (setAnilloWrap) setAnilloWrap.style.display = esAnilloEP ? "block" : "none";
     document.getElementById("modal-prod-vista").style.display = "none";
@@ -472,21 +454,6 @@ async function agregarSegundaPiezaDamaTrio() {
     await cargarStock();
 }
 
-// Muestra el código exacto que tendrá la talla nueva (con D/C/U en alianzas)
-function letraTallaEP() {
-    const sel = document.getElementById("ep-talla-tipo");
-    return sel && sel.style.display !== "none" ? (sel.value || "") : "";
-}
-function actualizarHintTallaEP() {
-    const hint = document.getElementById("ep-talla-hint"); if (!hint || !productoEditando) return;
-    const t = (document.getElementById("ep-talla-add")?.value || "").trim();
-    const base = getCodigoBase(productoEditando.p.codigo || "");
-    const letra = letraTallaEP();
-    hint.innerHTML = t
-        ? `Se registra como <b style="color:#FF9500;">${sanitizar(base + letra + "T" + t)}</b>${letra ? ` (${letra === "D" ? "dama" : letra === "C" ? "caballero" : "unisex"})` : ""}`
-        : `Si ingresas talla, se registra como variante separada (ej: ${sanitizar(base)}<b style="color:#FF9500;">${letra}T10</b>)`;
-}
-
 async function guardarEdicionProducto() {
     if (!productoEditando) return;
     const btn = document.querySelector("#modal-prod-edicion .btn-dorado");
@@ -549,14 +516,6 @@ async function guardarEdicionProducto() {
     }
     // Sumar existencia a bodega si se ingresó cantidad
     const existencia = parseInt(document.getElementById("ep-existencia")?.value) || 0;
-    const catEP = productoEditando.p.categoria || "";
-    const esAnilloCategoria = catEP === "AN" || catEP === "CJ";
-    const tallaAdd = esAnilloCategoria ? (document.getElementById("ep-talla-add")?.value || "").trim() : "";
-    if (tallaAdd && existencia <= 0) {
-        toast("⚠️ Ingresa la cantidad de unidades para la talla " + tallaAdd);
-        btn.textContent = "💾 Guardar"; btn.disabled = false;
-        return;
-    }
     if (existencia > 0) {
         // Si el servidor no confirma, se avisa y el formulario queda abierto (antes decía «✅» aunque no se guardara)
         const fallo = (r, que) => {
@@ -565,35 +524,11 @@ async function guardarEdicionProducto() {
             btn.textContent = "💾 Guardar"; btn.disabled = false;
             return true;
         };
-        if (tallaAdd) {
-            // Registrar variante con talla — puede ser nueva o existente. En alianzas lleva la letra D/C/U.
-            const codigoBase  = getCodigoBase(codigo);
-            const letra       = letraTallaEP();
-            const codigoTalla = `${codigoBase}${letra}T${tallaAdd}`;
-            const stockTalla  = stockData.find(s => s.codigo === codigoTalla);
-            if (stockTalla) {
-                // Ya existe esa talla → solo sumar cantidad
-                const bodegaActual = parseInt(stockTalla.stock_bodega || 0);
-                const r = await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo: codigoTalla, stock_bodega: bodegaActual + existencia }] });
-                if (fallo(r, `La cantidad de ${codigoTalla}`)) return;
-            } else {
-                // Nueva variante — registrar con STOCK_REGISTRAR (mismo nombre y precio que sus hermanas de dama/caballero)
-                const p = productoEditando.p;
-                const nb = p.nombre_base || p.nombre;
-                const nombreConTalla = letra === "D" ? `${nb} Dama T${tallaAdd}` : letra === "C" ? `${nb} Caballero T${tallaAdd}` : `${nb} T${tallaAdd}`;
-                const hermana = letra ? stockData.find(s => getCodigoBase(s.codigo) === codigoBase && new RegExp(letra + "T\\d", "i").test(s.codigo)) : null;
-                const precioTalla = hermana ? (parseFloat(hermana.precio) || precio) : precio;
-                const r = await apiPost({ accion: "STOCK_REGISTRAR", codigo: codigoTalla, codigoBase, talla: tallaAdd, nombre: nombreConTalla, nombre_base: nb, categoria: p.categoria || "", material, precio: precioTalla, foto: img, cantidad: existencia, descripcion: desc, caracterEspecial, set_config: p.set_config || undefined, enCatalogo: hermana ? hermana.enCatalogo : undefined });
-                if (fallo(r, `La talla ${tallaAdd} (${codigoTalla})`)) return;
-            }
-            toast(`✅ +${existencia} unidades T${tallaAdd} (${codigoTalla})`);
-        } else {
-            const stockActual  = stockData.find(s => s.codigo === codigoViejo);
-            const bodegaActual = parseInt(stockActual?.stock_bodega || 0);
-            const r = await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo, stock_bodega: bodegaActual + existencia }] });
-            if (fallo(r, "La cantidad")) return;
-            toast(`✅ Producto actualizado y +${existencia} unidades sumadas a bodega`);
-        }
+        const stockActual  = stockData.find(s => s.codigo === codigoViejo);
+        const bodegaActual = parseInt(stockActual?.stock_bodega || 0);
+        const r = await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo, stock_bodega: bodegaActual + existencia }] });
+        if (fallo(r, "La cantidad")) return;
+        toast(`✅ Producto actualizado y +${existencia} unidades sumadas a bodega`);
     } else {
         toast("✅ Producto actualizado");
     }
@@ -616,18 +551,7 @@ async function guardarEdicionProducto() {
     filtrarStock();
     if (existencia > 0) {
         await cargarStock();
-        // Refrescar productosDisponibles desde stockData actualizado (incluye nueva talla)
         await refrescarProductosEtiquetas();
-        if (tallaAdd) {
-            // Ir a etiquetas para imprimir la nueva talla de inmediato
-            cambiarTab('etiquetas');
-            // Pre-seleccionar la nueva talla en el grid de etiquetas
-            const codigoTallaNueva = `${getCodigoBase(codigo)}${letraTallaEP()}T${tallaAdd}`;
-            setTimeout(() => {
-                const card = document.querySelector(`#grid-etiquetas [data-codigo="${codigoTallaNueva}"]`);
-                if (card) { card.click(); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-            }, 400);
-        }
     }
 }
 
@@ -1509,7 +1433,8 @@ function renderStock(items) {
                 </div>
             </div>
             <div onclick="event.stopPropagation();">
-                <div style="display:flex;justify-content:flex-end;margin:2px 0 6px;position:relative;">
+                <div style="display:flex;justify-content:flex-end;gap:6px;margin:2px 0 6px;position:relative;">
+                    ${(g.categoria === "AN" || g.categoria === "CJ" || g.items?.some?.(it => it.talla)) ? `<button onclick="abrirAgregarTalla(${jsArg(g.key)})" style="padding:5px 10px;font-size:11px;background:var(--dorado);color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:700;" title="Agregar unidades de una talla nueva o de una que ya existe">➕ Agregar talla</button>` : ""}
                     <button onclick="_stockGridToggleMover(this)" style="padding:5px 10px;font-size:11px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;" title="Mueve todas las tallas en existencia de este diseño">⇄ Mover grupo completo ▾</button>
                     <div class="menu-mover-grid" style="display:none;position:absolute;top:30px;right:0;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:180px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
                         <button onclick="moverItemDirecto(${jsArgArr(codigos)},'tienda')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4caf82;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🛍️ Enviar todo a Tienda</button>
@@ -2065,4 +1990,81 @@ function poblarFiltroMaterial() {
     sel.innerHTML = '<option value="">Todo material</option>' +
         materiales.map(m => `<option value="${m.replace(/"/g,'&quot;')}">${m}</option>`).join("");
     if (materiales.includes(actual)) sel.value = actual;
+}
+
+// ── ➕ AGREGAR TALLA a un diseño (botón del grupo en Stock) ─────────────────────────────────────────────
+// Una talla nueva se crea con el código correcto del grupo: en alianzas lleva D (dama), C (caballero) o U (unisex)
+// — ANP240CT11 —, con el nombre, precio, foto y visibilidad de sus hermanas. Si la talla ya existe, solo suma unidades.
+let _at = { base: "", talla: "", letra: "", tipos: [] };
+const _atLetraDe = c => ((String(c || "").match(/([DCU])T\d+(\.\d+)?$/i) || [])[1] || "").toUpperCase();
+const _atFilas = base => stockData.filter(s => getCodigoBase(s.codigo) === base);
+function abrirAgregarTalla(base) {
+    const filas = _atFilas(base).filter(f => f.estado !== "inactivo");
+    if (!filas.length) return toast("⚠️ No encontré ese diseño en Stock");
+    const letras = new Set(filas.map(f => _atLetraDe(f.codigo)).filter(Boolean));
+    const tipos = [];
+    if (letras.has("D") || letras.has("C")) tipos.push(["D", "👩 Dama"], ["C", "👨 Caballero"]);
+    if (letras.has("U")) tipos.push(["U", "Unisex"]);
+    _at = { base, talla: "", letra: tipos.length ? tipos[0][0] : "", tipos };
+    const ref = filas[0];
+    document.getElementById("at-titulo").textContent = `➕ Agregar talla · ${base}`;
+    document.getElementById("at-nombre").textContent = ref.nombre_base || ref.nombre || base;
+    document.getElementById("at-cantidad").value = 1;
+    document.getElementById("at-talla-otra").value = "";
+    _atPintar();
+    abrirModal("modal-agregar-talla");
+}
+function _atCodigo() { return _at.talla ? `${_at.base}${_at.letra}T${_at.talla}` : ""; }
+function _atPintar() {
+    const filas = _atFilas(_at.base).filter(f => f.estado !== "inactivo");
+    const tiene = t => filas.find(f => String(f.talla) === String(t) && _atLetraDe(f.codigo) === _at.letra);
+    const btnSt = on => `padding:8px 0;min-width:44px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;border:1px solid ${on ? "var(--dorado)" : "var(--borde)"};background:${on ? "var(--dorado)" : "var(--gris2)"};color:${on ? "#111" : "var(--blanco)"};`;
+    document.getElementById("at-tipo-wrap").style.display = _at.tipos.length ? "block" : "none";
+    document.getElementById("at-tipos").innerHTML = _at.tipos.map(([v, t]) =>
+        `<button type="button" onclick="atElegirTipo('${v}')" style="${btnSt(_at.letra === v)}flex:1;">${t}</button>`).join("");
+    const tallas = []; for (let t = 4; t <= 15; t++) tallas.push(String(t));
+    document.getElementById("at-tallas").innerHTML = tallas.map(t => { const f = tiene(t);
+        return `<button type="button" onclick="atElegirTalla('${t}')" style="${btnSt(_at.talla === t)}position:relative;" title="${f ? `Ya existe (${sanitizar(f.codigo)}): se suman unidades` : "Talla nueva"}">${t}${f ? `<span style="position:absolute;top:-6px;right:-6px;background:#34D399;color:#111;border-radius:8px;font-size:9px;padding:0 4px;">${parseInt(f.stock_bodega) || 0}</span>` : ""}</button>`; }).join("");
+    const prev = document.getElementById("at-preview"), cod = _atCodigo(), f = _at.talla ? tiene(_at.talla) : null;
+    const lado = _at.letra === "D" ? " (dama)" : _at.letra === "C" ? " (caballero)" : _at.letra === "U" ? " (unisex)" : "";
+    prev.innerHTML = !cod ? '<span style="color:var(--plateado);">Elige una talla</span>'
+        : f ? `Ya existe <b style="color:#FF9500;">${sanitizar(cod)}</b>${lado}: tiene ${parseInt(f.stock_bodega) || 0} en bodega → se suman`
+            : `Talla nueva → se crea <b style="color:#FF9500;">${sanitizar(cod)}</b>${lado}`;
+}
+function atElegirTipo(l) { _at.letra = l; _atPintar(); }
+function atElegirTalla(t) { _at.talla = String(t); document.getElementById("at-talla-otra").value = ""; _atPintar(); }
+function atTallaOtra(v) { v = String(v || "").trim().replace(",", "."); _at.talla = /^\d{1,2}(\.5)?$/.test(v) ? String(parseFloat(v)) : ""; _atPintar(); }
+async function guardarAgregarTalla() {
+    const qty = parseInt(document.getElementById("at-cantidad").value) || 0;
+    if (!_at.talla) return toast("⚠️ Elige la talla");
+    if (qty < 1) return toast("⚠️ Pon cuántas unidades");
+    const btn = document.getElementById("at-guardar");
+    const codigo = _atCodigo();
+    const todas = _atFilas(_at.base);
+    const existe = todas.find(s => s.codigo === codigo);
+    if (existe && existe.estado === "inactivo") return toast(`⚠️ ${codigo} existe pero está inactivo — reactívalo en vez de crearlo de nuevo`, "#f97316", 7000);
+    btn.disabled = true; btn.textContent = "⏳ Guardando...";
+    let r;
+    try {
+        if (existe) {
+            r = await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo, stock_bodega: (parseInt(existe.stock_bodega) || 0) + qty }] });
+        } else {
+            const activas = todas.filter(s => s.estado !== "inactivo");
+            const hermana = activas.find(s => _atLetraDe(s.codigo) === _at.letra) || activas[0];
+            const nb = hermana.nombre_base || hermana.nombre || "";
+            // mismo formato de nombre que sus hermanas (solo cambia la talla)
+            const nombre = /T\d+(\.\d+)?\s*$/i.test(hermana.nombre || "") ? hermana.nombre.replace(/T\d+(\.\d+)?\s*$/i, "T" + _at.talla) : `${nb} T${_at.talla}`;
+            const copiar = ["nombre_base", "categoria", "material", "precio", "precio_caballero", "foto", "img", "fotoMejorada", "fotoMejoraNivel", "descripcion", "descripcionTienda", "caracterEspecial", "set_config", "enCatalogo"];
+            const nuevo = { accion: "STOCK_REGISTRAR", codigo, codigoBase: _at.base, talla: _at.talla, nombre, cantidad: qty };
+            for (const k of copiar) if (hermana[k] !== undefined && hermana[k] !== null && hermana[k] !== "") nuevo[k] = hermana[k];
+            r = await apiPost(nuevo);
+        }
+    } catch (e) { r = { ok: false, error: e.message }; }
+    btn.disabled = false; btn.textContent = "💾 Guardar";
+    if (!r || !r.ok) return toast(`❌ ${codigo} NO se guardó: ${(r && r.error) || "sin respuesta del servidor"}`, "#ef4444", 8000);
+    toast(existe ? `✅ +${qty} en ${codigo}` : `✅ Talla nueva ${codigo} creada con ${qty} unidad${qty > 1 ? "es" : ""}`);
+    cerrarModal("modal-agregar-talla");
+    await cargarStock();
+    if (typeof refrescarProductosEtiquetas === "function") await refrescarProductosEtiquetas();
+    if (typeof ofrecerEtiquetaRapida === "function") ofrecerEtiquetaRapida([{ codigo, qty }]);
 }
