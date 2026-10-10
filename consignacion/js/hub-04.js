@@ -2055,14 +2055,16 @@ async function guardarAgregarTalla() {
             // mismo formato de nombre que sus hermanas (solo cambia la talla)
             const nombre = /T\d+(\.\d+)?\s*$/i.test(hermana.nombre || "") ? hermana.nombre.replace(/T\d+(\.\d+)?\s*$/i, "T" + _at.talla) : `${nb} T${_at.talla}`;
             const copiar = ["nombre_base", "categoria", "material", "precio", "precio_caballero", "foto", "img", "fotoMejorada", "fotoMejoraNivel", "descripcion", "descripcionTienda", "caracterEspecial", "set_config", "enCatalogo"];
-            const nuevo = { accion: "STOCK_REGISTRAR", codigo, codigoBase: _at.base, talla: _at.talla, nombre, cantidad: qty };
+            // reactivarSiInactivo: si esa talla se había eliminado (queda inactiva y ocupa el código), el servidor la reactiva
+            const nuevo = { accion: "STOCK_REGISTRAR", codigo, codigoBase: _at.base, talla: _at.talla, nombre, cantidad: qty, reactivarSiInactivo: true };
             for (const k of copiar) if (hermana[k] !== undefined && hermana[k] !== null && hermana[k] !== "") nuevo[k] = hermana[k];
             r = await apiPost(nuevo);
         }
     } catch (e) { r = { ok: false, error: e.message }; }
     btn.disabled = false; btn.textContent = "💾 Guardar";
     if (!r || !r.ok) return toast(`❌ ${codigo} NO se guardó: ${(r && r.error) || "sin respuesta del servidor"}`, "#ef4444", 8000);
-    toast(existe ? `✅ +${qty} en ${codigo}` : `✅ Talla nueva ${codigo} creada con ${qty} unidad${qty > 1 ? "es" : ""}`);
+    const reactivada = (r.reactivados || []).includes(codigo);
+    toast(existe ? `✅ +${qty} en ${codigo}` : reactivada ? `♻️ ${codigo} estaba eliminada: se reactivó con ${qty} unidad${qty > 1 ? "es" : ""}` : `✅ Talla nueva ${codigo} creada con ${qty} unidad${qty > 1 ? "es" : ""}`, "#22c55e", 6000);
     cerrarModal("modal-agregar-talla");
     await cargarStock();
     if (typeof refrescarProductosEtiquetas === "function") await refrescarProductosEtiquetas();
