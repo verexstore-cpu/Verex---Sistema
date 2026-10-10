@@ -579,6 +579,9 @@
                 <button class="menu-btn menu-btn-full" id="btn-menu-hist-entregas" data-color="#4a90d9" onclick="verHistorialEntregas()">
                     <span class="menu-ico">📦</span><span class="menu-txt">Historial de Entregas</span><span class="menu-arr">›</span>
                 </button>
+                <button class="menu-btn menu-btn-full" id="btn-menu-recibos" data-color="#2d7a4f" onclick="verEntregasRecibos()">
+                    <span class="menu-ico">🧾</span><span class="menu-txt">Entregas / Recibos</span><span class="menu-arr">›</span>
+                </button>
                 <button class="menu-btn menu-btn-full" id="btn-menu-devolucion" data-color="#e74c3c" onclick="abrirDevolucion()">
                     <span class="menu-ico">↩️</span><span class="menu-txt">Registrar Devolución</span><span class="menu-arr">›</span>
                 </button>
@@ -1156,8 +1159,9 @@
             <div style="display:flex;gap:8px;margin-bottom:4px;">
                 <input type="number" id="ep-existencia" placeholder="Cantidad a sumar" min="0" value="0" style="flex:2;border-color:var(--dorado);">
                 <span id="ep-talla-add-wrap" style="flex:1;">
-                    <input type="number" id="ep-talla-add" placeholder="Talla (opcional)" min="5" max="15" step="0.5" style="width:100%;">
+                    <input type="number" id="ep-talla-add" placeholder="Talla (opcional)" min="5" max="15" step="0.5" style="width:100%;" oninput="actualizarHintTallaEP()">
                 </span>
+                <select id="ep-talla-tipo" style="display:none;flex:1;" onchange="actualizarHintTallaEP()" title="En alianzas cada talla es de dama o de caballero"></select>
             </div>
             <div id="ep-talla-hint" style="font-size:10px;color:var(--plateado);margin-bottom:8px;">Si ingresas talla, se registra como variante separada (ej: ANP039<b style="color:#FF9500;">T10</b>)</div>
             <div style="text-align:center;margin-bottom:12px;">
@@ -1413,6 +1417,19 @@
     </div>
 </div>
 
+
+<!-- Modal Entregas / Recibos -->
+<div class="modal-overlay" id="modal-entregas-recibos">
+    <div class="modal-box" style="max-width:560px;">
+        <div class="modal-header">
+            <h3>🧾 Entregas / Recibos</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-entregas-recibos')">×</button>
+        </div>
+        <div id="lista-entregas-recibos">
+            <p style="color:var(--plateado);font-size:13px;">⏳ Cargando...</p>
+        </div>
+    </div>
+</div>
 
 <!-- Modal Historial Entregas -->
 <div class="modal-overlay" id="modal-historial-entregas">
