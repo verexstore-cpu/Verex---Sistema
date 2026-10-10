@@ -6,7 +6,7 @@ const publicados = new Set(((await api("GET_CATALOGO")).productos || []).map(p =
 const prods = (await api("GET_STOCK")).stock || [];          // todo el inventario activo (campos públicos)
 console.log(`Inventario activo: ${prods.length} registros · publicados en la tienda: ${publicados.size}`);
 const hits = prods.filter(p => Q.some(q => JSON.stringify(p).toLowerCase().includes(q)));
-const campos = ["enCatalogo", "fechaRegistro", "estado", "codigo", "codigoBase", "nombre", "nombre_base", "nombreEN", "nombreTiendaEN", "nombreEn", "categoria", "material", "precio", "talla", "stock_tienda", "stock_bodega", "reservado", "destacado", "foto", "fotoMejorada", "img"];
+const campos = ["enCatalogo", "fechaRegistro", "fechaActualizacion", "actualizado", "updatedAt", "ultimaModificacion", "estado", "codigo", "codigoBase", "nombre", "nombre_base", "nombreEN", "nombreTiendaEN", "nombreEn", "categoria", "material", "precio", "talla", "stock_tienda", "stock_bodega", "reservado", "destacado", "foto", "fotoMejorada", "img"];
 async function estadoFoto(u) { if (!u) return "SIN FOTO"; try { const x = await fetch(u, { method: "GET" }); return `HTTP ${x.status} ${x.headers.get("content-type") || ""} ${x.headers.get("content-length") || ""}`; } catch (e) { return "ERROR " + e.message; } }
 let md = `## Búsqueda: ${Q.join(", ")}\n\n${hits.length} coincidencias de ${prods.length}\n\n`;
 for (const p of hits) {
