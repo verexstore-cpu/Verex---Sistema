@@ -377,6 +377,22 @@ function activarEdicionProducto() {
     const tallaHint = document.getElementById("ep-talla-hint");
     if (tallaHint) tallaHint.style.display = esAnilloEP ? "block" : "none";
     if (!esAnilloEP && document.getElementById("ep-talla-add")) document.getElementById("ep-talla-add").value = "";
+    // Alianzas (par/trío): cada talla lleva D (dama), C (caballero) o U (unisex) en el código — ANP240DT6, ANP240CT10.
+    // Antes la talla nueva se registraba SIN esa letra (ANP240T11) y no aparecía en el grupo. Se elige aquí.
+    const baseEPTalla = getCodigoBase(p.codigo);
+    const letrasGrupo = new Set(stockData.filter(s => getCodigoBase(s.codigo) === baseEPTalla)
+        .map(s => (String(s.codigo || "").match(/([DCU])T\d+(\.\d+)?$/i) || [])[1]).filter(Boolean).map(x => x.toUpperCase()));
+    const opcionesTipo = [];
+    if (letrasGrupo.has("D") || letrasGrupo.has("C")) opcionesTipo.push(["D", "👩 Dama"], ["C", "👨 Caballero"]);
+    if (letrasGrupo.has("U")) opcionesTipo.push(["U", "Unisex"]);
+    const selTipo = document.getElementById("ep-talla-tipo");
+    if (selTipo) {
+        const letraActual = (String(p.codigo || "").match(/([DCU])T\d+(\.\d+)?$/i) || [])[1]?.toUpperCase();
+        selTipo.innerHTML = opcionesTipo.map(([v, t]) => `<option value="${v}">${t}</option>`).join("");
+        if (letraActual && opcionesTipo.some(o => o[0] === letraActual)) selTipo.value = letraActual;
+        selTipo.style.display = esAnilloEP && opcionesTipo.length ? "inline-block" : "none";
+    }
+    actualizarHintTallaEP();
     const setAnilloWrap = document.getElementById("ep-set-anillo-wrap");
     if (setAnilloWrap) setAnilloWrap.style.display = esAnilloEP ? "block" : "none";
     document.getElementById("modal-prod-vista").style.display = "none";
@@ -456,6 +472,21 @@ async function agregarSegundaPiezaDamaTrio() {
     await cargarStock();
 }
 
+// Muestra el código exacto que tendrá la talla nueva (con D/C/U en alianzas)
+function letraTallaEP() {
+    const sel = document.getElementById("ep-talla-tipo");
+    return sel && sel.style.display !== "none" ? (sel.value || "") : "";
+}
+function actualizarHintTallaEP() {
+    const hint = document.getElementById("ep-talla-hint"); if (!hint || !productoEditando) return;
+    const t = (document.getElementById("ep-talla-add")?.value || "").trim();
+    const base = getCodigoBase(productoEditando.p.codigo || "");
+    const letra = letraTallaEP();
+    hint.innerHTML = t
+        ? `Se registra como <b style="color:#FF9500;">${sanitizar(base + letra + "T" + t)}</b>${letra ? ` (${letra === "D" ? "dama" : letra === "C" ? "caballero" : "unisex"})` : ""}`
+        : `Si ingresas talla, se registra como variante separada (ej: ${sanitizar(base)}<b style="color:#FF9500;">${letra}T10</b>)`;
+}
+
 async function guardarEdicionProducto() {
     if (!productoEditando) return;
     const btn = document.querySelector("#modal-prod-edicion .btn-dorado");
@@ -527,26 +558,40 @@ async function guardarEdicionProducto() {
         return;
     }
     if (existencia > 0) {
+        // Si el servidor no confirma, se avisa y el formulario queda abierto (antes decía «✅» aunque no se guardara)
+        const fallo = (r, que) => {
+            if (r && r.ok) return false;
+            toast(`❌ ${que} NO se guardó: ${(r && r.error) || "sin respuesta del servidor"}`, "#ef4444", 8000);
+            btn.textContent = "💾 Guardar"; btn.disabled = false;
+            return true;
+        };
         if (tallaAdd) {
-            // Registrar variante con talla — puede ser nueva o existente
+            // Registrar variante con talla — puede ser nueva o existente. En alianzas lleva la letra D/C/U.
             const codigoBase  = getCodigoBase(codigo);
-            const codigoTalla = `${codigoBase}T${tallaAdd}`;
+            const letra       = letraTallaEP();
+            const codigoTalla = `${codigoBase}${letra}T${tallaAdd}`;
             const stockTalla  = stockData.find(s => s.codigo === codigoTalla);
             if (stockTalla) {
                 // Ya existe esa talla → solo sumar cantidad
                 const bodegaActual = parseInt(stockTalla.stock_bodega || 0);
-                await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo: codigoTalla, stock_bodega: bodegaActual + existencia }] });
+                const r = await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo: codigoTalla, stock_bodega: bodegaActual + existencia }] });
+                if (fallo(r, `La cantidad de ${codigoTalla}`)) return;
             } else {
-                // Nueva variante — registrar con STOCK_REGISTRAR
+                // Nueva variante — registrar con STOCK_REGISTRAR (mismo nombre y precio que sus hermanas de dama/caballero)
                 const p = productoEditando.p;
-                const nombreConTalla = `${p.nombre_base || p.nombre} T${tallaAdd}`;
-                await apiPost({ accion: "STOCK_REGISTRAR", codigo: codigoTalla, codigoBase, talla: tallaAdd, nombre: nombreConTalla, nombre_base: p.nombre_base || p.nombre, categoria: p.categoria || "", material, precio, foto: img, cantidad: existencia, descripcion: desc, caracterEspecial });
+                const nb = p.nombre_base || p.nombre;
+                const nombreConTalla = letra === "D" ? `${nb} Dama T${tallaAdd}` : letra === "C" ? `${nb} Caballero T${tallaAdd}` : `${nb} T${tallaAdd}`;
+                const hermana = letra ? stockData.find(s => getCodigoBase(s.codigo) === codigoBase && new RegExp(letra + "T\\d", "i").test(s.codigo)) : null;
+                const precioTalla = hermana ? (parseFloat(hermana.precio) || precio) : precio;
+                const r = await apiPost({ accion: "STOCK_REGISTRAR", codigo: codigoTalla, codigoBase, talla: tallaAdd, nombre: nombreConTalla, nombre_base: nb, categoria: p.categoria || "", material, precio: precioTalla, foto: img, cantidad: existencia, descripcion: desc, caracterEspecial, set_config: p.set_config || undefined, enCatalogo: hermana ? hermana.enCatalogo : undefined });
+                if (fallo(r, `La talla ${tallaAdd} (${codigoTalla})`)) return;
             }
-            toast(`✅ +${existencia} unidades T${tallaAdd} (${codigoBase}T${tallaAdd})`);
+            toast(`✅ +${existencia} unidades T${tallaAdd} (${codigoTalla})`);
         } else {
             const stockActual  = stockData.find(s => s.codigo === codigoViejo);
             const bodegaActual = parseInt(stockActual?.stock_bodega || 0);
-            await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo, stock_bodega: bodegaActual + existencia }] });
+            const r = await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo, stock_bodega: bodegaActual + existencia }] });
+            if (fallo(r, "La cantidad")) return;
             toast(`✅ Producto actualizado y +${existencia} unidades sumadas a bodega`);
         }
     } else {
@@ -577,7 +622,7 @@ async function guardarEdicionProducto() {
             // Ir a etiquetas para imprimir la nueva talla de inmediato
             cambiarTab('etiquetas');
             // Pre-seleccionar la nueva talla en el grid de etiquetas
-            const codigoTallaNueva = `${getCodigoBase(codigo)}T${tallaAdd}`;
+            const codigoTallaNueva = `${getCodigoBase(codigo)}${letraTallaEP()}T${tallaAdd}`;
             setTimeout(() => {
                 const card = document.querySelector(`#grid-etiquetas [data-codigo="${codigoTallaNueva}"]`);
                 if (card) { card.click(); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
@@ -1198,6 +1243,18 @@ function notaCodigoCorregido(g) {
         🏷️ <b>CÓDIGO CORREGIDO</b><br>Antes <b>${sanitizar(antes)}</b> → ahora <b>${sanitizar(ahora)}</b><br>Cambia la etiqueta física de ${pend.length > 1 ? "las " + pend.length + " tallas" : "la pieza"}.
         <button onclick="event.stopPropagation();marcarEtiquetaCambiada(${jsArgArr(cods)})" style="display:block;margin-top:5px;padding:4px 8px;font-size:11px;font-weight:700;background:#f59e0b;color:#111;border:none;border-radius:6px;cursor:pointer;">✓ Etiqueta ya cambiada</button></div>`;
 }
+// Alerta en la tarjeta: un par/trío (tiene tallas D de dama y C/H de caballero) con alguna talla
+// SIN la letra D/C/H en el código (ej. ANP311T11). Se cuenta como pieza aparte y el catálogo no la reconoce.
+function notaCodigoSinLetra(g) {
+    const cods = (g.items || []).map(i => String(i.codigo || ""));
+    const conLetra = L => cods.some(c => new RegExp("[\\dB]" + L + "T\\d+(\\.\\d+)?$", "i").test(c));
+    if (!(conLetra("D") && conLetra("[CH]"))) return "";
+    const sueltas = cods.filter(c => /\dT\d+(\.\d+)?$/i.test(c));
+    if (!sueltas.length) return "";
+    return `<div onclick="event.stopPropagation()" style="margin:5px 0;padding:6px 8px;border-radius:8px;background:rgba(245,158,11,.14);border:1px solid #f59e0b;color:#fcd34d;font-size:11px;line-height:1.4;">
+        ⚠️ <b>Falta D o C en el código</b><br>${sueltas.map(c => "<b>" + sanitizar(c) + "</b>").join(", ")} no dice si es dama (D) o caballero (C). Se cuenta como una pieza extra. Corrígelo con ✏️.
+    </div>`;
+}
 async function marcarEtiquetaCambiada(codigos) {
     try {
         const r = await apiPost({ accion: "MARCAR_ETIQUETA_CAMBIADA", codigos });
@@ -1317,7 +1374,7 @@ function renderStock(items) {
                         <div style="color:#34D399;font-size:11px;font-weight:700;">$${precioTotal.toFixed(2)}</div>
                     </div>
                     <div style="color:#fff;font-size:11px;font-weight:600;margin:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sanitizar(g.nombre)}</div>
-                    ${notaCodigoCorregido(g)}
+                    ${notaCodigoCorregido(g)}${notaCodigoSinLetra(g)}
                     ${g.material ? `<div style="display:inline-block;font-size:9px;font-weight:700;margin-bottom:3px;background:${colorMaterial(g.material).bg};border:1px solid ${colorMaterial(g.material).border};color:${colorMaterial(g.material).color};border-radius:4px;padding:1px 6px;">${sanitizar(g.material)}</div>` : ''}
                     ${g.caracterEspecial ? `<div style="display:inline-block;font-size:9px;font-weight:700;margin-bottom:3px;margin-left:3px;background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.4);color:#c9a8ff;border-radius:4px;padding:1px 6px;" title="Característica especial">✨ ${sanitizar(g.caracterEspecial)}</div>` : ''}
                     ${agotadoGrupo
@@ -1438,7 +1495,7 @@ function renderStock(items) {
                 ${g.foto ? `<img src="${sanitizar(ikFoto(g.fotoMejorada||g.foto,200))}" onerror="fotoNoDisponible(this)" onclick="event.stopPropagation();abrirFotoZoom(${jsArg(g.fotoMejorada||g.foto)},${jsArg(g.nombre)})" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;background:#3a3a3c;">` : '<div style="width:64px;height:64px;background:#3a3a3c;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">💍</div>'}
                 <div style="flex:1;min-width:0;">
                     <div style="color:#fff;font-size:14px;font-weight:600;">${sanitizar(g.nombre)}</div>
-                    ${notaCodigoCorregido(g)}
+                    ${notaCodigoCorregido(g)}${notaCodigoSinLetra(g)}
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;">
                         ${g.material ? `<span style="font-size:10px;font-weight:700;color:${colorMaterial(g.material).color};background:${colorMaterial(g.material).bg};border:1px solid ${colorMaterial(g.material).border};border-radius:4px;padding:1px 7px;">${sanitizar(g.material)}</span>` : ''}
                         ${g.caracterEspecial ? `<span style="font-size:10px;font-weight:700;color:#c9a8ff;background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.4);border-radius:4px;padding:1px 7px;" title="Característica especial">✨ ${sanitizar(g.caracterEspecial)}</span>` : ''}
