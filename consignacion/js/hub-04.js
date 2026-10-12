@@ -344,6 +344,7 @@ function activarEdicionProducto() {
     document.getElementById("ep-precio").value = p.precio || p.precioNum || "";
     document.getElementById("ep-existencia").value = 0;
     document.getElementById("ep-caract").value = p.caracterEspecial || "";
+    iniciarOcasionesEP(p.codigo);
     // Marcar material actual
     document.querySelectorAll(".ep-mat-btn").forEach(b => {
         b.style.outline = (b.dataset.mat === p.material) ? "2px solid var(--dorado)" : "";
@@ -398,6 +399,81 @@ function activarEdicionProducto() {
         productoEditando.nuevaFoto = r.preview;
         prev.innerHTML = `<img src="${r.preview}" style="width:100%;height:100%;object-fit:contain;border-radius:10px;">`;
     };
+}
+
+// ── Ocasiones (15 años, compromiso, caballero…) ──────────────────────
+// Etiquetas internas para armar Catálogos de Cliente en el admin; el cliente
+// no las ve. Se guardan con STOCK_OCASIONES, que las aplica a TODAS las tallas
+// del diseño. La lista se edita en el admin (⚙️ Ocasiones → config.ocasiones);
+// esta es la lista inicial por si nunca se ha guardado (igual a la del admin).
+const OCASIONES_DEFAULT_HUB = [
+    { id: "15anos",       emoji: "👑", nombre: "15 años" },
+    { id: "compromiso",   emoji: "💍", nombre: "Compromiso" },
+    { id: "matrimonio",   emoji: "💑", nombre: "Matrimonio" },
+    { id: "caballero",    emoji: "🧔", nombre: "Caballero" },
+    { id: "graduacion",   emoji: "🎓", nombre: "Graduación" },
+    { id: "dia-madre",    emoji: "🎁", nombre: "Día de la Madre" },
+    { id: "san-valentin", emoji: "❤️", nombre: "San Valentín" },
+    { id: "religioso",    emoji: "✝️", nombre: "Bautizo / Primera Comunión" },
+    { id: "navidad",      emoji: "🎄", nombre: "Navidad" },
+    { id: "bebe",         emoji: "👶", nombre: "Bebé / niña" },
+];
+let _ocasionesHub = null;
+let _epOcasiones = new Set();
+let _epOcasionesOrig = [];
+
+// Ocasiones que ya tiene el diseño (unión de todas sus tallas activas).
+function _ocasionesDelDiseno(codigo) {
+    const base = getCodigoBase(codigo);
+    const s = new Set();
+    (stockData || []).filter(x => x.estado !== "inactivo" && (x.codigo === codigo || getCodigoBase(x.codigo) === base))
+        .forEach(x => (Array.isArray(x.ocasiones) ? x.ocasiones : []).forEach(o => s.add(o)));
+    return [...s];
+}
+
+function iniciarOcasionesEP(codigo) {
+    _epOcasionesOrig = _ocasionesDelDiseno(codigo);
+    _epOcasiones = new Set(_epOcasionesOrig);
+    renderOcasionesEP();
+    // Se vuelve a leer la lista por si se editó en el admin; mientras tanto se usa la última conocida.
+    apiPost({ accion: "GET_CONFIG" }).then(r => {
+        const l = r && r.config && r.config.ocasiones;
+        if (Array.isArray(l) && l.length) { _ocasionesHub = l; renderOcasionesEP(); }
+    }).catch(() => {});
+}
+
+function renderOcasionesEP() {
+    const cont = document.getElementById("ep-ocasiones");
+    if (!cont) return;
+    const lista = _ocasionesHub || OCASIONES_DEFAULT_HUB;
+    // Una ocasión oculta solo se muestra si este producto ya la tiene (para poder quitarla).
+    cont.innerHTML = lista.filter(o => !o.oculta || _epOcasiones.has(o.id)).map(o => {
+        const on = _epOcasiones.has(o.id);
+        return `<button type="button" data-id="${o.id}" onclick="toggleOcasionEP(this.dataset.id)"
+            style="padding:5px 10px;border:1px solid ${on ? "var(--dorado)" : "var(--borde)"};border-radius:14px;background:${on ? "var(--dorado)" : "var(--gris2)"};color:${on ? "#111" : "var(--blanco)"};font-size:11px;font-weight:700;cursor:pointer;">${o.emoji || ""} ${String(o.nombre || o.id).replace(/</g, "&lt;")}</button>`;
+    }).join("");
+}
+
+function toggleOcasionEP(id) {
+    if (_epOcasiones.has(id)) _epOcasiones.delete(id); else _epOcasiones.add(id);
+    renderOcasionesEP();
+}
+
+// Guarda las ocasiones si cambiaron. Devuelve false si el servidor no las guardó.
+async function guardarOcasionesEP(codigo) {
+    const nuevas = [..._epOcasiones];
+    const igual = nuevas.length === _epOcasionesOrig.length && nuevas.every(o => _epOcasionesOrig.includes(o));
+    if (igual) return true;
+    try {
+        const r = await apiPost({ accion: "STOCK_OCASIONES", codigos: [codigo], ocasiones: nuevas });
+        if (!r || !r.ok) throw new Error((r && r.error) || "sin respuesta");
+        (r.actualizados || []).forEach(a => { const x = stockData.find(s => s.codigo === a.codigo); if (x) x.ocasiones = a.ocasiones; });
+        _epOcasionesOrig = nuevas;
+        return true;
+    } catch (e) {
+        console.error("[ocasiones]", e);
+        return false;
+    }
 }
 
 function cancelarEdicionProducto() {
@@ -514,6 +590,7 @@ async function guardarEdicionProducto() {
         h.img = img; h.foto = img; h.material = material; h.caracterEspecial = caracterEspecial;
         if (cambioFoto) { h.fotoMejorada = ""; h.fotoMejoraNivel = ""; }
     }
+    const ocasionesOk = await guardarOcasionesEP(codigo);
     // Sumar existencia a bodega si se ingresó cantidad
     const existencia = parseInt(document.getElementById("ep-existencia")?.value) || 0;
     if (existencia > 0) {
@@ -529,9 +606,10 @@ async function guardarEdicionProducto() {
         const r = await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo, stock_bodega: bodegaActual + existencia }] });
         if (fallo(r, "La cantidad")) return;
         toast(`✅ Producto actualizado y +${existencia} unidades sumadas a bodega`);
-    } else {
+    } else if (ocasionesOk) {
         toast("✅ Producto actualizado");
     }
+    if (!ocasionesOk) toast("⚠️ El producto se guardó, pero las ocasiones NO — revisa que el Worker esté actualizado", "#f97316", 8000);
     // Update local — usar codigoViejo para encontrar el índice antes de sobreescribir
     const p = productoEditando.p;
     const idx = productosDisponibles.findIndex(x => x.codigo === codigoViejo);

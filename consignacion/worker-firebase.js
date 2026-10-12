@@ -2304,7 +2304,8 @@ async function enviar(){
 
           result = {
             ok:        true,
-            productos: final,
+            // `ocasiones` son etiquetas internas del admin (Catálogo Cliente) — no se publican en la tienda.
+            productos: final.map(({ ocasiones, ...p }) => p),
             cupones:   cups.filter(c => c.activo !== false && c.activo !== "false"),
             config:    sanearConfigPublico(cfg2)
           };
@@ -3903,6 +3904,40 @@ async function enviar(){
           }
           if (cambiar.length) await sb.setMany("stock", cambiar);
           result = { ok: true, visible, cambiados: cambiar.map(x => x.id), yaEstaban, noExisten, inactivos };
+          break;
+        }
+
+        // Ocasiones (15 años, compromiso, caballero…): etiquetas INTERNAS para armar catálogos de cliente en el admin.
+        // Se aplican al DISEÑO completo — todas las tallas activas que comparten código base — para que ninguna talla
+        // quede fuera del filtro. Solo escribe el campo `ocasiones` (merge parcial con update_doc): nunca toca
+        // cantidades, así que no puede pisar una venta que entre al mismo tiempo.
+        // d.codigos + d.ocasiones (reemplaza la lista) o d.agregar / d.quitar (ids de ocasión).
+        case "STOCK_OCASIONES": {
+          if (!esAdmin) return forbidden();
+          const idsOcasion = a => Array.from(new Set((Array.isArray(a) ? a : []).map(x => String(x).trim().toLowerCase()).filter(x => /^[a-z0-9-]{1,40}$/.test(x))));
+          const cods = Array.from(new Set((Array.isArray(d.codigos) ? d.codigos : []).map(String).filter(Boolean))).slice(0, 60);
+          if (!cods.length) { result = { ok: false, error: "codigos requeridos" }; break; }
+          const reemplazo = Array.isArray(d.ocasiones) ? idsOcasion(d.ocasiones).slice(0, 20) : null;
+          const agregar = idsOcasion(d.agregar), quitar = new Set(idsOcasion(d.quitar));
+          if (!reemplazo && !agregar.length && !quitar.size) { result = { ok: false, error: "ocasiones requeridas" }; break; }
+          const pedidos = new Set(cods.map(c => c.toUpperCase()));
+          const bases = new Set(cods.map(c => _baseDeCodigo(c).toUpperCase()));
+          const filas = (await sb.getAll("stock")).filter(x => {
+            if (x.estado === "inactivo") return false;
+            const c = String(x.codigo || x.id).toUpperCase();
+            return pedidos.has(c) || bases.has(_baseDeCodigo(c).toUpperCase()) || bases.has(String(x.codigoBase || "").toUpperCase());
+          });
+          const cambios = [];
+          for (const x of filas) {
+            const antes = Array.isArray(x.ocasiones) ? x.ocasiones.map(String) : [];
+            const despues = reemplazo ? reemplazo : Array.from(new Set([...antes, ...agregar])).filter(o => !quitar.has(o));
+            if (antes.length === despues.length && antes.every(o => despues.includes(o))) continue;
+            cambios.push({ codigo: String(x.codigo || x.id), ocasiones: despues });
+          }
+          for (let i = 0; i < cambios.length; i += 20) {
+            await Promise.all(cambios.slice(i, i + 20).map(c => sb.update("stock", c.codigo, { ocasiones: c.ocasiones })));
+          }
+          result = { ok: true, actualizados: cambios };
           break;
         }
 

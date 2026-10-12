@@ -1854,6 +1854,7 @@ async function cargarDatos(silencioso=false) {
             if (data.config.fraseConfianza !== undefined) cfg.fraseConfianza = data.config.fraseConfianza;
             if (data.config.promoGeneral !== undefined) cfg.promoGeneral = data.config.promoGeneral;
             if (data.config.contenidoUS !== undefined) cfg.contenidoUS = data.config.contenidoUS;
+            if (data.config.ocasiones !== undefined) cfg.ocasiones = data.config.ocasiones;
             localStorage.setItem("vx_cfg", JSON.stringify(cfg));
         }
         const inpFraseC = document.getElementById("inp-frase-confianza");
@@ -3904,6 +3905,19 @@ function aplicarPromptIA() {
     const pfEl = document.getElementById("cat-prefijo-txt");
     if (pfEl) pfEl.value = pfx;
 
+    // ── Ocasión (15 años, compromiso…) ───────────────────────────────────
+    // Solo se aplica si ya hay productos etiquetados con esa ocasión — si no,
+    // el filtro dejaría el catálogo vacío (ej. "anillos caballero talla 10"
+    // antes de haber etiquetado nada).
+    const ocasionesDetect = ocasionesLista().filter(o => {
+        const re = OCASIONES_PALABRAS[o.id];
+        const nom = _normTxt(o.nombre).trim();
+        return (re && re.test(prompt)) || (nom.length > 2 && prompt.includes(nom));
+    }).map(o => o.id);
+    const ocasionesAplicadas = ocasionesDetect.filter(_ocasionTieneProductos);
+    const ocasionesSinEtiquetar = ocasionesDetect.filter(id => !ocasionesAplicadas.includes(id));
+    poblarOcasionesPills(ocasionesAplicadas);
+
     filtrarParaCatalogo();
 
     // ── Post-filtro: stock, material y precio ────────────────────────────
@@ -3949,6 +3963,9 @@ function aplicarPromptIA() {
     if (precioMax)           resPartes.push(`máx $${precioMax}`);
     if (precioMin)           resPartes.push(`mín $${precioMin}`);
     if (catsExcluir.length)  resPartes.push("excluye " + catsExcluir.map(k=>CAT_MAP[k].replace(/\p{Emoji}/gu,"").trim()).join(", "));
+    const _nomOc = id => ocasionesLista(true).find(o => o.id === id)?.nombre || id;
+    if (ocasionesAplicadas.length)    resPartes.push("Ocasión: " + ocasionesAplicadas.map(_nomOc).join(" / "));
+    if (ocasionesSinEtiquetar.length) resPartes.push(`⚠️ aún no hay piezas etiquetadas como ${ocasionesSinEtiquetar.map(_nomOc).join(" / ")}`);
     document.getElementById("cat-ia-resultado").textContent =
         `✅ ${activos} producto(s) listo(s)${omitidos ? ` · ${omitidos} omitido(s)` : ""}`
         + (resPartes.length ? ` — ${resPartes.join(" · ")}` : "");
@@ -4520,6 +4537,7 @@ async function generarLinkCatalogo() {
         const _recetaCatsGen = [...document.querySelectorAll(".cat-cat-chk:checked")].map(c => c.value);
         const receta = {
             categorias: _recetaCatsGen,
+            ocasiones: ocasionesSeleccionadas(),
             talla, genero,
             tipoAN: document.getElementById("cat-tipo-an")?.value || "",
             cantidad: codsSel.length,
@@ -4615,7 +4633,7 @@ async function generarLinkCatalogo() {
         // y priorizando variedad (evitar repetir lo mismo del mes pasado).
         if (esAfiliado && afiliadoCodigo) {
             const cats = [...document.querySelectorAll(".cat-cat-chk:checked")].map(c => c.value);
-            const receta = { categorias: cats, talla, genero, tipoAN: document.getElementById("cat-tipo-an")?.value || "", cantidad: codsSel.length, ultimosCodigos: codsSel };
+            const receta = { categorias: cats, ocasiones: ocasionesSeleccionadas(), talla, genero, tipoAN: document.getElementById("cat-tipo-an")?.value || "", cantidad: codsSel.length, ultimosCodigos: codsSel };
             fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"GUARDAR_RECETA_CATALOGO", _pass: ADMIN_PASS, vendedor: afiliadoCodigo, receta }) }).catch(()=>{});
             // Registro global: marca estos códigos como "recién mostrados" para que
             // el próximo afiliado que se genere un catálogo reciba otra variedad.
@@ -5137,6 +5155,9 @@ async function _clonarConStockActual(original, receta, dias, nuevaExpiry) {
     if (receta.categorias?.length) {
         items = items.filter(p => receta.categorias.includes(p._catKey || getCatKey(p)));
     }
+    if (receta.ocasiones?.length) {
+        items = items.filter(p => ocasionesDeProd(p).some(o => receta.ocasiones.includes(o)));
+    }
     if (receta.genero === "dama")      items = items.filter(p => !/caballero|hombre/i.test(p.genero || ""));
     if (receta.genero === "caballero") items = items.filter(p => /caballero|hombre/i.test(p.genero || ""));
     if (receta.tipoAN === "pareja")    items = items.filter(p => p._esPareja);
@@ -5433,6 +5454,317 @@ const CAT_MAP = {
     RL: "⌚ Relojes",
     OT: "📦 Otros",
 };
+
+// ═════════════════════════════════════════════
+//  OCASIONES (15 años, compromiso, caballero…)
+// ═════════════════════════════════════════════
+// Etiquetas INTERNAS guardadas en cada fila del Stock (campo `ocasiones`, lista
+// de ids) para armar catálogos de cliente sin buscar en todo el inventario.
+// El cliente no las ve: el Worker las quita de GET_CATALOGO y los links /c/
+// no las exportan. La lista editable vive en config.ocasiones; si nunca se ha
+// guardado, se usa OCASIONES_DEFAULT. Ocultar una ocasión no borra las
+// etiquetas de los productos — solo deja de mostrarse en los filtros.
+const OCASIONES_DEFAULT = [
+    { id: "15anos",       emoji: "👑", nombre: "15 años" },
+    { id: "compromiso",   emoji: "💍", nombre: "Compromiso" },
+    { id: "matrimonio",   emoji: "💑", nombre: "Matrimonio" },
+    { id: "caballero",    emoji: "🧔", nombre: "Caballero" },
+    { id: "graduacion",   emoji: "🎓", nombre: "Graduación" },
+    { id: "dia-madre",    emoji: "🎁", nombre: "Día de la Madre" },
+    { id: "san-valentin", emoji: "❤️", nombre: "San Valentín" },
+    { id: "religioso",    emoji: "✝️", nombre: "Bautizo / Primera Comunión" },
+    { id: "navidad",      emoji: "🎄", nombre: "Navidad" },
+    { id: "bebe",         emoji: "👶", nombre: "Bebé / niña" },
+];
+
+// Palabras con las que "Armar con IA" reconoce cada ocasión de la lista
+// inicial. Las ocasiones nuevas se reconocen por su nombre.
+const OCASIONES_PALABRAS = {
+    "15anos":       /\b15 anos\b|\bquince\b|quinceaner|\bxv\b/,
+    "compromiso":   /compromiso|pedida de mano/,
+    "matrimonio":   /matrimonio|\bboda\b/,
+    "caballero":    /caballero|hombre|para el\b/,
+    "graduacion":   /graduacion|graduad/,
+    "dia-madre":    /dia de la madre|\bmama\b|\bmadre\b/,
+    "san-valentin": /valentin|14 de febrero|enamorad/,
+    "religioso":    /bautizo|comunion|confirmacion|religios/,
+    "navidad":      /navidad|navideno/,
+    "bebe":         /\bbebe\b|\bnina\b|infantil/,
+};
+
+function ocasionesLista(incluirOcultas = false) {
+    const l = (Array.isArray(cfg.ocasiones) && cfg.ocasiones.length) ? cfg.ocasiones : OCASIONES_DEFAULT;
+    return incluirOcultas ? l : l.filter(o => !o.oculta);
+}
+
+function _normTxt(s) {
+    return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+// Código base del diseño (sin sufijo de talla) — mismo criterio que el Worker
+// (_baseDeCodigo) para que "un diseño" signifique lo mismo en los dos lados.
+function _baseDiseno(p) {
+    return String(p.codigoBase || String(p.codigo || "").replace(/[DCU]?T\d+(\.\d+)?$/i, "") || p.codigo || "").toUpperCase();
+}
+
+function _ocasionesDeFila(p) {
+    return Array.isArray(p?.ocasiones) ? p.ocasiones : [];
+}
+
+// Para un producto agrupado (anillo con varias tallas) junta las ocasiones de todas sus filas.
+function ocasionesDeProd(p) {
+    if (Array.isArray(p._codigos) && p._codigos.length > 1) {
+        const s = new Set();
+        p._codigos.forEach(c => _ocasionesDeFila(productos.find(x => x.codigo === c)).forEach(o => s.add(o)));
+        return [...s];
+    }
+    return _ocasionesDeFila(p);
+}
+
+function _ocasionTieneProductos(id) {
+    return productos.some(p => _ocasionesDeFila(p).includes(id));
+}
+
+function ocasionesSeleccionadas() {
+    return [...document.querySelectorAll(".cat-ocasion-chk:checked")].map(c => c.value);
+}
+
+function poblarOcasionesPills(seleccion = []) {
+    const cont = document.getElementById("cat-ocasion-pills");
+    if (!cont) return;
+    // Cuántos diseños con stock en bodega tiene cada ocasión — ayuda a ver
+    // de un vistazo qué falta por etiquetar.
+    const conteo = {};
+    const vistos = new Set();
+    productos.forEach(p => {
+        const ocs = _ocasionesDeFila(p);
+        if (!ocs.length || p.reservado || _stockBodegaProd(p) <= 0) return;
+        const base = _baseDiseno(p);
+        ocs.forEach(o => {
+            const k = o + "|" + base;
+            if (vistos.has(k)) return;
+            vistos.add(k);
+            conteo[o] = (conteo[o] || 0) + 1;
+        });
+    });
+    const lista = ocasionesLista();
+    const hayEtiquetas = Object.keys(conteo).length > 0;
+    cont.innerHTML = lista.map(o => {
+        const on = seleccion.includes(o.id);
+        return `<label style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:20px;border:1.5px solid ${on ? "var(--azul)" : "var(--borde)"};background:${on ? "var(--azul)" : "#fff"};color:${on ? "#fff" : ""};font-size:12px;font-weight:600;user-select:none;transition:all .15s;">
+            <input type="checkbox" class="cat-ocasion-chk" value="${esc(o.id)}" style="display:none;" ${on ? "checked" : ""} onchange="onOcasionPillChange()">
+            ${esc(o.emoji || "")} ${esc(o.nombre)} <span style="opacity:.6;font-weight:400;">${conteo[o.id] || 0}</span>
+        </label>`;
+    }).join("") + (hayEtiquetas ? "" : `<span style="font-size:11px;color:#999;align-self:center;">Aún no hay productos etiquetados — usa 🏷️ Etiquetar productos.</span>`);
+}
+
+function onOcasionPillChange() {
+    document.querySelectorAll(".cat-ocasion-chk").forEach(chk => {
+        const lbl = chk.closest("label");
+        if (chk.checked) { lbl.style.background="var(--azul)"; lbl.style.color="#fff"; lbl.style.borderColor="var(--azul)"; }
+        else             { lbl.style.background="#fff"; lbl.style.color=""; lbl.style.borderColor="var(--borde)"; }
+    });
+    filtrarParaCatalogo();
+}
+
+// ── Modo rápido: etiquetar tocando fotos ─────────────────────────
+// Cambios pendientes: "ocasion|BASE" → true (agregar) / false (quitar).
+let _etqPendientes = new Map();
+
+function _disenosParaEtiquetar() {
+    const map = new Map();
+    productos.forEach(p => {
+        if (p.estado === "inactivo") return;
+        const base = _baseDiseno(p);
+        if (!map.has(base)) map.set(base, { base, codigo: p.codigo, nombre: p.nombre_base || p.nombre || "", foto: p.fotoMejorada || p.foto || p.img || "", cat: getCatKey(p), filas: [] });
+        map.get(base).filas.push(p);
+    });
+    return [...map.values()];
+}
+
+function _disenoTieneOcasion(d, id) {
+    const k = id + "|" + d.base;
+    if (_etqPendientes.has(k)) return _etqPendientes.get(k);
+    return d.filas.some(f => _ocasionesDeFila(f).includes(id));
+}
+
+function abrirEtiquetarOcasiones() {
+    _etqPendientes = new Map();
+    const selOc = document.getElementById("etq-ocasion");
+    const elegidas = ocasionesSeleccionadas();
+    selOc.innerHTML = ocasionesLista().map(o => `<option value="${esc(o.id)}">${esc(o.emoji || "")} ${esc(o.nombre)}</option>`).join("");
+    if (elegidas.length) selOc.value = elegidas[0];
+    const selCat = document.getElementById("etq-categoria");
+    const presentes = [...new Set(productos.map(p => getCatKey(p)))];
+    selCat.innerHTML = `<option value="">Todas las categorías</option>` +
+        Object.keys(CAT_MAP).filter(k => presentes.includes(k)).map(k => `<option value="${k}">${CAT_MAP[k]}</option>`).join("");
+    document.getElementById("etq-buscar").value = "";
+    document.getElementById("modal-etq-ocasion").classList.add("open");
+    renderEtiquetarOcasiones();
+}
+
+function cerrarEtiquetarOcasiones() {
+    if (_etqPendientes.size && !confirm(`Tienes ${_etqPendientes.size} cambio(s) sin guardar. ¿Cerrar sin guardar?`)) return;
+    _etqPendientes = new Map();
+    document.getElementById("modal-etq-ocasion").classList.remove("open");
+}
+
+function renderEtiquetarOcasiones() {
+    const id      = document.getElementById("etq-ocasion").value;
+    const cat     = document.getElementById("etq-categoria").value;
+    const mostrar = document.getElementById("etq-mostrar").value;
+    const q       = _normTxt(document.getElementById("etq-buscar").value.trim());
+    const soloStock = document.getElementById("etq-solo-stock").checked;
+    let lista = _disenosParaEtiquetar();
+    if (cat)       lista = lista.filter(d => d.cat === cat);
+    if (soloStock) lista = lista.filter(d => d.filas.some(f => _stockTotalProd(f) > 0));
+    if (q)         lista = lista.filter(d => _normTxt(d.nombre).includes(q) || _normTxt(d.base).includes(q));
+    if (mostrar === "sin") lista = lista.filter(d => !d.filas.some(f => _ocasionesDeFila(f).length));
+    if (mostrar === "con") lista = lista.filter(d => d.filas.some(f => _ocasionesDeFila(f).includes(id)));
+    lista.sort((a, b) => a.cat.localeCompare(b.cat) || a.nombre.localeCompare(b.nombre));
+
+    const marcados = lista.filter(d => _disenoTieneOcasion(d, id)).length;
+    document.getElementById("etq-info").textContent = `${lista.length} diseño(s) · ${marcados} marcado(s) con esta ocasión. Toca una foto para marcarla o desmarcarla.`;
+    const grid = document.getElementById("etq-grid");
+    if (!lista.length) { grid.innerHTML = '<p style="color:#999;font-size:13px;text-align:center;padding:20px;">No hay productos con ese filtro.</p>'; _actualizarPendientesEtq(); return; }
+    grid.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;">${lista.map(d => {
+        const on = _disenoTieneOcasion(d, id);
+        const pend = _etqPendientes.has(id + "|" + d.base);
+        const otras = [...new Set(d.filas.flatMap(_ocasionesDeFila))].filter(o => o !== id)
+            .map(o => ocasionesLista(true).find(x => x.id === o)?.emoji || "").join("");
+        const img = d.foto ? ikSharp(d.foto) : "";
+        return `<div data-base="${esc(d.base)}" onclick="toggleEtqDiseno(this.dataset.base)" style="cursor:pointer;border-radius:10px;overflow:hidden;border:3px solid ${on ? "#C9A84C" : "transparent"};background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.12);position:relative;">
+            <div style="aspect-ratio:1/1;background:#f5f5f5;">
+                ${img ? `<img src="${img}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;${on ? "" : "opacity:.85;"}" onerror="this.style.display='none'">` : `<div style="height:100%;display:flex;align-items:center;justify-content:center;font-size:30px;color:#ccc;">💍</div>`}
+            </div>
+            <div style="position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;background:${on ? "#C9A84C" : "rgba(255,255,255,.9)"};border:1.5px solid ${on ? "#C9A84C" : "#ccc"};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:#000;">${on ? "✓" : ""}</div>
+            ${pend ? `<div style="position:absolute;top:6px;left:6px;background:#f97316;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:8px;">SIN GUARDAR</div>` : ""}
+            <div style="padding:5px 7px;">
+                <div style="font-size:11px;font-weight:700;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${esc(d.nombre || "—")}</div>
+                <div style="font-size:10px;color:#888;display:flex;justify-content:space-between;gap:4px;"><span>${esc(d.base)}</span><span title="Otras ocasiones">${otras}</span></div>
+            </div>
+        </div>`;
+    }).join("")}</div>`;
+    _actualizarPendientesEtq();
+}
+
+function toggleEtqDiseno(base) {
+    const id = document.getElementById("etq-ocasion").value;
+    const d = _disenosParaEtiquetar().find(x => x.base === base);
+    if (!d || !id) return;
+    const k = id + "|" + base;
+    const original = d.filas.some(f => _ocasionesDeFila(f).includes(id));
+    const nuevo = !_disenoTieneOcasion(d, id);
+    if (nuevo === original) _etqPendientes.delete(k); else _etqPendientes.set(k, nuevo);
+    renderEtiquetarOcasiones();
+}
+
+function _actualizarPendientesEtq() {
+    const n = _etqPendientes.size;
+    document.getElementById("etq-pendientes").textContent = n ? `${n} cambio(s) sin guardar` : "";
+    document.getElementById("etq-guardar").disabled = !n;
+}
+
+async function guardarEtiquetasOcasion() {
+    if (!_etqPendientes.size) return;
+    const btn = document.getElementById("etq-guardar");
+    btn.disabled = true; btn.textContent = "⏳ Guardando...";
+    const disenos = new Map(_disenosParaEtiquetar().map(d => [d.base, d]));
+    // Agrupar por (ocasión, agregar/quitar) → una llamada por cada 15 diseños.
+    const grupos = new Map();
+    _etqPendientes.forEach((agregar, k) => {
+        const [id, base] = [k.slice(0, k.indexOf("|")), k.slice(k.indexOf("|") + 1)];
+        const d = disenos.get(base);
+        if (!d) return;
+        const g = id + "|" + (agregar ? 1 : 0);
+        if (!grupos.has(g)) grupos.set(g, { id, agregar, codigos: [] });
+        grupos.get(g).codigos.push(d.codigo);
+    });
+    let ok = 0, fallos = 0;
+    for (const g of grupos.values()) {
+        for (let i = 0; i < g.codigos.length; i += 15) {
+            const codigos = g.codigos.slice(i, i + 15);
+            try {
+                const r = await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "STOCK_OCASIONES", _pass: ADMIN_PASS, codigos, [g.agregar ? "agregar" : "quitar"]: [g.id] }) }).then(x => x.json());
+                if (!r?.ok) throw new Error(r?.error || "error");
+                (r.actualizados || []).forEach(a => { const p = productos.find(x => x.codigo === a.codigo); if (p) p.ocasiones = a.ocasiones; });
+                codigos.forEach(c => { const d = [...disenos.values()].find(x => x.codigo === c); if (d) _etqPendientes.delete(g.id + "|" + d.base); });
+                ok += codigos.length;
+            } catch (e) {
+                console.error("[ocasiones]", e);
+                fallos += codigos.length;
+            }
+        }
+    }
+    btn.textContent = "💾 Guardar";
+    renderEtiquetarOcasiones();
+    poblarOcasionesPills(ocasionesSeleccionadas());
+    filtrarParaCatalogo();
+    if (fallos) toast(`⚠️ ${ok} guardado(s), ${fallos} no se pudieron guardar — revisa que el Worker esté actualizado y vuelve a intentar`, "#f97316");
+    else toast(`✅ ${ok} diseño(s) actualizados`, "#22c55e");
+}
+
+// ── Gestionar la lista de ocasiones ──────────────────────────────
+let _gestOcasiones = [];
+
+function abrirGestionOcasiones() {
+    _gestOcasiones = ocasionesLista(true).map(o => ({ ...o }));
+    renderGestionOcasiones();
+    document.getElementById("modal-gest-ocasion").classList.add("open");
+}
+
+function cerrarGestionOcasiones() {
+    document.getElementById("modal-gest-ocasion").classList.remove("open");
+}
+
+function renderGestionOcasiones() {
+    document.getElementById("gest-ocasion-lista").innerHTML = _gestOcasiones.map((o, i) => `
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;${o.oculta ? "opacity:.5;" : ""}">
+            <input type="text" value="${esc(o.emoji || "")}" maxlength="4" oninput="_gestOcasiones[${i}].emoji=this.value" style="width:52px;text-align:center;">
+            <input type="text" value="${esc(o.nombre)}" maxlength="40" oninput="_gestOcasiones[${i}].nombre=this.value" style="flex:1;">
+            <button type="button" onclick="_gestOcasiones[${i}].oculta=!_gestOcasiones[${i}].oculta;renderGestionOcasiones()"
+                style="white-space:nowrap;background:#fff;border:1.5px solid var(--borde);border-radius:8px;padding:6px 8px;font-size:11px;font-weight:700;cursor:pointer;">${o.oculta ? "👁️ Mostrar" : "🙈 Ocultar"}</button>
+        </div>`).join("");
+}
+
+function agregarFilaOcasion() {
+    _gestOcasiones.push({ id: "", emoji: "🏷️", nombre: "" });
+    renderGestionOcasiones();
+    const inputs = document.querySelectorAll("#gest-ocasion-lista input[maxlength='40']");
+    inputs[inputs.length - 1]?.focus();
+}
+
+async function guardarGestionOcasiones() {
+    const usados = new Set();
+    const lista = [];
+    for (const o of _gestOcasiones) {
+        const nombre = String(o.nombre || "").trim();
+        if (!nombre) { if (o.id) return toast("⚠️ Una ocasión quedó sin nombre — escríbelo u ocúltala", "#f97316"); continue; }
+        // El id se crea una sola vez a partir del nombre y no cambia al renombrar,
+        // así los productos ya etiquetados conservan su ocasión.
+        let id = o.id || _normTxt(nombre).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32) || "ocasion";
+        if (!o.id) { const raiz = id; let n = 2; while (usados.has(id) || ocasionesLista(true).some(x => x.id === id)) id = `${raiz}-${n++}`; }
+        if (usados.has(id)) continue;
+        usados.add(id);
+        lista.push({ id, emoji: String(o.emoji || "").trim().slice(0, 4), nombre: nombre.slice(0, 40), ...(o.oculta && { oculta: true }) });
+    }
+    const btn = document.getElementById("gest-ocasion-guardar");
+    btn.disabled = true; btn.textContent = "⏳...";
+    try {
+        const r = await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "ACTUALIZAR_CONFIG", _pass: ADMIN_PASS, config: { ocasiones: lista } }) }).then(x => x.json());
+        if (!r?.ok) throw new Error(r?.error || "error");
+        cfg.ocasiones = lista;
+        localStorage.setItem("vx_cfg", JSON.stringify(cfg));
+        cerrarGestionOcasiones();
+        poblarOcasionesPills(ocasionesSeleccionadas().filter(id => lista.some(o => o.id === id && !o.oculta)));
+        filtrarParaCatalogo();
+        toast("✅ Ocasiones guardadas", "#22c55e");
+    } catch (e) {
+        toast("❌ No se pudieron guardar las ocasiones", "#ef4444");
+    } finally {
+        btn.disabled = false; btn.textContent = "💾 Guardar";
+    }
+}
 
 function getCatKey(p) {
     // Acepta el producto completo (preferido) o solo el código (compatibilidad)
@@ -5825,6 +6157,7 @@ function refrescarCatalogoAfiliado() {
     if (!receta) return toast("⚠️ Este afiliado no tiene criterios guardados aún","#f97316");
 
     document.querySelectorAll(".cat-cat-chk").forEach(chk => { chk.checked = (receta.categorias||[]).includes(chk.value); });
+    poblarOcasionesPills(receta.ocasiones || []);
     onPillChange();
     if (document.getElementById("cat-talla"))   document.getElementById("cat-talla").value   = receta.talla   || "";
     sincronizarChipsCatTalla();
@@ -5895,6 +6228,7 @@ function abrirModalCatalogo(tipo) {
     const afSel = document.getElementById("cat-afiliado-select"); if (afSel) afSel.value = "";
 
     poblarCategorias();
+    poblarOcasionesPills([]);
     const pf = document.getElementById("cat-prefijo-txt");
     if (pf) pf.value = "";
     filtrarParaCatalogo();
@@ -5925,6 +6259,8 @@ function _actualizarResumenVariado() {
 
     const partes = [];
     if (cats.length) partes.push(`Solo: ${cats.map(k => CAT_MAP[k]).join(", ")}`);
+    const ocs = ocasionesSeleccionadas();
+    if (ocs.length) partes.push(`Ocasión: ${ocs.map(id => ocasionesLista(true).find(o => o.id === id)?.nombre || id).join(" / ")}`);
     const hasAN = cats.length === 0 || cats.includes("AN");
     if (hasAN) {
         if (talla)  partes.push(`Anillos → Talla ${_tallasDisplay(talla)}`);
@@ -6002,6 +6338,13 @@ function filtrarParaCatalogo() {
     // ofrecerse para armar un catálogo nuevo, aunque globalmente no esté agotada
     lista = lista.filter(p => _stockBodegaProd(p) > 0);
 
+    // Filtro de ocasión — aplica a TODAS las categorías. Varias marcadas = la
+    // pieza entra si tiene cualquiera de ellas (ej. 15 años O compromiso).
+    const ocasionesFiltro = ocasionesSeleccionadas();
+    if (ocasionesFiltro.length) {
+        lista = lista.filter(p => _ocasionesDeFila(p).some(o => ocasionesFiltro.includes(o)));
+    }
+
     // Filtro de material — aplica a TODAS las categorías, no solo Anillos.
     // Se puede marcar más de uno (ej. plata Y acero) — sin selección = todos.
     const materialesFiltro = [...document.querySelectorAll(".cat-material-chk:checked")].map(c => c.value);
@@ -6075,12 +6418,15 @@ function filtrarParaCatalogo() {
 
     _catFiltrada = lista;
     const catLabel = cats.length ? cats.map(k => CAT_MAP[k]).join(", ") : "Todos los productos";
+    const ocLabel = ocasionesFiltro.map(id => ocasionesLista(true).find(o => o.id === id)?.nombre || id).join(" / ");
     info.textContent = lista.length
-        ? `${lista.length} producto(s) — ${catLabel}${talla ? ", Talla " + _tallasDisplay(talla) : ""}. Marca los que quieres mostrar:`
+        ? `${lista.length} producto(s) — ${catLabel}${ocLabel ? " · " + ocLabel : ""}${talla ? ", Talla " + _tallasDisplay(talla) : ""}. Marca los que quieres mostrar:`
         : "";
 
     if (!lista.length) {
-        cont.innerHTML = '<p style="color:#aaa;font-size:13px;text-align:center;padding:16px;">Sin productos para ese filtro.</p>';
+        cont.innerHTML = ocasionesFiltro.length
+            ? '<p style="color:#aaa;font-size:13px;text-align:center;padding:16px;">Sin productos para ese filtro. ¿Ya etiquetaste piezas con esa ocasión? Usa 🏷️ Etiquetar productos.</p>'
+            : '<p style="color:#aaa;font-size:13px;text-align:center;padding:16px;">Sin productos para ese filtro.</p>';
         return;
     }
 
@@ -6104,6 +6450,8 @@ function filtrarParaCatalogo() {
         const img  = ikSharp(p.foto || p.img || "");
         const mat  = p.material || detectarMaterial(p.nombre);
         const cod0 = p._codigos?.[0] || p.codigo;
+        const ocEmojis = ocasionesDeProd(p).map(id => ocasionesLista(true).find(o => o.id === id)).filter(Boolean)
+            .map(o => `<span title="${esc(o.nombre)}">${esc(o.emoji || "🏷️")}</span>`).join("");
         const sizesHtml = p._sizes?.length
             ? `<div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:2px;">${p._sizes.map(sz =>
                 `<span style="padding:1px 5px;background:#e8f4fd;border-radius:4px;font-size:9px;font-weight:700;color:#0277bd;">T${sz}</span>`
@@ -6123,6 +6471,7 @@ function filtrarParaCatalogo() {
                     <div style="font-weight:700;font-size:11px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:#1a1a1a;">${p.nombre || "—"}</div>
                     <div style="font-size:11px;font-weight:800;color:#00BFFF;margin-top:2px;">$${parseFloat(p.precio || 0).toFixed(2)}</div>
                     ${mat ? `<div style="font-size:10px;color:#7c3aed;font-weight:600;">${mat}</div>` : ""}
+                    ${ocEmojis ? `<div style="font-size:12px;margin-top:2px;letter-spacing:1px;">${ocEmojis}</div>` : ""}
                     ${sizesHtml}
                     ${stockLabel ? `<div style="font-size:10px;color:#0277bd;background:#e8f4fd;padding:1px 5px;border-radius:4px;display:inline-block;margin-top:2px;">${stockLabel}</div>` : ""}
                     ${getNotaEspecial(p) ? `<div style="font-size:9px;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;padding:1px 5px;margin-top:2px;font-weight:700;">♦ ${getNotaEspecial(p)}</div>` : ""}
@@ -6762,12 +7111,24 @@ async function generarPDFCatalogo() {
       <div style="background:rgba(30,64,175,0.12);border:1px solid rgba(191,219,254,0.2);border-radius:8px;padding:10px;margin-bottom:12px;">
         <div style="font-size:11px;font-weight:700;color:#1d4ed8;margin-bottom:6px;">🤖 Armar con IA — describe lo que buscas</div>
         <div style="display:flex;gap:8px;">
-          <input type="text" id="cat-ia-prompt" placeholder='Ej: "anillos talla 7 dama" o "argollas matrimonio talla 9"'
+          <input type="text" id="cat-ia-prompt" placeholder='Ej: "anillos de 15 años talla 6" o "cadenas caballero menos de $30"'
             style="flex:1;font-size:13px;" placeholder='Ej: "30 anillos laminados talla 9 dama" · "cadenas acero menos de $20" · "aretes sin conjuntos"' onkeydown="if(event.key==='Enter') aplicarPromptIA()">
           <button onclick="aplicarPromptIA()"
             style="background:#2563eb;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">✨ Armar</button>
         </div>
         <div id="cat-ia-resultado" style="font-size:11px;color:#1d4ed8;margin-top:5px;min-height:14px;"></div>
+      </div>
+
+      <!-- Ocasiones (etiquetas internas del Stock — el cliente no las ve) -->
+      <div style="margin-bottom:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+          <label style="font-size:12px;color:#aaa;">Ocasión <span style="color:#666;font-weight:400;">(sin selección = todas)</span></label>
+          <div style="display:flex;gap:6px;">
+            <button type="button" onclick="abrirEtiquetarOcasiones()" style="background:#fff;border:1.5px solid #C9A84C;color:#8a6d1f;padding:4px 10px;border-radius:16px;font-size:11px;font-weight:700;cursor:pointer;">🏷️ Etiquetar productos</button>
+            <button type="button" onclick="abrirGestionOcasiones()" title="Agregar, renombrar u ocultar ocasiones" style="background:#fff;border:1.5px solid var(--borde);color:#555;padding:4px 10px;border-radius:16px;font-size:11px;font-weight:700;cursor:pointer;">⚙️ Ocasiones</button>
+          </div>
+        </div>
+        <div id="cat-ocasion-pills" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
       </div>
 
       <!-- Categorías -->
@@ -7079,6 +7440,48 @@ async function generarPDFCatalogo() {
       Los links generados se gestionan ahora en la pestaña <strong>🔗 Links</strong>.
     </div>
 
+  </div>
+</div>
+
+<!-- MODAL ETIQUETAR OCASIONES (modo rápido) -->
+<div class="mo" id="modal-etq-ocasion" style="z-index:600;">
+  <div class="mb" style="max-width:940px;">
+    <button class="mc" onclick="cerrarEtiquetarOcasiones()">✕</button>
+    <h3>🏷️ Etiquetar productos por ocasión</h3>
+    <p style="font-size:12px;color:#666;margin-bottom:12px;">Elige la ocasión y toca las fotos de las piezas que van con ella. Se marca el diseño completo (todas sus tallas). Solo lo ves tú, el cliente no.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;">
+      <select id="etq-ocasion" onchange="renderEtiquetarOcasiones()" style="flex:1;min-width:170px;"></select>
+      <select id="etq-categoria" onchange="renderEtiquetarOcasiones()" style="flex:1;min-width:140px;"></select>
+      <select id="etq-mostrar" onchange="renderEtiquetarOcasiones()" style="flex:1;min-width:170px;">
+        <option value="todos">Todos los productos</option>
+        <option value="sin">Sin ninguna ocasión todavía</option>
+        <option value="con">Solo los que ya tienen esta ocasión</option>
+      </select>
+      <input type="text" id="etq-buscar" placeholder="Buscar nombre o código" oninput="renderEtiquetarOcasiones()" style="flex:1;min-width:150px;">
+      <label style="font-size:12px;color:#555;display:flex;align-items:center;gap:4px;white-space:nowrap;"><input type="checkbox" id="etq-solo-stock" checked onchange="renderEtiquetarOcasiones()"> Solo con stock</label>
+    </div>
+    <div id="etq-info" style="font-size:12px;color:#666;margin-bottom:8px;"></div>
+    <div id="etq-grid" style="max-height:55vh;overflow-y:auto;"></div>
+    <div style="display:flex;gap:8px;margin-top:12px;align-items:center;">
+      <span id="etq-pendientes" style="flex:1;font-size:12px;color:#8a6d1f;font-weight:700;"></span>
+      <button class="btn bg" onclick="cerrarEtiquetarOcasiones()">Cerrar</button>
+      <button id="etq-guardar" class="btn" onclick="guardarEtiquetasOcasion()" style="background:#C9A84C;color:#000;font-weight:800;" disabled>💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL GESTIONAR OCASIONES -->
+<div class="mo" id="modal-gest-ocasion" style="z-index:600;">
+  <div class="mb" style="max-width:520px;">
+    <button class="mc" onclick="cerrarGestionOcasiones()">✕</button>
+    <h3>⚙️ Ocasiones</h3>
+    <p style="font-size:12px;color:#666;margin-bottom:12px;">Cambia el emoji o el nombre, o agrega ocasiones nuevas. Una ocasión oculta deja de aparecer en los filtros, pero los productos no pierden su etiqueta.</p>
+    <div id="gest-ocasion-lista"></div>
+    <button type="button" onclick="agregarFilaOcasion()" style="margin-top:8px;background:#fff;border:1.5px dashed #C9A84C;color:#8a6d1f;padding:8px;border-radius:8px;width:100%;font-weight:700;cursor:pointer;">➕ Agregar ocasión</button>
+    <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
+      <button class="btn bg" onclick="cerrarGestionOcasiones()">Cancelar</button>
+      <button class="btn" id="gest-ocasion-guardar" onclick="guardarGestionOcasiones()" style="background:#C9A84C;color:#000;font-weight:800;">💾 Guardar</button>
+    </div>
   </div>
 </div>
 
