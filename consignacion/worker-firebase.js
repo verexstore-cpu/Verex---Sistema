@@ -2649,6 +2649,24 @@ async function enviar(){
           const prodPrueba = await sb.get("stock", d.codigo).catch(() => null);
           const esPruebaLead = !!(prodPrueba && prodPrueba.esPrueba);
           if (esPruebaLead && env.PAYPAL_ENV === "live") { result = { ok: false, error: "producto_de_prueba" }; break; }
+          // Pedido USA (se paga en línea): el precio NO se toma del navegador — se verifica contra el inventario,
+          // y a un pedido que ya tiene su cobro creado no se le pueden agregar más productos.
+          let precioVerificadoUSA = null;
+          if (d.pais === "US") {
+            if (d.pedidoId) {
+              const previos = await sb.query("leads", "pedidoId", "eq", String(d.pedidoId));
+              if (previos.some(l => l.pagoCreadoEn)) { result = { ok: false, error: "pedido_cerrado" }; break; }
+            }
+            // Si no coincide (p. ej. los catálogos de cliente /c con descuento del link, que cobran por PayPal.me y los
+            // revisa el admin a mano) el lead se guarda igual pero SIN la marca precioVerificado: así no se puede
+            // crear un cobro en línea (CREAR_ORDEN_PAYPAL / CREAR_ENLACE_PAGO_WOMPI) con ese precio.
+            if (prodPrueba) {
+              const hermanos = prodPrueba.set_config ? (await sb.getAll("stock")).filter(x => _baseDeCodigo(x.codigo || x.id).toUpperCase() === _baseDeCodigo(d.codigo).toUpperCase()) : [];
+              const permitidos = preciosPermitidosUSA(prodPrueba, hermanos, d.codigoCab);
+              const pedido = Math.round((parseFloat(d.precio) || 0) * 100) / 100;
+              precioVerificadoUSA = permitidos.find(p => Math.abs(p - pedido) < 0.011) ?? null;
+            }
+          }
           // Reserva atómica al momento del pedido (no cuando un admin lo
           // confirma después) — así el catálogo deja de mostrar la pieza
           // como disponible de inmediato, en vez de dejar una ventana donde
@@ -2673,7 +2691,8 @@ async function enviar(){
             afiliado: d.afiliado || "",
             codigo: d.codigo,
             nombre: d.nombre || "",
-            precio: parseFloat(d.precio) || 0,
+            precio: precioVerificadoUSA != null ? precioVerificadoUSA : (parseFloat(d.precio) || 0),
+            ...(precioVerificadoUSA != null ? { precioVerificado: true } : {}),
             qty: qtyLead,
             foto: d.foto || "",
             fecha: new Date().toISOString(),
@@ -2766,7 +2785,7 @@ async function enviar(){
             }
           } catch(leadEmailErr) { console.error("Lead email error:", leadEmailErr); }
 
-          result = { ok: true, leadId };
+          result = { ok: true, leadId, ...(d.pais === "US" ? { precioVerificado: precioVerificadoUSA != null } : {}) };
           break;
         }
 
@@ -2985,10 +3004,12 @@ async function enviar(){
         // El Salvador) por el monto exacto del pedido. Mismo nivel de
         // confianza público que ENVIAR_PEDIDO_USA — sin auth de admin.
         case "CREAR_ENLACE_PAGO_WOMPI": {
-          const montoWompi = parseFloat(d.monto);
-          if (!d.pedidoId || !(montoWompi > 0) || montoWompi > 50000) {
+          if (!RE_PEDIDO_USA.test(String(d.pedidoId || "")) || !(parseFloat(d.monto) > 0) || parseFloat(d.monto) > 50000) {
             result = { ok: false, error: "Pedido inválido" }; break;
           }
+          const cobroW = await prepararCobroUSA(sb, String(d.pedidoId), d);
+          if (!cobroW.ok) { result = cobroW; break; }
+          const montoWompi = cobroW.total;
           try {
             const token = await wompiToken(env);
             const ahora = new Date();
@@ -3035,7 +3056,9 @@ async function enviar(){
               console.error("Wompi enlace error:", dataEnlace);
               result = { ok: false, error: "No se pudo generar el link de pago" }; break;
             }
-            result = { ok: true, urlEnlace: dataEnlace.urlEnlace, idEnlace: dataEnlace.idEnlace, numeroPedido: await numeroPedidoUSA(sb, String(d.pedidoId)) };
+            const numeroW = await numeroPedidoUSA(sb, String(d.pedidoId));
+            await cerrarCobroUSA(sb, cobroW, { pagoLink: dataEnlace.urlEnlace, metodoPagoUSA: "wompi", numeroPedidoUSA: numeroW || "" });
+            result = { ok: true, urlEnlace: dataEnlace.urlEnlace, idEnlace: dataEnlace.idEnlace, numeroPedido: numeroW, total: montoWompi };
           } catch(wompiErr) {
             console.error("Wompi error:", wompiErr);
             result = { ok: false, error: "No se pudo generar el link de pago" };
@@ -3121,8 +3144,11 @@ async function enviar(){
         case "CREAR_ORDEN_PAYPAL": {
           if (!paypalConfigurado(env)) { result = { ok: false, error: "paypal_no_configurado" }; break; }
           const pid = String(d.pedidoId || "");
-          const montoPP = Math.round(parseFloat(d.monto) * 100) / 100;
-          if (!RE_PEDIDO_USA.test(pid) || !(montoPP > 0) || montoPP > 50000) { result = { ok: false, error: "pedido_invalido" }; break; }
+          if (!RE_PEDIDO_USA.test(pid) || !(parseFloat(d.monto) > 0) || parseFloat(d.monto) > 50000) { result = { ok: false, error: "pedido_invalido" }; break; }
+          // El monto lo calcula el servidor (productos verificados + cupón + envío); el del navegador solo se compara.
+          const cobroPP = await prepararCobroUSA(sb, pid, d);
+          if (!cobroPP.ok) { result = cobroPP; break; }
+          const montoPP = cobroPP.total;
           const baseRet = (env.PAYPAL_RETURN_BASE || "https://us.verexstore.com/").replace(/\/?$/, "/");
           const numeroPP = await numeroPedidoUSA(sb, pid);
           try {
@@ -3143,7 +3169,8 @@ async function enviar(){
               console.error("PayPal crear orden:", o.status, JSON.stringify(o.data).slice(0, 300));
               result = { ok: false, error: "paypal_error" }; break;
             }
-            result = { ok: true, orderId: o.data.id, urlAprobar: link.href, numeroPedido: numeroPP };
+            await cerrarCobroUSA(sb, cobroPP, { paypalOrderId: o.data.id, pagoLink: link.href, numeroPedidoUSA: numeroPP || "", reservaExpiraEn: new Date(Date.now() + RESERVA_PAYPAL_CHECKOUT_MS).toISOString() });
+            result = { ok: true, orderId: o.data.id, urlAprobar: link.href, numeroPedido: numeroPP, total: montoPP };
           } catch (ePP) {
             console.error("PayPal crear orden error:", ePP);
             result = { ok: false, error: "paypal_error" };
@@ -6773,7 +6800,7 @@ function paypalCapturaDe(order) {
 }
 // ¿El monto cobrado coincide con el total que quedó registrado en el pedido? (evita marcar pagado un pago por menos)
 function montoCoincide(leads, captura) {
-  const esperado = leads.find(l => l.totalPedidoUSD != null)?.totalPedidoUSD;
+  const esperado = leads.find(l => l.totalVerificadoUSD != null)?.totalVerificadoUSD ?? leads.find(l => l.totalPedidoUSD != null)?.totalPedidoUSD;
   if (esperado == null) return true;   // pedidos viejos sin total guardado
   const cobrado = parseFloat(captura?.amount?.value);
   return captura?.amount?.currency_code === "USD" && Math.abs(cobrado - parseFloat(esperado)) < 0.011;
@@ -7015,6 +7042,107 @@ function stockPublico(p) {
   const o = {};
   for (const k of CAMPOS_STOCK_PUBLICOS) if (p[k] !== undefined) o[k] = p[k];
   return o;
+}
+
+// ── Total de un pedido USA calculado en el servidor ──
+// Mismas reglas que us.verexstore.com (index.html → TRAMOS_ENVIO_US / MINIMO_COMPRA_USD / calcularDescuentoCupon).
+// Si cambian los tramos o el mínimo en la tienda, cambiarlos también aquí (y en functions/_lib/knowledge.js).
+const TRAMOS_ENVIO_USA = [
+  { min: 50, max: 74.99, costo: 19.99 },
+  { min: 75, max: 99.99, costo: 14.99 },
+  { min: 100, max: 149.99, costo: 9.99 },
+  { min: 150, max: Infinity, costo: 0 },
+];
+const MINIMO_COMPRA_USA = 50;
+const _r2 = n => Math.round(n * 100) / 100;
+// Precios válidos de una línea del carrito USA según el inventario. Un set de anillos (set_config "a+b") se vende como
+// pareja: unisex (código …UT7) = precio × piezas; dama + caballero = precio dama + precio de la talla de caballero
+// (codigoCab, o cualquier talla C del diseño si no llegó); formato viejo = precio + precio_caballero.
+function preciosPermitidosUSA(row, hermanos, codigoCab) {
+  const p = parseFloat(row.precio) || 0;
+  if (!row.set_config) return [_r2(p)];
+  const [a, b] = String(row.set_config).split("+").map(n => parseInt(n) || 0);
+  const out = new Set();
+  const cod = String(row.codigo || row.id || "");
+  if (/UT\d/i.test(cod)) out.add(_r2(p * ((a + b) || 1)));
+  if (parseFloat(row.precio_caballero) > 0) out.add(_r2(p + parseFloat(row.precio_caballero)));
+  const cabs = (hermanos || []).filter(h => /CT\d/i.test(String(h.codigo || h.id || "")) && h.estado !== "inactivo");
+  const elegido = codigoCab ? cabs.find(h => String(h.codigo || h.id).toUpperCase() === String(codigoCab).toUpperCase()) : null;
+  (elegido ? [elegido] : cabs).forEach(h => out.add(_r2(p + (parseFloat(h.precio) || 0))));
+  if (!out.size) out.add(_r2(p));
+  return [...out];
+}
+function descuentoCuponUSA(cup, lineas, subtotal) {
+  if (!cup) return 0;
+  if (cup.tipo !== "monto_minimo" && (parseFloat(cup.montoMinimo) || 0) > 0 && subtotal < parseFloat(cup.montoMinimo)) return 0;
+  let d = 0;
+  switch (cup.tipo) {
+    case "porcentaje_total": d = subtotal * (parseFloat(cup.descuento) || 0) / 100; break;
+    case "porcentaje_categoria": {
+      const cats = String(cup.categorias || "").split(",").map(x => x.trim()).filter(Boolean);
+      d = lineas.filter(l => cats.includes(String(l.codigo || "").split("-")[0].toUpperCase())).reduce((s, l) => s + l.precio * l.qty, 0) * (parseFloat(cup.descuento) || 0) / 100; break;
+    }
+    case "segundo_mitad": {
+      const unidades = lineas.flatMap(l => Array(l.qty).fill(l.precio));
+      d = unidades.length < 2 ? 0 : Math.min(...unidades) * 0.5; break;
+    }
+    case "monto_minimo": d = subtotal < (parseFloat(cup.montoMinimo) || 0) ? 0 : (parseFloat(cup.descuentoFijo) || 0); break;
+    case "envio_gratis": d = 0; break;
+    case "descuento_fijo": d = parseFloat(cup.descuentoFijo) || 0; break;
+    default: d = subtotal * (parseFloat(cup.descuento) || 0) / 100;
+  }
+  const tope = parseFloat(cup.descuentoMax) || 0;
+  if (tope > 0) d = Math.min(d, tope);
+  return _r2(Math.max(0, Math.min(d, subtotal)));
+}
+function totalPedidoUSA(lineas, cup) {
+  const subtotal = _r2(lineas.reduce((s, l) => s + l.precio * l.qty, 0));
+  if (subtotal < MINIMO_COMPRA_USA) return { error: "minimo_compra" };
+  const descuento = descuentoCuponUSA(cup, lineas, subtotal);
+  let envio = (TRAMOS_ENVIO_USA.find(t => subtotal >= t.min && subtotal <= t.max) || { costo: 0 }).costo;   // tramo con el subtotal antes del cupón
+  const minOk = !cup || cup.tipo === "monto_minimo" || !((parseFloat(cup.montoMinimo) || 0) > subtotal);
+  if (cup && cup.tipo === "envio_gratis" && minOk) envio = 0;
+  return { subtotal, descuento, envio, total: _r2(subtotal - descuento + envio) };
+}
+// Antes de crear el cobro: lee los productos del pedido (ya verificados en REGISTRAR_LEAD), valida el cupón y calcula
+// el total. Si el navegador mostró otro total, no se cobra (precios cambiados o carrito alterado).
+async function prepararCobroUSA(sb, pid, d) {
+  const leads = (await sb.query("leads", "pedidoId", "eq", pid)).filter(l => l.pais === "US" && l.estado !== "cancelado");
+  if (!leads.length) return { ok: false, error: "pedido_sin_productos" };
+  if (leads.length > 30) return { ok: false, error: "pedido_invalido" };
+  // Reintento del mismo pedido (otra pestaña, error de red): se reusa el total ya verificado y el cupón no se gasta dos veces.
+  const yaCerrado = leads.find(l => l.totalVerificadoUSD != null);
+  if (yaCerrado) return { ok: true, leads, total: yaCerrado.totalVerificadoUSD, reintento: true };
+  if (leads.some(l => !l.precioVerificado)) return { ok: false, error: "monto_no_coincide" };   // algún precio no coincide con el inventario
+  let cup = null;
+  const codCup = String(d.cupon || "").trim().toUpperCase();
+  if (codCup) {
+    cup = await sb.get("cupones", codCup);
+    const err = cuponNoUsable(cup, leads[0].correoCliente, "us");
+    if (err) return { ok: false, error: "cupon_invalido", motivo: err.motivo };
+  }
+  const lineas = leads.map(l => ({ codigo: l.codigo, precio: parseFloat(l.precio) || 0, qty: parseInt(l.qty) || 1 }));
+  const calc = totalPedidoUSA(lineas, cup);
+  if (calc.error) return { ok: false, error: calc.error };
+  if (Math.abs(calc.total - (parseFloat(d.monto) || 0)) > 0.011) return { ok: false, error: "monto_no_coincide", total: calc.total };
+  return { ok: true, leads, cup, ...calc };
+}
+// Después de crear el cobro: gasta el cupón (una sola vez) y deja en cada producto del pedido el total verificado,
+// el link/orden de pago y la marca de pedido cerrado.
+async function cerrarCobroUSA(sb, cobro, extra) {
+  if (!cobro.reintento && cobro.cup) {
+    const cup = cobro.cup, idCli = idClienteCupon(cobro.leads[0].correoCliente);
+    const usos = (parseInt(cup.usosActuales) || 0) + 1, limite = parseInt(cup.limiteUsos) || 0;
+    const patchCup = { usosActuales: usos, activo: limite > 0 ? usos < limite : true };
+    if (cup.unoPorCliente && idCli) patchCup.usadoPor = [...(Array.isArray(cup.usadoPor) ? cup.usadoPor : []), idCli].slice(-5000);
+    await sb.update("cupones", cup.codigo, patchCup);
+  }
+  const patch = { ...extra, pagoCreadoEn: new Date().toISOString() };
+  if (!cobro.reintento) Object.assign(patch, {
+    totalVerificadoUSD: cobro.total, totalPedidoUSD: cobro.total, envioUSD: cobro.envio, descuentoUSD: cobro.descuento,
+    cuponUSA: cobro.cup ? cobro.cup.codigo : ""
+  });
+  await Promise.all(cobro.leads.map(l => sb.update("leads", l.id, patch)));
 }
 
 // ── Cupones: condiciones de uso ──

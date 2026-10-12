@@ -48,7 +48,7 @@ Worker (worker-firebase.js) → npx wrangler deploy (manual)
 - Vive en el repo `verex-catalogo-us`: widget en `assistant/`, backend en `functions/` (Pages Functions `/api/chat`, `/api/products`, `/api/search`).
 - Lee el inventario real del Worker (`GET_CATALOGO`); no tiene productos escritos en el código.
 - IA vía Groq (misma cuenta que el Worker): la clave va SOLO como Secret `GROQ_API_KEY` en Cloudflare Pages (proyecto verex-catalogo-us). Sin clave funciona por reglas.
-- Si cambian tarifas de envío / mínimo de compra en `verex-catalogo-us/index.html`, actualizar también `functions/_lib/knowledge.js`.
+- Si cambian tarifas de envío / mínimo de compra en `verex-catalogo-us/index.html`, actualizar también `functions/_lib/knowledge.js` **y el Worker** (`TRAMOS_ENVIO_USA` / `MINIMO_COMPRA_USA` en `worker-firebase.js`): el total que se cobra en PayPal/Wompi lo calcula el servidor, y si no coincide con la tienda el checkout se rechaza.
 - Guía completa: `verex-catalogo-us/docs/AI-ASSISTANT.md`.
 
 ---
