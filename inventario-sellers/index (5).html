@@ -6,11 +6,11 @@
 <title>VEREX — Mi Inventario</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
-/* Móvil/tablet: la página no se desplaza hacia los lados — todo queda dentro del ancho de la pantalla */
-html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
-@supports not (overflow:clip){ html,body{ overflow-x:hidden; } }
-
     @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+    /* Móvil/tablet: la página no se desplaza hacia los lados — todo queda dentro del ancho de la pantalla.
+       (Va después del @import: un @import que no es lo primero de la hoja se ignora y se pierden las fuentes.) */
+    html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
+    @supports not (overflow:clip){ html,body{ overflow-x:hidden; } }
     :root {
         --negro: #0a0a0a; --blanco: #f8f6f1; --dorado: #C9A84C;
         --dorado-claro: #E8C96A; --plateado: #B8BCC8;
@@ -573,7 +573,10 @@ async function compartirMiCatalogo() {
                 nota_interna: "Auto-generado por el vendedor " + (vendedorData.codigo || ""),
                 afiliadoCodigo: vendedorData.codigo || "",
                 dias: 30,
-                prods
+                prods,
+                // Sin contraseña de admin: el servidor valida al vendedor con
+                // su token (+ PIN) y arma él mismo nombre/nota/código.
+                _vendedor: _miVendedorId, _token: _miToken, _pin: _pinIngresado
             })
         });
         const out = await res.json();
