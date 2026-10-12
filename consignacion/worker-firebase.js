@@ -2304,8 +2304,9 @@ async function enviar(){
 
           result = {
             ok:        true,
-            // `ocasiones` son etiquetas internas del admin (Catálogo Cliente) — no se publican en la tienda.
-            productos: final.map(({ ocasiones, ...p }) => p),
+            // `ocasiones` son etiquetas internas del admin (Catálogo Cliente) y `costo` es lo que te costó la pieza
+            // (Rentabilidad de Logística USA) — ninguno de los dos se publica en la tienda.
+            productos: final.map(({ ocasiones, costo, ...p }) => p),
             cupones:   cups.filter(c => c.activo !== false && c.activo !== "false"),
             config:    sanearConfigPublico(cfg2)
           };
@@ -3290,6 +3291,12 @@ async function enviar(){
           if (d.trackingDHL !== undefined) patch.trackingDHL = String(d.trackingDHL || "").trim();
           if (d.notasUSA !== undefined) patch.notasUSA = String(d.notasUSA || "").trim();
           if (d.entregadoUSA !== undefined) patch.entregadoUSA = !!d.entregadoUSA;
+          // Lo que costó de verdad el envío DHL de este pedido (Rentabilidad). null/"" = usar la tarifa fija de los ajustes.
+          if (d.dhlRealUSA !== undefined) {
+            const v = d.dhlRealUSA === null || d.dhlRealUSA === "" ? null : Math.round(parseFloat(d.dhlRealUSA) * 100) / 100;
+            if (v !== null && !(v >= 0 && v < 10000)) { result = { ok: false, error: "Costo de envío inválido" }; break; }
+            patch.dhlRealUSA = v;
+          }
 
           // La reserva normalmente ya se hizo en REGISTRAR_LEAD, al momento del
           // pedido — acá solo se confirma (deja de poder vencer sola). Un lead
@@ -3946,6 +3953,43 @@ async function enviar(){
             await sb.setMany("stock", frescos.map(x => ({ ...x, ocasiones: nuevasOc.get(String(x.id)) })));
           }
           result = { ok: true, actualizados: cambios };
+          break;
+        }
+
+        // ── Rentabilidad USA (Logística USA del admin) ──
+        // Ajustes (tarifa DHL fija, comisión de pago, empaque) + costo de cada pieza, por código. Solo admin:
+        // el costo nunca sale en GET_CATALOGO ni en GET_STOCK público (lista blanca de campos).
+        case "RENTABILIDAD_USA_DATOS": {
+          if (!esAdmin) return forbidden();
+          const [cfgR, stockR] = await Promise.all([sb.get("config", "settings"), sb.getAll("stock")]);
+          const costos = {};
+          for (const x of stockR) {
+            const c = parseFloat(x.costo);
+            if (x.costo !== undefined && x.costo !== null && x.costo !== "" && c >= 0) costos[String(x.codigo || x.id).toUpperCase()] = c;
+          }
+          result = { ok: true, ajustes: (cfgR && cfgR.rentabilidadUSA) || null, costos };
+          break;
+        }
+
+        // Costo de una pieza: se guarda en TODAS las tallas del diseño (mismo código base), como las ocasiones.
+        // costo null/"" = borrarlo. Solo escribe el campo `costo` (patch), nunca toca cantidades.
+        case "STOCK_COSTO": {
+          if (!esAdmin) return forbidden();
+          const codC = String(d.codigo || "").trim();
+          if (!codC) { result = { ok: false, error: "codigo requerido" }; break; }
+          const costoN = d.costo === null || d.costo === "" ? null : Math.round(parseFloat(d.costo) * 100) / 100;
+          if (costoN !== null && !(costoN >= 0 && costoN < 100000)) { result = { ok: false, error: "Costo inválido" }; break; }
+          const baseC = _baseDeCodigo(codC).toUpperCase();
+          const filasC = (await sb.getAll("stock")).filter(x => {
+            const c = String(x.codigo || x.id).toUpperCase();
+            return c === codC.toUpperCase() || _baseDeCodigo(c).toUpperCase() === baseC || String(x.codigoBase || "").toUpperCase() === baseC;
+          });
+          if (!filasC.length) { result = { ok: false, error: "Producto no encontrado" }; break; }
+          const codsC = filasC.map(x => String(x.codigo || x.id));
+          // 50 subrequests por petición: pocas tallas → patch por fila; muchas → en bloque releyendo justo antes.
+          if (codsC.length <= 30) await Promise.all(codsC.map(c => sb.update("stock", c, { costo: costoN })));
+          else { const frescos = await sb.getMany("stock", codsC); await sb.setMany("stock", frescos.map(x => ({ ...x, costo: costoN }))); }
+          result = { ok: true, costo: costoN, codigos: codsC };
           break;
         }
 
@@ -6959,7 +7003,8 @@ function stockPublico(p) {
 
 function sanearConfigPublico(cfg) {
   if (!cfg || typeof cfg !== "object") return {};
-  const { passHash, otp, otpExp, ssoTokens, ...publico } = cfg;
+  // rentabilidadUSA (tarifa DHL, comisión de pago, empaque) es información interna del negocio: solo la lee el admin.
+  const { passHash, otp, otpExp, ssoTokens, rentabilidadUSA, ...publico } = cfg;
   return publico;
 }
 
