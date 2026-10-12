@@ -434,6 +434,7 @@ function abrirStockNuevoProd() {
     document.getElementById("sn-desc").value = "";
     document.getElementById("sn-desc-tienda").value = "";
     const inpCaract = document.getElementById("sn-caract"); if (inpCaract) inpCaract.value = "";
+    iniciarOcasionesSN();
     document.getElementById("sn-btn-ia").style.display = "none";
     document.getElementById("sn-ia-estado").style.display = "none";
     document.getElementById("sn-talla-container").style.display = "none";
@@ -908,6 +909,9 @@ async function guardarStockNuevo() {
         const desc          = document.getElementById("sn-desc").value.trim();
         const descTienda    = document.getElementById("sn-desc-tienda").value.trim();
         const caractEspecial = (document.getElementById("sn-caract")?.value || "").trim();
+        // Ocasiones elegidas (15 años, compromiso…): se guardan en cada talla que se registra.
+        const ocasionesSN = [..._snOcasiones];
+        const conOcasiones = ocasionesSN.length ? { ocasiones: ocasionesSN } : {};
         const setConfig  = setConfigSN || null;
         const precioNum  = parseFloat(precio);
 
@@ -945,6 +949,7 @@ async function guardarStockNuevo() {
                     material: _snMaterial || "",
                     descripcion: desc, descripcionTienda: descTienda,
                     caracterEspecial: caractEspecial,
+                    ...conOcasiones,
                     set_config: setConfig || undefined,
                     precio_caballero: precioCaballeroSN
                 });
@@ -973,6 +978,7 @@ async function guardarStockNuevo() {
                             material: _snMaterial || "",
                             descripcion: desc, descripcionTienda: descTienda,
                             caracterEspecial: caractEspecial,
+                            ...conOcasiones,
                             set_config: setConfig || undefined,
                     precio_caballero: precioCaballeroSN
                         });
@@ -980,10 +986,17 @@ async function guardarStockNuevo() {
                     }
                 }
             }
+            // Códigos escaneados de un diseño que ya existía (reabastecer o talla nueva): sus otras tallas no pasan
+            // por STOCK_REGISTRAR, así que se etiqueta el diseño completo (el Worker expande por código base).
+            let avisoOc = "";
+            if (ocasionesSN.length && (restock.length || nuevos.some(c => stockData.some(s => getCodigoBase(s.codigo) === getCodigoBase(c.codigo))))) {
+                const rOc = await apiPost({ accion: "STOCK_OCASIONES", codigos: _snMultiCodigos.map(c => c.codigo).slice(0, 60), agregar: ocasionesSN }).catch(() => null);
+                if (!rOc || !rOc.ok) avisoOc = " · ⚠️ las ocasiones del diseño NO se guardaron (márcalas en ✏️ Editar)";
+            }
             const codigosGuardados = _snMultiCodigos.filter((_, i) => i < guardados).map(x => ({ codigo: x.codigo, qty: x.qty || 1 }));
             const msgNuevos  = nuevos.length  ? `${nuevos.length} nueva${nuevos.length>1?"s":""}` : "";
             const msgRestock = restock.length ? `${restock.length} reabastecida${restock.length>1?"s":""}` : "";
-            toast(`✅ ${[msgNuevos, msgRestock].filter(Boolean).join(" + ")} en bodega`);
+            toast(`✅ ${[msgNuevos, msgRestock].filter(Boolean).join(" + ")} en bodega${avisoOc}`, avisoOc ? "#f97316" : undefined, avisoOc ? 8000 : undefined);
             _snMultiCodigos = [];
             cerrarModal("modal-stock-nuevo");
             await cargarStock();
@@ -1043,6 +1056,7 @@ async function guardarStockNuevo() {
                     material: _snMaterial || "",
                     descripcion: desc, descripcionTienda: descTienda,
                     caracterEspecial: caractEspecial,
+                    ...conOcasiones,
                     set_config: setConfig || undefined
                 });
                 let res, baseFinal = baseUsar;
@@ -1107,6 +1121,7 @@ async function guardarStockNuevo() {
                         material: _snMaterial || "",
                         descripcion: desc, descripcionTienda: descTienda,
                         caracterEspecial: caractEspecial,
+                        ...conOcasiones,
                         set_config: setConfig || undefined,
                         precio_caballero: precioCaballeroSN
                     };
@@ -1150,6 +1165,7 @@ async function guardarStockNuevo() {
                 material: _snMaterial || "",
                 descripcion: desc, descripcionTienda: descTienda,
                 caracterEspecial: caractEspecial,
+                ...conOcasiones,
                 set_config: setConfig || undefined
             });
             let res;

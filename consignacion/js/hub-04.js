@@ -421,6 +421,42 @@ const OCASIONES_DEFAULT_HUB = [
 let _ocasionesHub = null;
 let _epOcasiones = new Set();
 let _epOcasionesOrig = [];
+let _snOcasiones = new Set();   // formulario Stock → Nuevo producto
+
+// Vuelve a leer la lista por si se editó en el admin; mientras tanto se usa la última conocida.
+function _refrescarListaOcasiones(alTerminar) {
+    apiPost({ accion: "GET_CONFIG" }).then(r => {
+        const l = r && r.config && r.config.ocasiones;
+        if (Array.isArray(l) && l.length) { _ocasionesHub = l; alTerminar(); }
+    }).catch(() => {});
+}
+
+// Chips de ocasión; `fn` es el nombre de la función global que alterna una ocasión.
+// Una ocasión oculta solo se muestra si ya está marcada (para poder quitarla).
+function _chipsOcasionesHTML(seleccion, fn) {
+    const lista = _ocasionesHub || OCASIONES_DEFAULT_HUB;
+    return lista.filter(o => !o.oculta || seleccion.has(o.id)).map(o => {
+        const on = seleccion.has(o.id);
+        return `<button type="button" data-id="${o.id}" onclick="${fn}(this.dataset.id)"
+            style="padding:5px 10px;border:1px solid ${on ? "var(--dorado)" : "var(--borde)"};border-radius:14px;background:${on ? "var(--dorado)" : "var(--gris2)"};color:${on ? "#111" : "var(--blanco)"};font-size:11px;font-weight:700;cursor:pointer;">${o.emoji || ""} ${String(o.nombre || o.id).replace(/</g, "&lt;")}</button>`;
+    }).join("");
+}
+
+function iniciarOcasionesSN() {
+    _snOcasiones = new Set();
+    renderOcasionesSN();
+    _refrescarListaOcasiones(renderOcasionesSN);
+}
+
+function renderOcasionesSN() {
+    const cont = document.getElementById("sn-ocasiones");
+    if (cont) cont.innerHTML = _chipsOcasionesHTML(_snOcasiones, "toggleOcasionSN");
+}
+
+function toggleOcasionSN(id) {
+    if (_snOcasiones.has(id)) _snOcasiones.delete(id); else _snOcasiones.add(id);
+    renderOcasionesSN();
+}
 
 // Ocasiones que ya tiene el diseño (unión de todas sus tallas activas).
 function _ocasionesDelDiseno(codigo) {
@@ -435,23 +471,12 @@ function iniciarOcasionesEP(codigo) {
     _epOcasionesOrig = _ocasionesDelDiseno(codigo);
     _epOcasiones = new Set(_epOcasionesOrig);
     renderOcasionesEP();
-    // Se vuelve a leer la lista por si se editó en el admin; mientras tanto se usa la última conocida.
-    apiPost({ accion: "GET_CONFIG" }).then(r => {
-        const l = r && r.config && r.config.ocasiones;
-        if (Array.isArray(l) && l.length) { _ocasionesHub = l; renderOcasionesEP(); }
-    }).catch(() => {});
+    _refrescarListaOcasiones(renderOcasionesEP);
 }
 
 function renderOcasionesEP() {
     const cont = document.getElementById("ep-ocasiones");
-    if (!cont) return;
-    const lista = _ocasionesHub || OCASIONES_DEFAULT_HUB;
-    // Una ocasión oculta solo se muestra si este producto ya la tiene (para poder quitarla).
-    cont.innerHTML = lista.filter(o => !o.oculta || _epOcasiones.has(o.id)).map(o => {
-        const on = _epOcasiones.has(o.id);
-        return `<button type="button" data-id="${o.id}" onclick="toggleOcasionEP(this.dataset.id)"
-            style="padding:5px 10px;border:1px solid ${on ? "var(--dorado)" : "var(--borde)"};border-radius:14px;background:${on ? "var(--dorado)" : "var(--gris2)"};color:${on ? "#111" : "var(--blanco)"};font-size:11px;font-weight:700;cursor:pointer;">${o.emoji || ""} ${String(o.nombre || o.id).replace(/</g, "&lt;")}</button>`;
-    }).join("");
+    if (cont) cont.innerHTML = _chipsOcasionesHTML(_epOcasiones, "toggleOcasionEP");
 }
 
 function toggleOcasionEP(id) {
