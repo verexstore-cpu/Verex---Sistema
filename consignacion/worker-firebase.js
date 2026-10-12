@@ -3934,8 +3934,15 @@ async function enviar(){
             if (antes.length === despues.length && antes.every(o => despues.includes(o))) continue;
             cambios.push({ codigo: String(x.codigo || x.id), ocasiones: despues });
           }
-          for (let i = 0; i < cambios.length; i += 20) {
-            await Promise.all(cambios.slice(i, i + 20).map(c => sb.update("stock", c.codigo, { ocasiones: c.ocasiones })));
+          // Límite del plan: 50 subrequests por petición. Pocas filas (lo normal: un diseño desde el Hub, o 5 desde
+          // el modo rápido del admin) → patch por fila, que nunca toca cantidades. Muchas → en bloque (1 petición
+          // por 100 filas) releyendo las filas justo antes de escribir, igual que STOCK_PUBLICAR_VISIBLE.
+          if (cambios.length <= 30) {
+            await Promise.all(cambios.map(c => sb.update("stock", c.codigo, { ocasiones: c.ocasiones })));
+          } else {
+            const nuevasOc = new Map(cambios.map(c => [c.codigo, c.ocasiones]));
+            const frescos = await sb.getMany("stock", [...nuevasOc.keys()]);
+            await sb.setMany("stock", frescos.map(x => ({ ...x, ocasiones: nuevasOc.get(String(x.id)) })));
           }
           result = { ok: true, actualizados: cambios };
           break;

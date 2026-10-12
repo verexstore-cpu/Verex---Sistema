@@ -5670,7 +5670,8 @@ async function guardarEtiquetasOcasion() {
     const btn = document.getElementById("etq-guardar");
     btn.disabled = true; btn.textContent = "⏳ Guardando...";
     const disenos = new Map(_disenosParaEtiquetar().map(d => [d.base, d]));
-    // Agrupar por (ocasión, agregar/quitar) → una llamada por cada 15 diseños.
+    // Agrupar por (ocasión, agregar/quitar) → una llamada por cada 5 diseños (el Worker
+    // tiene un límite de 50 subrequests por petición; ver STOCK_OCASIONES).
     const grupos = new Map();
     _etqPendientes.forEach((agregar, k) => {
         const [id, base] = [k.slice(0, k.indexOf("|")), k.slice(k.indexOf("|") + 1)];
@@ -5682,8 +5683,8 @@ async function guardarEtiquetasOcasion() {
     });
     let ok = 0, fallos = 0;
     for (const g of grupos.values()) {
-        for (let i = 0; i < g.codigos.length; i += 15) {
-            const codigos = g.codigos.slice(i, i + 15);
+        for (let i = 0; i < g.codigos.length; i += 5) {
+            const codigos = g.codigos.slice(i, i + 5);
             try {
                 const r = await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "STOCK_OCASIONES", _pass: ADMIN_PASS, codigos, [g.agregar ? "agregar" : "quitar"]: [g.id] }) }).then(x => x.json());
                 if (!r?.ok) throw new Error(r?.error || "error");
