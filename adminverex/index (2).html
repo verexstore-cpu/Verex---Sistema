@@ -6113,7 +6113,33 @@ function _wzResumenPlantilla(t) {
     const oc = (t.ocasiones || []).map(id => ocasionesLista(true).find(o => o.id === id)?.nombre).filter(Boolean);
     const cat = (t.categorias || []).map(k => (CAT_MAP[k] || k).replace(/^\S+\s/, ""));
     return [...oc, ...cat, ...(t.tallas || []).map(x => "T" + x), t.precio && (t.precio.min || t.precio.max) ? _wzTextoPrecio(t.precio) : "",
-        t.validez ? `${t.validez} días` : "", { general: "promo general", custom: "promo propia" }[t.promo] || ""].filter(Boolean).join(" · ");
+        t.validez ? `${t.validez} días` : "", t.promo === "general" ? "promo general" : "",
+        ...(t.promo === "custom" ? _wzResumenPromoDatos(t.promoDatos) : [])].filter(Boolean).join(" · ");
+}
+
+function _wzResumenPromoDatos(pd) {
+    if (!pd) return ["promo propia"];
+    const r = [];
+    if (pd.descPct > 0) r.push(`${pd.descPct}% desc.`);
+    if (pd.banner?.txt) r.push(`banner «${pd.banner.txt}»`);
+    if (pd.promoCarrito) r.push(_etiquetaPromoCarrito(pd.promoCarrito));
+    if (pd.envioGratisDesde > 0) r.push(`envío gratis desde $${pd.envioGratisDesde}`);
+    if (pd.regaloSorpresa?.monto > 0) r.push(`regalo desde $${pd.regaloSorpresa.monto}`);
+    return r.length ? r : ["sin promo"];
+}
+
+// La promo que hay ahora en el formulario, con la misma forma que la promo general
+// (así _cargarPromoEnForm la puede volver a poner tal cual).
+function _wzLeerPromoDatos() {
+    const bTxt = _wzVal("cat-banner-txt");
+    const rMonto = parseFloat(_wzVal("cat-regalo-monto")) || 0, rTexto = _wzVal("cat-regalo-texto");
+    return {
+        banner: bTxt ? { txt: bTxt, sub: _wzVal("cat-banner-sub"), color: _bannerColor } : null,
+        descPct: Math.min(90, Math.max(0, parseInt(_wzVal("cat-banner-desc-pct")) || 0)),
+        promoCarrito: _leerPromoCarritoUI(),
+        envioGratisDesde: parseFloat(_wzVal("cat-envio-gratis-desde")) || 0,
+        regaloSorpresa: (rMonto > 0 || rTexto) ? { monto: rMonto, texto: rTexto } : null,
+    };
 }
 
 function wzRenderPlantillas() {
@@ -6155,7 +6181,18 @@ async function wzGuardarPlantilla() {
         validez: _wzEl("cat-validez").value, promo: _wzPromoModo(),
         cantidad: parseInt(_wzEl("cat-var-size").value) || 36,
     };
-    if (await _wzGuardarListaPlantillas([..._wzPlantillas(), t].slice(-30))) toast(`📁 Plantilla «${nombre}» guardada`, "#22c55e");
+    // «Personalizada»: se guarda la promo completa (descuento, banner, carrito, envío, regalo).
+    if (t.promo === "custom") t.promoDatos = _wzLeerPromoDatos();
+    const lista = _wzPlantillas();
+    const iExiste = lista.findIndex(x => x.nombre.toLowerCase() === nombre.toLowerCase());
+    if (iExiste >= 0) {
+        if (!confirm(`Ya tienes una plantilla «${lista[iExiste].nombre}». ¿Actualizarla con lo que tienes ahora (filtros, vigencia y promo)?`)) return;
+        t.id = lista[iExiste].id;
+        const nueva = lista.slice(); nueva[iExiste] = t;
+        if (await _wzGuardarListaPlantillas(nueva)) toast(`📁 Plantilla «${nombre}» actualizada`, "#22c55e");
+        return;
+    }
+    if (await _wzGuardarListaPlantillas([...lista, t].slice(-30))) toast(`📁 Plantilla «${nombre}» guardada`, "#22c55e");
 }
 
 async function wzBorrarPlantilla(i) {
@@ -6170,7 +6207,14 @@ function wzUsarPlantilla(i) {
     _wzAplicarFiltros({ ...t, precioMin: t.precio?.min, precioMax: t.precio?.max });
     if (t.validez) _wzEl("cat-validez").value = t.validez;
     if (t.cantidad) _wzEl("cat-var-size").value = t.cantidad;
-    if (t.promo && !_wzEl("cat-es-afiliado").checked) wzElegirPromo(t.promo);
+    if (t.promo && !_wzEl("cat-es-afiliado").checked) {
+        if (t.promo === "custom" && t.promoDatos) {
+            _cargarPromoEnForm(t.promoDatos);          // queda en sus tarjetas, editable solo para este link
+            _wzEl("cat-usar-promo-gral").checked = false;
+            _wzModoPromo = "custom"; _wzPromoAbiertas.clear();
+            actualizarResumenPromoCatalogo();
+        } else wzElegirPromo(t.promo);
+    }
     toast(`📁 Plantilla «${t.nombre}» aplicada`, "#22c55e");
     wzIr(2);
 }
@@ -7888,7 +7932,7 @@ async function generarPDFCatalogo() {
                   style="background:rgba(239,68,68,0.08);color:#dc2626;border:1px solid rgba(239,68,68,0.3);padding:10px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">🚫 Desactivar</button>
               </div>
             </div>
-            <button type="button" class="wz-chip" style="margin-top:12px;" onclick="wzGuardarPlantilla()">📁 Guardar estos filtros como plantilla</button>
+            <button type="button" class="wz-chip" style="margin-top:12px;" onclick="wzGuardarPlantilla()">📁 Guardar como plantilla (filtros, vigencia y promo)</button>
           </div>
         </div>
       </div>
