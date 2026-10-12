@@ -1710,9 +1710,12 @@ async function moverItemDirecto(codigoOCodigos, destino) {
     // arreglo de códigos (tarjeta de grupo en la vista grid): mover desde el
     // grupo mueve TODAS las tallas en existencia de ese diseño, no solo la
     // que estaba activa/resaltada en ese momento.
-    stockSeleccionados = Array.isArray(codigoOCodigos) ? [...codigoOCodigos] : [codigoOCodigos];
-    if (destino === "tienda") await asignarATienda();
-    else if (destino === "bodega") await devolverABodega();
+    // Desde el grupo («Enviar todo» / «Devolver todo») se mueven TODAS las unidades de cada talla, no solo 1:
+    // antes una talla con 9 en bodega pasaba solo 1 a tienda. Desde una fila (una talla) sigue siendo 1 unidad.
+    const todo = Array.isArray(codigoOCodigos);
+    stockSeleccionados = todo ? [...codigoOCodigos] : [codigoOCodigos];
+    if (destino === "tienda") await asignarATienda(todo);
+    else if (destino === "bodega") await devolverABodega(todo);
     stockSeleccionados = [];
 }
 

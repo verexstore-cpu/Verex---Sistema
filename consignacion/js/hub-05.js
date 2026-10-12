@@ -281,12 +281,16 @@ async function eliminarStockItem(codigo) {
 }
 
 // ── ASIGNAR A TIENDA ─────────────────────────────────────────────────
-async function asignarATienda() {
+// todo = true: mueve TODAS las unidades que haya en bodega de cada talla (el Worker nunca mueve más de lo que hay).
+const _CANT_TODO = 100000;
+async function asignarATienda(todo = false) {
     if (!stockSeleccionados.length) return;
-    if (!confirm(`¿Publicar ${stockSeleccionados.length} producto(s) en la tienda online?`)) return;
-    const res = await apiPost({ accion: "STOCK_ASIGNAR_TIENDA", codigos: stockSeleccionados, cantidad: 1 });
+    const uds = todo ? stockSeleccionados.reduce((a, c) => a + (parseInt(stockData.find(p => p.codigo === c)?.stock_bodega) || 0), 0) : 0;
+    if (todo && !uds) { toast("⚠️ No hay unidades en bodega para enviar a tienda"); return; }
+    if (!confirm(todo ? `¿Enviar a tienda las ${uds} unidad(es) que hay en bodega de ${stockSeleccionados.length} talla(s)?` : `¿Publicar ${stockSeleccionados.length} producto(s) en la tienda online?`)) return;
+    const res = await apiPost({ accion: "STOCK_ASIGNAR_TIENDA", codigos: stockSeleccionados, cantidad: todo ? _CANT_TODO : 1 });
     if (res.ok) {
-        toast(`✅ ${res.publicados?.length || stockSeleccionados.length} producto(s) publicados en tienda`);
+        toast(todo ? `✅ ${uds} unidad(es) enviadas a tienda` : `✅ ${res.publicados?.length || stockSeleccionados.length} producto(s) publicados en tienda`);
         limpiarSeleccion();
         await cargarStock();
     } else {
@@ -330,9 +334,8 @@ async function confirmarAsignarVendedor() {
 }
 
 // ── DEVOLVER A BODEGA ────────────────────────────────────────────────
-async function devolverABodega() {
+async function devolverABodega(todo = false) {
     if (!stockSeleccionados.length) return;
-    if (!confirm(`¿Devolver ${stockSeleccionados.length} producto(s) a bodega?`)) return;
     // Detectar origen real según los contadores del producto
     const origen = (() => {
         const prod = stockData.find(p => p.codigo === stockSeleccionados[0]);
@@ -342,7 +345,11 @@ async function devolverABodega() {
         if (enConsig > 0 && enTienda === 0) return "consignacion";
         return "tienda";
     })();
-    const res = await apiPost({ accion: "STOCK_DEVOLVER_BODEGA", codigos: stockSeleccionados, cantidad: 1, origen });
+    const campo = origen === "consignacion" ? "stock_consignacion" : "stock_tienda";
+    const uds = todo ? stockSeleccionados.reduce((a, c) => a + (parseInt(stockData.find(p => p.codigo === c)?.[campo]) || 0), 0) : 0;
+    if (todo && !uds) { toast(`⚠️ No hay unidades en ${origen} para devolver a bodega`); return; }
+    if (!confirm(todo ? `¿Devolver a bodega las ${uds} unidad(es) que hay en ${origen} de ${stockSeleccionados.length} talla(s)?` : `¿Devolver ${stockSeleccionados.length} producto(s) a bodega?`)) return;
+    const res = await apiPost({ accion: "STOCK_DEVOLVER_BODEGA", codigos: stockSeleccionados, cantidad: todo ? _CANT_TODO : 1, origen });
     if (res.ok) {
         toast("✅ Productos devueltos a bodega");
         limpiarSeleccion();
