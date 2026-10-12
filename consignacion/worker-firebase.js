@@ -327,8 +327,9 @@ async function enviar(){
           sb.get("config", "settings"),
         ]);
         return json({
-          productos: prods.filter(p => (p.enCatalogo === true || p.enCatalogo === "true" || p.enCatalogo === "TRUE") && p.estado !== "inactivo"),
-          cupones:   cups.filter(c => c.activo !== false && c.activo !== "false"),
+          // Igual que GET_CATALOGO: sin costo de las piezas, ocasiones internas ni quién usó cada cupón.
+          productos: prods.filter(p => (p.enCatalogo === true || p.enCatalogo === "true" || p.enCatalogo === "TRUE") && p.estado !== "inactivo").map(({ ocasiones, costo, ...p }) => p),
+          cupones:   cups.filter(c => c.activo !== false && c.activo !== "false").map(({ usadoPor, ...c }) => c),
           config:    sanearConfigPublico(cfgDoc)
         });
       } catch(e) {
@@ -2203,22 +2204,28 @@ async function enviar(){
         }
 
         // ══ CUPONES ═══════════════════════════════════════════════
+        // Revisa (sin gastarlo) si un cupón se puede usar: activo, sin vencer, con usos y — si es de un uso por
+        // cliente — que ese cliente (correo o teléfono) no lo haya usado ya. Las tiendas lo llaman antes de cobrar.
+        case "VALIDAR_CUPON": {
+          const cupV = await sb.get("cupones", String(d.codigo || "").toUpperCase());
+          result = cuponNoUsable(cupV, d.cliente, d.tienda) || { ok: true };
+          break;
+        }
+
         case "USAR_CUPON": {
           const cup = await sb.get("cupones", d.codigo);
-          if (!cup) { result = { ok: false, error: "Cupón no encontrado" }; break; }
-          if (cup.activo === false || cup.activo === "false") {
-            result = { ok: false, error: "Cupón inactivo" }; break;
-          }
+          const errUso = cuponNoUsable(cup, d.cliente, d.tienda);
+          if (errUso) { result = errUso; break; }
           const usosActuales = (parseInt(cup.usosActuales) || 0);
           const limiteUsos   = parseInt(cup.limiteUsos) || 0;
-          if (limiteUsos > 0 && usosActuales >= limiteUsos) {
-            result = { ok: false, error: "Cupón agotado" }; break;
-          }
-          await sb.update("cupones", d.codigo, {
+          const patchCup = {
             usosActuales: usosActuales + 1,
             // Desactivar automáticamente si llegó al límite
             activo: limiteUsos > 0 ? (usosActuales + 1 < limiteUsos) : true
-          });
+          };
+          const idCli = idClienteCupon(d.cliente);
+          if (cup.unoPorCliente && idCli) patchCup.usadoPor = [...(Array.isArray(cup.usadoPor) ? cup.usadoPor : []), idCli].slice(-5000);
+          await sb.update("cupones", d.codigo, patchCup);
           result = { ok: true };
           break;
         }
@@ -2307,7 +2314,8 @@ async function enviar(){
             // `ocasiones` son etiquetas internas del admin (Catálogo Cliente) y `costo` es lo que te costó la pieza
             // (Rentabilidad de Logística USA) — ninguno de los dos se publica en la tienda.
             productos: final.map(({ ocasiones, costo, ...p }) => p),
-            cupones:   cups.filter(c => c.activo !== false && c.activo !== "false"),
+            // usadoPor = correos/teléfonos de quienes ya usaron un cupón de un uso por cliente: nunca se publica.
+            cupones:   cups.filter(c => c.activo !== false && c.activo !== "false").map(({ usadoPor, ...c }) => c),
             config:    sanearConfigPublico(cfg2)
           };
           break;
@@ -4346,11 +4354,19 @@ async function enviar(){
         // ══ CUPONES ═══════════════════════════════════════════════
         case "CREAR_CUPON": {
           if (!esAdmin) return forbidden();
+          const tiendaCup = ["sv", "us"].includes(d.tienda) ? d.tienda : "ambas";
           await sb.set("cupones", d.codigo, {
             codigo: d.codigo, tipo: d.tipo || "porcentaje_total",
             descuento: parseFloat(d.descuento) || 0, categorias: d.categorias || "",
+            // descuentoFijo no se guardaba: los cupones de monto fijo / monto mínimo quedaban en $0.
+            descuentoFijo: parseFloat(d.descuentoFijo) || 0,
             montoMinimo: parseFloat(d.montoMinimo) || 0, limiteUsos: parseInt(d.limiteUsos) || 0,
-            usosActuales: 0, activo: true
+            // Condiciones: tope del descuento ($, 0 = sin tope), en qué tienda vale, fecha de vencimiento (inclusive)
+            // y un solo uso por cliente (se identifica por correo o teléfono).
+            descuentoMax: Math.max(0, parseFloat(d.descuentoMax) || 0), tienda: tiendaCup,
+            vence: /^\d{4}-\d{2}-\d{2}$/.test(d.vence || "") ? d.vence : "",
+            unoPorCliente: !!d.unoPorCliente, usadoPor: [],
+            usosActuales: 0, activo: d.activo !== false
           });
           result = { ok: true };
           break;
@@ -6999,6 +7015,30 @@ function stockPublico(p) {
   const o = {};
   for (const k of CAMPOS_STOCK_PUBLICOS) if (p[k] !== undefined) o[k] = p[k];
   return o;
+}
+
+// ── Cupones: condiciones de uso ──
+// Cliente = correo (minúsculas) o, si no hay, solo los dígitos del teléfono.
+function idClienteCupon(c) {
+  const v = String(c || "").trim().toLowerCase();
+  if (!v) return "";
+  return v.includes("@") ? v.slice(0, 120) : v.replace(/\D/g, "").slice(-15);
+}
+// Fecha de hoy en El Salvador (UTC−6): un cupón que vence el 31 vale todo el 31.
+function hoySV() { return new Date(Date.now() - 6 * 3600 * 1000).toISOString().slice(0, 10); }
+// null = se puede usar; si no, { ok:false, error, motivo } con un motivo corto para que la tienda lo traduzca.
+function cuponNoUsable(cup, cliente, tienda) {
+  if (!cup) return { ok: false, error: "Cupón no encontrado", motivo: "no_existe" };
+  if (cup.activo === false || cup.activo === "false") return { ok: false, error: "Cupón inactivo", motivo: "inactivo" };
+  const limite = parseInt(cup.limiteUsos) || 0;
+  if (limite > 0 && (parseInt(cup.usosActuales) || 0) >= limite) return { ok: false, error: "Cupón agotado", motivo: "agotado" };
+  if (cup.vence && hoySV() > cup.vence) return { ok: false, error: "Cupón vencido", motivo: "vencido" };
+  if (tienda && cup.tienda && cup.tienda !== "ambas" && cup.tienda !== tienda) return { ok: false, error: "Cupón no válido en esta tienda", motivo: "otra_tienda" };
+  if (cup.unoPorCliente) {
+    const id = idClienteCupon(cliente);
+    if (id && (cup.usadoPor || []).includes(id)) return { ok: false, error: "Ya usaste este cupón", motivo: "ya_usado" };
+  }
+  return null;
 }
 
 function sanearConfigPublico(cfg) {

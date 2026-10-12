@@ -1009,10 +1009,40 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
                 </div>
             </div>
 
-            <!-- Límite de usos -->
-            <div style="margin-top:12px;">
-                <label>Límite de usos (0 = ilimitado)</label>
-                <input type="number" id="cup-limite" placeholder="0" min="0" value="0">
+            <!-- Condiciones -->
+            <div id="sec-condiciones" style="margin-top:16px;border:1.5px solid var(--borde);border-radius:10px;padding:12px 14px;">
+                <div style="font-weight:800;font-size:13px;margin-bottom:8px;">📋 Condiciones</div>
+                <div class="g2">
+                    <div id="sec-cond-min">
+                        <label>Compra mínima ($) <small style="font-weight:400;color:#888;">0 = sin mínimo · solo productos</small></label>
+                        <input type="number" id="cup-cond-min" placeholder="100.00" step="0.01" min="0" value="0">
+                    </div>
+                    <div id="sec-tope">
+                        <label>Descuento máximo ($) <small style="font-weight:400;color:#888;">0 = sin tope</small></label>
+                        <input type="number" id="cup-tope" placeholder="10.00" step="0.01" min="0" value="0">
+                    </div>
+                    <div>
+                        <label>Válido en</label>
+                        <select id="cup-tienda">
+                            <option value="ambas">🌎 Ambas tiendas</option>
+                            <option value="sv">🇸🇻 Solo El Salvador</option>
+                            <option value="us">🇺🇸 Solo USA</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Vence el <small style="font-weight:400;color:#888;">vacío = no vence</small></label>
+                        <input type="date" id="cup-vence">
+                    </div>
+                    <div>
+                        <label>Límite de usos (0 = ilimitado)</label>
+                        <input type="number" id="cup-limite" placeholder="0" min="0" value="0">
+                    </div>
+                    <div style="display:flex;align-items:flex-end;">
+                        <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-weight:600;margin:0 0 10px;cursor:pointer;">
+                            <input type="checkbox" id="cup-uno" style="width:auto;margin:0;"> Un solo uso por cliente <small style="font-weight:400;color:#888;">(por correo o teléfono)</small></label>
+                    </div>
+                </div>
+                <div style="font-size:11.5px;color:#888;">El descuento nunca se aplica al envío: solo a las piezas.</div>
             </div>
 
             <!-- Preview del cupón -->
@@ -3133,7 +3163,12 @@ function renderCupones() {
         const tipo  = TIPO_LABEL[cup.tipo] || cup.tipo || "General";
         const desc  = descCuponLabel(cup);
         const cats  = cup.categorias ? ` · ${cup.categorias}` : "";
-        const usos  = cup.limiteUsos > 0 ? ` · ${cup.usosActuales||0}/${cup.limiteUsos} usos` : "";
+        const usos  = (cup.limiteUsos > 0 ? ` · ${cup.usosActuales||0}/${cup.limiteUsos} usos` : (cup.usosActuales ? ` · ${cup.usosActuales} usos` : ""))
+            + (cup.tipo !== "monto_minimo" && cup.montoMinimo > 0 ? ` · mín. $${parseFloat(cup.montoMinimo).toFixed(2)}` : "")
+            + (cup.descuentoMax > 0 ? ` · máx. $${parseFloat(cup.descuentoMax).toFixed(2)}` : "")
+            + (cup.tienda === "us" ? " · 🇺🇸 solo USA" : cup.tienda === "sv" ? " · 🇸🇻 solo SV" : "")
+            + (cup.vence ? ` · ${cup.vence < new Date().toISOString().slice(0,10) ? "⛔ venció" : "vence"} ${cup.vence.split("-").reverse().join("/")}` : "")
+            + (cup.unoPorCliente ? " · 1 por cliente" : "");
         cont.innerHTML+=`<div class="cr">
             <span class="cc">${cup.codigo}</span>
             <span style="font-size:11px;background:#e1f5fe;color:#0277bd;padding:3px 8px;border-radius:20px;font-weight:600;">${tipo}</span>
@@ -3170,9 +3205,14 @@ function cambiarTipoCupon() {
     document.getElementById("sec-monto-min").style.display = tipo === "monto_minimo" ? "block" : "none";
     // Siempre mostrar selector de categorías excepto envío gratis
     document.getElementById("sec-cats").style.display      = tipo === "envio_gratis" ? "none" : "block";
+    // «Monto mínimo» ya pide su propia compra mínima; el tope solo tiene sentido en los descuentos por %
+    document.getElementById("sec-cond-min").style.display  = tipo === "monto_minimo" ? "none" : "block";
+    document.getElementById("sec-tope").style.display      = ["porcentaje_total","porcentaje_categoria","segundo_mitad"].includes(tipo) ? "block" : "none";
     actualizarPreviewCupon();
 }
 
+document.addEventListener("input", e => { if (e.target.closest && e.target.closest("#tab-4") && e.target.id && e.target.id.startsWith("cup-")) actualizarPreviewCupon(); });
+document.addEventListener("change", e => { if (e.target.closest && e.target.closest("#tab-4") && e.target.id && e.target.id.startsWith("cup-")) actualizarPreviewCupon(); });
 function actualizarPreviewCupon() {
     const tipo = document.getElementById("cup-tipo").value;
     const cod  = document.getElementById("cup-cod").value.trim().toUpperCase() || "CODIGO";
@@ -3201,6 +3241,18 @@ function actualizarPreviewCupon() {
             const d = document.getElementById("cup-monto-fijo").value || "X";
             texto = `Cupón <b>${cod}</b>: $${d} de descuento fijo en la compra.`; break; }
     }
+    // Condiciones en lenguaje normal
+    const cond = [];
+    const num = id => parseFloat(document.getElementById(id).value) || 0;
+    if (tipo !== "monto_minimo" && num("cup-cond-min") > 0) cond.push(`en compras desde $${num("cup-cond-min").toFixed(2)} (sin contar el envío)`);
+    if (document.getElementById("sec-tope").style.display !== "none" && num("cup-tope") > 0) cond.push(`máximo $${num("cup-tope").toFixed(2)} de descuento`);
+    const tienda = document.getElementById("cup-tienda").value;
+    cond.push(tienda === "us" ? "solo en la tienda USA" : tienda === "sv" ? "solo en El Salvador" : "en ambas tiendas");
+    const vence = document.getElementById("cup-vence").value;
+    if (vence) cond.push(`vence el ${new Date(vence + "T12:00").toLocaleDateString("es", { day: "numeric", month: "long", year: "numeric" })}`);
+    if (document.getElementById("cup-uno").checked) cond.push("un solo uso por cliente");
+    if (num("cup-limite") > 0) cond.push(`máximo ${num("cup-limite")} usos en total`);
+    if (texto && cond.length) texto += `<br>📋 ${cond.join(" · ")}.`;
     prev.innerHTML = `💡 ${texto}`;
     prev.style.display = texto ? "block" : "none";
 }
@@ -3248,8 +3300,16 @@ async function crearCupon() {
             break;
     }
 
+    if (tipo !== "monto_minimo") montoMinimo = parseFloat(document.getElementById("cup-cond-min").value) || 0;
+    const descuentoMax = document.getElementById("sec-tope").style.display !== "none" ? (parseFloat(document.getElementById("cup-tope").value) || 0) : 0;
+    const tienda = document.getElementById("cup-tienda").value;
+    const vence = document.getElementById("cup-vence").value || "";
+    const unoPorCliente = document.getElementById("cup-uno").checked;
+    if (vence && vence < new Date().toISOString().slice(0, 10)) return toast("⚠️ La fecha de vencimiento ya pasó", "#f97316");
+
     const nuevo = { codigo:cod, tipo:tipoFinal, descuento, descuentoFijo, montoMinimo,
-                    categorias:cats, limiteUsos:limite, usosActuales:0, activo:act };
+                    categorias:cats, limiteUsos:limite, usosActuales:0, activo:act,
+                    descuentoMax, tienda, vence, unoPorCliente };
     cupones.push(nuevo); renderCupones();
 
     // Limpiar form
@@ -3259,11 +3319,17 @@ async function crearCupon() {
     document.getElementById("cup-min").value = "";
     document.getElementById("cup-desc-min").value = "";
     document.getElementById("cup-limite").value = "0";
+    document.getElementById("cup-cond-min").value = "0";
+    document.getElementById("cup-tope").value = "0";
+    document.getElementById("cup-tienda").value = "ambas";
+    document.getElementById("cup-vence").value = "";
+    document.getElementById("cup-uno").checked = false;
     document.querySelectorAll(".cup-cat").forEach(x => x.checked = false);
     document.getElementById("cup-preview").style.display = "none";
 
-    await fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ accion:"CREAR_CUPON", _pass:ADMIN_PASS, ...nuevo }) });
+    const rC = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ accion:"CREAR_CUPON", _pass:ADMIN_PASS, ...nuevo }) }).then(x => x.json()).catch(() => null);
+    if (!rC?.ok) { cupones = cupones.filter(c => c !== nuevo); renderCupones(); return toast("❌ No se pudo guardar el cupón en el servidor", "#ef4444"); }
     toast("✅ Cupón creado", "#22c55e");
 }
 
