@@ -4153,9 +4153,8 @@ function alternarPromoGeneral(activa) {
     cfg.promoGeneral = { ...getPromoGeneral(), activa };
     saveConfig();
     _sincronizarTarjetaPromo();
-    const usar = document.getElementById("cat-usar-promo-gral");
-    if (usar) usar.checked = activa;
-    usarPromoGeneralEnCatalogo(activa);
+    // Solo cambia lo que se precarga en los catálogos NUEVOS; la promo del catálogo
+    // que se está armando no se toca (antes este interruptor la borraba o recargaba).
     toast(activa ? "✅ Promo general activa — se precarga en cada catálogo de cliente" : "Promo general apagada — los catálogos nuevos salen sin promociones", activa ? "#22c55e" : "#111");
 }
 
@@ -4189,6 +4188,7 @@ function guardarFormComoPromoGeneral() {
     if (usar) usar.checked = true;
     _sincronizarTarjetaPromo();
     actualizarResumenPromoCatalogo();
+    if (_wzPaso === 3) { _wzModoPromo = "general"; wzPintarPaso3(); }
     toast("✅ Promo general guardada", "#22c55e");
 }
 
@@ -5951,21 +5951,94 @@ async function wzEntender() {
 }
 
 // ── Paso 3: vigencia, promoción y vista previa ───────────────────
+// Modo de la promo de ESTE catálogo: "no" | "general" | "custom". null = calcularlo de los campos.
+let _wzModoPromo = null;
+const _wzPromoAbiertas = new Set();   // tarjetas de promo con su editor abierto
+
 function _wzPromoModo() {
-    const det = _wzEl("cat-promo-detalle");
-    if (det && det.style.display !== "none") return "custom";
+    if (_wzModoPromo) return _wzModoPromo;
     if (_wzEl("cat-usar-promo-gral")?.checked) return "general";
-    const algo = ["cat-banner-txt", "cat-envio-gratis-desde", "cat-regalo-monto", "cat-promo-tipo"].some(id => (_wzEl(id)?.value || "").trim());
-    return algo ? "custom" : "no";
+    return WZ_PROMO_ITEMS.some(it => it.activo()) ? "custom" : "no";
 }
 
+const _wzVal = id => (_wzEl(id)?.value || "").trim();
+const WZ_PROMO_ITEMS = [
+    { k: "banner", ic: "🏷️", nm: "Banner y descuento",
+      activo: () => !!_wzVal("cat-banner-txt"),
+      estado: () => { const pct = parseInt(_wzVal("cat-banner-desc-pct")) || 0; return `“${_wzVal("cat-banner-txt")}”${pct ? ` · ${pct}% de descuento` : ""}`; },
+      limpiar: () => ["cat-banner-txt", "cat-banner-sub", "cat-banner-desc-pct"].forEach(id => _setVal(id, "")) },
+    { k: "carrito", ic: "🛒", nm: "Promo de carrito",
+      activo: () => !!_wzVal("cat-promo-tipo"),
+      estado: () => _etiquetaPromoCarrito(_leerPromoCarritoUI()) || ({ montoFijo: "Monto fijo: falta el monto", escalonado: "Escalonado: faltan los tramos" }[_wzVal("cat-promo-tipo")] || ""),
+      limpiar: () => { ["cat-promo-montofijo", "cat-promo-montofijo-minimo"].forEach(id => _setVal(id, "")); [1, 2, 3].forEach(n => { _setVal(`cat-esc-cant-${n}`, ""); _setVal(`cat-esc-pct-${n}`, ""); }); _setVal("cat-promo-tipo", ""); onCambioPromoTipo(); } },
+    { k: "envio", ic: "🚚", nm: "Envío gratis",
+      activo: () => (parseFloat(_wzVal("cat-envio-gratis-desde")) || 0) > 0,
+      estado: () => `Desde $${_wzVal("cat-envio-gratis-desde")}`,
+      limpiar: () => _setVal("cat-envio-gratis-desde", "") },
+    { k: "regalo", ic: "🎁", nm: "Regalo sorpresa",
+      activo: () => (parseFloat(_wzVal("cat-regalo-monto")) || 0) > 0 || !!_wzVal("cat-regalo-texto"),
+      estado: () => `${_wzVal("cat-regalo-texto") || "Regalo"} desde $${_wzVal("cat-regalo-monto") || "?"}`,
+      limpiar: () => ["cat-regalo-monto", "cat-regalo-texto"].forEach(id => _setVal(id, "")) },
+];
+const WZ_CARRITO_TIPOS = [["2x50", "2do al 50%", "El más barato del par"], ["3x2", "3x2", "La 3ra pieza gratis"], ["montoFijo", "Monto fijo", "$ de descuento"], ["escalonado", "Escalonado", "% según cantidad"]];
+
 function wzElegirPromo(modo) {
-    const usar = _wzEl("cat-usar-promo-gral"), det = _wzEl("cat-promo-detalle");
-    if (modo === "no")      { usar.checked = false; _limpiarPromosForm(); det.style.display = "none"; }
-    if (modo === "general") { usar.checked = true; _cargarPromoEnForm(getPromoGeneral()); det.style.display = "none"; }
-    if (modo === "custom")  { usar.checked = false; det.style.display = "block"; }
+    const usar = _wzEl("cat-usar-promo-gral");
+    _wzPromoAbiertas.clear();
+    if (modo === "no")      { usar.checked = false; _limpiarPromosForm(); }
+    if (modo === "general") { usar.checked = true; _cargarPromoEnForm(getPromoGeneral()); }
+    if (modo === "custom")  { usar.checked = false; if (!WZ_PROMO_ITEMS.some(it => it.activo())) _wzPromoAbiertas.add("banner"); }
+    _wzModoPromo = modo;
     actualizarResumenPromoCatalogo();
     wzPintarPaso3();
+}
+
+// Tocar una tarjeta: abre/cierra su editor. Si estaba en «Promo general», pasa a personalizada.
+function wzPromoItem(k) {
+    if (_wzPromoAbiertas.has(k)) _wzPromoAbiertas.delete(k); else _wzPromoAbiertas.add(k);
+    _wzPintarPromoItems();
+    if (_wzPromoAbiertas.has(k)) _wzEl("wz-ed-" + k)?.querySelector("input:not([type=hidden])")?.focus();
+}
+
+function wzPromoQuitar(k) {
+    WZ_PROMO_ITEMS.find(it => it.k === k)?.limpiar();
+    _wzPromoAbiertas.delete(k);
+    _wzPasarAPersonalizada();
+    if (!WZ_PROMO_ITEMS.some(it => it.activo())) { _wzModoPromo = "no"; _wzEl("cat-usar-promo-gral").checked = false; }
+    actualizarResumenPromoCatalogo();
+    wzPintarPaso3();
+}
+
+function wzCarritoTipo(t) {
+    _setVal("cat-promo-tipo", _wzVal("cat-promo-tipo") === t ? "" : t);
+    onCambioPromoTipo();
+    _wzPasarAPersonalizada();
+    _wzPintarPromoItems();
+}
+
+// Al tocar cualquier parte de la promo general, este catálogo pasa a ser «Personalizada»
+// (la promo general guardada no cambia).
+function _wzPasarAPersonalizada() {
+    if (_wzPromoModo() === "general") { _wzModoPromo = "custom"; _wzEl("cat-usar-promo-gral").checked = false; }
+}
+
+function _wzPintarPromoItems() {
+    const cont = _wzEl("wz-promo-items");
+    if (!cont) return;
+    cont.innerHTML = WZ_PROMO_ITEMS.map(it => {
+        const on = it.activo(), abierta = _wzPromoAbiertas.has(it.k);
+        return `<div class="wz-card wz-pitem${on ? " on" : " vacia"}${abierta ? " abierta" : ""}" role="button" tabindex="0" onclick="wzPromoItem('${it.k}')" onkeydown="if(event.key==='Enter')wzPromoItem('${it.k}')">
+            <span class="ic">${it.ic}</span><span class="nm">${it.nm}</span>
+            <span class="ct">${on ? esc(it.estado()) : "+ Agregar"}</span>
+            ${on ? `<button type="button" class="wz-x" title="Quitar ${it.nm}" aria-label="Quitar ${it.nm}" onclick="event.stopPropagation();wzPromoQuitar('${it.k}')">✕</button>` : ""}
+        </div>`;
+    }).join("");
+    WZ_PROMO_ITEMS.forEach(it => { const ed = _wzEl("wz-ed-" + it.k); if (ed) ed.hidden = !_wzPromoAbiertas.has(it.k); });
+    const tipo = _wzVal("cat-promo-tipo");
+    _wzEl("wz-carrito-tipos").innerHTML = WZ_CARRITO_TIPOS.map(([v, nm, ct]) =>
+        `<button type="button" class="wz-card${tipo === v ? " on" : ""}" onclick="wzCarritoTipo('${v}')"><span class="nm">${nm}</span><span class="ct">${ct}</span></button>`).join("");
+    const modo = _wzPromoModo();
+    document.querySelectorAll("#wz-promo .wz-card").forEach(c => c.classList.toggle("on", c.dataset.modo === modo));
 }
 
 function wzPintarPaso3() {
@@ -5974,19 +6047,18 @@ function wzPintarPaso3() {
         `<button type="button" class="wz-card${dias === v ? " on" : ""}" onclick="document.getElementById('cat-validez').value='${v}';wzPintarPaso3()"><span class="nm">${t}</span></button>`).join("");
 
     const esAf = _wzEl("cat-es-afiliado").checked, esUS = _wzEl("cat-es-us")?.checked;
-    const sinPromos = esAf || esUS;
-    _wzEl("cat-banner-wrap").style.display = sinPromos ? "none" : "block";
-    _wzEl("wz-mas-promos").style.display = sinPromos ? "none" : "grid";
-    _wzEl("wz-mas-hint").textContent = sinPromos ? "nota interna" : "envío gratis, regalo, nota interna";
+    _wzEl("cat-banner-wrap").style.display = (esAf || esUS) ? "none" : "block";
 
     const modo = _wzPromoModo();
     const pg = getPromoGeneral();
-    const resumenGral = [pg.banner?.txt, pg.promoCarrito ? _etiquetaPromoCarrito(pg.promoCarrito) : "", pg.envioGratisDesde > 0 ? `envío gratis desde $${pg.envioGratisDesde}` : ""].filter(Boolean).join(" · ") || "sin nada guardado aún";
+    const resumenGral = [pg.banner?.txt, pg.promoCarrito ? _etiquetaPromoCarrito(pg.promoCarrito) : "", pg.envioGratisDesde > 0 ? `envío gratis desde $${pg.envioGratisDesde}` : "", pg.regaloSorpresa?.monto > 0 ? `regalo desde $${pg.regaloSorpresa.monto}` : ""].filter(Boolean).join(" · ") || "sin nada guardado aún";
     _wzEl("wz-promo").innerHTML = [
         ["no", "🚫", "Sin promo", "Precios normales"],
         ["general", "🎁", "Promo general", resumenGral],
-        ["custom", "✏️", "Personalizada", "Banner y descuento solo para este link"],
-    ].map(([m, ic, nm, ct]) => `<button type="button" class="wz-card${modo === m ? " on" : ""}" onclick="wzElegirPromo('${m}')"><span class="ic">${ic}</span><span class="nm">${nm}</span><span class="ct">${esc(ct)}</span></button>`).join("");
+        ["custom", "✏️", "Personalizada", "Arma la promo solo para este link"],
+    ].map(([m, ic, nm, ct]) => `<button type="button" class="wz-card" data-modo="${m}" onclick="wzElegirPromo('${m}')"><span class="ic">${ic}</span><span class="nm">${nm}</span><span class="ct">${esc(ct)}</span></button>`).join("");
+    _wzEl("cat-promo-detalle").style.display = modo === "no" ? "none" : "block";
+    _wzPintarPromoItems();
     wzActualizarBarra();
 }
 
@@ -6097,6 +6169,13 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     _wzEl("modal-catalogo")?.addEventListener("change", e => { if (e.target.matches(".cat-chk")) wzActualizarBarra(); });
     ["input", "change"].forEach(ev => _wzEl("modal-catalogo")?.addEventListener(ev, () => { if (_wzPaso === 3) _wzPreview(); }));
+    // Solo «input» (mientras se escribe): con «change», que salta al salir del campo,
+    // las tarjetas se redibujaban justo bajo el clic y ese clic se perdía.
+    _wzEl("cat-promo-detalle")?.addEventListener("input", e => {
+        if (!e.target.matches("input") || e.target.id === "promo-gral-activa") return;
+        _wzPasarAPersonalizada();
+        _wzPintarPromoItems();
+    });
 });
 
 function getCatKey(p) {
@@ -6563,6 +6642,7 @@ function abrirModalCatalogo(tipo) {
     const iaOut = document.getElementById("cat-ia-resultado"); if (iaOut) iaOut.innerHTML = "";
     const afinar = document.getElementById("wz-afinar");    if (afinar) afinar.open = false;
     const usWrap = document.getElementById("wz-us-wrap");   if (usWrap) usWrap.open = false;
+    _wzModoPromo = null; _wzPromoAbiertas.clear();
     sincronizarChipsCatTalla();
     wzRenderPlantillas();
     filtrarParaCatalogo();
@@ -7411,6 +7491,13 @@ async function generarPDFCatalogo() {
   .wz-card:has(input:checked),.wz-card.on{border-color:#C9A84C;background:#fbf5e3;}
   .wz-card:has(input:checked)::after,.wz-card.on::after{content:"✓";position:absolute;top:8px;right:10px;width:20px;height:20px;border-radius:50%;background:#C9A84C;color:#111;font-size:12px;font-weight:900;display:grid;place-items:center;}
   .wz-card input{display:none;}
+  .wz-pitem::after{display:none !important;}
+  .wz-pitem .wz-x{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;border:0;background:#fff;color:#b91c1c;font-weight:900;cursor:pointer;box-shadow:0 0 0 1px #f1d3d3;}
+  .wz-pitem .wz-x:hover{background:#fee2e2;}
+  .wz-pitem.vacia{border-style:dashed;}
+  .wz-pitem.vacia .nm{color:#555;}
+  .wz-pitem.abierta{box-shadow:0 0 0 3px rgba(201,168,76,.25);}
+  .wz-ed{border:1.5px solid #C9A84C;background:#fffdf6;border-radius:12px;padding:14px;margin-top:10px;display:grid;gap:12px;}
   .wz-fold{border:1.5px solid var(--borde);border-radius:12px;background:#fff;}
   .wz-fold>summary{list-style:none;cursor:pointer;padding:12px 16px;display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;}
   .wz-fold>summary::-webkit-details-marker{display:none;}
@@ -7632,28 +7719,28 @@ async function generarPDFCatalogo() {
             <div class="wz-cards xs" id="wz-vig"></div>
           </div>
 
-          <!-- Promoción (solo Cliente; Afiliado y EE. UU. no llevan banner/descuento) -->
+          <!-- Promoción (solo Cliente; Afiliado y EE. UU. no llevan banner/descuento).
+               Cada parte de la promo es una tarjeta con ✕ para quitarla. -->
           <div id="cat-banner-wrap">
             <div class="wz-t">Promoción</div>
             <div class="wz-cards sm" id="wz-promo"></div>
-            <div id="promo-gral-resumen" style="font-size:12.5px;line-height:1.4;margin-top:10px;"></div>
-            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#666;margin-top:6px;text-transform:none;letter-spacing:0;cursor:pointer;">
-              <input type="checkbox" id="promo-gral-activa" onchange="alternarPromoGeneral(this.checked)" style="width:auto;margin:0;">
-              Precargar la promo general en cada catálogo nuevo <span id="promo-gral-activa-txt" style="font-weight:700;"></span>
-            </label>
+            <div id="promo-gral-resumen" hidden></div>
             <input type="checkbox" id="cat-usar-promo-gral" hidden>
             <span id="cat-usar-promo-gral-lbl" hidden></span>
 
-            <div id="cat-promo-detalle" class="wz-fold" style="display:none;margin-top:12px;">
-              <div class="in" style="padding-top:14px;">
+            <div id="cat-promo-detalle" style="display:none;margin-top:14px;">
+              <div class="wz-t" style="margin-bottom:8px;">Qué incluye <small>toca una tarjeta para agregarla o editarla · ✕ para quitarla</small></div>
+              <div class="wz-cards" id="wz-promo-items"></div>
+
+              <div class="wz-ed" id="wz-ed-banner" hidden>
                 <div class="wz-form2">
                   <label class="wz-lbl">Texto del banner
                     <input type="text" id="cat-banner-txt" placeholder="Ej: 2x1 en aretes este fin de semana">
                   </label>
-                  <label class="wz-lbl">Subtítulo
+                  <label class="wz-lbl">Subtítulo <span style="font-weight:400;">(opcional)</span>
                     <input type="text" id="cat-banner-sub" placeholder="Ej: Solo hasta el domingo">
                   </label>
-                  <label class="wz-lbl">% de descuento <span style="font-weight:400;">(se aplica a los precios)</span>
+                  <label class="wz-lbl">% de descuento <span style="font-weight:400;">(opcional, se resta de los precios)</span>
                     <input type="number" id="cat-banner-desc-pct" placeholder="Ej: 20" min="0" max="90">
                   </label>
                   <div class="wz-lbl">Color del banner
@@ -7674,7 +7761,51 @@ async function generarPDFCatalogo() {
                     <div><div class="wz-lbl">Al subtítulo</div><div class="emoji-quick-bar" data-target="cat-banner-sub"></div></div>
                   </div>
                 </details>
-                <button type="button" onclick="guardarFormComoPromoGeneral()" class="wz-btn" style="background:#111;">💾 Guardar estos ajustes como promo general</button>
+              </div>
+
+              <div class="wz-ed" id="wz-ed-carrito" hidden>
+                <select id="cat-promo-tipo" hidden onchange="onCambioPromoTipo()">
+                  <option value=""></option><option value="2x50"></option><option value="3x2"></option><option value="montoFijo"></option><option value="escalonado"></option>
+                </select>
+                <div class="wz-lbl">Tipo de promo de carrito <span style="font-weight:400;">(se aplica sola cuando el cliente agrega piezas)</span></div>
+                <div class="wz-cards sm" id="wz-carrito-tipos"></div>
+                <div id="cat-promo-montofijo-wrap" style="display:none;">
+                  <div class="wz-form2">
+                    <label class="wz-lbl">Descuento $<input type="number" id="cat-promo-montofijo" placeholder="Ej: 10" min="0" step="0.5"></label>
+                    <label class="wz-lbl">A partir de $ <span style="font-weight:400;">(opcional)</span><input type="number" id="cat-promo-montofijo-minimo" placeholder="Ej: 50" min="0" step="1"></label>
+                  </div>
+                </div>
+                <div id="cat-promo-escalonado-wrap" style="display:none;">
+                  <div style="font-size:11.5px;color:#888;margin-bottom:6px;">Cuántas piezas y qué % de descuento. Deja en blanco los tramos que no uses.</div>
+                  <div class="wz-form2" style="margin-bottom:6px;"><input type="number" id="cat-esc-cant-1" placeholder="Desde N piezas" min="2"><input type="number" id="cat-esc-pct-1" placeholder="% desc." min="1" max="90"></div>
+                  <div class="wz-form2" style="margin-bottom:6px;"><input type="number" id="cat-esc-cant-2" placeholder="Desde N piezas" min="2"><input type="number" id="cat-esc-pct-2" placeholder="% desc." min="1" max="90"></div>
+                  <div class="wz-form2"><input type="number" id="cat-esc-cant-3" placeholder="Desde N piezas" min="2"><input type="number" id="cat-esc-pct-3" placeholder="% desc." min="1" max="90"></div>
+                </div>
+              </div>
+
+              <div class="wz-ed" id="wz-ed-envio" hidden>
+                <label class="wz-lbl">🚚 Envío gratis cuando el pedido llegue a $
+                  <input type="number" id="cat-envio-gratis-desde" placeholder="Ej: 60" min="0" step="1" style="max-width:220px;">
+                </label>
+              </div>
+
+              <div class="wz-ed" id="wz-ed-regalo" hidden>
+                <div class="wz-form2">
+                  <label class="wz-lbl">🎁 Regalo cuando el pedido llegue a $
+                    <input type="number" id="cat-regalo-monto" placeholder="Ej: 40" min="0" step="1">
+                  </label>
+                  <label class="wz-lbl">¿Qué regalo?
+                    <input type="text" id="cat-regalo-texto" placeholder="Ej: dije de cortesía">
+                  </label>
+                </div>
+              </div>
+
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center;">
+                <button type="button" onclick="guardarFormComoPromoGeneral()" class="wz-chip">💾 Guardar como promo general</button>
+                <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#666;text-transform:none;letter-spacing:0;cursor:pointer;margin:0;">
+                  <input type="checkbox" id="promo-gral-activa" onchange="alternarPromoGeneral(this.checked)" style="width:auto;margin:0;">
+                  Precargar la promo general en cada catálogo nuevo <span id="promo-gral-activa-txt" style="font-weight:700;"></span>
+                </label>
               </div>
             </div>
           </div>
@@ -7703,46 +7834,9 @@ async function generarPDFCatalogo() {
           </div>
 
           <details class="wz-fold" id="wz-mas-opciones">
-            <summary>Más opciones <span class="hint" id="wz-mas-hint">envío gratis, regalo, nota interna</span></summary>
+            <summary>📝 Nota interna <span class="hint">solo la ves tú, para identificar este catálogo</span></summary>
             <div class="in">
-              <div id="wz-mas-promos" style="display:grid;gap:12px;">
-                <label class="wz-lbl">🎁 Promo de carrito <span style="font-weight:400;">(se aplica sola cuando el cliente agrega piezas)</span>
-                  <select id="cat-promo-tipo" onchange="onCambioPromoTipo()">
-                    <option value="">Ninguna</option>
-                    <option value="2x50">2do producto al 50% (el más barato del par)</option>
-                    <option value="3x2">3x2 — la 3ra pieza (más barata) gratis</option>
-                    <option value="montoFijo">Monto fijo de descuento ($)</option>
-                    <option value="escalonado">Descuento escalonado por cantidad</option>
-                  </select>
-                </label>
-                <div id="cat-promo-montofijo-wrap" style="display:none;">
-                  <div class="wz-form2">
-                    <input type="number" id="cat-promo-montofijo" placeholder="Ej: 10 (descuenta $10)" min="0" step="0.5">
-                    <input type="number" id="cat-promo-montofijo-minimo" placeholder="A partir de $ (opcional)" min="0" step="1">
-                  </div>
-                  <div style="font-size:11px;color:#888;margin-top:3px;">Si dejas "A partir de" vacío, el descuento se aplica siempre que haya algo en el carrito</div>
-                </div>
-                <div id="cat-promo-escalonado-wrap" style="display:none;">
-                  <div style="font-size:11px;color:#888;margin-bottom:4px;">Deja en blanco los tramos que no uses</div>
-                  <div class="wz-form2" style="margin-bottom:4px;"><input type="number" id="cat-esc-cant-1" placeholder="Cant. mín." min="2"><input type="number" id="cat-esc-pct-1" placeholder="% desc." min="1" max="90"></div>
-                  <div class="wz-form2" style="margin-bottom:4px;"><input type="number" id="cat-esc-cant-2" placeholder="Cant. mín." min="2"><input type="number" id="cat-esc-pct-2" placeholder="% desc." min="1" max="90"></div>
-                  <div class="wz-form2"><input type="number" id="cat-esc-cant-3" placeholder="Cant. mín." min="2"><input type="number" id="cat-esc-pct-3" placeholder="% desc." min="1" max="90"></div>
-                </div>
-                <div class="wz-form2">
-                  <label class="wz-lbl">🚚 Envío gratis desde $
-                    <input type="number" id="cat-envio-gratis-desde" placeholder="Ej: 60" min="0" step="1">
-                  </label>
-                  <div class="wz-lbl">🎁 Regalo sorpresa desde
-                    <div style="display:flex;gap:6px;">
-                      <input type="number" id="cat-regalo-monto" placeholder="$" min="0" step="1" style="width:80px;">
-                      <input type="text" id="cat-regalo-texto" placeholder="Ej: dije de cortesía" style="flex:1;">
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <label class="wz-lbl">Nota interna <span style="font-weight:400;">(solo la ves tú, para identificar este catálogo)</span>
-                <input type="text" id="cat-nota-interna" placeholder='Ej: "anillos talla 9, pidió solo dorados"'>
-              </label>
+              <input type="text" id="cat-nota-interna" placeholder='Ej: "anillos talla 9, pidió solo dorados"' style="width:100%;box-sizing:border-box;">
             </div>
           </details>
 
