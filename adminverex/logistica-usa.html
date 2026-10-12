@@ -519,7 +519,14 @@ function renderBoard(){
 // ── Rentabilidad por pedido ──────────────────────────────────────────────
 // Ganancia = total cobrado − costo de las piezas − envío DHL − comisión de pago (sobre el total cobrado) − empaque.
 // El total cobrado ya incluye el envío que paga el cliente y resta el cupón. Ajustes y costos: RENTABILIDAD_USA_DATOS (solo admin).
-const RENT_DEF = { dhl: 37, pagoPct: 5, pagoFijo: 0.30, empaque: 1.50, margenMin: 20 };
+const RENT_DEF = { dhl: 37, pagoPct: 5, pagoFijo: 0.30, wompiPct: 3.5, wompiFijo: 0, empaque: 1.50, margenMin: 20 };
+// Comisión según cómo pagó: tarjeta (Wompi) o PayPal (checkout oficial o PayPal.me).
+function comisionDe(o){
+    const a = RENT.ajustes;
+    return o.metodoPago === "wompi"
+        ? { nombre: "tarjeta Wompi", pct: parseFloat(a.wompiPct) || 0, fijo: parseFloat(a.wompiFijo) || 0 }
+        : { nombre: "PayPal", pct: parseFloat(a.pagoPct) || 0, fijo: parseFloat(a.pagoFijo) || 0 };
+}
 const RENT = { cargado: false, ajustes: { ...RENT_DEF }, costos: {} };
 const r2 = n => Math.round(n * 100) / 100;
 async function cargarRentabilidad(){
@@ -544,11 +551,12 @@ function calcRent(o){
     const costoPiezas = items.reduce((s, it) => s + (it.costo || 0), 0);
     const dhlReal = o.dhlRealUSA != null && o.dhlRealUSA !== "";
     const dhl = dhlReal ? parseFloat(o.dhlRealUSA) : (parseFloat(a.dhl) || 0);
-    const comision = cobrado > 0 ? r2(cobrado * (parseFloat(a.pagoPct) || 0) / 100 + (parseFloat(a.pagoFijo) || 0)) : 0;
+    const com = comisionDe(o);
+    const comision = cobrado > 0 ? r2(cobrado * com.pct / 100 + com.fijo) : 0;
     const empaque = parseFloat(a.empaque) || 0;
     const ganancia = r2(cobrado - costoPiezas - dhl - comision - empaque);
     const margen = cobrado > 0 ? ganancia / cobrado * 100 : 0;
-    return { cobrado, envioCliente, descuento, items, faltan, costoPiezas, dhl, dhlReal, comision, empaque, ganancia, margen };
+    return { cobrado, envioCliente, descuento, items, faltan, costoPiezas, dhl, dhlReal, com, comision, empaque, ganancia, margen };
 }
 function nivelRent(r){
     if(r.faltan.length) return "falta";
@@ -589,7 +597,7 @@ function seccionRentabilidad(o){
             <div class="dsec-row neg"><span>Envío DHL ${r.dhlReal ? "(real de este pedido)" : "(tarifa fija)"}<br>
                 <span style="font-size:11.5px;">$<input class="rent-in" type="number" min="0" step="0.01" inputmode="decimal" value="${r.dhl}" title="Si este envío costó distinto, escríbelo aquí" onchange="guardarDhlReal('${id}',this.value)">
                 ${r.dhlReal ? `<button class="rent-mini" onclick="guardarDhlReal('${id}','')">usar tarifa fija</button>` : ""}</span></span><span class="num">−${money(r.dhl)}</span></div>
-            <div class="dsec-row neg"><span>Comisión de pago (${a.pagoPct}% + ${money(a.pagoFijo)})</span><span class="num">−${money(r.comision)}</span></div>
+            <div class="dsec-row neg"><span>Comisión ${r.com.nombre} (${r.com.pct}%${r.com.fijo ? " + " + money(r.com.fijo) : ""})</span><span class="num">−${money(r.comision)}</span></div>
             <div class="dsec-row neg"><span>Empaque</span><span class="num">−${money(r.empaque)}</span></div>
             <div class="dsec-row tot"><span>Ganancia</span><span class="num gan-val">${money(r.ganancia)}</span></div>
             <div class="rent-sub">Tarifas fijas en <button class="rent-mini" onclick="abrirAjustesRent()">⚙️ Costos fijos</button>. El costo de una pieza se guarda para todas sus tallas y sirve para todos los pedidos.</div>
@@ -639,8 +647,10 @@ function abrirAjustesRent(){
         <div class="grid">
             <label>Envío DHL por pedido ($)<input id="ra-dhl" type="number" min="0" step="0.01" value="${a.dhl}"></label>
             <label>Empaque por pedido ($)<input id="ra-emp" type="number" min="0" step="0.01" value="${a.empaque}"></label>
-            <label>Comisión de pago (%)<input id="ra-pct" type="number" min="0" step="0.01" value="${a.pagoPct}"></label>
-            <label>Comisión fija por cobro ($)<input id="ra-fijo" type="number" min="0" step="0.01" value="${a.pagoFijo}"></label>
+            <label>Comisión PayPal (%)<input id="ra-pct" type="number" min="0" step="0.01" value="${a.pagoPct}"></label>
+            <label>PayPal fijo por cobro ($)<input id="ra-fijo" type="number" min="0" step="0.01" value="${a.pagoFijo}"></label>
+            <label>Comisión tarjeta Wompi (%)<input id="ra-wpct" type="number" min="0" step="0.01" value="${a.wompiPct}"></label>
+            <label>Wompi fijo por cobro ($)<input id="ra-wfijo" type="number" min="0" step="0.01" value="${a.wompiFijo}"></label>
             <label>Avisar si el margen baja de (%)<input id="ra-min" type="number" min="0" step="1" value="${a.margenMin}"></label>
         </div>
         <div style="font-size:11.5px;color:var(--ink-soft);margin-bottom:12px;">La comisión se calcula sobre el total cobrado (productos + envío − cupón).</div>
@@ -653,7 +663,7 @@ function abrirAjustesRent(){
 }
 async function guardarAjustesRent(){
     const num = id => parseFloat(document.getElementById(id).value);
-    const nuevo = { dhl: num("ra-dhl"), empaque: num("ra-emp"), pagoPct: num("ra-pct"), pagoFijo: num("ra-fijo"), margenMin: num("ra-min") };
+    const nuevo = { dhl: num("ra-dhl"), empaque: num("ra-emp"), pagoPct: num("ra-pct"), pagoFijo: num("ra-fijo"), wompiPct: num("ra-wpct"), wompiFijo: num("ra-wfijo"), margenMin: num("ra-min") };
     if(Object.values(nuevo).some(v => !(v >= 0))){ alert("Revisa los valores: todos deben ser números de 0 en adelante."); return; }
     const btn = document.getElementById("ra-guardar"); btn.disabled = true; btn.textContent = "Guardando…";
     try{
