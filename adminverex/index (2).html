@@ -4482,6 +4482,15 @@ async function generarLinkCatalogo() {
         return toast("⚠️ Selecciona un afiliado de la lista (Consignación → Vendedores) para poder rastrear sus Leads y comisión", "#f97316");
     }
 
+    // El banner no debe anunciar una promo que este link no tiene.
+    if (!esAfiliado && !esUS && !_editandoLinkId) {
+        const incoh = _wzIncoherenciasBanner();
+        if (incoh.length && !confirm(`⚠️ El banner dice «${(document.getElementById("cat-banner-txt")?.value || "").trim()}» y menciona ${incoh.join("; ")}.\n\nEl cliente vería una oferta que este link no tiene.\n\nAceptar = crear el link igual\nCancelar = volver para corregir el banner`)) {
+            wzEditarBanner();
+            return;
+        }
+    }
+
     // No generar el catálogo de un afiliado que todavía no tiene contrato
     // firmado (ni digital ni en papel) — evita operar sin el acuerdo firmado.
     if (esAfiliado && afiliadoCodigo) {
@@ -6036,6 +6045,56 @@ function _wzPasarAPersonalizada() {
     if (_wzPromoModo() === "general") { _wzModoPromo = "custom"; _wzEl("cat-usar-promo-gral").checked = false; }
 }
 
+// ── El banner debe decir lo mismo que la promo ──────────────────
+// Detecta cuando el texto del banner menciona algo que este catálogo ya no
+// incluye (ej. se quitó la promo de carrito pero el banner sigue diciendo
+// «2do a mitad de precio»), para no mostrarle al cliente una oferta que no existe.
+let _wzAvisoBannerOk = "";   // firma del aviso que el admin decidió dejar así
+let _wzAvisoFirma = "";      // firma del aviso que se está mostrando
+function _wzIncoherenciasBanner() {
+    const txt = `${_wzVal("cat-banner-txt")} ${_wzVal("cat-banner-sub")}`.trim();
+    if (!txt) return [];
+    const t = txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const activo = k => WZ_PROMO_ITEMS.find(it => it.k === k).activo();
+    const tipo = _wzVal("cat-promo-tipo");
+    const pct = parseInt(_wzVal("cat-banner-desc-pct")) || 0;
+    const r = [];
+    const mencionaCarrito = /\b2do\b|2°|segund[oa]|mitad de precio|3\s*x\s*2|tercer[ao]|la 3ra|escalonad|por cantidad/.test(t);
+    if (mencionaCarrito && !activo("carrito")) r.push("una promo de carrito (2do a mitad, 3x2…) que ya no está activa");
+    if (/envio/.test(t) && !activo("envio")) r.push("envío gratis, pero no está activo");
+    if (/regalo|sorpresa|cortesia/.test(t) && !activo("regalo")) r.push("un regalo, pero no está activo");
+    const porcentajes = [...t.matchAll(/(\d{1,2})\s*%/g)].map(m => parseInt(m[1]));
+    const pctDeCarrito = mencionaCarrito || tipo === "2x50" || tipo === "escalonado";
+    if (!pctDeCarrito) {
+        if ((porcentajes.length || /descuento|\boff\b/.test(t)) && !pct && !activo("carrito")) r.push("un descuento, pero no hay % de descuento activo");
+        else if (pct && porcentajes.length && !porcentajes.includes(pct)) r.push(`${porcentajes[0]}%, pero el descuento activo es ${pct}%`);
+    }
+    return r;
+}
+
+function _wzPintarAvisoBanner() {
+    const caja = _wzEl("wz-banner-aviso");
+    if (!caja) return;
+    const r = _wzIncoherenciasBanner();
+    const firma = r.join("|") + "|" + _wzVal("cat-banner-txt") + "|" + _wzVal("cat-banner-sub");
+    _wzAvisoFirma = firma;
+    caja.hidden = !r.length || _wzAvisoBannerOk === firma;
+    if (caja.hidden) return;
+    caja.innerHTML = `<b>⚠️ El banner no coincide con la promo.</b> Dice «${esc(_wzVal("cat-banner-txt"))}${_wzVal("cat-banner-sub") ? " · " + esc(_wzVal("cat-banner-sub")) : ""}» y menciona ${esc(r.join("; "))}.
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+            <button type="button" class="wz-chip" onclick="wzPromoQuitar('banner')">🗑️ Quitar banner</button>
+            <button type="button" class="wz-chip" onclick="wzEditarBanner()">✏️ Editar banner</button>
+            <button type="button" class="wz-chip" style="color:#888;" onclick="_wzAvisoBannerOk=_wzAvisoFirma;_wzPintarAvisoBanner()">Dejarlo así</button>
+        </div>`;
+}
+
+function wzEditarBanner() {
+    _wzPromoAbiertas.add("banner");
+    _wzPintarPromoItems();
+    _wzEl("cat-banner-txt").focus();
+    _wzEl("cat-banner-txt").select();
+}
+
 function _wzPintarPromoItems() {
     const cont = _wzEl("wz-promo-items");
     if (!cont) return;
@@ -6060,6 +6119,7 @@ function _wzPintarPromoItems() {
         `<button type="button" class="wz-card${tipo === v ? " on" : ""}" onclick="wzCarritoTipo('${v}')"><span class="nm">${nm}</span><span class="ct">${ct}</span></button>`).join("");
     const modo = _wzPromoModo();
     document.querySelectorAll("#wz-promo .wz-card").forEach(c => c.classList.toggle("on", c.dataset.modo === modo));
+    _wzPintarAvisoBanner();
 }
 
 function wzPintarPaso3() {
@@ -6707,7 +6767,7 @@ function abrirModalCatalogo(tipo) {
     const iaOut = document.getElementById("cat-ia-resultado"); if (iaOut) iaOut.innerHTML = "";
     const afinar = document.getElementById("wz-afinar");    if (afinar) afinar.open = false;
     const usWrap = document.getElementById("wz-us-wrap");   if (usWrap) usWrap.open = false;
-    _wzModoPromo = null; _wzPromoAbiertas.clear();
+    _wzModoPromo = null; _wzPromoAbiertas.clear(); _wzAvisoBannerOk = "";
     sincronizarChipsCatTalla();
     wzRenderPlantillas();
     filtrarParaCatalogo();
@@ -7796,6 +7856,7 @@ async function generarPDFCatalogo() {
             <div id="cat-promo-detalle" style="display:none;margin-top:14px;">
               <div class="wz-t" style="margin-bottom:8px;">Qué incluye <small>toca una tarjeta para agregarla o editarla · ✕ para quitarla</small></div>
               <div class="wz-cards" id="wz-promo-items"></div>
+              <div id="wz-banner-aviso" hidden style="margin-top:10px;border:1.5px solid #f59e0b;background:#fffbeb;border-radius:12px;padding:12px 14px;font-size:13px;color:#7c4a03;"></div>
 
               <div class="wz-ed" id="wz-ed-banner" hidden>
                 <div class="wz-form2">
