@@ -6346,14 +6346,23 @@ const SP_TEMPORADAS = [
     { meses: [6],          mes: 6,  dia: 17, ocasion: "caballero",    nombre: "Día del Padre" },
 ];
 const SP_TRAMOS = ["Hasta $20", "$20 – $35", "Más de $35"];
-const SP_MATS = { plata: "Plata", acero: "Acero", oro: "Oro / Lam.", otro: "Otro" };
+const SP_MATS = { plata: "Plata 925", "plata-oro": "Plata + Oro Lam.", acero: "Acero 316L", oro: "Oro", otro: "Otro" };
+// Cuánto espacio se le da a cada material. «plata» = plata y laminado primero (por defecto).
+const SP_MAT_MODOS = {
+    plata:  { ic: "🥈", nm: "Plata y laminado primero", ct: "la mayoría plata 925 y plata + oro lam.", props: { plata: 50, "plata-oro": 40, acero: 10, oro: 0, otro: 0 } },
+    equi:   { ic: "⚖️", nm: "Equilibrado", ct: "variedad pareja de materiales", props: null },
+    manual: { ic: "✋", nm: "Manual", ct: "tú eliges el % de cada material", props: null },
+};
+let _spMatModo = "plata", _spMatProps = { ...SP_MAT_MODOS.plata.props };
 let _spN = 10, _spOcasion = null, _spProps = null, _spAdd = [], _spDel = [], _spVistos = new Set();
 
 function _spTramo(precio) { const p = parseFloat(precio) || 0; return p < 20 ? SP_TRAMOS[0] : p <= 35 ? SP_TRAMOS[1] : SP_TRAMOS[2]; }
 function _spMaterial(p) {
     const m = (p.material || detectarMaterial(p.nombre) || "").toLowerCase();
-    if (m.includes("oro")) return "oro";
+    if (m.includes("plata") && (m.includes("oro") || m.includes("lam"))) return "plata-oro";
+    if (m.includes("laminado")) return "plata-oro";
     if (m.includes("plata")) return "plata";
+    if (m.includes("oro")) return "oro";
     if (m.includes("acero")) return "acero";
     return "otro";
 }
@@ -6400,11 +6409,24 @@ function abrirSugerirPublicar() {
     const g = cfg.sugerirPublicar || {};
     _spN = g.n || 10;
     _spProps = { ...SP_PROPS_DEF, ...(g.props || {}) };
+    _spMatModo = SP_MAT_MODOS[g.matModo] ? g.matModo : "plata";
+    _spMatProps = { ...SP_MAT_MODOS.plata.props, ...(_spMatModo === "manual" ? (g.matProps || {}) : {}) };
     const temp = _spTemporada();
     _spOcasion = temp && ocasionesLista().some(o => o.id === temp.ocasion) ? temp.ocasion : "";
     _spVistos = new Set();
     document.getElementById("modal-sugerir").classList.add("open");
     spSugerir();
+}
+function spMatModo(m) {
+    _spMatModo = m;
+    if (SP_MAT_MODOS[m].props) _spMatProps = { ...SP_MAT_MODOS[m].props };
+    spSugerir();
+}
+// Proporción objetivo por material (null = equilibrado: solo variedad).
+function _spMatObjetivo() {
+    if (_spMatModo === "equi") return null;
+    const t = Object.values(_spMatProps).reduce((a, b) => a + b, 0);
+    return t ? _spMatProps : null;
 }
 function cerrarSugerirPublicar() { document.getElementById("modal-sugerir").classList.remove("open"); }
 
@@ -6440,12 +6462,25 @@ function spSugerir(otras = false) {
         const cat = cats[0];
         const tramoMin = SP_TRAMOS.slice().sort((a, b) => (cnt.tramo[a] || 0) - (cnt.tramo[b] || 0))[0];
         const matsPres = Object.keys(SP_MATS).filter(m => m !== "otro" && disp.some(d => d.mat === m));
-        const matMin = matsPres.sort((a, b) => (cnt.mat[a] || 0) - (cnt.mat[b] || 0))[0];
+        const matObj = _spMatObjetivo();
+        let matMin = null, faltaMat = null;
+        if (matObj) {
+            // Material con más «falta» respecto al % deseado (sobre toda la tienda).
+            const tM = Object.values(matObj).reduce((a, b) => a + b, 0);
+            faltaMat = m => (matObj[m] || 0) / tM * total - (cnt.mat[m] || 0);
+            matMin = matsPres.filter(m => matObj[m] > 0).sort((a, b) => faltaMat(b) - faltaMat(a))[0] || null;
+        } else matMin = matsPres.sort((a, b) => (cnt.mat[a] || 0) - (cnt.mat[b] || 0))[0];
         let mejor = null;
         pool.filter(d => d.cat === cat).forEach(d => {
             let s = Math.random() * 0.8; const why = [];
             if (falta(cat) >= 0.5) why.push(`Faltan ${(CAT_MAP[cat] || cat).replace(/^\S+\s/, "").toLowerCase()}`);
             if (oc && d.ocasiones.has(oc.id)) { s += 3; why.push(`${oc.emoji || ""} ${oc.nombre}`.trim()); }
+            if (matObj) {
+                if (!matObj[d.mat]) s -= 3;
+                else if (d.mat === matMin) { s += 2.5; why.push(`Prioridad ${SP_MATS[d.mat].toLowerCase()}`); }
+                else if (faltaMat(d.mat) > 0) s += 1.5;
+                else s -= 1;
+            } else if (d.mat === matMin) { s += 1; why.push(`Falta ${SP_MATS[d.mat].toLowerCase()}`); }
             if (nuevo && d.registro && ahora - d.registro < 30 * D) { s += 2; why.push("Nuevo"); }
             if (repetir) {
                 if (!d.publicadoEn && !d.despublicadoEn) { s += 1; why.push("Nunca publicado"); }
@@ -6453,7 +6488,6 @@ function spSugerir(otras = false) {
                 else if (d.despublicadoEn && ahora - d.despublicadoEn < 14 * D) s -= 1.5;
             }
             if (_spTramo(d.precio) === tramoMin) { s += 1; why.push(`Falta ${tramoMin.toLowerCase()}`); }
-            if (d.mat === matMin) { s += 1; why.push(`Falta ${SP_MATS[d.mat].toLowerCase()}`); }
             if (!mejor || s > mejor.s) mejor = { d, s, why };
         });
         if (oc && mejor.d.ocasiones.has(oc.id)) deOcasion++;
@@ -6485,6 +6519,12 @@ function _spPintar(pub, nCand) {
     $("sp-ocasion").innerHTML = `<button type="button" class="wz-card${!_spOcasion ? " on" : ""}" onclick="_spOcasion='';spSugerir()"><span class="ic">⚖️</span><span class="nm">Solo variedad</span><span class="ct">sin ocasión especial</span></button>`
         + ocasionesLista().map(o => { const n = conCand(o.id); return n || _spOcasion === o.id ? `<button type="button" class="wz-card${_spOcasion === o.id ? " on" : ""}" onclick="_spOcasion='${esc(o.id)}';spSugerir()"><span class="ic">${esc(o.emoji || "🏷️")}</span><span class="nm">${esc(o.nombre)}</span><span class="ct">${n} sin publicar${temp && temp.ocasion === o.id ? " · se acerca" : ""}</span></button>` : ""; }).join("");
 
+    $("sp-mat").innerHTML = Object.entries(SP_MAT_MODOS).map(([k, m]) => `<button type="button" class="wz-card${_spMatModo === k ? " on" : ""}" onclick="spMatModo('${k}')"><span class="ic">${m.ic}</span><span class="nm">${m.nm}</span><span class="ct">${m.ct}</span></button>`).join("");
+    const tMat = Object.values(_spMatProps).reduce((a, b) => a + b, 0);
+    $("sp-mat-man").hidden = _spMatModo !== "manual";
+    $("sp-mat-man").innerHTML = _spMatModo !== "manual" ? "" : Object.keys(SP_MATS).map(k => `<label class="sp-prop"><span>${SP_MATS[k]}</span>
+        <input type="range" min="0" max="100" step="5" value="${_spMatProps[k] || 0}" oninput="_spMatProps['${k}']=+this.value;this.parentNode.querySelector('.v').textContent=this.value+'%'" onchange="spSugerir()"><span class="v">${_spMatProps[k] || 0}%</span></label>`).join("")
+        + (tMat ? "" : `<div style="font-size:12px;color:#b45309;">Todo en 0 % → se reparte por variedad.</div>`);
     const tarjeta = (d, tipo, i) => `<button type="button" class="sp-prod ${tipo}${d.on ? " on" : ""}" onclick="spToggle('${tipo}',${i})">
         <div class="ph">${d.foto ? `<img src="${ikSharp(d.foto)}" loading="lazy" alt="" onerror="this.remove()">` : "💍"}</div>
         <span class="ck">${d.on ? (tipo === "add" ? "+ Publicar" : "− Quitar") : "No"}</span>
@@ -6537,7 +6577,7 @@ async function spPublicar() {
     try {
         if (a.length) await llamar(a.flatMap(d => d.codigos), true);
         if (q.length) await llamar(q.flatMap(d => d.codigos), false);
-        cfg.sugerirPublicar = { n: _spN, props: _spProps };
+        cfg.sugerirPublicar = { n: _spN, props: _spProps, matModo: _spMatModo, matProps: _spMatProps };
         fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "ACTUALIZAR_CONFIG", _pass: ADMIN_PASS, config: { sugerirPublicar: cfg.sugerirPublicar } }) }).catch(() => {});
         try { localStorage.setItem("vx_cfg", JSON.stringify(cfg)); } catch (_) {}
         toast(`✅ Tienda actualizada: +${a.length} publicadas, −${q.length} quitadas`, "#22c55e");
@@ -8310,6 +8350,12 @@ async function generarPDFCatalogo() {
       <div>
         <div class="wz-t">Dar prioridad a <small id="sp-temp-hint"></small></div>
         <div class="wz-cards sm" id="sp-ocasion"></div>
+      </div>
+
+      <div>
+        <div class="wz-t">Material <small>qué material se publica más</small></div>
+        <div class="wz-cards sm" id="sp-mat"></div>
+        <div id="sp-mat-man" style="display:grid;gap:8px;margin-top:10px;" hidden></div>
       </div>
 
       <div class="sp-kpis">
