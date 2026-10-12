@@ -4662,6 +4662,73 @@ async function enviar(){
           break;
         }
 
+        // Admin → Catálogo Cliente → «Pega lo que te pidió el cliente»: convierte el mensaje
+        // (tal como llegó por WhatsApp) en filtros del catálogo. Solo devuelve filtros;
+        // las piezas las elige el admin. Todo valor se valida contra listas fijas.
+        case "IA_INTERPRETAR_PEDIDO": {
+          if (!esAdmin) return forbidden();
+          const texto = String(d.texto || "").trim().slice(0, 800);
+          if (!texto) { result = { ok: false, error: "Texto vacío" }; break; }
+          const groqKey = env.GROQ_KEY;
+          if (!groqKey) { result = { ok: false, error: "GROQ_KEY no configurada en Cloudflare" }; break; }
+          const ocasionesIA = (Array.isArray(d.ocasiones) ? d.ocasiones : []).slice(0, 40)
+            .map(o => ({ id: String(o?.id || "").slice(0, 40), nombre: String(o?.nombre || "").slice(0, 40) }))
+            .filter(o => /^[a-z0-9-]{1,40}$/.test(o.id));
+          const CATS_IA = { AN: "anillos", AR: "aretes", CD: "cadenas / collares / dijes", PL: "pulseras", CN: "conjuntos / sets", RL: "relojes" };
+          try {
+            const prompt =
+              `Eres asistente de VEREX, joyería en El Salvador. Un cliente escribió el mensaje de abajo. ` +
+              `Conviértelo en filtros para armarle un catálogo. Responde SOLO con un objeto JSON, sin texto extra, con estas claves:\n` +
+              `"ocasiones": ids de esta lista que apliquen: ${JSON.stringify(ocasionesIA)}\n` +
+              `"categorias": códigos de esta lista: ${JSON.stringify(CATS_IA)}\n` +
+              `"materiales": de ["plata","acero","oro"] (oro incluye laminado/chapa de oro)\n` +
+              `"tallas": tallas de anillo como texto, ej. ["6","6.5"]\n` +
+              `"precioMin" y "precioMax": números en dólares o 0 si no dijo. Si dice "como de $30" usa precioMax un poco arriba (ej. 35).\n` +
+              `"tipoAnillo": "sencillo", "pareja" (argollas de matrimonio/novios) o ""\n` +
+              `"genero": "dama", "caballero" o "" (solo si lo dice)\n` +
+              `"nombreCliente": su nombre si lo dice, si no ""\n` +
+              `"noEntendido": palabras de estilo o gusto que no son filtros (ej. "delicado", "elegante")\n` +
+              `No inventes: deja vacío lo que el mensaje no diga.\n\nMensaje: """${texto}"""`;
+            const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model: "qwen/qwen3.8-27b",
+                messages: [{ role: "user", content: prompt }],
+                reasoning_effort: "none",
+                max_tokens: 350,
+                temperature: 0
+              }),
+              signal: AbortSignal.timeout(15000)
+            });
+            if (!groqRes.ok) { result = { ok: false, error: "Groq error " + groqRes.status }; break; }
+            const groqData = await groqRes.json();
+            let txt = (groqData.choices?.[0]?.message?.content || "").replace(/<think>[\s\S]*?<\/think>/i, "");
+            const m = txt.match(/\{[\s\S]*\}/);
+            let j = {};
+            try { j = JSON.parse(m ? m[0] : "{}"); } catch (_) { j = {}; }
+            const lista = (v, ok, max = 10) => Array.from(new Set((Array.isArray(v) ? v : []).map(x => String(x).trim()).filter(ok))).slice(0, max);
+            const idsOc = new Set(ocasionesIA.map(o => o.id));
+            const num = v => { const n = Math.round(parseFloat(v) || 0); return n > 0 && n < 10000 ? n : 0; };
+            let precioMin = num(j.precioMin), precioMax = num(j.precioMax);
+            if (precioMin && precioMax && precioMin > precioMax) [precioMin, precioMax] = [precioMax, precioMin];
+            result = { ok: true, pedido: {
+              ocasiones:  lista(j.ocasiones, x => idsOc.has(x)),
+              categorias: lista(j.categorias, x => CATS_IA[x]),
+              materiales: lista(j.materiales, x => ["plata", "acero", "oro"].includes(x)),
+              tallas:     lista(j.tallas, x => /^\d{1,2}(\.5)?$/.test(x) && parseFloat(x) >= 3 && parseFloat(x) <= 16, 12),
+              precioMin, precioMax,
+              tipoAN:     ["sencillo", "pareja"].includes(j.tipoAnillo) ? j.tipoAnillo : "",
+              genero:     ["dama", "caballero"].includes(j.genero) ? j.genero : "",
+              nombreCliente: String(j.nombreCliente || "").replace(/<[^>]*>/g, "").replace(/[<>"]/g, "").trim().slice(0, 30),
+              noEntendido: lista(j.noEntendido, x => x.length > 1 && x.length < 30, 5),
+            } };
+          } catch (e) {
+            result = { ok: false, error: e.name === "TimeoutError" ? "Groq no respondió a tiempo" : "Error de IA: " + e.message };
+          }
+          break;
+        }
+
         case "GUARDAR_FOTO_PENDIENTE": {
           // Guarda URL de foto subida desde celular para usarla en el sistema
           const id = `foto_${Date.now()}`;

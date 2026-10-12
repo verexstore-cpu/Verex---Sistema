@@ -1855,6 +1855,7 @@ async function cargarDatos(silencioso=false) {
             if (data.config.promoGeneral !== undefined) cfg.promoGeneral = data.config.promoGeneral;
             if (data.config.contenidoUS !== undefined) cfg.contenidoUS = data.config.contenidoUS;
             if (data.config.ocasiones !== undefined) cfg.ocasiones = data.config.ocasiones;
+            if (data.config.plantillasCatalogo !== undefined) cfg.plantillasCatalogo = data.config.plantillasCatalogo;
             localStorage.setItem("vx_cfg", JSON.stringify(cfg));
         }
         const inpFraseC = document.getElementById("inp-frase-confianza");
@@ -3891,9 +3892,6 @@ function aplicarPromptIA() {
     document.querySelectorAll(".cat-cat-chk").forEach(chk => {
         const incluir = catsDetect.includes(chk.value) && !catsExcluir.includes(chk.value);
         chk.checked = incluir;
-        const lbl = chk.closest("label");
-        if (chk.checked) { lbl.style.background="var(--azul)"; lbl.style.color="#fff"; lbl.style.borderColor="var(--azul)"; }
-        else             { lbl.style.background="#fff"; lbl.style.color=""; lbl.style.borderColor="var(--borde)"; }
     });
 
     const hasAN = catsDetect.length === 0 || catsDetect.includes("AN");
@@ -4196,7 +4194,7 @@ function guardarFormComoPromoGeneral() {
 
 // El resumen se actualiza solo mientras se edita cualquier campo de ajustes.
 ["input", "change"].forEach(ev => document.addEventListener(ev, e => {
-    if (e.target.closest?.("#cat-promo-detalle")) actualizarResumenPromoCatalogo();
+    if (e.target.closest?.("#cat-promo-detalle, #wz-mas-opciones")) actualizarResumenPromoCatalogo();
 }));
 
 // ── HISTORIAL DE LINKS ──────────────────────────────────────────────────────
@@ -4318,7 +4316,7 @@ function _resetModalCatalogo() {
     if (!_editandoLinkId) return;
     _editandoLinkId = null;
     const btn = document.getElementById("btn-gen-link");
-    if (btn) { btn.textContent = "🔗 Link"; btn.onclick = generarLinkCatalogo; }
+    if (btn) { btn.textContent = "🔗 Crear link"; btn.onclick = generarLinkCatalogo; }
 }
 
 async function agregarProductosAlLink() {
@@ -4642,7 +4640,7 @@ async function generarLinkCatalogo() {
         }
 
     } catch(e){ console.error(e); toast("❌ Error al generar link: "+e.message,"#ef4444"); }
-    finally { btn.textContent="🔗 Link"; btn.disabled=false; }
+    finally { btn.textContent="🔗 Crear link"; btn.disabled=false; }
 }
 
 // ── Catálogos: log, captura de filtros, render y reactivar ─────────────
@@ -4715,31 +4713,6 @@ function renderLogCatalogos() {
     _cargarVistasCatalogos(log.map(e => e.id));
 }
 
-async function reconstruirIndiceAfiliados() {
-    const btn = document.getElementById("btn-backfill");
-    const orig = btn.textContent;
-    btn.textContent = "⏳ Reconstruyendo…";
-    btn.disabled = true;
-    try {
-        const res = await fetch("/backfill-affiliate-index", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ _pass: ADMIN_PASS })
-        });
-        const out = await res.json();
-        if (out.ok) {
-            toast(`✅ ${out.message}`, "#22c55e");
-            renderLogCatalogos();
-        } else {
-            toast("❌ " + (out.error || "Error"), "#ef4444");
-        }
-    } catch(e) {
-        toast("❌ " + e.message, "#ef4444");
-    } finally {
-        btn.textContent = orig;
-        btn.disabled = false;
-    }
-}
 
 async function _cargarVistasCatalogos(ids) {
     try {
@@ -4990,6 +4963,7 @@ function renderPanelLinks() {
                 <button onclick="navigator.clipboard.writeText(mensajeCompartirCatalogo('${esc(c.url)}'));toast('📋 Mensaje y link copiados')" style="flex:1;padding:7px 0;background:#111827;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;">📋 Copiar</button>
                 <a href="${esc(c.url)}" target="_blank" style="flex:1;text-align:center;padding:7px 0;background:#f3f4f6;color:#111827;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">👁️ Ver</a>
                 ${c.wa ? `<a href="https://wa.me/${esc(String(c.wa).replace(/\D/g, ""))}?text=${encodeURIComponent(mensajeCompartirCatalogo(c.url))}" target="_blank" style="flex:1;text-align:center;padding:7px 0;background:#25D366;color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">💬 WhatsApp</a>` : ""}
+                <button onclick="cambiarVigenciaLinkPanel('${esc(c.url)}')" style="flex:0 0 auto;padding:7px 10px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;" title="Cambiar cuántos días le quedan">⏱️</button>
                 <button onclick="desactivarLinkPanel('${esc(c.id)}','${esc(c.nombre || "").replace(/'/g,"\\'")}')" style="flex:0 0 auto;padding:7px 10px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;" title="Desactivar este link">🔒</button>
                 ` : `
                 <button onclick="reactivarLinkPanel('${esc(c.id)}')" style="flex:1;padding:7px 0;background:#C9A84C;color:#111;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">🔄 Reactivar (nuevo link)</button>
@@ -5406,11 +5380,18 @@ async function desactivarLinkCatalogo(linkOrId) {
         const out = await res.json();
         if (!res.ok) throw new Error(out.error || "No se pudo desactivar");
         toast("🚫 Link desactivado","#22c55e");
-        document.getElementById("cat-link-desactivar").value = "";
+        if (document.getElementById("lk-lista")) cargarPanelLinks();
     } catch(e) {
         console.error(e);
         toast("❌ Error: "+e.message,"#ef4444");
     }
+}
+
+// Botón ⏱️ de la pestaña Links (antes vivía en «Gestión de links anteriores» del modal).
+function cambiarVigenciaLinkPanel(url) {
+    const dias = parseInt(prompt("¿Cuántos días más debe estar activo este link (desde hoy)?", "7"));
+    if (!dias || dias < 1) return;
+    editarVigenciaCatalogo(url, Math.min(dias, 90));
 }
 
 // Cambia cuánto le queda de vida a un link YA generado, sin desactivarlo ni
@@ -5433,7 +5414,7 @@ async function editarVigenciaCatalogo(linkOrId, dias) {
         const out = await res.json();
         if (!res.ok) throw new Error(out.error || "No se pudo actualizar");
         toast(`✅ Vigencia actualizada — ${dias} día(s) desde ahora`,"#22c55e");
-        document.getElementById("cat-link-editar-vig").value = "";
+        if (document.getElementById("lk-lista")) cargarPanelLinks();
     } catch(e) {
         console.error(e);
         toast("❌ Error: "+e.message,"#ef4444");
@@ -5531,39 +5512,29 @@ function ocasionesSeleccionadas() {
 
 function poblarOcasionesPills(seleccion = []) {
     const cont = document.getElementById("cat-ocasion-pills");
+    const cont0 = document.getElementById("cat-ocasion-pills-0");
     if (!cont) return;
     // Cuántos diseños con stock en bodega tiene cada ocasión — ayuda a ver
     // de un vistazo qué falta por etiquetar.
-    const conteo = {};
-    const vistos = new Set();
-    productos.forEach(p => {
-        const ocs = _ocasionesDeFila(p);
-        if (!ocs.length || p.reservado || _stockBodegaProd(p) <= 0) return;
-        const base = _baseDiseno(p);
-        ocs.forEach(o => {
-            const k = o + "|" + base;
-            if (vistos.has(k)) return;
-            vistos.add(k);
-            conteo[o] = (conteo[o] || 0) + 1;
-        });
-    });
+    const conteo = _wzConteoDisenos(() => true, p => _ocasionesDeFila(p));
+    const tarjeta = o => {
+        const n = conteo[o.id] || 0;
+        return `<label class="wz-card"><input type="checkbox" class="cat-ocasion-chk" value="${esc(o.id)}" ${seleccion.includes(o.id) ? "checked" : ""} onchange="onOcasionPillChange()">
+            <span class="ic">${esc(o.emoji || "🏷️")}</span><span class="nm">${esc(o.nombre)}</span><span class="ct">${n} pieza${n === 1 ? "" : "s"}</span></label>`;
+    };
     const lista = ocasionesLista();
-    const hayEtiquetas = Object.keys(conteo).length > 0;
-    cont.innerHTML = lista.map(o => {
-        const on = seleccion.includes(o.id);
-        return `<label style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:20px;border:1.5px solid ${on ? "var(--azul)" : "var(--borde)"};background:${on ? "var(--azul)" : "#fff"};color:${on ? "#fff" : ""};font-size:12px;font-weight:600;user-select:none;transition:all .15s;">
-            <input type="checkbox" class="cat-ocasion-chk" value="${esc(o.id)}" style="display:none;" ${on ? "checked" : ""} onchange="onOcasionPillChange()">
-            ${esc(o.emoji || "")} ${esc(o.nombre)} <span style="opacity:.6;font-weight:400;">${conteo[o.id] || 0}</span>
-        </label>`;
-    }).join("") + (hayEtiquetas ? "" : `<span style="font-size:11px;color:#999;align-self:center;">Aún no hay productos etiquetados — usa 🏷️ Etiquetar productos.</span>`);
+    const conPiezas = lista.filter(o => conteo[o.id] || seleccion.includes(o.id));
+    const sinPiezas = lista.filter(o => !conPiezas.includes(o));
+    cont.innerHTML = conPiezas.map(tarjeta).join("")
+        || `<div style="font-size:12.5px;color:#888;grid-column:1/-1;">Aún no hay productos etiquetados — usa 🏷️ Etiquetar productos.</div>`;
+    if (cont0) cont0.innerHTML = sinPiezas.map(tarjeta).join("");
+    const wrap0 = document.getElementById("wz-ocasiones-0-wrap");
+    if (wrap0) wrap0.hidden = !sinPiezas.length;
 }
 
 function onOcasionPillChange() {
-    document.querySelectorAll(".cat-ocasion-chk").forEach(chk => {
-        const lbl = chk.closest("label");
-        if (chk.checked) { lbl.style.background="var(--azul)"; lbl.style.color="#fff"; lbl.style.borderColor="var(--azul)"; }
-        else             { lbl.style.background="#fff"; lbl.style.color=""; lbl.style.borderColor="var(--borde)"; }
-    });
+    // La tarjeta marcada se pinta sola por CSS (.wz-card:has(input:checked)).
+    poblarCategorias();   // los números de cada tipo de pieza dependen de la ocasión
     filtrarParaCatalogo();
 }
 
@@ -5766,6 +5737,367 @@ async function guardarGestionOcasiones() {
         btn.disabled = false; btn.textContent = "💾 Guardar";
     }
 }
+
+// ═════════════════════════════════════════════
+//  ASISTENTE DEL CATÁLOGO (Cliente → Productos → Enviar)
+// ═════════════════════════════════════════════
+// Solo cambia la PRESENTACIÓN del modal: todos los campos que leen
+// generarLinkCatalogo / PDF / Imagen / recetas siguen siendo los mismos
+// (cat-validez, cat-tipo-an, cat-genero, checkboxes .cat-*-chk, etc.).
+// Las tarjetas escriben en esos campos y se repintan desde ellos.
+let _wzPaso = 1;
+let _catPrecio = { min: 0, max: 0 };          // 0 = sin límite
+const WZ_PRECIOS = [
+    { id: "a", nombre: "Hasta $20",  min: 0,  max: 20 },
+    { id: "b", nombre: "$20 – $35",  min: 20, max: 35 },
+    { id: "c", nombre: "Más de $35", min: 35, max: 0 },
+];
+const WZ_TIPOS   = [["", "Todos"], ["sencillo", "Sencillos"], ["pareja", "Argollas / Pareja"]];
+const WZ_GENEROS = [["", "Todos"], ["dama", "Dama"], ["caballero", "Caballero"]];
+const WZ_VIGENCIAS = [["1", "1 día"], ["3", "3 días"], ["7", "7 días"], ["15", "15 días"], ["30", "30 días"]];
+
+function _wzCoincideOcasion(p) {
+    const ocs = ocasionesSeleccionadas();
+    return !ocs.length || _ocasionesDeFila(p).some(o => ocs.includes(o));
+}
+
+// Diseños (no filas por talla) con stock en bodega, agrupados por la clave que
+// devuelva `clave(p)` (texto o lista). Para los números de las tarjetas.
+function _wzConteoDisenos(filtro, clave) {
+    const conteo = {}, vistos = new Set();
+    productos.forEach(p => {
+        if (p.reservado || p.estado === "inactivo" || _stockBodegaProd(p) <= 0 || !filtro(p)) return;
+        const base = _baseDiseno(p);
+        [].concat(clave(p) || []).forEach(k => {
+            if (vistos.has(k + "|" + base)) return;
+            vistos.add(k + "|" + base);
+            conteo[k] = (conteo[k] || 0) + 1;
+        });
+    });
+    return conteo;
+}
+
+function _wzElegidas() { return document.querySelectorAll("#cat-lista .cat-chk:checked").length; }
+function _wzEl(id) { return document.getElementById(id); }
+
+function wzIr(n) {
+    if (n < 1 || n > 3) return;
+    if (n === 3 && !_wzElegidas()) { toast("⚠️ Elige al menos una pieza en el paso 2", "#f97316"); n = 2; }
+    _wzPaso = n;
+    [1, 2, 3].forEach(i => {
+        _wzEl("wz-p-" + i).hidden = i !== n;
+        const st = _wzEl("wz-st-" + i);
+        st.classList.toggle("on", i === n);
+        st.classList.toggle("done", i < n);
+    });
+    if (n === 3) wzPintarPaso3();
+    wzActualizarBarra();
+    const caja = document.querySelector("#modal-catalogo .mb");
+    if (caja) caja.scrollTop = 0;
+}
+
+function wzActualizarBarra() {
+    const info = _wzEl("wz-bar-info"), sig = _wzEl("wz-sig");
+    if (!info) return;
+    const total = _catFiltrada.length, sel = _wzElegidas();
+    _wzEl("wz-atras").hidden = _wzPaso === 1;
+    sig.hidden = _wzPaso === 3;
+    sig.disabled = false;
+    if (_wzPaso === 1) {
+        info.innerHTML = `<b>${total}</b> pieza${total === 1 ? "" : "s"} coinciden`;
+        sig.textContent = "Siguiente: elegir productos →";
+    } else if (_wzPaso === 2) {
+        info.innerHTML = `<b>${sel}</b> elegida${sel === 1 ? "" : "s"} de ${total}`;
+        sig.textContent = "Siguiente: enviar →";
+        sig.disabled = !sel;
+    } else {
+        const dias = _wzEl("cat-validez").value;
+        info.innerHTML = `<b>${sel}</b> pieza${sel === 1 ? "" : "s"} · activo ${dias} día${dias === "1" ? "" : "s"}${_wzEl("cat-es-us")?.checked ? " · 🇺🇸 EE. UU." : ""}`;
+        _wzPreview();
+    }
+    if (_wzEl("cat-es-us")?.checked) _wzEl("wz-us-wrap").open = true;
+}
+
+// Repinta todo lo que depende de los filtros: tarjetas de tipo/género/precio,
+// la línea de filtros activos y la barra de abajo.
+function _wzTrasFiltrar() {
+    if (!_wzEl("wz-activos")) return;
+    const tarjetasValor = (contId, opciones, actual, fn) => {
+        _wzEl(contId).innerHTML = opciones.map(([v, t]) =>
+            `<button type="button" class="wz-card${actual === v ? " on" : ""}" onclick="${fn}('${v}')"><span class="nm">${t}</span></button>`).join("");
+    };
+    tarjetasValor("wz-tipo", WZ_TIPOS, _wzEl("cat-tipo-an").value, "wzTipo");
+    tarjetasValor("wz-genero", WZ_GENEROS, _wzEl("cat-genero").value, "wzGenero");
+    _wzEl("wz-precio").innerHTML = WZ_PRECIOS.map(r =>
+        `<button type="button" class="wz-card${_catPrecio.min === r.min && _catPrecio.max === r.max ? " on" : ""}" onclick="wzPrecio('${r.id}')"><span class="nm">${r.nombre}</span></button>`).join("");
+
+    const tags = [];
+    const tag = (txt, quitar) => tags.push(`<span class="wz-tag">${esc(txt)}<button type="button" aria-label="Quitar ${esc(txt)}" onclick="${quitar}">✕</button></span>`);
+    ocasionesSeleccionadas().forEach(id => { const o = ocasionesLista(true).find(x => x.id === id); tag(`${o?.emoji || ""} ${o?.nombre || id}`.trim(), `wzQuitar('oc','${id}')`); });
+    document.querySelectorAll(".cat-cat-chk:checked").forEach(c => tag(CAT_MAP[c.value] || c.value, `wzQuitar('cat','${c.value}')`));
+    document.querySelectorAll(".cat-material-chk:checked").forEach(c => tag(c.closest("label").textContent.trim(), `wzQuitar('mat','${c.value}')`));
+    (_wzEl("cat-talla").value || "").split(",").filter(Boolean).forEach(t => tag("T" + t, `wzQuitar('talla','${t}')`));
+    if (_wzEl("cat-tipo-an").value) tag(WZ_TIPOS.find(x => x[0] === _wzEl("cat-tipo-an").value)[1], "wzTipo('')");
+    if (_wzEl("cat-genero").value) tag(WZ_GENEROS.find(x => x[0] === _wzEl("cat-genero").value)[1], "wzGenero('')");
+    if (_catPrecio.min || _catPrecio.max) tag(_wzTextoPrecio(_catPrecio), "wzQuitar('precio')");
+    const q = (_wzEl("cat-buscar")?.value || "").trim();
+    if (q) tag(`"${q}"`, "wzQuitar('buscar')");
+    const pfx = (_wzEl("cat-prefijo-txt")?.value || "").trim();
+    if (pfx) tag("Prefijo " + pfx.toUpperCase(), "wzQuitar('prefijo')");
+    _wzEl("wz-activos").innerHTML = tags.join("") || `<span style="color:#888;font-size:12.5px;">Sin filtros: se muestra todo lo que hay en bodega</span>`;
+
+    const nAfinar = (_catPrecio.min || _catPrecio.max ? 1 : 0) + document.querySelectorAll(".cat-material-chk:checked").length
+        + (_wzEl("cat-talla").value ? 1 : 0) + (_wzEl("cat-tipo-an").value ? 1 : 0) + (_wzEl("cat-genero").value ? 1 : 0) + (pfx ? 1 : 0);
+    _wzEl("wz-afinar-hint").textContent = nAfinar ? `${nAfinar} filtro${nAfinar > 1 ? "s" : ""} activo${nAfinar > 1 ? "s" : ""}` : "precio, material, talla";
+    wzActualizarBarra();
+}
+
+function _wzTextoPrecio(r) {
+    if (r.min && r.max) return `$${r.min} – $${r.max}`;
+    if (r.max) return `Hasta $${r.max}`;
+    return `Más de $${r.min}`;
+}
+
+function wzTipo(v)   { _wzEl("cat-tipo-an").value = v; filtrarParaCatalogo(); }
+function wzGenero(v) { _wzEl("cat-genero").value = v; filtrarParaCatalogo(); }
+function wzPrecio(id) {
+    const r = WZ_PRECIOS.find(x => x.id === id);
+    const igual = _catPrecio.min === r.min && _catPrecio.max === r.max;
+    _catPrecio = igual ? { min: 0, max: 0 } : { min: r.min, max: r.max };
+    filtrarParaCatalogo();
+}
+
+function wzQuitar(tipo, val) {
+    const desmarcar = sel => document.querySelectorAll(sel).forEach(c => { if (c.value === val) c.checked = false; });
+    if (tipo === "oc")      { desmarcar(".cat-ocasion-chk"); onOcasionPillChange(); return; }
+    if (tipo === "cat")     { desmarcar(".cat-cat-chk"); onPillChange(); return; }
+    if (tipo === "mat")     desmarcar(".cat-material-chk");
+    if (tipo === "talla")   { _wzEl("cat-talla").value = _wzEl("cat-talla").value.split(",").filter(t => t && t !== val).join(","); sincronizarChipsCatTalla(); }
+    if (tipo === "precio")  _catPrecio = { min: 0, max: 0 };
+    if (tipo === "buscar")  _wzEl("cat-buscar").value = "";
+    if (tipo === "prefijo") _wzEl("cat-prefijo-txt").value = "";
+    filtrarParaCatalogo();
+}
+
+// Deja todos los filtros en blanco (lo usan la IA y las plantillas antes de aplicar los suyos).
+function _wzLimpiarFiltros() {
+    document.querySelectorAll(".cat-cat-chk, .cat-material-chk, .cat-ocasion-chk").forEach(c => c.checked = false);
+    _wzEl("cat-talla").value = ""; sincronizarChipsCatTalla();
+    _wzEl("cat-tipo-an").value = ""; _wzEl("cat-genero").value = "";
+    _wzEl("cat-buscar").value = ""; _wzEl("cat-prefijo-txt").value = "";
+    _catPrecio = { min: 0, max: 0 };
+}
+
+// Aplica un conjunto de filtros (de la IA o de una plantilla) a las tarjetas.
+function _wzAplicarFiltros(f) {
+    _wzLimpiarFiltros();
+    const marcar = (sel, vals) => document.querySelectorAll(sel).forEach(c => { c.checked = (vals || []).includes(c.value); });
+    marcar(".cat-material-chk", f.materiales);
+    poblarOcasionesPills(f.ocasiones || []);
+    poblarCategorias();
+    marcar(".cat-cat-chk", f.categorias);
+    _wzEl("cat-talla").value = (f.tallas || []).join(",");
+    sincronizarChipsCatTalla();
+    _wzEl("cat-tipo-an").value = f.tipoAN || "";
+    _wzEl("cat-genero").value = f.genero || "";
+    _catPrecio = { min: +f.precioMin || 0, max: +f.precioMax || 0 };
+    if (f.prefijo) _wzEl("cat-prefijo-txt").value = f.prefijo;
+    if (Object.keys(f).some(k => ["materiales", "tallas", "tipoAN", "genero", "precioMin", "precioMax", "prefijo"].includes(k) && (Array.isArray(f[k]) ? f[k].length : f[k])))
+        _wzEl("wz-afinar").open = true;
+    onPillChange();   // muestra/oculta la sección de anillos y vuelve a filtrar
+}
+
+// ── IA: «Pega lo que te pidió el cliente» ────────────────────────
+async function wzEntender() {
+    const txt = (_wzEl("cat-ia-prompt").value || "").trim();
+    const out = _wzEl("cat-ia-resultado");
+    if (!txt) return toast("⚠️ Pega o escribe lo que te pidió el cliente", "#f97316");
+    const btn = _wzEl("wz-ia-btn");
+    btn.disabled = true; btn.textContent = "⏳ Entendiendo…";
+    let r = null;
+    try {
+        r = await fetch(API_URL, { method: "POST", body: JSON.stringify({
+            accion: "IA_INTERPRETAR_PEDIDO", _pass: ADMIN_PASS, texto: txt.slice(0, 800),
+            ocasiones: ocasionesLista().map(o => ({ id: o.id, nombre: o.nombre }))
+        }) }).then(x => x.json());
+    } catch (_) {}
+    btn.disabled = false; btn.textContent = "Entender pedido";
+    if (!r?.ok || !r.pedido) {
+        // Sin IA (Worker sin actualizar, Groq caído…): búsqueda por palabras clave de siempre.
+        aplicarPromptIA();
+        out.insertAdjacentHTML("afterbegin", `<span style="color:#b45309;font-weight:600;">La IA no respondió, usé búsqueda por palabras:</span> `);
+        return;
+    }
+    const pd = r.pedido;
+    const ocConPiezas = (pd.ocasiones || []).filter(_ocasionTieneProductos);
+    const ocSinPiezas = (pd.ocasiones || []).filter(id => !ocConPiezas.includes(id));
+    _wzAplicarFiltros({ ...pd, ocasiones: ocConPiezas });
+    if (pd.nombreCliente && !_wzEl("cat-nombre").value.trim()) _wzEl("cat-nombre").value = pd.nombreCliente;
+
+    const nomOc = id => { const o = ocasionesLista(true).find(x => x.id === id); return `${o?.emoji || ""} ${o?.nombre || id}`.trim(); };
+    const partes = [
+        ...ocConPiezas.map(nomOc),
+        ...(pd.categorias || []).map(k => CAT_MAP[k] || k),
+        ...(pd.materiales || []).map(m => ({ plata: "Plata 925", acero: "Acero 316L", oro: "Oro / Laminado" }[m] || m)),
+        ...(pd.tallas || []).map(t => "T" + t),
+        ...(pd.tipoAN ? [WZ_TIPOS.find(x => x[0] === pd.tipoAN)?.[1]] : []),
+        ...(pd.genero ? [WZ_GENEROS.find(x => x[0] === pd.genero)?.[1]] : []),
+        ...(pd.precioMin || pd.precioMax ? [_wzTextoPrecio({ min: +pd.precioMin || 0, max: +pd.precioMax || 0 })] : []),
+        ...(pd.nombreCliente ? ["👤 " + pd.nombreCliente] : []),
+    ].filter(Boolean);
+    out.innerHTML = `<b>Entendí:</b> ${partes.length ? partes.map(p => `<span class="wz-tag" style="padding-right:11px;">${esc(p)}</span>`).join("") : "nada concreto — elige las tarjetas abajo"}`
+        + (ocSinPiezas.length ? `<span style="color:#b45309;">· aún no hay piezas etiquetadas como ${esc(ocSinPiezas.map(nomOc).join(" / "))}</span>` : "")
+        + ((pd.noEntendido || []).length ? `<span style="color:#888;">· "${esc(pd.noEntendido.join('", "'))}" no es un filtro: lo eliges tú en las fotos</span>` : "");
+}
+
+// ── Paso 3: vigencia, promoción y vista previa ───────────────────
+function _wzPromoModo() {
+    const det = _wzEl("cat-promo-detalle");
+    if (det && det.style.display !== "none") return "custom";
+    if (_wzEl("cat-usar-promo-gral")?.checked) return "general";
+    const algo = ["cat-banner-txt", "cat-envio-gratis-desde", "cat-regalo-monto", "cat-promo-tipo"].some(id => (_wzEl(id)?.value || "").trim());
+    return algo ? "custom" : "no";
+}
+
+function wzElegirPromo(modo) {
+    const usar = _wzEl("cat-usar-promo-gral"), det = _wzEl("cat-promo-detalle");
+    if (modo === "no")      { usar.checked = false; _limpiarPromosForm(); det.style.display = "none"; }
+    if (modo === "general") { usar.checked = true; _cargarPromoEnForm(getPromoGeneral()); det.style.display = "none"; }
+    if (modo === "custom")  { usar.checked = false; det.style.display = "block"; }
+    actualizarResumenPromoCatalogo();
+    wzPintarPaso3();
+}
+
+function wzPintarPaso3() {
+    const dias = _wzEl("cat-validez").value;
+    _wzEl("wz-vig").innerHTML = WZ_VIGENCIAS.map(([v, t]) =>
+        `<button type="button" class="wz-card${dias === v ? " on" : ""}" onclick="document.getElementById('cat-validez').value='${v}';wzPintarPaso3()"><span class="nm">${t}</span></button>`).join("");
+
+    const esAf = _wzEl("cat-es-afiliado").checked, esUS = _wzEl("cat-es-us")?.checked;
+    const sinPromos = esAf || esUS;
+    _wzEl("cat-banner-wrap").style.display = sinPromos ? "none" : "block";
+    _wzEl("wz-mas-promos").style.display = sinPromos ? "none" : "grid";
+    _wzEl("wz-mas-hint").textContent = sinPromos ? "nota interna" : "envío gratis, regalo, nota interna";
+
+    const modo = _wzPromoModo();
+    const pg = getPromoGeneral();
+    const resumenGral = [pg.banner?.txt, pg.promoCarrito ? _etiquetaPromoCarrito(pg.promoCarrito) : "", pg.envioGratisDesde > 0 ? `envío gratis desde $${pg.envioGratisDesde}` : ""].filter(Boolean).join(" · ") || "sin nada guardado aún";
+    _wzEl("wz-promo").innerHTML = [
+        ["no", "🚫", "Sin promo", "Precios normales"],
+        ["general", "🎁", "Promo general", resumenGral],
+        ["custom", "✏️", "Personalizada", "Banner y descuento solo para este link"],
+    ].map(([m, ic, nm, ct]) => `<button type="button" class="wz-card${modo === m ? " on" : ""}" onclick="wzElegirPromo('${m}')"><span class="ic">${ic}</span><span class="nm">${nm}</span><span class="ct">${esc(ct)}</span></button>`).join("");
+    wzActualizarBarra();
+}
+
+function _wzPreview() {
+    const lista = _wzEl("wz-ph-list");
+    if (!lista) return;
+    const esAf = _wzEl("cat-es-afiliado").checked, esUS = _wzEl("cat-es-us")?.checked;
+    const nombre = esAf ? (_wzEl("cat-afiliado-nombre").value || "") : (_wzEl("cat-nombre").value || "").trim();
+    _wzEl("wz-ph-hi").textContent = esAf ? `Catálogo de ${nombre || "tu afiliado"}` : (nombre ? `Hola ${nombre}, elegimos esto para ti` : "Catálogo exclusivo");
+    const bTxt = (_wzEl("cat-banner-txt").value || "").trim();
+    const conBanner = !esAf && !esUS && bTxt;
+    const pct = conBanner ? Math.min(90, Math.max(0, parseInt(_wzEl("cat-banner-desc-pct").value) || 0)) : 0;
+    const ban = _wzEl("wz-ph-ban");
+    ban.hidden = !conBanner;
+    if (conBanner) { ban.style.background = _bannerColor; ban.innerHTML = `${esc(bTxt)}<small>${esc((_wzEl("cat-banner-sub").value || "").trim())}</small>`; }
+    const cods = new Set([...document.querySelectorAll("#cat-lista .cat-chk:checked")].map(c => c.dataset.cod));
+    const elegidos = _catFiltrada.filter(p => cods.has(p._codigos?.[0] || p.codigo));
+    lista.innerHTML = elegidos.slice(0, 40).map(p => {
+        const precio = parseFloat(p.precio || 0), img = ikSharp(p.foto || p.img || "");
+        return `<div class="it"><div class="ph">${img ? `<img src="${img}" loading="lazy" alt="">` : "💍"}</div>
+            <div class="t">${esc(p.nombre || "—")}<br>${pct ? `<s>$${precio.toFixed(2)}</s>` : ""}$${(precio * (1 - pct / 100)).toFixed(2)}</div></div>`;
+    }).join("") + (elegidos.length > 40 ? `<div style="grid-column:1/-1;text-align:center;font-size:11px;color:#888;">+ ${elegidos.length - 40} más</div>` : "");
+    const env = parseFloat(_wzEl("cat-envio-gratis-desde").value) || 0;
+    _wzEl("wz-ph-foot").textContent = `Vista aproximada · válido ${_wzEl("cat-validez").value} días${!esAf && !esUS && env > 0 ? ` · envío gratis desde $${env}` : ""}`;
+}
+
+// ── Plantillas guardadas (config.plantillasCatalogo) ──────────────
+function _wzPlantillas() { return Array.isArray(cfg.plantillasCatalogo) ? cfg.plantillasCatalogo : []; }
+
+function _wzResumenPlantilla(t) {
+    const oc = (t.ocasiones || []).map(id => ocasionesLista(true).find(o => o.id === id)?.nombre).filter(Boolean);
+    const cat = (t.categorias || []).map(k => (CAT_MAP[k] || k).replace(/^\S+\s/, ""));
+    return [...oc, ...cat, ...(t.tallas || []).map(x => "T" + x), t.precio && (t.precio.min || t.precio.max) ? _wzTextoPrecio(t.precio) : "",
+        t.validez ? `${t.validez} días` : "", { general: "promo general", custom: "promo propia" }[t.promo] || ""].filter(Boolean).join(" · ");
+}
+
+function wzRenderPlantillas() {
+    const cont = _wzEl("wz-plantillas"), lista = _wzPlantillas();
+    if (!cont) return;
+    _wzEl("wz-plantillas-hint").textContent = lista.length ? `${lista.length} guardada${lista.length > 1 ? "s" : ""}` : "ninguna todavía";
+    cont.innerHTML = lista.length ? lista.map((t, i) => `
+        <div class="wz-card" role="button" tabindex="0" onclick="wzUsarPlantilla(${i})" onkeydown="if(event.key==='Enter')wzUsarPlantilla(${i})">
+            <span class="ic">${esc(t.emoji || "📁")}</span><span class="nm">${esc(t.nombre)}</span><span class="ct">${esc(_wzResumenPlantilla(t))}</span>
+            <button type="button" onclick="event.stopPropagation();wzBorrarPlantilla(${i})" title="Borrar plantilla" style="position:absolute;top:6px;right:6px;border:0;background:none;color:#aaa;cursor:pointer;font-size:13px;">✕</button>
+        </div>`).join("")
+        : `<div style="font-size:12.5px;color:#888;grid-column:1/-1;">Arma un catálogo y en el paso 3 toca «📁 Guardar estos filtros como plantilla» para reusarlo con un clic.</div>`;
+}
+
+async function _wzGuardarListaPlantillas(lista) {
+    const r = await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "ACTUALIZAR_CONFIG", _pass: ADMIN_PASS, config: { plantillasCatalogo: lista } }) }).then(x => x.json()).catch(() => null);
+    if (!r?.ok) { toast("❌ No se pudo guardar la plantilla", "#ef4444"); return false; }
+    cfg.plantillasCatalogo = lista;
+    try { localStorage.setItem("vx_cfg", JSON.stringify(cfg)); } catch (_) {}
+    wzRenderPlantillas();
+    return true;
+}
+
+async function wzGuardarPlantilla() {
+    const ocs = ocasionesSeleccionadas();
+    const o0 = ocasionesLista(true).find(o => o.id === ocs[0]);
+    const cats = [...document.querySelectorAll(".cat-cat-chk:checked")].map(c => c.value);
+    const sugerido = [o0?.nombre, ...cats.map(k => (CAT_MAP[k] || "").replace(/^\S+\s/, ""))].filter(Boolean).join(" · ") || "Mi plantilla";
+    const nombre = (prompt("Nombre de la plantilla:", sugerido) || "").trim().slice(0, 40);
+    if (!nombre) return;
+    const t = {
+        id: Date.now().toString(36), nombre,
+        emoji: o0?.emoji || (cats[0] ? CAT_MAP[cats[0]].split(" ")[0] : "📁"),
+        ocasiones: ocs, categorias: cats,
+        materiales: [...document.querySelectorAll(".cat-material-chk:checked")].map(c => c.value),
+        tallas: (_wzEl("cat-talla").value || "").split(",").filter(Boolean),
+        tipoAN: _wzEl("cat-tipo-an").value, genero: _wzEl("cat-genero").value,
+        precio: { ..._catPrecio }, prefijo: (_wzEl("cat-prefijo-txt").value || "").trim(),
+        validez: _wzEl("cat-validez").value, promo: _wzPromoModo(),
+        cantidad: parseInt(_wzEl("cat-var-size").value) || 36,
+    };
+    if (await _wzGuardarListaPlantillas([..._wzPlantillas(), t].slice(-30))) toast(`📁 Plantilla «${nombre}» guardada`, "#22c55e");
+}
+
+async function wzBorrarPlantilla(i) {
+    const t = _wzPlantillas()[i];
+    if (!t || !confirm(`¿Borrar la plantilla «${t.nombre}»?`)) return;
+    if (await _wzGuardarListaPlantillas(_wzPlantillas().filter((_, j) => j !== i))) toast("Plantilla borrada", "#111");
+}
+
+function wzUsarPlantilla(i) {
+    const t = _wzPlantillas()[i];
+    if (!t) return;
+    _wzAplicarFiltros({ ...t, precioMin: t.precio?.min, precioMax: t.precio?.max });
+    if (t.validez) _wzEl("cat-validez").value = t.validez;
+    if (t.cantidad) _wzEl("cat-var-size").value = t.cantidad;
+    if (t.promo && !_wzEl("cat-es-afiliado").checked) wzElegirPromo(t.promo);
+    toast(`📁 Plantilla «${t.nombre}» aplicada`, "#22c55e");
+    wzIr(2);
+}
+
+// Cualquier cambio de selección/filtro (también los que hace el código: IA,
+// recetas, «Al azar»…) repinta tarjetas, filtros activos y la barra de abajo.
+document.addEventListener("DOMContentLoaded", () => {
+    ["filtrarParaCatalogo", "seleccionarTodosCatalogo", "elegirAzarFiltrado", "autoSeleccionarVariado", "aplicarPromptIA", "refrescarCatalogoAfiliado"].forEach(n => {
+        const orig = window[n];
+        if (typeof orig !== "function") return;
+        window[n] = function (...args) {
+            const r = orig.apply(this, args);
+            _wzTrasFiltrar();
+            if (r && typeof r.then === "function") r.then(_wzTrasFiltrar, () => {});
+            return r;
+        };
+    });
+    _wzEl("modal-catalogo")?.addEventListener("change", e => { if (e.target.matches(".cat-chk")) wzActualizarBarra(); });
+    ["input", "change"].forEach(ev => _wzEl("modal-catalogo")?.addEventListener(ev, () => { if (_wzPaso === 3) _wzPreview(); }));
+});
 
 function getCatKey(p) {
     // Acepta el producto completo (preferido) o solo el código (compatibilidad)
@@ -5972,19 +6304,18 @@ function poblarCategorias() {
     const orden = ["AN","AR","CD","PL","CN","RL","OT"];
     const pills = document.getElementById("cat-categoria-pills");
     if (!pills) return;
-    pills.innerHTML = orden.filter(k => presentes.includes(k)).map(k => `
-        <label style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:20px;border:1.5px solid var(--borde);background:#fff;font-size:12px;font-weight:600;user-select:none;transition:all .15s;">
-            <input type="checkbox" class="cat-cat-chk" value="${k}" style="display:none;" onchange="onPillChange()">
-            ${CAT_MAP[k]}
-        </label>`).join("");
+    const marcadas = new Set([...document.querySelectorAll(".cat-cat-chk:checked")].map(c => c.value));
+    const conteo = _wzConteoDisenos(_wzCoincideOcasion, getCatKey);
+    pills.innerHTML = orden.filter(k => presentes.includes(k)).map(k => {
+        const [ic, ...resto] = CAT_MAP[k].split(" ");
+        const n = conteo[k] || 0;
+        return `<label class="wz-card"><input type="checkbox" class="cat-cat-chk" value="${k}" ${marcadas.has(k) ? "checked" : ""} onchange="onPillChange()">
+            <span class="ic">${ic}</span><span class="nm">${resto.join(" ")}</span><span class="ct">${n} pieza${n === 1 ? "" : "s"}</span></label>`;
+    }).join("");
 }
 
 function onPillChange() {
-    document.querySelectorAll(".cat-cat-chk").forEach(chk => {
-        const lbl = chk.closest("label");
-        if (chk.checked) { lbl.style.background="var(--azul)"; lbl.style.color="#fff"; lbl.style.borderColor="var(--azul)"; }
-        else             { lbl.style.background="#fff"; lbl.style.color=""; lbl.style.borderColor="var(--borde)"; }
-    });
+    // La tarjeta marcada se pinta sola por CSS (.wz-card:has(input:checked)).
     const cats = [...document.querySelectorAll(".cat-cat-chk:checked")].map(c => c.value);
     const hasAN = cats.length === 0 || cats.includes("AN");
     document.getElementById("cat-sec-talla").style.display = hasAN ? "block" : "none";
@@ -5995,11 +6326,7 @@ function onPillChange() {
 // se puede combinar más de uno (ej. plata Y acero en el mismo catálogo) en
 // vez de tener que elegir uno solo.
 function onMaterialPillChange() {
-    document.querySelectorAll(".cat-material-chk").forEach(chk => {
-        const lbl = chk.closest("label");
-        if (chk.checked) { lbl.style.background="var(--azul)"; lbl.style.color="#fff"; lbl.style.borderColor="var(--azul)"; }
-        else             { lbl.style.background="#fff"; lbl.style.color=""; lbl.style.borderColor="var(--borde)"; }
-    });
+    // La tarjeta marcada se pinta sola por CSS (.wz-card:has(input:checked)).
     filtrarParaCatalogo();
 }
 
@@ -6186,8 +6513,6 @@ function abrirModalCatalogo(tipo) {
     if (esUsEl) esUsEl.checked = false;
     document.querySelectorAll(".cat-material-chk").forEach(chk => {
         chk.checked = false;
-        const lbl = chk.closest("label");
-        if (lbl) { lbl.style.background = "#fff"; lbl.style.color = ""; lbl.style.borderColor = "var(--borde)"; }
     });
     const descPctEl = document.getElementById("cat-banner-desc-pct");
     if (descPctEl) descPctEl.value = "";
@@ -6228,11 +6553,20 @@ function abrirModalCatalogo(tipo) {
     const afCod = document.getElementById("cat-afiliado-codigo"); if (afCod) afCod.value = "";
     const afSel = document.getElementById("cat-afiliado-select"); if (afSel) afSel.value = "";
 
-    poblarCategorias();
+    document.querySelectorAll(".cat-cat-chk").forEach(c => c.checked = false);
     poblarOcasionesPills([]);
+    poblarCategorias();
     const pf = document.getElementById("cat-prefijo-txt");
     if (pf) pf.value = "";
+    _catPrecio = { min: 0, max: 0 };
+    const bus = document.getElementById("cat-buscar");      if (bus) bus.value = "";
+    const iaOut = document.getElementById("cat-ia-resultado"); if (iaOut) iaOut.innerHTML = "";
+    const afinar = document.getElementById("wz-afinar");    if (afinar) afinar.open = false;
+    const usWrap = document.getElementById("wz-us-wrap");   if (usWrap) usWrap.open = false;
+    sincronizarChipsCatTalla();
+    wzRenderPlantillas();
     filtrarParaCatalogo();
+    wzIr(1);
 }
 
 function cerrarModalCatalogo() {
@@ -6284,6 +6618,15 @@ function _actualizarResumenVariado() {
 // guarda en el input oculto #cat-talla como texto separado por comas
 // ("6.5,7"), para no tener que tocar los demás lugares del código que ya
 // leen su .value.
+const TALLAS_CATALOGO = ["5","5.5","6","6.5","7","7.5","8","8.5","9","9.5","10","10.5","11","12","13","14"];
+function _pintarChipsTalla() {
+    const cont = document.getElementById("cat-talla-chips");
+    if (!cont || cont.children.length) return;
+    cont.innerHTML = TALLAS_CATALOGO.map(t => `<button type="button" class="cat-talla-chip" data-talla="${t}" onclick="toggleCatTallaChip('${t}',this)"
+        style="padding:6px 11px;border-radius:16px;border:1.5px solid var(--borde);background:#fff;color:#111;font-size:12px;font-weight:700;cursor:pointer;">T${t}</button>`).join("")
+        + `<button type="button" onclick="limpiarCatTallaChips()" style="padding:6px 11px;border-radius:16px;border:none;background:#eee;color:#666;font-size:12px;font-weight:700;cursor:pointer;">✕ Todas</button>`;
+}
+
 function toggleCatTallaChip(t, btn) {
     const inp = document.getElementById("cat-talla");
     const actuales = inp.value ? inp.value.split(",") : [];
@@ -6304,6 +6647,7 @@ function limpiarCatTallaChips() {
 // falta llamarla cada vez que #cat-talla.value se asigna desde código (recetas
 // guardadas, reset del modal) en vez de por clic directo en un chip.
 function sincronizarChipsCatTalla() {
+    _pintarChipsTalla();
     const seleccionadas = (document.getElementById("cat-talla")?.value || "").split(",").filter(Boolean);
     document.querySelectorAll(".cat-talla-chip").forEach(b => {
         const activa = seleccionadas.includes(b.dataset.talla);
@@ -6345,6 +6689,14 @@ function filtrarParaCatalogo() {
     if (ocasionesFiltro.length) {
         lista = lista.filter(p => _ocasionesDeFila(p).some(o => ocasionesFiltro.includes(o)));
     }
+
+    // Filtro de precio (tarjetas del paso 2 o lo que entendió la IA) — aplica a todo.
+    if (_catPrecio.min > 0) lista = lista.filter(p => parseFloat(p.precio || 0) >= _catPrecio.min);
+    if (_catPrecio.max > 0) lista = lista.filter(p => parseFloat(p.precio || 0) <= _catPrecio.max);
+
+    // Buscador por nombre o código.
+    const q = _normTxt((document.getElementById("cat-buscar")?.value || "").trim());
+    if (q) lista = lista.filter(p => [p.nombre, p.nombre_base, p.codigo, p.codigoBase].some(x => _normTxt(x).includes(q)));
 
     // Filtro de material — aplica a TODAS las categorías, no solo Anillos.
     // Se puede marcar más de uno (ej. plata Y acero) — sin selección = todos.
@@ -6418,16 +6770,11 @@ function filtrarParaCatalogo() {
     lista = [...agruparParaCatalogo(anLista), ...otherLista];
 
     _catFiltrada = lista;
-    const catLabel = cats.length ? cats.map(k => CAT_MAP[k]).join(", ") : "Todos los productos";
-    const ocLabel = ocasionesFiltro.map(id => ocasionesLista(true).find(o => o.id === id)?.nombre || id).join(" / ");
-    info.textContent = lista.length
-        ? `${lista.length} producto(s) — ${catLabel}${ocLabel ? " · " + ocLabel : ""}${talla ? ", Talla " + _tallasDisplay(talla) : ""}. Marca los que quieres mostrar:`
-        : "";
+    info.textContent = `${lista.length} pieza${lista.length === 1 ? "" : "s"}`;
 
     if (!lista.length) {
-        cont.innerHTML = ocasionesFiltro.length
-            ? '<p style="color:#aaa;font-size:13px;text-align:center;padding:16px;">Sin productos para ese filtro. ¿Ya etiquetaste piezas con esa ocasión? Usa 🏷️ Etiquetar productos.</p>'
-            : '<p style="color:#aaa;font-size:13px;text-align:center;padding:16px;">Sin productos para ese filtro.</p>';
+        cont.innerHTML = `<div style="color:#888;font-size:13px;text-align:center;padding:28px;border:1.5px dashed var(--borde);border-radius:12px;">
+            No hay piezas con estos filtros. Quita alguno arriba con ✕${ocasionesFiltro.length ? ", o etiqueta más piezas con 🏷️ Etiquetar productos (paso 1)" : ""}.</div>`;
         return;
     }
 
@@ -6458,19 +6805,18 @@ function filtrarParaCatalogo() {
                 `<span style="padding:1px 5px;background:#e8f4fd;border-radius:4px;font-size:9px;font-weight:700;color:#0277bd;">T${sz}</span>`
               ).join("")}</div>`
             : "";
-        return `<div style="background:#fff;border-radius:8px;border:1px solid var(--borde);overflow:hidden;display:flex;flex-direction:column;">
-            <label style="cursor:pointer;display:block;flex:1;">
+        return `<div class="wz-prod">
+            <label style="cursor:pointer;display:block;flex:1;margin:0;text-transform:none;letter-spacing:0;">
                 <div style="position:relative;aspect-ratio:1/1;background:#f5f5f5;">
                     ${img
                         ? `<img src="${img}" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'">`
                         : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;color:#ccc;">💍</div>`
                     }
-                    <input type="checkbox" class="cat-chk" data-cod="${cod0}"
-                        style="position:absolute;top:5px;left:5px;width:18px;height:18px;accent-color:var(--azul);cursor:pointer;" checked>
+                    <input type="checkbox" class="cat-chk" data-cod="${cod0}" checked>
                 </div>
-                <div style="padding:6px 7px;">
-                    <div style="font-weight:700;font-size:11px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:#1a1a1a;">${p.nombre || "—"}</div>
-                    <div style="font-size:11px;font-weight:800;color:#00BFFF;margin-top:2px;">$${parseFloat(p.precio || 0).toFixed(2)}</div>
+                <div style="padding:8px 10px;">
+                    <div style="font-weight:700;font-size:13px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:#1a1a1a;">${esc(p.nombre || "—")}</div>
+                    <div style="font-size:13px;font-weight:800;color:#0098cc;margin-top:2px;">$${parseFloat(p.precio || 0).toFixed(2)}</div>
                     ${mat ? `<div style="font-size:10px;color:#7c3aed;font-weight:600;">${mat}</div>` : ""}
                     ${ocEmojis ? `<div style="font-size:12px;margin-top:2px;letter-spacing:1px;">${ocEmojis}</div>` : ""}
                     ${sizesHtml}
@@ -6479,11 +6825,11 @@ function filtrarParaCatalogo() {
                 </div>
             </label>
             <input type="text" class="cat-nota" data-cod="${cod0}"
-                placeholder="Característica especial (ej: En consignación)"
-                style="width:100%;padding:5px 7px;border:none;border-top:1px solid var(--borde);font-size:11px;background:#fffef0;font-family:inherit;box-sizing:border-box;">
+                placeholder="✎ Nota visible en la pieza (opcional)"
+                style="width:100%;padding:6px 9px !important;border:none;border-top:1px solid var(--borde);font-size:11.5px !important;background:#fffdf5;font-family:inherit;box-sizing:border-box;">
         </div>`;
     }).join("");
-    cont.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">${cards}</div>`;
+    cont.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">${cards}</div>`;
 }
 
 function seleccionarTodosCatalogo(sel) {
@@ -7033,414 +7379,405 @@ async function generarPDFCatalogo() {
 </script>
 
 <!-- MODAL CATÁLOGO CLIENTE -->
+<!-- ═══ ASISTENTE «CATÁLOGO CLIENTE / AFILIADO» — 3 pasos: Cliente → Productos → Enviar ═══
+     Las tarjetas son <label> con su checkbox adentro: se pintan solas con
+     .wz-card:has(input:checked), así cualquier código que marque un checkbox
+     (IA, recetas, plantillas) se ve bien sin tocar estilos. -->
+<style>
+  #modal-catalogo .mb.wz{max-width:1000px;padding:24px 26px 0;}
+  .wz-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px;}
+  .wz-step{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;border:1.5px solid var(--borde);background:#fff;color:#777;font:inherit;cursor:pointer;text-align:left;min-width:0;}
+  .wz-step b{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#f1efe8;color:#777;font-size:13px;flex:none;}
+  .wz-step span{font-weight:700;font-size:14px;color:#222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .wz-step small{display:block;font-size:11px;font-weight:400;color:#888;}
+  .wz-step.on{border-color:#C9A84C;background:#fbf5e3;}
+  .wz-step.on b{background:#C9A84C;color:#111;}
+  .wz-step.done b{background:#16a34a;color:#fff;}
+  .wz-pane{display:grid;gap:22px;padding-bottom:20px;}
+  #modal-catalogo [hidden]{display:none !important;}
+  .wz-t{font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#8a6d1f;margin:0 0 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .wz-t small{font-weight:500;letter-spacing:0;text-transform:none;color:#888;font-size:12px;}
+  .wz-t .wz-acc{margin-left:auto;display:flex;gap:6px;text-transform:none;letter-spacing:0;}
+  .wz-mini{background:#fff;border:1.5px solid var(--borde);color:#555;padding:4px 10px;border-radius:16px;font-size:11px;font-weight:700;cursor:pointer;}
+  .wz-mini.gold{border-color:#C9A84C;color:#8a6d1f;}
+  .wz-cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));}
+  .wz-cards.sm{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));}
+  .wz-cards.xs{grid-template-columns:repeat(auto-fill,minmax(88px,1fr));}
+  .wz-card{position:relative;display:flex;flex-direction:column;gap:3px;align-items:flex-start;padding:12px 14px;border:1.5px solid var(--borde);border-radius:12px;background:#fff;color:#1a1a1a;font:inherit;text-align:left;cursor:pointer;user-select:none;transition:border-color .12s,background .12s;margin:0;text-transform:none;letter-spacing:0;}
+  .wz-card:hover{border-color:#C9A84C;}
+  .wz-card .ic{font-size:22px;line-height:1;}
+  .wz-card .nm{font-weight:700;font-size:14px;}
+  .wz-card .ct{font-size:12px;color:#888;font-weight:400;}
+  .wz-card:has(input:checked),.wz-card.on{border-color:#C9A84C;background:#fbf5e3;}
+  .wz-card:has(input:checked)::after,.wz-card.on::after{content:"✓";position:absolute;top:8px;right:10px;width:20px;height:20px;border-radius:50%;background:#C9A84C;color:#111;font-size:12px;font-weight:900;display:grid;place-items:center;}
+  .wz-card input{display:none;}
+  .wz-fold{border:1.5px solid var(--borde);border-radius:12px;background:#fff;}
+  .wz-fold>summary{list-style:none;cursor:pointer;padding:12px 16px;display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;}
+  .wz-fold>summary::-webkit-details-marker{display:none;}
+  .wz-fold>summary .hint{font-weight:400;color:#888;font-size:12.5px;margin-left:auto;text-align:right;}
+  .wz-fold>summary::after{content:"▾";color:#999;}
+  .wz-fold[open]>summary::after{content:"▴";}
+  .wz-fold>.in{padding:2px 16px 16px;display:grid;gap:16px;}
+  .wz-fold.ia{background:#e8f6fd;border-color:transparent;}
+  .wz-ia-row{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;}
+  .wz-ia-row textarea{flex:1 1 320px;min-height:62px;resize:vertical;font:inherit;padding:10px 12px;border:1.5px solid #cfe7f3;border-radius:10px;}
+  .wz-btn{border:0;border-radius:10px;padding:12px 16px;font:inherit;font-weight:800;cursor:pointer;color:#fff;display:inline-flex;align-items:center;justify-content:center;gap:6px;}
+  .wz-btn.gold{background:#C9A84C;color:#111;}
+  .wz-btn.ghost{background:#fff;border:1.5px solid var(--borde);color:#333;}
+  .wz-btn:disabled{opacity:.5;cursor:default;}
+  .wz-tags{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;}
+  .wz-tag{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--borde);border-radius:999px;padding:4px 6px 4px 11px;font-size:12.5px;font-weight:600;}
+  .wz-tag button{border:0;background:#eee;color:#333;width:20px;height:20px;border-radius:50%;cursor:pointer;font-size:10px;line-height:1;}
+  .wz-activos{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px 12px;border-radius:12px;background:#f6f4ee;}
+  .wz-activos #cat-info{margin-left:auto;font-weight:800;font-size:14px;color:#111;}
+  .wz-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .wz-chip{border:1.5px solid var(--borde);background:#fff;color:#222;border-radius:999px;padding:6px 12px;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;}
+  .wz-qty{display:inline-flex;align-items:center;gap:4px;border:1.5px solid var(--borde);border-radius:999px;padding:2px 6px;background:#fff;}
+  .wz-qty button{border:0;background:none;font-size:16px;font-weight:800;cursor:pointer;color:#555;padding:0 6px;}
+  .wz-qty input{width:46px;border:0 !important;text-align:center;font-weight:800;padding:4px 0 !important;background:none;}
+  #cat-lista .wz-prod{position:relative;border:2px solid var(--borde);border-radius:12px;overflow:hidden;background:#fff;display:flex;flex-direction:column;transition:border-color .12s;}
+  #cat-lista .wz-prod:has(.cat-chk:checked){border-color:#C9A84C;}
+  #cat-lista .wz-prod .cat-chk{position:absolute;top:8px;right:8px;width:24px;height:24px;accent-color:#C9A84C;cursor:pointer;}
+  .wz-send{display:grid;grid-template-columns:290px 1fr;gap:24px;align-items:start;}
+  .wz-phone{border:10px solid #111;border-radius:32px;background:#fafafa;height:560px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 18px 40px rgba(0,0,0,.18);position:sticky;top:0;}
+  .wz-phone .top{background:#111;color:#f5e9c4;padding:14px 12px 10px;font-family:Georgia,serif;font-size:22px;letter-spacing:4px;text-align:center;}
+  .wz-phone .top small{display:block;font-family:'Segoe UI',sans-serif;font-size:11px;letter-spacing:.3px;color:#cfc6ad;margin-top:2px;}
+  .wz-phone .ban{color:#fff;text-align:center;padding:8px;font-size:12.5px;font-weight:800;}
+  .wz-phone .ban small{display:block;font-weight:500;font-size:10.5px;opacity:.9;}
+  .wz-phone .list{padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px;overflow:auto;align-content:start;flex:1;}
+  .wz-phone .it{background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);}
+  .wz-phone .it .ph{aspect-ratio:1/1;background:#f3f3f3;display:grid;place-items:center;font-size:26px;color:#ccc;}
+  .wz-phone .it img{width:100%;height:100%;object-fit:cover;display:block;}
+  .wz-phone .it .t{padding:5px 6px;font-size:10.5px;font-weight:700;line-height:1.25;color:#1a1a1a;}
+  .wz-phone .it s{color:#999;font-weight:400;margin-right:3px;}
+  .wz-phone .foot{padding:8px;font-size:10.5px;text-align:center;color:#777;background:#fff;border-top:1px solid #eee;}
+  .wz-opts{display:grid;gap:22px;min-width:0;}
+  .wz-form2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .wz-lbl{font-size:12px;font-weight:700;color:#777;display:grid;gap:5px;text-transform:none;letter-spacing:0;margin:0;}
+  .wz-actions{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;}
+  .wz-bar{position:sticky;bottom:0;margin:0 -26px;padding:12px 26px;background:#fff;border-top:1px solid var(--borde);display:flex;gap:10px;align-items:center;z-index:3;border-radius:0 0 14px 14px;}
+  .wz-bar .info{flex:1;min-width:0;font-size:13.5px;color:#777;}
+  .wz-bar .info b{color:#111;}
+  @media (max-width:760px){
+    .wz-send{grid-template-columns:1fr;}
+    .wz-phone{position:static;height:440px;width:270px;max-width:100%;margin:0 auto;}
+    .wz-form2{grid-template-columns:1fr;}
+    .wz-actions{grid-template-columns:1fr 1fr;}
+    .wz-step small{display:none;}
+  }
+  @media (max-width:480px){
+    .wz-step{padding:8px;gap:6px;}
+    .wz-step b{width:22px;height:22px;font-size:12px;}
+    .wz-step span{font-size:12px;}
+    #modal-catalogo .mb.wz{padding:18px 16px 0;}
+    .wz-bar{margin:0 -16px;padding:10px 16px;}
+  }
+</style>
 <div class="mo" id="modal-catalogo">
-  <div class="mb" style="max-width:940px;">
+  <div class="mb wz">
     <button class="mc" onclick="cerrarModalCatalogo()">✕</button>
-    <h3 id="modal-catalogo-titulo" style="margin-bottom:18px;">📋 Catálogo para Cliente</h3>
+    <h3 id="modal-catalogo-titulo" style="margin-bottom:14px;">📋 Catálogo para Cliente</h3>
 
     <!-- inputs ocultos necesarios para JS -->
     <input type="checkbox" id="cat-es-afiliado" style="display:none;">
     <input type="hidden" id="cat-afiliado-nombre">
     <input type="hidden" id="cat-afiliado-codigo">
     <input type="hidden" id="cat-talla" value="">
+    <!-- Selects que el resto del código lee/escribe; se manejan con tarjetas -->
+    <select id="cat-tipo-an" hidden><option value=""></option><option value="sencillo"></option><option value="pareja"></option></select>
+    <select id="cat-genero" hidden><option value=""></option><option value="dama"></option><option value="caballero"></option></select>
+    <select id="cat-validez" hidden><option value="1"></option><option value="3"></option><option value="7"></option><option value="15"></option><option value="30"></option></select>
 
-    <!-- ══ PASO 1: ¿PARA QUIÉN? ══════════════════════════════════════ -->
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-      <div style="width:24px;height:24px;border-radius:50%;background:#C9A84C;color:#000;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">1</div>
-      <span style="font-size:13px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.5px;">¿Para quién es?</span>
+    <div class="wz-steps">
+      <button type="button" class="wz-step on" id="wz-st-1" onclick="wzIr(1)"><b>1</b><span>Cliente<small>Ocasión y tipo de pieza</small></span></button>
+      <button type="button" class="wz-step" id="wz-st-2" onclick="wzIr(2)"><b>2</b><span>Productos<small>Elegir con fotos</small></span></button>
+      <button type="button" class="wz-step" id="wz-st-3" onclick="wzIr(3)"><b>3</b><span>Enviar<small>Vista previa y promo</small></span></button>
     </div>
-    <div style="border:2px solid #C9A84C;border-radius:10px;padding:14px;margin-bottom:16px;background:#fff;">
 
-      <!-- Cliente: solo nombre -->
+    <!-- ═════════ PASO 1 · CLIENTE ═════════ -->
+    <section class="wz-pane" id="wz-p-1">
       <div id="cat-sec-cliente-nombre">
-        <label id="cat-nombre-label" style="font-size:12px;color:#aaa;margin-bottom:4px;display:block;">Nombre del cliente (opcional)</label>
-        <input type="text" id="cat-nombre" placeholder="Ej: María, Juan..." style="width:100%;box-sizing:border-box;">
-        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:12px;color:#1e3a8a;cursor:pointer;">
-          <input type="checkbox" id="cat-es-us" style="margin:0;">
-          🇺🇸 Catálogo para Estados Unidos <span style="font-weight:400;color:#3b5998;">— envío DHL por monto de compra, bilingüe ES/EN, con formulario de dirección. Ignora banner/promo/descuento (no aplican a este catálogo).</span>
-        </label>
+        <div class="wz-t" id="cat-nombre-label">Nombre del cliente <small>opcional, aparece en el saludo</small></div>
+        <input type="text" id="cat-nombre" placeholder="Ej: María" style="width:100%;box-sizing:border-box;">
       </div>
 
       <!-- Afiliado: selector + WA + ID -->
       <div id="cat-sec-afiliado" style="display:none;">
-        <div style="margin-bottom:10px;">
-          <label style="font-size:12px;color:#86efac;margin-bottom:4px;display:block;">Afiliado registrado en Vendedores</label>
-          <select id="cat-afiliado-select" onchange="onSeleccionarAfiliado()" style="width:100%;box-sizing:border-box;">
-            <option value="">— Selecciona un afiliado —</option>
-          </select>
-          <div style="font-size:10px;color:#666;margin-top:3px;">Si no aparece, créalo en Consignación → Vendedores → tipo 🤝 Afiliado.</div>
-        </div>
-        <div id="cat-afiliado-fields">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-            <div>
-              <label style="font-size:12px;color:#86efac;margin-bottom:4px;display:block;">WhatsApp del afiliado</label>
-              <input type="text" id="cat-wa" placeholder="Ej: 50371250725" inputmode="numeric" style="width:100%;box-sizing:border-box;">
-              <div style="font-size:10px;color:#666;margin-top:2px;">Botones "Quiero este" abrirán este número</div>
-            </div>
-            <div>
-              <label style="font-size:12px;color:#86efac;margin-bottom:4px;display:block;">ID del link (fijo)</label>
-              <input type="text" id="cat-afiliado-id" placeholder="Se llena automático" style="width:100%;box-sizing:border-box;"
-                oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')">
-              <div style="font-size:10px;color:#666;margin-top:2px;">El link siempre será el mismo URL</div>
-            </div>
-          </div>
-          <button type="button" id="btn-refrescar-catalogo-afiliado" onclick="refrescarCatalogoAfiliado()"
-            style="display:none;width:100%;padding:8px 0;border:1px solid #0ea5e9;border-radius:8px;background:rgba(14,165,233,0.08);color:#38bdf8;font-size:12px;font-weight:700;cursor:pointer;">
-            🔄 Refrescar catálogo con stock actual
-          </button>
-          <div id="txt-refrescar-nota" style="display:none;font-size:10px;color:#0369a1;margin-top:4px;">
-            Repone lo agotado y prioriza productos NO mostrados la vez anterior. Solo prellena — falta darle "🔗 Link" para publicar.
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══ NOTA INTERNA ══════════════════════════════════════════════ -->
-    <div style="margin-bottom:16px;">
-      <label style="font-size:12px;color:#aaa;margin-bottom:4px;display:block;">Nota interna <span style="color:#555;font-weight:400;">(opcional — para identificar este catálogo)</span></label>
-      <input type="text" id="cat-nota-interna" placeholder='Ej: "anillos talla 9, pidió solo dorados"' style="width:100%;box-sizing:border-box;">
-    </div>
-
-    <!-- ══ PASO 2: FILTRAR PRODUCTOS ════════════════════════════════ -->
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-      <div style="width:24px;height:24px;border-radius:50%;background:#C9A84C;color:#000;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">2</div>
-      <span style="font-size:13px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.5px;">Filtrar productos</span>
-    </div>
-    <div style="border:2px solid #C9A84C;border-radius:10px;padding:14px;margin-bottom:16px;background:#fff;">
-
-      <!-- IA -->
-      <div style="background:rgba(30,64,175,0.12);border:1px solid rgba(191,219,254,0.2);border-radius:8px;padding:10px;margin-bottom:12px;">
-        <div style="font-size:11px;font-weight:700;color:#1d4ed8;margin-bottom:6px;">🤖 Armar con IA — describe lo que buscas</div>
-        <div style="display:flex;gap:8px;">
-          <input type="text" id="cat-ia-prompt" placeholder='Ej: "anillos de 15 años talla 6" o "cadenas caballero menos de $30"'
-            style="flex:1;font-size:13px;" placeholder='Ej: "30 anillos laminados talla 9 dama" · "cadenas acero menos de $20" · "aretes sin conjuntos"' onkeydown="if(event.key==='Enter') aplicarPromptIA()">
-          <button onclick="aplicarPromptIA()"
-            style="background:#2563eb;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">✨ Armar</button>
-        </div>
-        <div id="cat-ia-resultado" style="font-size:11px;color:#1d4ed8;margin-top:5px;min-height:14px;"></div>
-      </div>
-
-      <!-- Ocasiones (etiquetas internas del Stock — el cliente no las ve) -->
-      <div style="margin-bottom:12px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
-          <label style="font-size:12px;color:#aaa;">Ocasión <span style="color:#666;font-weight:400;">(sin selección = todas)</span></label>
-          <div style="display:flex;gap:6px;">
-            <button type="button" onclick="abrirEtiquetarOcasiones()" style="background:#fff;border:1.5px solid #C9A84C;color:#8a6d1f;padding:4px 10px;border-radius:16px;font-size:11px;font-weight:700;cursor:pointer;">🏷️ Etiquetar productos</button>
-            <button type="button" onclick="abrirGestionOcasiones()" title="Agregar, renombrar u ocultar ocasiones" style="background:#fff;border:1.5px solid var(--borde);color:#555;padding:4px 10px;border-radius:16px;font-size:11px;font-weight:700;cursor:pointer;">⚙️ Ocasiones</button>
-          </div>
-        </div>
-        <div id="cat-ocasion-pills" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
-      </div>
-
-      <!-- Categorías -->
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px;color:#aaa;margin-bottom:6px;display:block;">Categorías <span style="color:#666;font-weight:400;">(sin selección = todas)</span></label>
-        <div id="cat-categoria-pills" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
-      </div>
-
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px;color:#aaa;margin-bottom:6px;display:block;">Material <span style="color:#666;font-weight:400;">(aplica a todas las categorías · sin selección = todos)</span></label>
-        <div id="cat-material-pills" style="display:flex;flex-wrap:wrap;gap:6px;">
-          <label style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:20px;border:1.5px solid var(--borde);background:#fff;font-size:12px;font-weight:600;user-select:none;transition:all .15s;">
-            <input type="checkbox" class="cat-material-chk" value="plata" style="display:none;" onchange="onMaterialPillChange()">
-            🔘 Plata 925
-          </label>
-          <label style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:20px;border:1.5px solid var(--borde);background:#fff;font-size:12px;font-weight:600;user-select:none;transition:all .15s;">
-            <input type="checkbox" class="cat-material-chk" value="acero" style="display:none;" onchange="onMaterialPillChange()">
-            ⛓️ Acero 316L
-          </label>
-          <label style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:20px;border:1.5px solid var(--borde);background:#fff;font-size:12px;font-weight:600;user-select:none;transition:all .15s;">
-            <input type="checkbox" class="cat-material-chk" value="oro" style="display:none;" onchange="onMaterialPillChange()">
-            ✨ Oro / Laminado
-          </label>
-        </div>
-      </div>
-
-      <!-- Filtros de Anillos -->
-      <div id="cat-sec-talla" style="background:rgba(251,191,36,0.05);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:10px;">
-        <div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:10px;">💍 Filtros de Anillos <span style="color:#888;font-weight:400;">(no afectan otras categorías)</span></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-          <div>
-            <label style="font-size:12px;color:#aaa;margin-bottom:4px;display:block;">Tipo</label>
-            <select id="cat-tipo-an" onchange="filtrarParaCatalogo()" style="width:100%;box-sizing:border-box;">
-              <option value="">— Todos —</option>
-              <option value="sencillo">💍 Sencillos</option>
-              <option value="pareja">💑 Argollas / Pareja</option>
-            </select>
-          </div>
-          <div>
-            <label style="font-size:12px;color:#aaa;margin-bottom:4px;display:block;">Género (para argollas)</label>
-            <select id="cat-genero" onchange="filtrarParaCatalogo()" style="width:100%;box-sizing:border-box;">
-              <option value="">— Todos —</option>
-              <option value="dama">👩 Dama</option>
-              <option value="caballero">👨 Caballero</option>
-            </select>
-          </div>
-        </div>
-        <div style="margin-bottom:10px;">
-          <label style="font-size:12px;color:#aaa;margin-bottom:6px;display:block;">Talla — puedes elegir varias</label>
-          <div id="cat-talla-chips" style="display:flex;flex-wrap:wrap;gap:5px;">
-            <button type="button" class="cat-talla-chip" data-talla="5"    onclick="toggleCatTallaChip('5',this)"    style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T5</button>
-            <button type="button" class="cat-talla-chip" data-talla="5.5"  onclick="toggleCatTallaChip('5.5',this)"  style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T5.5</button>
-            <button type="button" class="cat-talla-chip" data-talla="6"    onclick="toggleCatTallaChip('6',this)"    style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T6</button>
-            <button type="button" class="cat-talla-chip" data-talla="6.5"  onclick="toggleCatTallaChip('6.5',this)"  style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T6.5</button>
-            <button type="button" class="cat-talla-chip" data-talla="7"    onclick="toggleCatTallaChip('7',this)"    style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T7</button>
-            <button type="button" class="cat-talla-chip" data-talla="7.5"  onclick="toggleCatTallaChip('7.5',this)"  style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T7.5</button>
-            <button type="button" class="cat-talla-chip" data-talla="8"    onclick="toggleCatTallaChip('8',this)"    style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T8</button>
-            <button type="button" class="cat-talla-chip" data-talla="8.5"  onclick="toggleCatTallaChip('8.5',this)"  style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T8.5</button>
-            <button type="button" class="cat-talla-chip" data-talla="9"    onclick="toggleCatTallaChip('9',this)"    style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T9</button>
-            <button type="button" class="cat-talla-chip" data-talla="9.5"  onclick="toggleCatTallaChip('9.5',this)"  style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T9.5</button>
-            <button type="button" class="cat-talla-chip" data-talla="10"   onclick="toggleCatTallaChip('10',this)"   style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T10</button>
-            <button type="button" class="cat-talla-chip" data-talla="10.5" onclick="toggleCatTallaChip('10.5',this)" style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T10.5</button>
-            <button type="button" class="cat-talla-chip" data-talla="11"   onclick="toggleCatTallaChip('11',this)"   style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T11</button>
-            <button type="button" class="cat-talla-chip" data-talla="12"   onclick="toggleCatTallaChip('12',this)"   style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T12</button>
-            <button type="button" class="cat-talla-chip" data-talla="13"   onclick="toggleCatTallaChip('13',this)"   style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T13</button>
-            <button type="button" class="cat-talla-chip" data-talla="14"   onclick="toggleCatTallaChip('14',this)"   style="padding:5px 10px;border-radius:16px;border:1.5px solid #333;background:#1a1a1a;color:#ccc;font-size:11px;font-weight:700;cursor:pointer;">T14</button>
-            <button type="button" onclick="limpiarCatTallaChips()" style="padding:5px 10px;border-radius:16px;border:none;background:#222;color:#666;font-size:11px;font-weight:700;cursor:pointer;">✕ Todas</button>
-          </div>
-        </div>
-        <div>
-          <label style="font-size:12px;color:#aaa;margin-bottom:4px;display:block;">Buscar por prefijo de código</label>
-          <input type="text" id="cat-prefijo-txt" placeholder="C=Cab · D=Dama · U=Único · varias: C, D"
-            oninput="filtrarParaCatalogo()" style="width:100%;box-sizing:border-box;font-size:13px;">
-        </div>
-      </div>
-    </div>
-
-    <!-- ══ PASO 3: SELECCIÓN DE PRODUCTOS ══════════════════════════ -->
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-      <div style="width:24px;height:24px;border-radius:50%;background:#C9A84C;color:#000;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">3</div>
-      <span style="font-size:13px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.5px;">Seleccionar productos</span>
-      <span id="cat-info" style="font-size:12px;color:#888;margin-left:4px;"></span>
-    </div>
-    <div style="border:2px solid #C9A84C;border-radius:10px;padding:14px;margin-bottom:16px;background:#fff;">
-      <div id="cat-lista" style="max-height:340px;overflow-y:auto;border:1px solid #222;border-radius:8px;padding:8px;background:#0d0d0d;"></div>
-      <div id="cat-var-resumen" style="font-size:11px;color:#86efac;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);border-radius:7px;padding:7px 10px;margin-top:10px;display:none;"></div>
-
-      <!-- Controles de selección -->
-      <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-        <button class="btn bg" style="flex:1;min-width:80px;font-size:12px;" onclick="seleccionarTodosCatalogo(true)">✅ Todos</button>
-        <button class="btn bg" style="flex:1;min-width:80px;font-size:12px;" onclick="seleccionarTodosCatalogo(false)">⬜ Ninguno</button>
-        <div style="flex:1;min-width:200px;display:flex;gap:6px;align-items:center;background:#0d0d0d;border:1px solid #333;border-radius:8px;padding:6px 10px;">
-          <button onclick="ajustarTamanoCatalogo(-10)" style="background:none;border:none;color:#aaa;font-size:16px;font-weight:800;cursor:pointer;padding:0 4px;line-height:1;">−</button>
-          <input type="number" id="cat-var-size" value="36" min="1" style="flex:1;background:none;border:none;color:#fff;font-size:14px;font-weight:700;text-align:center;outline:none;width:40px;">
-          <button onclick="ajustarTamanoCatalogo(10)"  style="background:none;border:none;color:#aaa;font-size:16px;font-weight:800;cursor:pointer;padding:0 4px;line-height:1;">+</button>
-          <span style="font-size:11px;color:#666;white-space:nowrap;">productos</span>
-        </div>
-        <button class="btn ba" style="flex:2;min-width:160px;font-size:12px;" onclick="autoSeleccionarVariado()" title="Arma una mezcla variada de anillos/aretes/cadenas/etc en las proporciones de siempre — ignora los filtros de Categoría/Material de arriba">🔀 Auto-seleccionar (mezcla variada)</button>
-        <button class="btn bg" style="flex:2;min-width:160px;font-size:12px;" onclick="elegirAzarFiltrado()" title="Elige esa cantidad al azar SOLO de lo que quedó después de filtrar por Categoría/Material/Talla arriba">🎲 Elegir al azar (de lo filtrado)</button>
-      </div>
-    </div>
-
-    <!-- ══ PASO 4: DETALLES DEL LINK ════════════════════════════════ -->
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-      <div style="width:24px;height:24px;border-radius:50%;background:#C9A84C;color:#000;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">4</div>
-      <span style="font-size:13px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.5px;">Detalles del link</span>
-    </div>
-    <div style="border:2px solid #C9A84C;border-radius:10px;padding:14px;margin-bottom:16px;background:#fff;">
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px;color:#aaa;margin-bottom:4px;display:block;">Vigencia</label>
-        <select id="cat-validez" style="width:100%;box-sizing:border-box;">
-          <option value="1">1 día</option>
-          <option value="3">3 días</option>
-          <option value="7">7 días</option>
-          <option value="15">15 días</option>
-          <option value="30">30 días</option>
+        <div class="wz-t">Afiliado</div>
+        <select id="cat-afiliado-select" onchange="onSeleccionarAfiliado()" style="width:100%;box-sizing:border-box;">
+          <option value="">— Selecciona un afiliado —</option>
         </select>
-      </div>
-
-      <!-- Promo general (solo Cliente): tarjeta limpia + ajustes de este catálogo colapsados -->
-      <div id="cat-banner-wrap">
-        <div id="promo-gral-card" style="border:1.5px solid #C9A84C;background:#fffaf0;border-radius:10px;padding:12px;margin-bottom:10px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
-            <div style="font-size:13px;font-weight:800;color:#111;">🎁 Promoción general</div>
-            <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;cursor:pointer;margin:0;text-transform:none;letter-spacing:0;color:#111;">
-              <input type="checkbox" id="promo-gral-activa" onchange="alternarPromoGeneral(this.checked)" style="width:auto;margin:0;">
-              <span id="promo-gral-activa-txt">Activa</span>
-            </label>
-          </div>
-          <div id="promo-gral-resumen" style="font-size:12px;line-height:1.4;margin-bottom:6px;"></div>
-          <label id="cat-usar-promo-gral-lbl" style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;cursor:pointer;margin:0 0 10px;text-transform:none;letter-spacing:0;color:#111;">
-            <input type="checkbox" id="cat-usar-promo-gral" onchange="usarPromoGeneralEnCatalogo(this.checked)" style="width:auto;margin:0;">
-            Incluirla en este catálogo
+        <div style="font-size:11px;color:#888;margin-top:4px;">Si no aparece, créalo en Consignación → Vendedores → tipo 🤝 Afiliado.</div>
+        <div id="cat-afiliado-fields" class="wz-form2" style="margin-top:10px;">
+          <label class="wz-lbl">WhatsApp del afiliado
+            <input type="text" id="cat-wa" placeholder="Ej: 50371250725" inputmode="numeric">
           </label>
-          <button type="button" id="btn-promo-detalle" onclick="togglePromoDetalle()"
-            style="width:100%;background:#fff;color:#111;border:1.5px solid #ddd;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">✏️ Personalizar este catálogo ▾</button>
+          <label class="wz-lbl">ID del link (fijo)
+            <input type="text" id="cat-afiliado-id" placeholder="Se llena automático" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')">
+          </label>
         </div>
-      <div id="cat-promo-detalle" style="display:none;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:10px;">
-        <div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:8px;">🏷️ Banner de oferta <span style="color:#666;font-weight:400;">(opcional)</span></div>
-        <input type="text" id="cat-banner-txt" placeholder="Ej: 2x1 en aretes este fin de semana 🎉" style="width:100%;box-sizing:border-box;margin-bottom:6px;">
-        <div class="emoji-quick-bar" data-target="cat-banner-txt"></div>
-        <input type="text" id="cat-banner-sub" placeholder="Subtítulo (ej: Solo hasta el domingo)" style="width:100%;box-sizing:border-box;margin-top:6px;">
-        <div class="emoji-quick-bar" data-target="cat-banner-sub"></div>
-        <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;">
-          <div style="flex:1;min-width:160px;">
-            <label style="font-size:11px;color:#aaa;margin-bottom:4px;display:block;">% Descuento <span style="color:#666;">(requiere texto del banner)</span></label>
-            <input type="number" id="cat-banner-desc-pct" placeholder="Ej: 20" min="0" max="90" style="width:100%;box-sizing:border-box;">
+        <button type="button" id="btn-refrescar-catalogo-afiliado" onclick="refrescarCatalogoAfiliado()" class="wz-btn ghost" style="display:none;width:100%;margin-top:10px;">🔄 Refrescar catálogo con stock actual</button>
+        <div id="txt-refrescar-nota" style="display:none;font-size:11px;color:#0369a1;margin-top:4px;">Repone lo agotado y prioriza productos NO mostrados la vez anterior. Solo prellena — falta crear el link en el paso 3.</div>
+      </div>
+
+      <details class="wz-fold ia" open>
+        <summary>✨ Pega lo que te pidió el cliente <span class="hint">la IA marca las tarjetas por ti</span></summary>
+        <div class="in">
+          <div class="wz-ia-row">
+            <textarea id="cat-ia-prompt" placeholder='Ej: "Hola! busco un anillo para mis 15 años, talla 6, algo delicado, como de $30"'></textarea>
+            <button type="button" class="wz-btn gold" id="wz-ia-btn" onclick="wzEntender()">Entender pedido</button>
           </div>
+          <div id="cat-ia-resultado" class="wz-tags"></div>
+        </div>
+      </details>
+
+      <div>
+        <div class="wz-t">¿Para qué ocasión? <small>puedes elegir varias</small>
+          <span class="wz-acc">
+            <button type="button" class="wz-mini gold" onclick="abrirEtiquetarOcasiones()">🏷️ Etiquetar productos</button>
+            <button type="button" class="wz-mini" onclick="abrirGestionOcasiones()" title="Agregar, renombrar u ocultar ocasiones">⚙️ Ocasiones</button>
+          </span>
+        </div>
+        <div class="wz-cards" id="cat-ocasion-pills"></div>
+        <details class="wz-fold" id="wz-ocasiones-0-wrap" style="margin-top:10px;">
+          <summary>Más ocasiones <span class="hint">sin piezas etiquetadas todavía</span></summary>
+          <div class="in"><div class="wz-cards sm" id="cat-ocasion-pills-0"></div></div>
+        </details>
+      </div>
+
+      <div>
+        <div class="wz-t">¿Qué tipo de pieza? <small>sin elegir = todas</small></div>
+        <div class="wz-cards sm" id="cat-categoria-pills"></div>
+      </div>
+
+      <details class="wz-fold" id="wz-plantillas-wrap">
+        <summary>📁 Usar una plantilla guardada <span class="hint" id="wz-plantillas-hint"></span></summary>
+        <div class="in"><div class="wz-cards" id="wz-plantillas"></div></div>
+      </details>
+
+      <details class="wz-fold" id="wz-us-wrap">
+        <summary>🇺🇸 Catálogo para Estados Unidos <span class="hint">envío DHL, bilingüe ES/EN</span></summary>
+        <div class="in">
+          <label class="wz-card" style="max-width:360px;"><input type="checkbox" id="cat-es-us" onchange="wzActualizarBarra()"><span class="nm">Sí, es para EE. UU.</span><span class="ct">Formulario de dirección y envío por monto. Sin banner ni descuentos.</span></label>
+        </div>
+      </details>
+    </section>
+
+    <!-- ═════════ PASO 2 · PRODUCTOS ═════════ -->
+    <section class="wz-pane" id="wz-p-2" hidden>
+      <div class="wz-activos"><div class="wz-tags" id="wz-activos"></div><span id="cat-info"></span></div>
+
+      <div class="wz-tools">
+        <input type="text" id="cat-buscar" placeholder="Buscar por nombre o código" oninput="filtrarParaCatalogo()" style="flex:1 1 240px;box-sizing:border-box;">
+      </div>
+
+      <details class="wz-fold" id="wz-afinar">
+        <summary>Afinar búsqueda <span class="hint" id="wz-afinar-hint">precio, material, talla</span></summary>
+        <div class="in">
+          <div><div class="wz-t">Precio</div><div class="wz-cards sm" id="wz-precio"></div></div>
           <div>
-            <label style="font-size:11px;color:#aaa;margin-bottom:6px;display:block;">Color del banner</label>
-            <div id="banner-colors" style="display:flex;gap:6px;flex-wrap:wrap;">
-              <button type="button" onclick="selBannerColor(this,'#ef4444')" data-banner-color="#ef4444" style="width:26px;height:26px;border-radius:50%;background:#ef4444;border:3px solid transparent;cursor:pointer;"></button>
-              <button type="button" onclick="selBannerColor(this,'#f97316')" data-banner-color="#f97316" style="width:26px;height:26px;border-radius:50%;background:#f97316;border:3px solid transparent;cursor:pointer;"></button>
-              <button type="button" onclick="selBannerColor(this,'#7c3aed')" data-banner-color="#7c3aed" style="width:26px;height:26px;border-radius:50%;background:#7c3aed;border:3px solid transparent;cursor:pointer;"></button>
-              <button type="button" onclick="selBannerColor(this,'#0277bd')" data-banner-color="#0277bd" style="width:26px;height:26px;border-radius:50%;background:#0277bd;border:3px solid transparent;cursor:pointer;"></button>
-              <button type="button" onclick="selBannerColor(this,'#111111')" data-banner-color="#111111" style="width:26px;height:26px;border-radius:50%;background:#111111;border:2px solid #555;cursor:pointer;"></button>
-              <button type="button" onclick="selBannerColor(this,'#22c55e')" data-banner-color="#22c55e" style="width:26px;height:26px;border-radius:50%;background:#22c55e;border:3px solid transparent;cursor:pointer;"></button>
+            <div class="wz-t">Material <small>aplica a todas las categorías</small></div>
+            <div class="wz-cards sm" id="cat-material-pills">
+              <label class="wz-card"><input type="checkbox" class="cat-material-chk" value="plata" onchange="onMaterialPillChange()"><span class="nm">Plata 925</span></label>
+              <label class="wz-card"><input type="checkbox" class="cat-material-chk" value="acero" onchange="onMaterialPillChange()"><span class="nm">Acero 316L</span></label>
+              <label class="wz-card"><input type="checkbox" class="cat-material-chk" value="oro" onchange="onMaterialPillChange()"><span class="nm">Oro / Laminado</span></label>
             </div>
           </div>
-          <div id="banner-preview" style="display:none;padding:4px 12px;border-radius:5px;font-size:11px;font-weight:700;color:#fff;text-align:center;"></div>
-        </div>
-        <div style="margin-top:12px;padding-top:10px;border-top:1px dashed rgba(251,191,36,0.25);">
-          <label style="font-size:11px;color:#aaa;margin-bottom:4px;display:block;">🎁 Promo de carrito <span style="color:#666;font-weight:400;">(se aplica sola cuando el cliente agrega piezas)</span></label>
-          <select id="cat-promo-tipo" onchange="onCambioPromoTipo()" style="width:100%;box-sizing:border-box;margin-bottom:6px;">
-            <option value="">Ninguna</option>
-            <option value="2x50">2do producto al 50% (el más barato del par)</option>
-            <option value="3x2">3x2 — la 3ra pieza (más barata) gratis</option>
-            <option value="montoFijo">Monto fijo de descuento ($)</option>
-            <option value="escalonado">Descuento escalonado por cantidad</option>
-          </select>
-          <div id="cat-promo-montofijo-wrap" style="display:none;margin-bottom:6px;">
-            <div style="display:flex;gap:6px;">
-              <input type="number" id="cat-promo-montofijo" placeholder="Ej: 10 (descuenta $10)" min="0" step="0.5" style="flex:1;box-sizing:border-box;">
-              <input type="number" id="cat-promo-montofijo-minimo" placeholder="A partir de $ (opcional)" min="0" step="1" style="flex:1;box-sizing:border-box;">
+          <div id="cat-sec-talla"><div style="display:grid;gap:16px;">
+            <div>
+              <div class="wz-t">Talla de anillo <small>puedes elegir varias · no afecta otras piezas</small></div>
+              <div id="cat-talla-chips" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
             </div>
-            <div style="font-size:10px;color:#888;margin-top:3px;">Si dejas "A partir de" vacío, el descuento se aplica siempre que haya algo en el carrito</div>
-          </div>
-          <div id="cat-promo-escalonado-wrap" style="display:none;margin-bottom:6px;">
-            <div style="font-size:10px;color:#888;margin-bottom:4px;">Deja en blanco los tramos que no uses</div>
-            <div style="display:flex;gap:6px;margin-bottom:4px;">
-              <input type="number" id="cat-esc-cant-1" placeholder="Cant. mín." min="2" style="flex:1;box-sizing:border-box;">
-              <input type="number" id="cat-esc-pct-1" placeholder="% desc." min="1" max="90" style="flex:1;box-sizing:border-box;">
+            <div class="wz-form2">
+              <div><div class="wz-t">Tipo de anillo</div><div class="wz-cards sm" id="wz-tipo"></div></div>
+              <div><div class="wz-t">Género <small>para argollas</small></div><div class="wz-cards sm" id="wz-genero"></div></div>
             </div>
-            <div style="display:flex;gap:6px;margin-bottom:4px;">
-              <input type="number" id="cat-esc-cant-2" placeholder="Cant. mín." min="2" style="flex:1;box-sizing:border-box;">
-              <input type="number" id="cat-esc-pct-2" placeholder="% desc." min="1" max="90" style="flex:1;box-sizing:border-box;">
+          </div></div>
+          <details class="wz-fold">
+            <summary>Avanzado <span class="hint">prefijo de código</span></summary>
+            <div class="in"><input type="text" id="cat-prefijo-txt" placeholder="C = Caballero · D = Dama · U = Único · varias: C, D" oninput="filtrarParaCatalogo()" style="width:100%;box-sizing:border-box;"></div>
+          </details>
+        </div>
+      </details>
+
+      <div class="wz-tools">
+        <span style="font-size:12.5px;color:#888;">Selección rápida:</span>
+        <button type="button" class="wz-chip" onclick="seleccionarTodosCatalogo(true)">Todos</button>
+        <button type="button" class="wz-chip" onclick="seleccionarTodosCatalogo(false)">Ninguno</button>
+        <span class="wz-qty" title="Cuántas piezas elegir al azar o en la mezcla variada">
+          <button type="button" onclick="ajustarTamanoCatalogo(-10)" aria-label="Menos">−</button>
+          <input type="number" id="cat-var-size" value="36" min="1">
+          <button type="button" onclick="ajustarTamanoCatalogo(10)" aria-label="Más">+</button>
+        </span>
+        <button type="button" class="wz-chip" onclick="elegirAzarFiltrado()" title="Elige esa cantidad al azar de lo que quedó con los filtros">🎲 Al azar de lo filtrado</button>
+        <button type="button" class="wz-chip" onclick="autoSeleccionarVariado()" title="Mezcla de anillos/aretes/cadenas en las proporciones de siempre — ignora categoría y material">🔀 Mezcla variada</button>
+      </div>
+
+      <div id="cat-lista"></div>
+    </section>
+
+    <!-- ═════════ PASO 3 · ENVIAR ═════════ -->
+    <section class="wz-pane" id="wz-p-3" hidden>
+      <div class="wz-send">
+        <div class="wz-phone" aria-label="Vista previa en el celular del cliente">
+          <div class="top">VEREX<small id="wz-ph-hi"></small></div>
+          <div class="ban" id="wz-ph-ban" hidden></div>
+          <div class="list" id="wz-ph-list"></div>
+          <div class="foot" id="wz-ph-foot"></div>
+        </div>
+
+        <div class="wz-opts">
+          <div>
+            <div class="wz-t">¿Cuánto tiempo estará activo?</div>
+            <div class="wz-cards xs" id="wz-vig"></div>
+          </div>
+
+          <!-- Promoción (solo Cliente; Afiliado y EE. UU. no llevan banner/descuento) -->
+          <div id="cat-banner-wrap">
+            <div class="wz-t">Promoción</div>
+            <div class="wz-cards sm" id="wz-promo"></div>
+            <div id="promo-gral-resumen" style="font-size:12.5px;line-height:1.4;margin-top:10px;"></div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#666;margin-top:6px;text-transform:none;letter-spacing:0;cursor:pointer;">
+              <input type="checkbox" id="promo-gral-activa" onchange="alternarPromoGeneral(this.checked)" style="width:auto;margin:0;">
+              Precargar la promo general en cada catálogo nuevo <span id="promo-gral-activa-txt" style="font-weight:700;"></span>
+            </label>
+            <input type="checkbox" id="cat-usar-promo-gral" hidden>
+            <span id="cat-usar-promo-gral-lbl" hidden></span>
+
+            <div id="cat-promo-detalle" class="wz-fold" style="display:none;margin-top:12px;">
+              <div class="in" style="padding-top:14px;">
+                <div class="wz-form2">
+                  <label class="wz-lbl">Texto del banner
+                    <input type="text" id="cat-banner-txt" placeholder="Ej: 2x1 en aretes este fin de semana">
+                  </label>
+                  <label class="wz-lbl">Subtítulo
+                    <input type="text" id="cat-banner-sub" placeholder="Ej: Solo hasta el domingo">
+                  </label>
+                  <label class="wz-lbl">% de descuento <span style="font-weight:400;">(se aplica a los precios)</span>
+                    <input type="number" id="cat-banner-desc-pct" placeholder="Ej: 20" min="0" max="90">
+                  </label>
+                  <div class="wz-lbl">Color del banner
+                    <div id="banner-colors" style="display:flex;gap:8px;flex-wrap:wrap;">
+                      <button type="button" onclick="selBannerColor(this,'#ef4444')" data-banner-color="#ef4444" style="width:28px;height:28px;border-radius:50%;background:#ef4444;border:3px solid transparent;cursor:pointer;"></button>
+                      <button type="button" onclick="selBannerColor(this,'#f97316')" data-banner-color="#f97316" style="width:28px;height:28px;border-radius:50%;background:#f97316;border:3px solid transparent;cursor:pointer;"></button>
+                      <button type="button" onclick="selBannerColor(this,'#7c3aed')" data-banner-color="#7c3aed" style="width:28px;height:28px;border-radius:50%;background:#7c3aed;border:3px solid transparent;cursor:pointer;"></button>
+                      <button type="button" onclick="selBannerColor(this,'#0277bd')" data-banner-color="#0277bd" style="width:28px;height:28px;border-radius:50%;background:#0277bd;border:3px solid transparent;cursor:pointer;"></button>
+                      <button type="button" onclick="selBannerColor(this,'#111111')" data-banner-color="#111111" style="width:28px;height:28px;border-radius:50%;background:#111111;border:2px solid #555;cursor:pointer;"></button>
+                      <button type="button" onclick="selBannerColor(this,'#22c55e')" data-banner-color="#22c55e" style="width:28px;height:28px;border-radius:50%;background:#22c55e;border:3px solid transparent;cursor:pointer;"></button>
+                    </div>
+                  </div>
+                </div>
+                <details class="wz-fold">
+                  <summary>Agregar emoji al banner</summary>
+                  <div class="in">
+                    <div><div class="wz-lbl">Al texto</div><div class="emoji-quick-bar" data-target="cat-banner-txt"></div></div>
+                    <div><div class="wz-lbl">Al subtítulo</div><div class="emoji-quick-bar" data-target="cat-banner-sub"></div></div>
+                  </div>
+                </details>
+                <button type="button" onclick="guardarFormComoPromoGeneral()" class="wz-btn" style="background:#111;">💾 Guardar estos ajustes como promo general</button>
+              </div>
             </div>
-            <div style="display:flex;gap:6px;">
-              <input type="number" id="cat-esc-cant-3" placeholder="Cant. mín." min="2" style="flex:1;box-sizing:border-box;">
-              <input type="number" id="cat-esc-pct-3" placeholder="% desc." min="1" max="90" style="flex:1;box-sizing:border-box;">
+          </div>
+
+          <!-- Banner global afiliado -->
+          <div id="cat-banner-afiliado-wrap" style="display:none;background:rgba(124,58,237,0.06);border:1px solid rgba(167,139,250,0.3);border-radius:12px;padding:12px;">
+            <div style="font-size:12px;font-weight:800;color:#6d28d9;margin-bottom:4px;">🌐 Banner global de Afiliados</div>
+            <div style="font-size:11px;color:#7c3aed;margin-bottom:8px;">Un solo banner para TODOS los catálogos de afiliado — se aplica a todos los links ya compartidos al guardar.</div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6d28d9;font-weight:600;margin-bottom:6px;text-transform:none;letter-spacing:0;">
+              <input type="checkbox" id="cat-banner-af-activo" style="width:auto;"> Banner activo
+            </label>
+            <input type="text" id="cat-banner-af-txt" placeholder="Ej: Nuevo catálogo de temporada 🎉" style="width:100%;box-sizing:border-box;margin-bottom:6px;">
+            <div class="emoji-quick-bar" data-target="cat-banner-af-txt"></div>
+            <input type="text" id="cat-banner-af-sub" placeholder="Subtítulo (opcional)" style="width:100%;box-sizing:border-box;margin-top:6px;">
+            <div class="emoji-quick-bar" data-target="cat-banner-af-sub"></div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
+              <div id="banner-af-colors" style="display:flex;gap:6px;">
+                <button type="button" onclick="selBannerAfColor(this,'#ef4444')" style="width:24px;height:24px;border-radius:50%;background:#ef4444;border:3px solid transparent;cursor:pointer;"></button>
+                <button type="button" onclick="selBannerAfColor(this,'#f97316')" style="width:24px;height:24px;border-radius:50%;background:#f97316;border:3px solid transparent;cursor:pointer;"></button>
+                <button type="button" onclick="selBannerAfColor(this,'#7c3aed')" style="width:24px;height:24px;border-radius:50%;background:#7c3aed;border:3px solid transparent;cursor:pointer;"></button>
+                <button type="button" onclick="selBannerAfColor(this,'#0277bd')" style="width:24px;height:24px;border-radius:50%;background:#0277bd;border:3px solid transparent;cursor:pointer;"></button>
+                <button type="button" onclick="selBannerAfColor(this,'#22c55e')" style="width:24px;height:24px;border-radius:50%;background:#22c55e;border:3px solid transparent;cursor:pointer;"></button>
+              </div>
+              <button type="button" onclick="guardarBannerAfiliadoGlobal()" style="flex:1;background:#7c3aed;color:#fff;border:none;padding:7px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">💾 Guardar banner global</button>
             </div>
           </div>
-        </div>
-        <div style="margin-top:10px;padding-top:10px;border-top:1px dashed rgba(251,191,36,0.25);">
-          <label style="font-size:11px;color:#aaa;margin-bottom:4px;display:block;">🚚 Envío gratis desde <span style="color:#666;font-weight:400;">(opcional — deja vacío para desactivar)</span></label>
-          <input type="number" id="cat-envio-gratis-desde" placeholder="Ej: 60 (monto mínimo del pedido)" min="0" step="1" style="width:100%;box-sizing:border-box;">
-        </div>
-        <div style="margin-top:10px;">
-          <label style="font-size:11px;color:#aaa;margin-bottom:4px;display:block;">🎁 Regalo sorpresa desde <span style="color:#666;font-weight:400;">(opcional)</span></label>
-          <div style="display:flex;gap:6px;">
-            <input type="number" id="cat-regalo-monto" placeholder="Monto mín. $" min="0" step="1" style="flex:1;box-sizing:border-box;">
-            <input type="text" id="cat-regalo-texto" placeholder="Ej: dije de cortesía" style="flex:2;box-sizing:border-box;">
-          </div>
-        </div>
-        <div style="margin-top:12px;padding-top:10px;border-top:1px dashed rgba(251,191,36,0.25);">
-          <button type="button" onclick="guardarFormComoPromoGeneral()"
-            style="width:100%;background:#111;color:#fff;border:none;padding:9px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">💾 Guardar estos ajustes como promo general</button>
-          <div style="font-size:10px;color:#888;margin-top:4px;text-align:center;">Se precargarán en todos los catálogos nuevos de cliente.</div>
-        </div>
-      </div>
-      </div>
 
-      <!-- Banner global afiliado -->
-      <div id="cat-banner-afiliado-wrap" style="display:none;background:rgba(124,58,237,0.08);border:1px solid rgba(167,139,250,0.25);border-radius:8px;padding:10px;margin-top:10px;">
-        <div style="font-size:11px;font-weight:700;color:#c4b5fd;margin-bottom:4px;">🌐 Banner global de Afiliados</div>
-        <div style="font-size:10px;color:#7c3aed;margin-bottom:8px;">Un solo banner para TODOS los catálogos de afiliado — se aplica a todos los links ya compartidos al guardar.</div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#c4b5fd;font-weight:600;margin-bottom:6px;">
-          <input type="checkbox" id="cat-banner-af-activo" style="width:auto;"> Banner activo
-        </label>
-        <input type="text" id="cat-banner-af-txt" placeholder="Ej: Nuevo catálogo de temporada 🎉" style="width:100%;box-sizing:border-box;margin-bottom:6px;">
-        <div class="emoji-quick-bar" data-target="cat-banner-af-txt"></div>
-        <input type="text" id="cat-banner-af-sub" placeholder="Subtítulo (opcional)" style="width:100%;box-sizing:border-box;margin-top:6px;">
-        <div class="emoji-quick-bar" data-target="cat-banner-af-sub"></div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
-          <div id="banner-af-colors" style="display:flex;gap:6px;">
-            <button type="button" onclick="selBannerAfColor(this,'#ef4444')" style="width:24px;height:24px;border-radius:50%;background:#ef4444;border:3px solid transparent;cursor:pointer;"></button>
-            <button type="button" onclick="selBannerAfColor(this,'#f97316')" style="width:24px;height:24px;border-radius:50%;background:#f97316;border:3px solid transparent;cursor:pointer;"></button>
-            <button type="button" onclick="selBannerAfColor(this,'#7c3aed')" style="width:24px;height:24px;border-radius:50%;background:#7c3aed;border:3px solid transparent;cursor:pointer;"></button>
-            <button type="button" onclick="selBannerAfColor(this,'#0277bd')" style="width:24px;height:24px;border-radius:50%;background:#0277bd;border:3px solid transparent;cursor:pointer;"></button>
-            <button type="button" onclick="selBannerAfColor(this,'#22c55e')" style="width:24px;height:24px;border-radius:50%;background:#22c55e;border:3px solid transparent;cursor:pointer;"></button>
-          </div>
-          <button type="button" onclick="guardarBannerAfiliadoGlobal()"
-            style="flex:1;background:#7c3aed;color:#fff;border:none;padding:7px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">💾 Guardar banner global</button>
-        </div>
-      </div>
-    </div>
+          <details class="wz-fold" id="wz-mas-opciones">
+            <summary>Más opciones <span class="hint" id="wz-mas-hint">envío gratis, regalo, nota interna</span></summary>
+            <div class="in">
+              <div id="wz-mas-promos" style="display:grid;gap:12px;">
+                <label class="wz-lbl">🎁 Promo de carrito <span style="font-weight:400;">(se aplica sola cuando el cliente agrega piezas)</span>
+                  <select id="cat-promo-tipo" onchange="onCambioPromoTipo()">
+                    <option value="">Ninguna</option>
+                    <option value="2x50">2do producto al 50% (el más barato del par)</option>
+                    <option value="3x2">3x2 — la 3ra pieza (más barata) gratis</option>
+                    <option value="montoFijo">Monto fijo de descuento ($)</option>
+                    <option value="escalonado">Descuento escalonado por cantidad</option>
+                  </select>
+                </label>
+                <div id="cat-promo-montofijo-wrap" style="display:none;">
+                  <div class="wz-form2">
+                    <input type="number" id="cat-promo-montofijo" placeholder="Ej: 10 (descuenta $10)" min="0" step="0.5">
+                    <input type="number" id="cat-promo-montofijo-minimo" placeholder="A partir de $ (opcional)" min="0" step="1">
+                  </div>
+                  <div style="font-size:11px;color:#888;margin-top:3px;">Si dejas "A partir de" vacío, el descuento se aplica siempre que haya algo en el carrito</div>
+                </div>
+                <div id="cat-promo-escalonado-wrap" style="display:none;">
+                  <div style="font-size:11px;color:#888;margin-bottom:4px;">Deja en blanco los tramos que no uses</div>
+                  <div class="wz-form2" style="margin-bottom:4px;"><input type="number" id="cat-esc-cant-1" placeholder="Cant. mín." min="2"><input type="number" id="cat-esc-pct-1" placeholder="% desc." min="1" max="90"></div>
+                  <div class="wz-form2" style="margin-bottom:4px;"><input type="number" id="cat-esc-cant-2" placeholder="Cant. mín." min="2"><input type="number" id="cat-esc-pct-2" placeholder="% desc." min="1" max="90"></div>
+                  <div class="wz-form2"><input type="number" id="cat-esc-cant-3" placeholder="Cant. mín." min="2"><input type="number" id="cat-esc-pct-3" placeholder="% desc." min="1" max="90"></div>
+                </div>
+                <div class="wz-form2">
+                  <label class="wz-lbl">🚚 Envío gratis desde $
+                    <input type="number" id="cat-envio-gratis-desde" placeholder="Ej: 60" min="0" step="1">
+                  </label>
+                  <div class="wz-lbl">🎁 Regalo sorpresa desde
+                    <div style="display:flex;gap:6px;">
+                      <input type="number" id="cat-regalo-monto" placeholder="$" min="0" step="1" style="width:80px;">
+                      <input type="text" id="cat-regalo-texto" placeholder="Ej: dije de cortesía" style="flex:1;">
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <label class="wz-lbl">Nota interna <span style="font-weight:400;">(solo la ves tú, para identificar este catálogo)</span>
+                <input type="text" id="cat-nota-interna" placeholder='Ej: "anillos talla 9, pidió solo dorados"'>
+              </label>
+            </div>
+          </details>
 
-    <!-- ══ GENERAR ══════════════════════════════════════════════════ -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:4px;">
-      <button class="btn bv" id="btn-gen-pdf"  onclick="generarPDFCatalogo()"    style="justify-content:center;padding:12px 6px;">📥 PDF</button>
-      <button class="btn bn" id="btn-gen-img"  onclick="generarImagenCatalogo()" style="justify-content:center;padding:12px 6px;">🖼️ Imagen</button>
-      <button class="btn ba" id="btn-gen-link" onclick="generarLinkCatalogo()"   style="justify-content:center;padding:12px 6px;">🔗 Link</button>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;font-size:10px;color:#555;line-height:1.3;text-align:center;">
-      <div>PDF estático para imprimir o enviar como archivo</div>
-      <div>Imagen JPG — ideal para estado de WhatsApp</div>
-      <div>Link web interactivo con stock en vivo</div>
-    </div>
+          <div>
+            <div class="wz-t">Listo para enviar</div>
+            <div class="wz-actions">
+              <button type="button" class="btn ba" id="btn-gen-link" onclick="generarLinkCatalogo()" style="justify-content:center;padding:14px 6px;font-size:15px;">🔗 Crear link</button>
+              <button type="button" class="btn bv" id="btn-gen-pdf" onclick="generarPDFCatalogo()" style="justify-content:center;padding:14px 6px;">📥 PDF</button>
+              <button type="button" class="btn bn" id="btn-gen-img" onclick="generarImagenCatalogo()" style="justify-content:center;padding:14px 6px;">🖼️ Imagen</button>
+            </div>
 
-    <!-- Link generado -->
-    <div id="cat-link-box" style="display:none;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.3);border-radius:10px;padding:14px;margin-bottom:14px;">
-      <div style="font-size:11px;font-weight:700;color:#86efac;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">✅ Link generado</div>
-      <div id="cat-link-out" style="font-size:13px;color:#4ade80;word-break:break-all;margin-bottom:10px;font-weight:600;"></div>
-      <div style="display:flex;gap:8px;">
-        <button onclick="navigator.clipboard.writeText(mensajeCompartirCatalogo(document.getElementById('cat-link-out').textContent));toast('✅ Mensaje y link copiados','#22c55e')"
-          style="flex:1;background:#166534;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📋 Copiar</button>
-        <button onclick="window.open('https://wa.me/?text='+encodeURIComponent(mensajeCompartirCatalogo(document.getElementById('cat-link-out').textContent)))"
-          style="flex:1;background:#25D366;color:#fff;border:none;padding:9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">📱 WhatsApp</button>
-        <button onclick="desactivarLinkCatalogo(document.getElementById('cat-link-out').textContent)"
-          style="background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.3);padding:9px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">🚫 Desactivar</button>
-      </div>
-    </div>
-
-    <!-- ⚙️ Gestión avanzada (colapsable) -->
-    <details style="border:1px solid #222;border-radius:8px;overflow:hidden;">
-      <summary style="padding:10px 14px;font-size:12px;font-weight:700;color:#666;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;">
-        ⚙️ Gestión de links anteriores
-        <span style="font-size:10px;color:#444;">▼ expandir</span>
-      </summary>
-      <div style="padding:14px;border-top:1px solid #222;background:#0d0d0d;display:flex;flex-direction:column;gap:12px;">
-        <div>
-          <div style="font-size:11px;font-weight:700;color:#f87171;margin-bottom:6px;">🚫 Desactivar link</div>
-          <div style="display:flex;gap:8px;">
-            <input type="text" id="cat-link-desactivar" placeholder="Link completo o código (ej: abc123)" style="flex:1;">
-            <button onclick="desactivarLinkCatalogo(document.getElementById('cat-link-desactivar').value)"
-              style="background:#dc2626;color:#fff;border:none;padding:0 14px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">Desactivar</button>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:11px;font-weight:700;color:#1d4ed8;margin-bottom:6px;">✏️ Editar vigencia</div>
-          <div style="display:flex;gap:8px;">
-            <input type="text" id="cat-link-editar-vig" placeholder="Link completo o código" style="flex:1;">
-            <select id="cat-editar-vig-dias" style="width:110px;">
-              <option value="1">1 día</option>
-              <option value="3">3 días</option>
-              <option value="7">7 días</option>
-              <option value="15">15 días</option>
-              <option value="30">30 días</option>
-            </select>
-            <button onclick="editarVigenciaCatalogo(document.getElementById('cat-link-editar-vig').value, document.getElementById('cat-editar-vig-dias').value)"
-              style="background:#2563eb;color:#fff;border:none;padding:0 14px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">Actualizar</button>
+            <!-- Link generado -->
+            <div id="cat-link-box" style="display:none;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.3);border-radius:12px;padding:14px;margin-top:12px;">
+              <div style="font-size:11px;font-weight:800;color:#15803d;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">✅ Link generado</div>
+              <div id="cat-link-out" style="font-size:13px;color:#15803d;word-break:break-all;margin-bottom:10px;font-weight:600;"></div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button onclick="navigator.clipboard.writeText(mensajeCompartirCatalogo(document.getElementById('cat-link-out').textContent));toast('✅ Mensaje y link copiados','#22c55e')"
+                  style="flex:1;background:#166534;color:#fff;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">📋 Copiar</button>
+                <button onclick="window.open('https://wa.me/?text='+encodeURIComponent(mensajeCompartirCatalogo(document.getElementById('cat-link-out').textContent)))"
+                  style="flex:1;background:#25D366;color:#fff;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">📱 WhatsApp</button>
+                <button onclick="desactivarLinkCatalogo(document.getElementById('cat-link-out').textContent)"
+                  style="background:rgba(239,68,68,0.08);color:#dc2626;border:1px solid rgba(239,68,68,0.3);padding:10px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">🚫 Desactivar</button>
+              </div>
+            </div>
+            <button type="button" class="wz-chip" style="margin-top:12px;" onclick="wzGuardarPlantilla()">📁 Guardar estos filtros como plantilla</button>
           </div>
         </div>
       </div>
-    </details>
+    </section>
 
-    <!-- ══ MIS CATÁLOGOS (oculto — la gestión de links ahora vive en la
-         pestaña 🔗 Links, que ya cubre lo mismo con mejor UX). El botón de
-         "Reconstruir stats" es una utilidad puntual, se conserva accesible
-         pero sin la lista redundante. ════════════════════════════════ -->
-    <div style="margin-top:20px;display:none;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <span style="font-size:13px;font-weight:700;color:#C9A84C;text-transform:uppercase;letter-spacing:.5px;">Mis catálogos</span>
-        <button onclick="reconstruirIndiceAfiliados()" id="btn-backfill" style="font-size:10px;background:none;border:1px solid #333;color:#666;border-radius:6px;padding:3px 8px;cursor:pointer;" title="Reconstruir índice de catálogos por afiliado — ejecutar una vez para incluir catálogos anteriores en las estadísticas">🔄 Reconstruir stats</button>
-      </div>
-      <div id="cat-log-lista"></div>
+    <div class="wz-bar">
+      <button type="button" class="wz-btn ghost" id="wz-atras" onclick="wzIr(_wzPaso-1)" hidden>← Atrás</button>
+      <div class="info" id="wz-bar-info"></div>
+      <button type="button" class="wz-btn gold" id="wz-sig" onclick="wzIr(_wzPaso+1)">Siguiente →</button>
     </div>
-    <div style="margin-top:20px;font-size:12px;color:#9ca3af;text-align:center;padding:10px;">
-      Los links generados se gestionan ahora en la pestaña <strong>🔗 Links</strong>.
-    </div>
-
   </div>
 </div>
 
