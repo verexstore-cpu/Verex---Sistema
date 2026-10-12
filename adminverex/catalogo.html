@@ -491,7 +491,7 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
     }
 
     // Chips de tallas de la tarjeta (solo anillos) — se usa al armar la tarjeta y cuando se refrescan las tallas con el stock en vivo
-    const szChip = sz => `<span style="padding:2px 7px;background:#e8f4fd;border-radius:5px;font-size:10px;font-weight:700;color:#0277bd;">T${sz}</span>`;
+    const szChip = sz => `<span style="padding:2px 7px;background:#e8f4fd;border-radius:5px;font-size:10px;font-weight:700;color:#0277bd;">T${esc(sz)}</span>`;
     function sizesHtmlDe(p){
         if (p.cat !== "AN") return "";
         if (p.par && (p.sizesD?.length || p.sizesH?.length)) {
@@ -698,7 +698,7 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
                     <span class="card-enmano-badge">✓ DISPONIBLE YA</span>
                     <span class="card-otrastallas-badge" id="otrastallas-${i}">📏 Talla agotada — disponible: ${esc((p.tallasDisponibles||[]).join(", "))}</span>
                     ${p.i
-                        ?`<img class="card-img" src="${esc(ikSharp(p.i))}" alt="${esc(p.n)}" loading="lazy" style="cursor:zoom-in;" onclick="abrirFotoZoom('${esc(ikSharp(p.i))}')" onerror="this.outerHTML='<div class=\'card-img-ph\'>💍</div>'">`
+                        ?`<img class="card-img" src="${esc(ikSharp(p.i))}" alt="${esc(p.n)}" loading="lazy" style="cursor:zoom-in;" onclick="abrirFotoZoom(${esc(JSON.stringify(String(ikSharp(p.i))))})" onerror="this.outerHTML='<div class=\'card-img-ph\'>💍</div>'">`
                         :`<div class="card-img-ph">💍</div>`}
                 </div>
                 <div class="card-body">
@@ -787,7 +787,7 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
         const filtroTallaHTML = tallasOrdenadas.length ? `
             <div id="filtro-talla-bar">
                 <span class="flt-lbl">💍 Talla de anillo:</span>
-                ${tallasOrdenadas.map(t => `<button class="chip-talla" data-talla="${esc(t)}" onclick="toggleFiltroTalla('${esc(t)}',this)">T${esc(t)}</button>`).join("")}
+                ${tallasOrdenadas.map(t => `<button class="chip-talla" data-talla="${esc(t)}" onclick="toggleFiltroTalla(${esc(JSON.stringify(String(t)))},this)">T${esc(t)}</button>`).join("")}
                 <button class="chip-talla-limpiar" onclick="limpiarFiltroTalla()">✕ Todas</button>
             </div>` : '';
 
@@ -1050,7 +1050,7 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
     function gridTallas(gen, tallas){
         const el = document.getElementById(gen === "D" ? "sz-grid-d" : "sz-grid-h");
         el.innerHTML = tallas.length
-            ? tallas.map(sz => `<button class="sz-btn" onclick="selSz('${gen}','${sz}',this)">T${sz}</button>`).join("")
+            ? tallas.map(sz => `<button class="sz-btn" onclick="selSz(${esc(JSON.stringify(String(gen)))},${esc(JSON.stringify(String(sz)))},this)">T${esc(sz)}</button>`).join("")
             : `<div style="font-size:12px;font-weight:600;color:#b42318;">Sin tallas disponibles por ahora. Escríbenos por WhatsApp y te ayudamos.</div>`;
     }
 
@@ -1368,9 +1368,9 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
                         ${it.tallaLabel ? `<div style="font-size:11px;color:#7c3aed;">${esc(it.tallaLabel)}</div>` : ''}
                         <div style="font-size:12px;color:#666;">$${it.precioUnit.toFixed(2)} c/u</div>
                     </div>
-                    <button class="cart-item-qtybtn" onclick="cambiarQtyCarrito('${esc(it.key)}',-1)">−</button>
+                    <button class="cart-item-qtybtn" onclick="cambiarQtyCarrito(${esc(JSON.stringify(String(it.key)))},-1)">−</button>
                     <span style="font-weight:700;min-width:16px;text-align:center;">${it.qty}</span>
-                    <button class="cart-item-qtybtn" onclick="cambiarQtyCarrito('${esc(it.key)}',1)">+</button>
+                    <button class="cart-item-qtybtn" onclick="cambiarQtyCarrito(${esc(JSON.stringify(String(it.key)))},1)">+</button>
                     <div style="font-size:13px;font-weight:800;color:#111;min-width:55px;text-align:right;">$${(it.precioUnit*it.qty).toFixed(2)}</div>
                 </div>`).join("");
         }

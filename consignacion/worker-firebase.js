@@ -232,7 +232,7 @@ export default {
 
       // Página del celular para tomar foto
       if (url.pathname === "/foto-upload") {
-        const session = url.searchParams.get("s") || "";
+        const session = (url.searchParams.get("s") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);   // va dentro del HTML: nada de comillas ni etiquetas
         const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><title>VEREX — Foto</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{background:#111;color:#fff;font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:20px;gap:16px}
 .logo{font-size:22px;font-weight:700;color:#C9A84C;letter-spacing:1px}
@@ -344,7 +344,7 @@ async function enviar(){
     // se la pasamos nosotros al crear cada enlace de pago.
     {
       const urlPost = new URL(request.url);
-      if (request.method === "POST" && urlPost.pathname === `/webhook-wompi/${env.WOMPI_WEBHOOK_SECRET}`) {
+      if (request.method === "POST" && env.WOMPI_WEBHOOK_SECRET && urlPost.pathname === `/webhook-wompi/${env.WOMPI_WEBHOOK_SECRET}`) {
         return manejarWebhookWompi(request, env, sb);
       }
       // PayPal firma sus webhooks: la autenticación es la verificación de esa firma (ver manejarWebhookPayPal).
@@ -445,8 +445,12 @@ async function enviar(){
       // ── SSO: Admin canjea el token — un solo uso, expira a los 90s ──
       if (d.accion === "SSO_CANJEAR_TOKEN") {
         const cfgSso = await sb.get("config", "settings");
-        const entry = cfgSso?.ssoTokens?.[d.token];
-        if (!entry || (Date.now() - entry.creado) > 90 * 1000) {
+        // El token tiene que ser un UUID que exista como clave PROPIA de ssoTokens: con "constructor" o "__proto__"
+        // se leía una propiedad heredada de Object (truthy, sin `creado`) y se entregaba el hash del admin a cualquiera.
+        const tokSso = typeof d.token === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(d.token) ? d.token : "";
+        const tokensSso = cfgSso && cfgSso.ssoTokens && typeof cfgSso.ssoTokens === "object" ? cfgSso.ssoTokens : {};
+        const entry = tokSso && Object.prototype.hasOwnProperty.call(tokensSso, tokSso) ? tokensSso[tokSso] : null;
+        if (!entry || typeof entry.creado !== "number" || !((Date.now() - entry.creado) <= 90 * 1000)) {
           return json({ ok: false, error: "Token inválido o expirado" });
         }
         delete cfgSso.ssoTokens[d.token];
@@ -1335,6 +1339,7 @@ async function enviar(){
         }
 
         case "GET_HISTORIAL_CORTES": {
+          if (!esAdmin) return forbidden();   // teléfonos, ventas y comisiones de los vendedores
           const cortes = await sb.query("cortes_historial", "vendedor", "==", d.vendedor);
           result = { ok: true, cortes };
           break;
@@ -2077,6 +2082,7 @@ async function enviar(){
 
         // ══ PEDIDOS TIENDA ════════════════════════════════════════
         case "GUARDAR_PEDIDO": {
+          if (!esAdmin) return forbidden();   // antes cualquiera podía sobrescribir cualquier pedido
           const pedidoId = d.numeroPedido || `PED_${Date.now()}`;
           await sb.set("pedidos", pedidoId, { ...d, id: pedidoId });
           result = { ok: true, numeroPedido: pedidoId };
@@ -2412,6 +2418,8 @@ async function enviar(){
         }
 
         case "NUEVO_PEDIDO": {
+          // Público (tienda y catálogos): lo que escribe el cliente se guarda y se manda por correo como texto, nunca HTML.
+          limpiarTextoPublico(d, ["cliente", "telefono", "telLlamada", "municipio", "departamento", "direccion", "correo", "productos", "metodoPago", "cuponUsado"]);
           // Reservar stock ANTES de crear el pedido — de forma atómica (ver
           // reservar_stock_pedido en Supabase), para que dos pedidos por
           // WhatsApp casi simultáneos del mismo producto no puedan vender la
@@ -2424,7 +2432,7 @@ async function enviar(){
           let faltantePed = null;
           for (const item of itemsPedNuevo) {
             if (!item.codigo) continue;
-            const qtyPed = parseInt(item.cantidad || 1);
+            const qtyPed = Math.min(10, Math.max(1, parseInt(item.cantidad) || 1));
             let resReservaPed;
             try { resReservaPed = await sb.reservar(item.codigo, qtyPed); }
             catch (eResPed) { faltantePed = { codigo: item.codigo, error: eResPed.message }; break; }
@@ -2643,7 +2651,12 @@ async function enviar(){
         // conversación no llega a cerrarse como venta.
         case "REGISTRAR_LEAD": {
           if (!d.codigo) { result = { ok: false, error: "Datos incompletos" }; break; }
-          const qtyLead = parseInt(d.qty) || 1;
+          limpiarTextoPublico(d, ["nombre", "nombreCliente", "telefonoCliente", "direccionCliente", "correoCliente", "ciudadUS", "estadoUS", "zipUS", "afiliado"]);
+          // Ids y links que el admin usa en botones: formato estricto (si no, se descartan)
+          if (d.pedidoId && !/^[A-Za-z0-9_-]{1,60}$/.test(String(d.pedidoId))) d.pedidoId = "";
+          if (d.foto && !/^https:\/\/[^\s"'<>`]{1,500}$/.test(String(d.foto))) d.foto = "";
+          if (d.pagoLink && !(RE_PAYPAL_ME_LINK.test(d.pagoLink) || /^https:\/\/www\.(sandbox\.)?paypal\.com\/[A-Za-z0-9\/_\-?=&%.]{1,200}$/.test(d.pagoLink) || /^https:\/\/([a-z0-9-]+\.)*wompi\.sv\/[A-Za-z0-9\/_\-?=&%.]{0,300}$/.test(d.pagoLink))) d.pagoLink = "";
+          const qtyLead = Math.min(10, Math.max(1, parseInt(d.qty) || 1));
           // Producto de PRUEBA (ver CREAR_PRODUCTO_PRUEBA): solo se puede pedir mientras PayPal esté en Sandbox, y el pedido
           // queda marcado esPrueba para no contar en ingresos. Con cobros reales (live) se rechaza.
           const prodPrueba = await sb.get("stock", d.codigo).catch(() => null);
@@ -2796,6 +2809,9 @@ async function enviar(){
         // (el catálogo es una página pública, no el panel de Admin).
         case "ENVIAR_PEDIDO_USA": {
           if (!Array.isArray(d.items) || !d.items.length) { result = { ok: false, error: "Pedido vacío" }; break; }
+          // Endpoint público que manda correos desde el dominio de VEREX: los datos del cliente van como texto, nunca HTML.
+          limpiarTextoPublico(d, ["nombreCliente", "telefono", "correo", "direccionCompleta"]);
+          d.items = d.items.slice(0, 30).map(it => ({ ...it, nombre: sinHtml(it && it.nombre, 160) }));
           const numPed = await numeroGuardadoPedidoUSA(sb, d.pedidoId);   // número corto US-DDMM-NNN (si la página mandó el pedidoId)
           try {
             const RESEND_KEY = env.RESEND_KEY;
@@ -2819,7 +2835,7 @@ async function enviar(){
               const esWompi = d.metodoPago === "wompi";
               const pagoLinkOk = /^https:\/\/paypal\.me\/[A-Za-z0-9_.]{1,50}\/\d+\.\d{2}[A-Z]{0,3}$/.test(d.pagoLink || "")
                 || /^https:\/\/www\.(sandbox\.)?paypal\.com\/[A-Za-z0-9\/_\-?=&%.]{1,200}$/.test(d.pagoLink || "")
-                || /^https:\/\/([a-z0-9-]+\.)*wompi\.sv\//.test(d.pagoLink || "");
+                || /^https:\/\/([a-z0-9-]+\.)*wompi\.sv\/[A-Za-z0-9\/_\-?=&%.]{0,300}$/.test(d.pagoLink || "");   // sin comillas: va dentro de un href
               const correoValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.correo || "");
               const pagoLinkHtml = pagoLinkOk ? `
                         <div style="margin:0 0 16px;padding:12px 14px;background:#fef9e7;border:1px solid #f0d98c;border-radius:8px;text-align:center;">
@@ -4707,9 +4723,22 @@ async function enviar(){
         // los SKUs del grupo (tallas) para no tener que volver a traducir.
         case "TRADUCIR_DESCRIPCION": {
           const texto = String(d.texto || "").trim();
-          const codigos = Array.isArray(d.codigos) ? d.codigos.filter(Boolean) : [];
+          const codigos = Array.from(new Set((Array.isArray(d.codigos) ? d.codigos : []).map(String).filter(Boolean))).slice(0, 40);
           if (!texto) { result = { ok: false, error: "Texto vacío" }; break; }
           if (texto.length > 500) { result = { ok: false, error: "Texto demasiado largo" }; break; }
+          // Es pública (us.verexstore.com traduce la descripción la primera vez que alguien la ve en inglés), así que:
+          // solo traduce el texto REAL del producto (la descripción que escribió el admin, igual en todos los códigos
+          // pedidos), y si ya hay traducción la devuelve sin gastar IA. Antes cualquiera podía mandar su propio texto
+          // y guardarlo como descripción en inglés de cualquier producto (y gastar la cuenta de Groq en bucle).
+          if (!codigos.length) { result = { ok: false, error: "codigos requeridos" }; break; }
+          const filasTr = await sb.getMany("stock", codigos);
+          const descReal = x => String(x.descripcionTienda || x.descripcion || "").trim();
+          // Todas las tallas de UN diseño; alguna puede no tener descripción propia (la hereda de la primera).
+          const baseTr = _baseDeCodigo(codigos[0]).toUpperCase();
+          if (filasTr.length !== codigos.length || !codigos.every(c => _baseDeCodigo(c).toUpperCase() === baseTr)
+              || !filasTr.some(x => descReal(x) === texto) || !filasTr.every(x => descReal(x) === texto || descReal(x) === "")) { result = { ok: false, error: "texto_no_coincide" }; break; }
+          const yaTr = filasTr.find(x => x.descripcionTiendaEN && x.descripcionTiendaENDe === texto);
+          if (yaTr) { result = { ok: true, traduccion: yaTr.descripcionTiendaEN, cache: true }; break; }
           const groqKey = env.GROQ_KEY;
           if (!groqKey) { result = { ok: false, error: "GROQ_KEY no configurada en Cloudflare" }; break; }
           try {
@@ -4739,10 +4768,9 @@ async function enviar(){
             let traduccion = (groqData.choices?.[0]?.message?.content || "").trim();
             traduccion = traduccion.replace(/<think>[\s\S]*?<\/think>/i, "").trim();
             traduccion = traduccion.replace(/^["“”']|["“”']$/g, "").trim();
+            traduccion = traduccion.replace(/<[^>]*>/g, "").replace(/[<>]/g, "").slice(0, 600).trim();   // solo texto, nunca HTML
             if (!traduccion) { result = { ok: false, error: "Groq no devolvió traducción" }; break; }
-            for (const cod of codigos) {
-              await sb.update("stock", cod, { descripcionTiendaEN: traduccion }).catch(() => {});
-            }
+            await Promise.all(codigos.map(cod => sb.update("stock", cod, { descripcionTiendaEN: traduccion, descripcionTiendaENDe: texto }).catch(() => {})));
             result = { ok: true, traduccion };
           } catch (e) {
             result = { ok: false, error: e.name === "TimeoutError" ? "Groq no respondió a tiempo" : "Error de traducción: " + e.message };
@@ -4819,6 +4847,8 @@ async function enviar(){
 
         case "GUARDAR_FOTO_PENDIENTE": {
           // Guarda URL de foto subida desde celular para usarla en el sistema
+          // Público (lo usa la página del celular): solo URLs de ImageKit, sin comillas ni espacios (se pinta en el Hub).
+          if (!/^https:\/\/ik\.imagekit\.io\/[^\s"'<>`]{1,500}$/.test(String(d.url || ""))) { result = { ok: false, error: "url_invalida" }; break; }
           const id = `foto_${Date.now()}`;
           await sb.set("fotos_pendientes", id, {
             id, url: d.url, fecha: new Date().toISOString(), usada: false
@@ -7044,6 +7074,10 @@ function stockPublico(p) {
   return o;
 }
 
+// Texto que llega de páginas públicas y termina en correos o en pantallas del admin: sin etiquetas HTML y con tope.
+function sinHtml(v, max = 300) { return String(v ?? "").replace(/[<>]/g, "").slice(0, max); }
+function limpiarTextoPublico(d, campos) { for (const c of campos) if (d[c] != null) d[c] = sinHtml(d[c], c === "productos" ? 2000 : 300); }
+
 // ── Total de un pedido USA calculado en el servidor ──
 // Mismas reglas que us.verexstore.com (index.html → TRAMOS_ENVIO_US / MINIMO_COMPRA_USD / calcularDescuentoCupon).
 // Si cambian los tramos o el mínimo en la tienda, cambiarlos también aquí (y en functions/_lib/knowledge.js).
@@ -7172,7 +7206,9 @@ function cuponNoUsable(cup, cliente, tienda) {
 function sanearConfigPublico(cfg) {
   if (!cfg || typeof cfg !== "object") return {};
   // rentabilidadUSA (tarifa DHL, comisión de pago, empaque) es información interna del negocio: solo la lee el admin.
-  const { passHash, otp, otpExp, ssoTokens, rentabilidadUSA, ...publico } = cfg;
+  const { passHash, otp, otpExp, ssoTokens, rentabilidadUSA, totpSecret, ...publico } = cfg;
+  // Red de seguridad: ninguna clave con pinta de credencial sale en respuestas públicas.
+  for (const k of Object.keys(publico)) if (/secret|token|hash|otp|pass|clave|key/i.test(k)) delete publico[k];
   return publico;
 }
 

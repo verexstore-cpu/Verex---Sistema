@@ -395,7 +395,8 @@ input,textarea{font:inherit}
     // resumen de Lyra
     const dl = $("resumen-dl"); dl.replaceChildren();
     for (const [k, label] of [["busca", "Busca"], ["vio", "Vio"], ["pregunta", "Preguntó"]]) if (c.summary?.[k]) dl.append(el("dt", null, label), el("dd", null, c.summary[k]));
-    if (c.page) { const a = el("a", null, c.page.replace(/^https?:\/\//, "")); a.href = c.page; a.target = "_blank"; a.rel = "noopener"; const dd = el("dd"); dd.append(a); dl.append(el("dt", null, "Página"), dd); }
+    // El link de la página lo manda el visitante: solo https (nunca javascript: ni otros esquemas).
+    if (c.page && /^https:\/\//i.test(c.page)) { const a = el("a", null, c.page.replace(/^https?:\/\//, "")); a.href = c.page; a.target = "_blank"; a.rel = "noopener"; const dd = el("dd"); dd.append(a); dl.append(el("dt", null, "Página"), dd); }
     $("resumen").hidden = !dl.children.length;
     // traducir: solo tiene sentido si el cliente escribe en inglés
     $("traducir-wrap").hidden = c.lang !== "en"; $("ver-previa").hidden = c.lang !== "en";

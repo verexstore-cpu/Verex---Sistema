@@ -1373,6 +1373,9 @@ document.addEventListener("click", (e) => {
 // ═════════════════════════════════════════════
 //  SANITIZACIÓN HTML (previene XSS)
 // ═════════════════════════════════════════════
+// Para pasar un texto como argumento de una función dentro de onclick="…": JSON lo vuelve un string JS válido y esc()
+// lo protege dentro del atributo (un nombre con comillas ya no puede salirse del atributo ni del string).
+function jsAttr(v) { return esc(JSON.stringify(String(v ?? ""))); }
 function esc(str) {
     return String(str ?? "")
         .replace(/&/g,"&amp;")
@@ -1631,9 +1634,9 @@ function renderVentasAdmin() {
                         <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:${tc.bg};color:${tc.color};font-weight:700;">${tc.label}</span>
                         <span style="font-size:10px;color:${ec.color};font-weight:600;">${ec.label}</span>
                     </div>
-                    <div style="font-size:13px;font-weight:700;color:#1a1a1a;">${v.cliente || "—"}</div>
+                    <div style="font-size:13px;font-weight:700;color:#1a1a1a;">${esc(v.cliente) || "—"}</div>
                     <div style="font-size:11px;color:#374151;margin-top:2px;">${fecha} · Ref: ${String(v.id||"").slice(-6)}</div>
-                    ${itemsStr ? `<div style="font-size:11px;color:#4b5563;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${itemsStr}</div>` : ""}
+                    ${itemsStr ? `<div style="font-size:11px;color:#4b5563;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(itemsStr)}</div>` : ""}
                 </div>
                 <div style="text-align:right;flex-shrink:0;">
                     <div style="font-size:15px;font-weight:700;color:#1e3a8a;">$${parseFloat(v.total||0).toFixed(2)}</div>
@@ -2355,7 +2358,7 @@ function renderTop() {
         <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
             <span style="font-size:18px;min-width:26px;">${medals[i]}</span>
             <div style="flex:1;min-width:0;">
-                <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${n}</div>
+                <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(n)}</div>
                 <div style="background:rgba(0,191,255,0.12);border-radius:4px;height:4px;margin-top:5px;">
                     <div style="background:var(--azul);height:4px;border-radius:4px;width:${Math.round(v/maxV*100)}%;"></div>
                 </div>
@@ -2439,13 +2442,13 @@ function renderPedidos() {
             <td style="overflow:hidden;">
                 <div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.cliente)||"—"}</div>
                 <a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-size:11px;text-decoration:none;">${esc(p.telefono)||""}</a>
-                ${p.codigoCliente ? `<div style="font-size:10px;color:#C9A84C;font-weight:600;margin-top:1px;">${p.codigoCliente}</div>` : ""}
+                ${p.codigoCliente ? `<div style="font-size:10px;color:#C9A84C;font-weight:600;margin-top:1px;">${esc(p.codigoCliente)}</div>` : ""}
             </td>
             <td style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.municipio)||"—"}</td>
             <td style="font-size:11px;color:#777;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.productos)||"—"}</td>
             <td style="font-weight:700;color:var(--verde);white-space:nowrap;">$${parseFloat(String(p.total).replace(/[^0-9.]/g,"")||0).toFixed(2)}</td>
-            <td style="font-size:11px;color:#aaa;">${pagoCorto}</td>
-            <td><select class="es" style="font-size:11px;padding:3px 4px;border-color:${estadoColor};color:${estadoColor};" onchange="cambiarEstado(this,'${p.numeroPedido||""}','${p.cliente}','${p.fecha}')">${opts}</select></td>
+            <td style="font-size:11px;color:#aaa;">${esc(pagoCorto)}</td>
+            <td><select class="es" style="font-size:11px;padding:3px 4px;border-color:${estadoColor};color:${estadoColor};" onchange="cambiarEstado(this,${jsAttr(p.numeroPedido||"")},${jsAttr(p.cliente)},${jsAttr(p.fecha)})">${opts}</select></td>
             <td>
                 <div style="display:flex;gap:4px;">
                     <button class="btn" style="background:#ef4444;color:#fff;padding:4px 8px;font-size:11px;"
@@ -2477,11 +2480,11 @@ function renderPedidos() {
                 <span>📱 <a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-weight:600;text-decoration:none;">${esc(p.telefono)||"—"}</a></span>
                 <span>📍 ${esc(p.municipio)||"—"}</span>
                 <span>🛍️ ${esc(p.productos)||"—"}</span>
-                <span>💰 <b style="color:var(--verde)">${p.total||"—"}</b></span>
-                <span>💳 ${p.metodoPago||"—"}</span>
+                <span>💰 <b style="color:var(--verde)">${esc(p.total)||"—"}</b></span>
+                <span>💳 ${esc(p.metodoPago)||"—"}</span>
             </div>
             <div class="ped-card-footer">
-                <select class="es" onchange="cambiarEstado(this,'${p.numeroPedido||""}','${p.cliente}','${p.fecha}')">${opts}</select>
+                <select class="es" onchange="cambiarEstado(this,${jsAttr(p.numeroPedido||"")},${jsAttr(p.cliente)},${jsAttr(p.fecha)})">${opts}</select>
                 <div style="display:flex;gap:6px;">
                     <button class="btn" style="background:#ef4444;color:#fff;padding:6px 12px;font-size:12px;"
                         onclick='generarPDFAdmin(${i},"${p.numeroPedido||""}")'>📄 PDF</button>
@@ -2553,7 +2556,7 @@ function renderClientes() {
             <td>${badgeCanalCliente(c)}</td>
             <td style="font-size:12px;color:#888;">${fecha}</td>
             <td><button class="btn" style="background:#111;color:#fff;padding:4px 10px;font-size:12px;"
-                onclick='generarCuponCliente("${c.codigo}","${c.nombre}","${c.telefono}")'>🎫 Generar</button></td>
+                onclick="generarCuponCliente(${jsAttr(c.codigo)},${jsAttr(c.nombre)},${jsAttr(c.telefono)})">🎫 Generar</button></td>
         </tr>`;
     }).join('');
 
@@ -2576,7 +2579,7 @@ function renderClientes() {
             </div>
             <div class="ped-card-footer">
                 <button class="btn" style="background:#111;color:#fff;padding:6px 14px;font-size:13px;width:100%;"
-                    onclick='generarCuponCliente("${c.codigo}","${c.nombre}","${c.telefono}")'>🎫 Generar Cupón</button>
+                    onclick="generarCuponCliente(${jsAttr(c.codigo)},${jsAttr(c.nombre)},${jsAttr(c.telefono)})">🎫 Generar Cupón</button>
             </div>
         </div>`;
     }).join('');
@@ -2897,9 +2900,9 @@ function actualizarNotif(sil=false) {
         if (sil) toast(`🔔 ${nuevos.length} pedido${nuevos.length>1?"s":""} nuevo${nuevos.length>1?"s":""}`, "#00BFFF");
     } else badge.style.display="none";
     document.getElementById("notif-lista").innerHTML = rec.length
-        ? rec.map(p=>`<div class="notif-item ${!notifLeidas.has(String(p.fecha)+p.cliente)?"nueva":""}" onclick="irPedido('${p.cliente}')">
-                <b>${p.cliente||"—"}</b> — ${p.total||""}
-                <div class="nt">${p.fecha?new Date(p.fecha).toLocaleString("es-SV"):""} · ${p.municipio||""}</div>
+        ? rec.map(p=>`<div class="notif-item ${!notifLeidas.has(String(p.fecha)+p.cliente)?"nueva":""}" onclick="irPedido(${jsAttr(p.cliente)})">
+                <b>${esc(p.cliente)||"—"}</b> — ${esc(p.total)}
+                <div class="nt">${p.fecha?new Date(p.fecha).toLocaleString("es-SV"):""} · ${esc(p.municipio)}</div>
             </div>`).join('')
         : '<p style="padding:14px;color:#aaa;font-size:13px;">Sin pedidos aún.</p>';
 }
@@ -3536,12 +3539,13 @@ function mostrarGuiaC807(numeroPedido) {
 
     _c807Texto = campos.map(c => `${c.label}: ${c.valor}`).join("\n");
 
-    document.getElementById("c807-contenido").innerHTML = campos.map(c => `
+    window._c807Campos = campos;   // el botón copia por índice: el valor (datos del cliente) nunca va dentro del onclick
+    document.getElementById("c807-contenido").innerHTML = campos.map((c, i) => `
         <div style="margin-bottom:10px;">
             <div style="font-size:11px;color:#888;font-weight:600;text-transform:uppercase;">${c.label}</div>
             <div style="display:flex;align-items:center;gap:8px;background:#f5f5f5;border-radius:6px;padding:8px 10px;margin-top:3px;">
-                <span style="flex:1;font-size:14px;font-weight:500;">${c.valor}</span>
-                <button onclick="navigator.clipboard.writeText('${c.valor.replace(/'/g,"\\'")}');this.textContent='✅';setTimeout(()=>this.textContent='📋',1500)"
+                <span style="flex:1;font-size:14px;font-weight:500;">${esc(c.valor)}</span>
+                <button onclick="navigator.clipboard.writeText(window._c807Campos[${i}].valor);this.textContent='✅';setTimeout(()=>this.textContent='📋',1500)"
                     style="background:none;border:none;font-size:16px;cursor:pointer;flex-shrink:0;">📋</button>
             </div>
         </div>`).join('');

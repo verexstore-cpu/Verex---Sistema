@@ -5,6 +5,12 @@ export async function onRequest(context) {
     if (!target) {
         return new Response("Missing url", { status: 400 });
     }
+    // Solo acorta links de VEREX: antes cualquiera podía usar este endpoint para acortar cualquier URL (phishing).
+    let host = "";
+    try { const u = new URL(target); if (u.protocol === "https:") host = u.hostname.toLowerCase(); } catch (_) {}
+    if (!(/(^|\.)verexstore\.com$/.test(host) || /^admin-tienda\.pages\.dev$/.test(host) || /^[a-z0-9-]*verex[a-z0-9-]*\.pages\.dev$/.test(host))) {
+        return new Response("URL no permitida", { status: 400 });
+    }
 
     const headers = { "Content-Type": "text/plain", "Access-Control-Allow-Origin": "*" };
 
