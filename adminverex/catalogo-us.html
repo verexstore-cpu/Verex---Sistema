@@ -854,7 +854,10 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
         // Aunque no sea un "par" con precio total (pD/pH), muchas alianzas se
         // fotografían mostrando las dos piezas aunque se vendan como una sola a
         // precio unisex — se avisa igual para no confundir al cliente.
-        return `${base}${(p.par || (p.avisoPieza && ES_PAR.test(p.n)))?`<span style="display:block;font-size:10px;font-weight:500;color:#7c3aed;margin-top:2px;">${t('precioPorPieza')}</span>`:""}`;
+        // Se decide por el NOMBRE (no por p.avisoPieza): los catálogos de vendedor
+        // (Nexus «Ver Catálogo Actual» e Inventario Sellers) lo mandaban en false
+        // y el aviso no salía; así también se corrigen los links ya compartidos.
+        return `${base}${(p.par || ES_PAR.test(p.n || ""))?`<span style="display:block;font-size:10px;font-weight:500;color:#7c3aed;margin-top:2px;">${t('precioPorPieza')}</span>`:""}`;
     }
 
     function showExpired(nombre, wa){

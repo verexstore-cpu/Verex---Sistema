@@ -554,7 +554,9 @@ async function compartirMiCatalogo() {
             sizes: c.talla ? [String(c.talla)] : [],
             sizesD: [], sizesH: [],
             par: false, piezas: null, pD: null, pH: null, cD: null, cC: null,
-            avisoPieza: false,
+            // Mismo criterio que el admin: las alianzas se fotografían en pareja
+            // aunque el precio sea por una sola pieza.
+            avisoPieza: /matrimonio|argolla|novios|pareja|alianza/i.test(c.nombre_base || c.nombre || ""),
             // Ya no tiene la pieza en mano, pero VEREX sí — se sigue
             // ofreciendo "bajo pedido" en vez de desaparecer del catálogo.
             bajoPedido: !!c.bajoPedido,

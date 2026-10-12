@@ -42,7 +42,9 @@ function prodConsignacion(c) {
         sizes: c.talla ? [String(c.talla)] : [],
         sizesD: [], sizesH: [],
         par: false, piezas: null, pD: null, pH: null, cD: null, cC: null,
-        avisoPieza: false,
+        // Mismo criterio que el admin: las alianzas se fotografían en pareja
+        // aunque el precio sea por una sola pieza.
+        avisoPieza: /matrimonio|argolla|novios|pareja|alianza/i.test(c.nombre_base || c.nombre || ""),
         bajoPedido: !!c.bajoPedido,
         tallasDisponibles: c.tallasDisponibles || [],
         origen: "consignacion",
