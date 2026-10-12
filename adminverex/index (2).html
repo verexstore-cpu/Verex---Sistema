@@ -6504,6 +6504,37 @@ function spSugerir(otras = false) {
     _spPintar(pub, cand.length);
 }
 
+// Tallas ya publicadas en la web (con fecha de publicación, o sea desde el sistema) que en Stock siguen en bodega:
+// quedaron así porque antes publicar no movía el inventario. Se pasan a tienda igual que «Asignar a tienda» del Hub.
+function _spPendientesTienda() {
+    return productos.filter(p => p.estado !== "inactivo" && !p.esPrueba
+        && (p.enCatalogo === true || p.enCatalogo === "true" || p.enCatalogo === "TRUE") && p.publicadoEn
+        && (parseInt(p.stock_tienda) || 0) <= 0 && (parseInt(p.stock_bodega) || 0) > 0);
+}
+async function spPasarPendientesATienda() {
+    const pend = _spPendientesTienda();
+    if (!pend.length) return;
+    if (!confirm(`¿Pasar a tienda en Stock ${pend.length} talla(s) que ya están publicadas en la web pero siguen en bodega?\n\nSe mueve 1 unidad por talla, igual que «Asignar a tienda» del Hub.`)) return;
+    const btn = document.getElementById("sp-pend-btn");
+    btn.disabled = true; btn.textContent = "⏳ Moviendo…";
+    let movidas = 0;
+    try {
+        const cods = pend.map(p => p.codigo);
+        for (let i = 0; i < cods.length; i += 300) {
+            const lote = cods.slice(i, i + 300);
+            const r = await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "STOCK_ASIGNAR_TIENDA", _pass: ADMIN_PASS, codigos: lote, cantidad: 1 }) }).then(x => x.json()).catch(() => null);
+            if (!r?.ok) throw new Error(r?.error || "sin respuesta del servidor");
+            lote.forEach(c => { const p = productos.find(x => x.codigo === c); if (p) { p.stock_bodega = (parseInt(p.stock_bodega) || 0) - 1; p.stock_tienda = (parseInt(p.stock_tienda) || 0) + 1; p.estado = "tienda"; } });
+            movidas += lote.length;
+        }
+        toast(`✅ ${movidas} talla(s) pasadas de bodega a tienda en Stock`, "#22c55e");
+    } catch (e) {
+        toast(`❌ ${movidas ? movidas + " movidas, pero " : ""}no se pudo terminar: ${e.message}`, "#ef4444");
+    }
+    btn.disabled = false; btn.textContent = "📦→🏪 Pasarlas a tienda";
+    _spPintar();
+}
+
 function spToggle(tipo, i) { const l = tipo === "add" ? _spAdd : _spDel; l[i].on = !l[i].on; _spPintar(); }
 function spTodo(tipo, v) { (tipo === "add" ? _spAdd : _spDel).forEach(d => d.on = v); _spPintar(); }
 
@@ -6556,6 +6587,9 @@ function _spPintar(pub, nCand) {
 
     $("sp-props").innerHTML = Object.keys(CAT_MAP).map(k => `<label class="sp-prop"><span>${CAT_MAP[k]}</span>
         <input type="range" min="0" max="70" step="5" value="${_spProps[k] || 0}" oninput="_spProps.${k}=+this.value;this.parentNode.querySelector('.v').textContent=this.value+'%'" onchange="spSugerir()"><span class="v">${_spProps[k] || 0}%</span></label>`).join("");
+    const pend = _spPendientesTienda();
+    $("sp-pend").hidden = !pend.length;
+    if (pend.length) $("sp-pend-txt").innerHTML = `⚠️ <b>${pend.length} talla(s)</b> de ${new Set(pend.map(_baseDiseno)).size} pieza(s) ya están publicadas en la web pero en Stock siguen en <b>bodega</b> (se publicaron antes de que publicar moviera el inventario).`;
     $("sp-bar-info").innerHTML = `<b>+${a.length}</b> publicar · <b>−${q.length}</b> quitar → <b>${fin}</b> publicadas`;
     $("sp-publicar").disabled = !a.length && !q.length;
 }
@@ -8387,6 +8421,11 @@ async function generarPDFCatalogo() {
         <div class="wz-t">Material <small>qué material se publica más</small></div>
         <div class="wz-cards sm" id="sp-mat"></div>
         <div id="sp-mat-man" style="display:grid;gap:8px;margin-top:10px;" hidden></div>
+      </div>
+
+      <div id="sp-pend" hidden style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 14px;border:1.5px solid #f59e0b;background:#fffbeb;border-radius:12px;font-size:13px;color:#78350f;">
+        <span style="flex:1;min-width:220px;" id="sp-pend-txt"></span>
+        <button type="button" class="wz-mini gold" id="sp-pend-btn" onclick="spPasarPendientesATienda()">📦→🏪 Pasarlas a tienda</button>
       </div>
 
       <div class="sp-kpis">
