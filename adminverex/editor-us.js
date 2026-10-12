@@ -65,7 +65,7 @@ function edusMontar() {
 #edus-estado.sucio{color:#f59e0b}#edus-estado.ok{color:#22c55e}#edus-estado.mal{color:#f87171}
 .edus-main{flex:1;display:flex;min-height:0}
 .edus-izq{width:min(520px,100%);display:flex;flex-direction:column;border-right:1px solid #2a2a2a;min-height:0}
-.edus-tabs{display:flex;gap:4px;padding:8px;overflow-x:auto;border-bottom:1px solid #222;scrollbar-width:none}
+.edus-tabs{display:flex;flex-wrap:wrap;gap:4px;padding:8px;border-bottom:1px solid #222}  /* en varias filas: antes las pestañas que no cabían quedaban escondidas detrás de la vista previa */
 .edus-tab{padding:7px 10px;border-radius:7px;border:none;background:none;color:#999;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit}
 .edus-tab.activa{background:#1f1a0e;color:#C9A84C}
 .edus-cuerpo{flex:1;overflow-y:auto;padding:12px 14px 40px}
