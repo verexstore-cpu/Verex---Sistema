@@ -2114,7 +2114,9 @@ async function enviar(){
           } catch(_) {}
 
           if (d.estado === "Entregado" && !pedidoActual.stockActualizado) {
-            // Reservado → Vendido
+            // Reservado → Vendido (incluye caballero / pieza B de un set, solo si se apartaron al crear el pedido)
+            const extrasApartados = (Array.isArray(pedidoActual.reservas) ? pedidoActual.reservas : []).filter(r => r && r.piezaDe && r.codigo);
+            itemsEst = [...itemsEst, ...extrasApartados.map(r => ({ codigo: r.codigo, cantidad: 1 }))];
             for (const item of itemsEst) {
               if (!item.codigo) continue;
               const prod = await sb.get("stock", item.codigo);
@@ -2443,6 +2445,15 @@ async function enviar(){
             catch (eResPed) { faltantePed = { codigo: item.codigo, error: eResPed.message }; break; }
             if (!resReservaPed.ok) { faltantePed = { codigo: item.codigo, error: resReservaPed.error }; break; }
             reservasPed.push({ codigo: item.codigo, descTienda: resReservaPed.desc_tienda || 0, descBodega: resReservaPed.desc_bodega || 0 });
+            // Set de anillos: el caballero y la 2da pieza de dama (B) también salen del stock (1 de cada una).
+            for (const extra of (item.set_config ? piezasExtraSet(item) : [])) {
+              let resExtra;
+              try { resExtra = await sb.reservar(extra, 1); }
+              catch (eResEx) { faltantePed = { codigo: extra, error: eResEx.message }; break; }
+              if (!resExtra.ok) { faltantePed = { codigo: extra, error: resExtra.error }; break; }
+              reservasPed.push({ codigo: extra, descTienda: resExtra.desc_tienda || 0, descBodega: resExtra.desc_bodega || 0, piezaDe: item.codigo });
+            }
+            if (faltantePed) break;
           }
           if (faltantePed) {
             for (const r of reservasPed) { try { await sb.liberar(r.codigo, r.descTienda, r.descBodega); } catch (_) {} }
@@ -2464,8 +2475,8 @@ async function enviar(){
               const row = filasSV.get(String(i.codigo));
               const pCli = Math.round((parseFloat(i.precioNum ?? i.precio) || 0) * 100) / 100;
               if (!row) { precioMal = true; return { codigo: i.codigo, precio: pCli, qty: 1 }; }
-              const herm = row.set_config ? todoStock.filter(x => _baseDeCodigo(x.codigo || x.id).toUpperCase() === _baseDeCodigo(i.codigo).toUpperCase()) : [];
-              const perm = preciosPermitidosUSA(row, herm, i.codigoCab);
+              const herm = row.set_config ? todoStock.filter(x => _baseTrio(x.codigo || x.id).toUpperCase() === _baseTrio(i.codigo).toUpperCase()) : [];
+              const perm = preciosPermitidosUSA(row, herm, i.codigoCab, i.codigoB);
               const ok = perm.find(p => Math.abs(p - pCli) < 0.011);
               if (ok == null) precioMal = true;
               return { codigo: i.codigo, precio: ok ?? perm[0], qty: Math.min(10, Math.max(1, parseInt(i.cantidad) || 1)) };
@@ -2727,8 +2738,9 @@ async function enviar(){
             // revisa el admin a mano) el lead se guarda igual pero SIN la marca precioVerificado: así no se puede
             // crear un cobro en línea (CREAR_ORDEN_PAYPAL / CREAR_ENLACE_PAGO_WOMPI) con ese precio.
             if (prodPrueba) {
-              const hermanos = prodPrueba.set_config ? (await sb.getAll("stock")).filter(x => _baseDeCodigo(x.codigo || x.id).toUpperCase() === _baseDeCodigo(d.codigo).toUpperCase()) : [];
-              const permitidos = preciosPermitidosUSA(prodPrueba, hermanos, d.codigoCab);
+              const piezaSetLead = d.piezaDeSet === true && !!prodPrueba.set_config;
+              const hermanos = prodPrueba.set_config && !piezaSetLead ? (await sb.getAll("stock")).filter(x => _baseTrio(x.codigo || x.id).toUpperCase() === _baseTrio(d.codigo).toUpperCase()) : [];
+              const permitidos = preciosPermitidosUSA(prodPrueba, hermanos, d.codigoCab, d.codigoB, piezaSetLead);
               const pedido = Math.round((parseFloat(d.precio) || 0) * 100) / 100;
               precioVerificadoUSA = permitidos.find(p => Math.abs(p - pedido) < 0.011) ?? null;
             }
@@ -4033,11 +4045,11 @@ async function enviar(){
           const agregar = idsOcasion(d.agregar), quitar = new Set(idsOcasion(d.quitar));
           if (!reemplazo && !agregar.length && !quitar.size) { result = { ok: false, error: "ocasiones requeridas" }; break; }
           const pedidos = new Set(cods.map(c => c.toUpperCase()));
-          const bases = new Set(cods.map(c => _baseDeCodigo(c).toUpperCase()));
+          const bases = new Set(cods.map(c => _baseTrio(c).toUpperCase()));
           const filas = (await sb.getAll("stock")).filter(x => {
             if (x.estado === "inactivo") return false;
             const c = String(x.codigo || x.id).toUpperCase();
-            return pedidos.has(c) || bases.has(_baseDeCodigo(c).toUpperCase()) || bases.has(String(x.codigoBase || "").toUpperCase());
+            return pedidos.has(c) || bases.has(_baseTrio(c).toUpperCase()) || bases.has(String(x.codigoBase || "").toUpperCase());
           });
           const cambios = [];
           for (const x of filas) {
@@ -4798,8 +4810,8 @@ async function enviar(){
           const filasTr = await sb.getMany("stock", codigos);
           const descReal = x => String(x.descripcionTienda || x.descripcion || "").trim();
           // Todas las tallas de UN diseño; alguna puede no tener descripción propia (la hereda de la primera).
-          const baseTr = _baseDeCodigo(codigos[0]).toUpperCase();
-          if (filasTr.length !== codigos.length || !codigos.every(c => _baseDeCodigo(c).toUpperCase() === baseTr)
+          const baseTr = _baseTrio(codigos[0]).toUpperCase();   // un trío incluye su 2da pieza de dama ("B")
+          if (filasTr.length !== codigos.length || !codigos.every(c => _baseTrio(c).toUpperCase() === baseTr)
               || !filasTr.some(x => descReal(x) === texto) || !filasTr.every(x => descReal(x) === texto || descReal(x) === "")) { result = { ok: false, error: "texto_no_coincide" }; break; }
           const yaTr = filasTr.find(x => x.descripcionTiendaEN && x.descripcionTiendaENDe === texto);
           if (yaTr) { result = { ok: true, traduccion: yaTr.descripcionTiendaEN, cache: true }; break; }
@@ -6182,6 +6194,19 @@ function analizarCategorias(items, cats) {
 // El producto viejo queda inactivo y en cero (reemplazadoPor) y el nuevo lleva codigoAnterior + etiquetaPendiente para que se
 // cambie la etiqueta física. Las consignaciones activas pasan al código nuevo; pedidos y ventas pasadas quedan como histórico.
 const _baseDeCodigo = (c) => String(c || "").replace(/[DCU]?T\d+(\.\d+)?$/i, "").trim();
+// Diseño de un set: la 2da pieza de dama de un trío se registra con "B" (ANL106BDT8) y pertenece al mismo diseño
+// (ANL106), igual que en el Hub y en las tiendas.
+const _baseTrio = (c) => _baseDeCodigo(c).replace(/^(.+\d)B$/i, "$1");
+const _esPiezaB = (c) => /^.+\dB$/i.test(_baseDeCodigo(c));
+// Piezas extra de una línea de set (caballero y 2da pieza de dama): solo códigos del MISMO diseño, sin repetir.
+function piezasExtraSet(item) {
+  const base = _baseTrio(item && item.codigo).toUpperCase(), vistos = new Set([String(item && item.codigo || "").toUpperCase()]);
+  return [item && item.codigoB, item && item.codigoCab].map(c => String(c || "").trim()).filter(c => {
+    const u = c.toUpperCase();
+    if (!c || c.length > 40 || vistos.has(u) || _baseTrio(c).toUpperCase() !== base) return false;
+    vistos.add(u); return true;
+  });
+}
 function _planCambioCodigo(ctx, codigo, categoria, matForzado) {
   const cat = String(categoria || "").toUpperCase();
   if (!(ctx.cats || CATEGORIAS_TIENDA)[cat]) return { ok: false, codigo, error: "categoría inválida" };
@@ -7170,9 +7195,11 @@ const _r2 = n => Math.round(n * 100) / 100;
 // Precios válidos de una línea del carrito USA según el inventario. Un set de anillos (set_config "a+b") se vende como
 // pareja: unisex (código …UT7) = precio × piezas; dama + caballero = precio dama + precio de la talla de caballero
 // (codigoCab, o cualquier talla C del diseño si no llegó); formato viejo = precio + precio_caballero.
-function preciosPermitidosUSA(row, hermanos, codigoCab) {
+// Trío con 2da pieza de dama "B" (codigoB): dama + pieza B + caballero. piezaDeSet = la tienda USA manda cada pieza
+// del set como su propia línea (así cada una aparta su stock): entonces vale el precio de esa pieza sola.
+function preciosPermitidosUSA(row, hermanos, codigoCab, codigoB, piezaDeSet) {
   const p = parseFloat(row.precio) || 0;
-  if (!row.set_config) return [_r2(p)];
+  if (!row.set_config || piezaDeSet) return [_r2(p)];
   const [a, b] = String(row.set_config).split("+").map(n => parseInt(n) || 0);
   const out = new Set();
   const cod = String(row.codigo || row.id || "");
@@ -7180,8 +7207,10 @@ function preciosPermitidosUSA(row, hermanos, codigoCab) {
   if (parseFloat(row.precio_caballero) > 0) out.add(_r2(p + parseFloat(row.precio_caballero)));
   const cabs = (hermanos || []).filter(h => /CT\d/i.test(String(h.codigo || h.id || "")) && h.estado !== "inactivo");
   const elegido = codigoCab ? cabs.find(h => String(h.codigo || h.id).toUpperCase() === String(codigoCab).toUpperCase()) : null;
-  (elegido ? [elegido] : cabs).forEach(h => out.add(_r2(p + (parseFloat(h.precio) || 0))));
-  if (!out.size) out.add(_r2(p));
+  const piezaB = codigoB ? (hermanos || []).find(h => String(h.codigo || h.id).toUpperCase() === String(codigoB).toUpperCase() && _esPiezaB(h.codigo || h.id) && h.estado !== "inactivo") : null;
+  const pB = piezaB ? (parseFloat(piezaB.precio) || 0) : 0;
+  (elegido ? [elegido] : cabs).forEach(h => out.add(_r2(p + pB + (parseFloat(h.precio) || 0))));
+  if (!out.size) out.add(_r2(p + pB));
   return [...out];
 }
 function descuentoCuponUSA(cup, lineas, subtotal) {

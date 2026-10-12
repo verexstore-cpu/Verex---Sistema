@@ -5600,9 +5600,10 @@ function _normTxt(s) {
 }
 
 // Código base del diseño (sin sufijo de talla) — mismo criterio que el Worker
-// (_baseDeCodigo) para que "un diseño" signifique lo mismo en los dos lados.
+// (_baseTrio) para que "un diseño" signifique lo mismo en los dos lados. La 2da pieza de dama de un trío (ANL106B…)
+// es parte del mismo diseño (ANL106), como en el Hub y en las tiendas.
 function _baseDiseno(p) {
-    return String(p.codigoBase || String(p.codigo || "").replace(/[DCU]?T\d+(\.\d+)?$/i, "") || p.codigo || "").toUpperCase();
+    return String(p.codigoBase || String(p.codigo || "").replace(/[DCU]?T\d+(\.\d+)?$/i, "") || p.codigo || "").toUpperCase().replace(/^(.+\d)B$/, "$1");
 }
 
 function _ocasionesDeFila(p) {
