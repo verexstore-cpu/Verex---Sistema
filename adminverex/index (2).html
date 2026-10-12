@@ -6564,7 +6564,8 @@ async function spPublicar() {
     const a = _spAdd.filter(d => d.on), q = _spDel.filter(d => d.on);
     if (!a.length && !q.length) return;
     const nMover = document.getElementById("sp-c-mover").checked ? a.flatMap(d => d.filas).filter(p => (parseInt(p.stock_tienda) || 0) <= 0 && (parseInt(p.stock_bodega) || 0) > 0).length : 0;
-    if (!confirm(`¿Publicar ${a.length} pieza(s) y quitar ${q.length} de verexstore.com?${nMover ? `\n\nEn Stock se moverán ${nMover} talla(s) de bodega a tienda.` : ""}`)) return;
+    const nDevolver = document.getElementById("sp-c-mover").checked ? q.flatMap(d => d.filas).filter(p => (parseInt(p.stock_tienda) || 0) > 0).length : 0;
+    if (!confirm(`¿Publicar ${a.length} pieza(s) y quitar ${q.length} de verexstore.com?${nMover ? `\n\nEn Stock se moverán ${nMover} talla(s) de bodega a tienda.` : ""}${nDevolver ? `\nEn Stock regresarán ${nDevolver} talla(s) de tienda a bodega (las que se quitan).` : ""}`)) return;
     const btn = document.getElementById("sp-publicar");
     btn.disabled = true; btn.textContent = "⏳ Publicando…";
     const llamar = async (codigos, visible) => {
@@ -6591,10 +6592,26 @@ async function spPublicar() {
                 movidas += lote.length;
             }
         }
+        // Lo que se quita de la web y aún tiene piezas en tienda (ej. sin foto) regresa completo a bodega,
+        // igual que «Devolver a bodega» del Hub. Se agrupa por cantidad porque esa acción mueve la misma cantidad por código.
+        let devueltas = 0;
+        if (q.length && document.getElementById("sp-c-mover").checked) {
+            const porCant = {};
+            q.flatMap(d => d.filas).forEach(p => { const t = parseInt(p.stock_tienda) || 0; if (t > 0) (porCant[t] = porCant[t] || []).push(p.codigo); });
+            for (const [cant, cods] of Object.entries(porCant)) {
+                for (let i = 0; i < cods.length; i += 300) {
+                    const lote = cods.slice(i, i + 300);
+                    const r = await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "STOCK_DEVOLVER_BODEGA", _pass: ADMIN_PASS, codigos: lote, cantidad: +cant, origen: "tienda" }) }).then(x => x.json()).catch(() => null);
+                    if (!r?.ok) throw new Error("se quitaron de la web, pero no se pudieron devolver a bodega en Stock: " + (r?.error || "sin respuesta del servidor"));
+                    lote.forEach(c => { const p = productos.find(x => x.codigo === c); if (p) { p.stock_bodega = (parseInt(p.stock_bodega) || 0) + (+cant); p.stock_tienda = 0; p.estado = "bodega"; } });
+                    devueltas += lote.length;
+                }
+            }
+        }
         cfg.sugerirPublicar = { n: _spN, props: _spProps, matModo: _spMatModo, matProps: _spMatProps };
         fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "ACTUALIZAR_CONFIG", _pass: ADMIN_PASS, config: { sugerirPublicar: cfg.sugerirPublicar } }) }).catch(() => {});
         try { localStorage.setItem("vx_cfg", JSON.stringify(cfg)); } catch (_) {}
-        toast(`✅ Tienda actualizada: +${a.length} publicadas, −${q.length} quitadas${movidas ? ` · ${movidas} talla(s) movidas de bodega a tienda en Stock` : ""}`, "#22c55e");
+        toast(`✅ Tienda actualizada: +${a.length} publicadas, −${q.length} quitadas${movidas ? ` · ${movidas} talla(s) movidas de bodega a tienda en Stock` : ""}${devueltas ? ` · ${devueltas} devueltas a bodega` : ""}`, "#22c55e");
         _spVistos = new Set();
         spSugerir();
         try { renderAll(true); } catch (_) {}
@@ -8411,7 +8428,7 @@ async function generarPDFCatalogo() {
             <div class="wz-t" style="margin:0;">Qué tiene en cuenta</div>
             <label class="sp-tog"><input type="checkbox" id="sp-c-nuevo" checked onchange="spSugerir()"><span><b>Lo nuevo primero</b> · piezas registradas en los últimos 30 días</span></label>
             <label class="sp-tog"><input type="checkbox" id="sp-c-repetir" checked onchange="spSugerir()"><span><b>Que no se repita</b> · prioriza lo que nunca se publicó o se quitó hace más de 60 días</span></label>
-            <label class="sp-tog"><input type="checkbox" id="sp-c-mover" checked><span><b>Mover a tienda en Stock</b> · al publicar, cada pieza pasa de bodega a tienda (1 por talla), igual que «Asignar a tienda» del Hub</span></label>
+            <label class="sp-tog"><input type="checkbox" id="sp-c-mover" checked><span><b>Mover en Stock</b> · al publicar, cada pieza pasa de bodega a tienda (1 por talla); al quitar, lo que quede en tienda regresa a bodega — igual que en el Hub</span></label>
             <label class="sp-tog"><input type="checkbox" id="sp-c-quitar" checked onchange="spSugerir()"><span><b>Sugerir quitar</b> lo publicado que ya no tiene stock o no tiene foto</span></label>
           </div>
         </div>
