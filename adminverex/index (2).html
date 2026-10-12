@@ -1346,6 +1346,21 @@ function esc(str) {
 // Mensaje estándar al compartir un link de catálogo — usado tanto por el
 // botón "Copiar" (copia mensaje + link, no solo la URL) como por WhatsApp,
 // así se ve igual sin importar dónde se pegue.
+// Copia al portapapeles y avisa. «Copiar link» copia SOLO la URL (para pegarla en el
+// navegador); «Copiar mensaje» copia el saludo + URL (para pegarlo en WhatsApp).
+function copiarTexto(texto, aviso) {
+    const ok = () => toast(aviso, "#22c55e");
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(texto).then(ok, () => _copiarRespaldo(texto, ok));
+    else _copiarRespaldo(texto, ok);
+}
+function _copiarRespaldo(texto, ok) {
+    const ta = document.createElement("textarea");
+    ta.value = texto; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); ok(); } catch (_) { prompt("Copia el texto:", texto); }
+    ta.remove();
+}
+
 function mensajeCompartirCatalogo(url) {
     return "Hola!✨ Preparamos una selección especial de VEREX para ti.\nRevisa el catálogo aquí...\n" + url;
 }
@@ -4620,8 +4635,9 @@ async function generarLinkCatalogo() {
 
         try { await navigator.clipboard.writeText(finalUrl); } catch(_){}
         document.getElementById("cat-link-out").textContent=finalUrl;
+        document.getElementById("cat-link-out").href=finalUrl;
         document.getElementById("cat-link-box").style.display="block";
-        toast("🔗 Link listo — cópialo o compártelo por WhatsApp","#22c55e");
+        toast("🔗 Link listo y copiado — pégalo en el navegador para verlo","#22c55e");
         guardarEnLogCatalogos({
             url: finalUrl,
             nombre,
@@ -4972,7 +4988,8 @@ function renderPanelLinks() {
             </div>
             <div style="display:flex;gap:6px;margin-top:10px;">
                 ${c.activo ? `
-                <button onclick="navigator.clipboard.writeText(mensajeCompartirCatalogo('${esc(c.url)}'));toast('📋 Mensaje y link copiados')" style="flex:1;padding:7px 0;background:#111827;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;">📋 Copiar</button>
+                <button onclick="copiarTexto('${esc(c.url)}','🔗 Link copiado')" style="flex:1;padding:7px 0;background:#111827;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;" title="Copia solo el link, para pegarlo en el navegador">🔗 Copiar link</button>
+                <button onclick="copiarTexto(mensajeCompartirCatalogo('${esc(c.url)}'),'💬 Mensaje copiado')" style="flex:0 0 auto;padding:7px 10px;background:#fff;color:#111827;border:1px solid #d1d5db;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;" title="Copia el saludo + link, para pegarlo en el chat del cliente">💬</button>
                 <a href="${esc(c.url)}" target="_blank" style="flex:1;text-align:center;padding:7px 0;background:#f3f4f6;color:#111827;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">👁️ Ver</a>
                 ${c.wa ? `<a href="https://wa.me/${esc(String(c.wa).replace(/\D/g, ""))}?text=${encodeURIComponent(mensajeCompartirCatalogo(c.url))}" target="_blank" style="flex:1;text-align:center;padding:7px 0;background:#25D366;color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">💬 WhatsApp</a>` : ""}
                 <button onclick="cambiarVigenciaLinkPanel('${esc(c.url)}')" style="flex:0 0 auto;padding:7px 10px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;" title="Cambiar cuántos días le quedan">⏱️</button>
@@ -7983,14 +8000,18 @@ async function generarPDFCatalogo() {
             <!-- Link generado -->
             <div id="cat-link-box" style="display:none;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.3);border-radius:12px;padding:14px;margin-top:12px;">
               <div style="font-size:11px;font-weight:800;color:#15803d;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">✅ Link generado</div>
-              <div id="cat-link-out" style="font-size:13px;color:#15803d;word-break:break-all;margin-bottom:10px;font-weight:600;"></div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <button onclick="navigator.clipboard.writeText(mensajeCompartirCatalogo(document.getElementById('cat-link-out').textContent));toast('✅ Mensaje y link copiados','#22c55e')"
-                  style="flex:1;background:#166534;color:#fff;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">📋 Copiar</button>
+              <a id="cat-link-out" href="#" target="_blank" rel="noopener" style="display:block;font-size:14px;color:#15803d;word-break:break-all;margin-bottom:10px;font-weight:700;text-decoration:underline;"></a>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;">
+                <button onclick="copiarTexto(document.getElementById('cat-link-out').textContent,'🔗 Link copiado — pégalo en el navegador o donde quieras')"
+                  style="background:#166534;color:#fff;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">🔗 Copiar link</button>
+                <button onclick="copiarTexto(mensajeCompartirCatalogo(document.getElementById('cat-link-out').textContent),'💬 Mensaje copiado — pégalo en el chat del cliente')"
+                  style="background:#fff;color:#166534;border:1.5px solid #166534;padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">💬 Copiar mensaje</button>
+                <button onclick="window.open(document.getElementById('cat-link-out').textContent,'_blank')"
+                  style="background:#fff;color:#111;border:1.5px solid var(--borde);padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">👁️ Abrir</button>
                 <button onclick="window.open('https://wa.me/?text='+encodeURIComponent(mensajeCompartirCatalogo(document.getElementById('cat-link-out').textContent)))"
-                  style="flex:1;background:#25D366;color:#fff;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">📱 WhatsApp</button>
+                  style="background:#25D366;color:#fff;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">📱 WhatsApp</button>
                 <button onclick="desactivarLinkCatalogo(document.getElementById('cat-link-out').textContent)"
-                  style="background:rgba(239,68,68,0.08);color:#dc2626;border:1px solid rgba(239,68,68,0.3);padding:10px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">🚫 Desactivar</button>
+                  style="background:rgba(239,68,68,0.08);color:#dc2626;border:1px solid rgba(239,68,68,0.3);padding:10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">🚫 Desactivar</button>
               </div>
             </div>
             <button type="button" class="wz-chip" style="margin-top:12px;" onclick="wzGuardarPlantilla()">📁 Guardar como plantilla (filtros, vigencia y promo)</button>
