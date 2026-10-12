@@ -434,6 +434,14 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
                 </div>
                 <div style="font-size:11px;color:var(--dorado);margin-top:6px;">⭐ Destacados siempre aparecen primero · El resto rota cada semana automáticamente</div>
             </div>
+            <!-- Sugerir qué publicar -->
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid #333;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+                <div>
+                    <div style="font-size:13px;font-weight:600;">✨ Sugerir qué publicar</div>
+                    <div style="font-size:11px;color:#888;margin-top:3px;">Eliges cuántas piezas publicar hoy y el sistema propone una selección variada (tipo, precio, material y temporada), además de quitar lo agotado.</div>
+                </div>
+                <button onclick="abrirSugerirPublicar()" style="padding:8px 14px;background:#C9A84C;color:#111;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px;white-space:nowrap;">✨ Sugerir qué publicar</button>
+            </div>
             <!-- Frase de confianza (envíos / tiempos / pago contra entrega) -->
             <div style="margin-top:14px;padding-top:14px;border-top:1px solid #333;">
                 <div style="font-size:13px;font-weight:600;margin-bottom:6px;">🚚 Franja de confianza en catálogos</div>
@@ -1871,6 +1879,7 @@ async function cargarDatos(silencioso=false) {
             if (data.config.contenidoUS !== undefined) cfg.contenidoUS = data.config.contenidoUS;
             if (data.config.ocasiones !== undefined) cfg.ocasiones = data.config.ocasiones;
             if (data.config.plantillasCatalogo !== undefined) cfg.plantillasCatalogo = data.config.plantillasCatalogo;
+            if (data.config.sugerirPublicar !== undefined) cfg.sugerirPublicar = data.config.sugerirPublicar;
             localStorage.setItem("vx_cfg", JSON.stringify(cfg));
         }
         const inpFraseC = document.getElementById("inp-frase-confianza");
@@ -6320,6 +6329,228 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 
+// ═════════════════════════════════════════════
+//  ✨ SUGERIR QUÉ PUBLICAR (verexstore.com)
+// ═════════════════════════════════════════════
+// Propone N piezas para publicar HOY, buscando variedad (tipo de pieza, precio y
+// material), dando prioridad a la ocasión que se acerca, a lo nuevo y a lo que no
+// se ha publicado hace tiempo; y propone quitar lo publicado que ya no se puede
+// vender (sin stock en tienda/bodega o sin foto). Publica con STOCK_PUBLICAR_VISIBLE
+// (solo cambia enCatalogo, no mueve inventario), igual que el Hub.
+const SP_PROPS_DEF = { AN: 40, AR: 20, CD: 20, PL: 10, CN: 10, RL: 0, OT: 0 };
+const SP_TEMPORADAS = [
+    { meses: [10, 11, 12], mes: 12, dia: 25, ocasion: "navidad",      nombre: "Navidad" },
+    { meses: [1, 2],       mes: 2,  dia: 14, ocasion: "san-valentin", nombre: "San Valentín" },
+    { meses: [3, 4, 5],    mes: 5,  dia: 10, ocasion: "dia-madre",    nombre: "Día de la Madre" },
+    { meses: [6],          mes: 6,  dia: 17, ocasion: "caballero",    nombre: "Día del Padre" },
+];
+const SP_TRAMOS = ["Hasta $20", "$20 – $35", "Más de $35"];
+const SP_MATS = { plata: "Plata", acero: "Acero", oro: "Oro / Lam.", otro: "Otro" };
+let _spN = 10, _spOcasion = null, _spProps = null, _spAdd = [], _spDel = [], _spVistos = new Set();
+
+function _spTramo(precio) { const p = parseFloat(precio) || 0; return p < 20 ? SP_TRAMOS[0] : p <= 35 ? SP_TRAMOS[1] : SP_TRAMOS[2]; }
+function _spMaterial(p) {
+    const m = (p.material || detectarMaterial(p.nombre) || "").toLowerCase();
+    if (m.includes("oro")) return "oro";
+    if (m.includes("plata")) return "plata";
+    if (m.includes("acero")) return "acero";
+    return "otro";
+}
+function _spTemporada() {
+    const hoy = new Date(), mes = hoy.getMonth() + 1;
+    const t = SP_TEMPORADAS.find(x => x.meses.includes(mes));
+    if (!t) return null;
+    let fecha = new Date(hoy.getFullYear(), t.mes - 1, t.dia);
+    if (fecha < hoy) fecha = new Date(hoy.getFullYear() + 1, t.mes - 1, t.dia);
+    return { ...t, dias: Math.ceil((fecha - hoy) / 864e5) };
+}
+
+// Un «diseño» por código base (todas sus tallas juntas).
+function _spDisenos() {
+    const map = new Map();
+    productos.forEach(p => {
+        if (p.estado === "inactivo" || p.esPrueba) return;
+        const base = _baseDiseno(p);
+        if (!map.has(base)) map.set(base, { base, codigos: [], filas: [], nombre: p.nombre_base || p.nombre || "", foto: p.fotoMejorada || p.foto || p.img || "",
+            cat: getCatKey(p), precio: parseFloat(p.precio) || 0, mat: _spMaterial(p), ocasiones: new Set(), stock: 0, publicado: false,
+            reservado: false, registro: 0, publicadoEn: 0, despublicadoEn: 0 });
+        const d = map.get(base);
+        d.codigos.push(p.codigo); d.filas.push(p);
+        if (!d.foto) d.foto = p.fotoMejorada || p.foto || p.img || "";
+        _ocasionesDeFila(p).forEach(o => d.ocasiones.add(o));
+        d.stock += (parseInt(p.stock_bodega) || 0) + (parseInt(p.stock_tienda) || 0);
+        if (p.enCatalogo === true || p.enCatalogo === "true" || p.enCatalogo === "TRUE") d.publicado = true;
+        if (p.reservado) d.reservado = true;
+        const t = k => Date.parse(p[k] || "") || 0;
+        d.registro = Math.max(d.registro, t("fechaRegistro"));
+        d.publicadoEn = Math.max(d.publicadoEn, t("publicadoEn"));
+        d.despublicadoEn = Math.max(d.despublicadoEn, t("despublicadoEn"));
+    });
+    return [...map.values()];
+}
+
+function _spConteo(lista) {
+    const c = { cat: {}, tramo: {}, mat: {} };
+    lista.forEach(d => { c.cat[d.cat] = (c.cat[d.cat] || 0) + 1; c.tramo[_spTramo(d.precio)] = (c.tramo[_spTramo(d.precio)] || 0) + 1; c.mat[d.mat] = (c.mat[d.mat] || 0) + 1; });
+    return c;
+}
+
+function abrirSugerirPublicar() {
+    const g = cfg.sugerirPublicar || {};
+    _spN = g.n || 10;
+    _spProps = { ...SP_PROPS_DEF, ...(g.props || {}) };
+    const temp = _spTemporada();
+    _spOcasion = temp && ocasionesLista().some(o => o.id === temp.ocasion) ? temp.ocasion : "";
+    _spVistos = new Set();
+    document.getElementById("modal-sugerir").classList.add("open");
+    spSugerir();
+}
+function cerrarSugerirPublicar() { document.getElementById("modal-sugerir").classList.remove("open"); }
+
+function spSugerir(otras = false) {
+    const dis = _spDisenos();
+    const pub = dis.filter(d => d.publicado);
+    const quitar = document.getElementById("sp-c-quitar").checked;
+    _spDel = quitar ? pub.filter(d => d.stock <= 0 || !d.foto).map(d => ({ ...d, on: true, why: [d.stock <= 0 ? "Agotado" : "Sin foto"] })) : [];
+    const sale = new Set(_spDel.map(d => d.base));
+    const quedan = pub.filter(d => !sale.has(d.base));
+    if (otras) _spAdd.forEach(d => _spVistos.add(d.base));
+    let cand = dis.filter(d => !d.publicado && !d.reservado && d.stock > 0 && d.foto);
+    const sinVistos = cand.filter(d => !_spVistos.has(d.base));
+    if (sinVistos.length >= Math.min(_spN, cand.length)) cand = sinVistos; else _spVistos = new Set();
+
+    const nuevo = document.getElementById("sp-c-nuevo").checked, repetir = document.getElementById("sp-c-repetir").checked;
+    const ahora = Date.now(), D = 864e5;
+    const oc = _spOcasion ? ocasionesLista(true).find(o => o.id === _spOcasion) : null;
+    const elegidas = [], disp = cand.slice();
+    const cnt = _spConteo(quedan);
+    const totalProps = Object.values(_spProps).reduce((a, b) => a + b, 0) || 1;
+    let deOcasion = 0;
+    while (elegidas.length < _spN && disp.length) {
+        const total = quedan.length + elegidas.length + 1;
+        // Con una ocasión elegida, hasta la mitad de las sugeridas son de esa ocasión
+        // (repartidas por tipo de pieza); el resto se completa por variedad.
+        const delOc = oc ? disp.filter(d => d.ocasiones.has(oc.id)) : [];
+        const pool = (delOc.length && deOcasion < Math.ceil(_spN / 2)) ? delOc : disp;
+        // Tipo de pieza con más «falta» respecto a la proporción deseada.
+        const cats = [...new Set(pool.map(d => d.cat))];
+        const falta = c => (_spProps[c] || 0) / totalProps * total - (cnt.cat[c] || 0);
+        cats.sort((a, b) => falta(b) - falta(a) || Math.random() - .5);
+        const cat = cats[0];
+        const tramoMin = SP_TRAMOS.slice().sort((a, b) => (cnt.tramo[a] || 0) - (cnt.tramo[b] || 0))[0];
+        const matsPres = Object.keys(SP_MATS).filter(m => m !== "otro" && disp.some(d => d.mat === m));
+        const matMin = matsPres.sort((a, b) => (cnt.mat[a] || 0) - (cnt.mat[b] || 0))[0];
+        let mejor = null;
+        pool.filter(d => d.cat === cat).forEach(d => {
+            let s = Math.random() * 0.8; const why = [];
+            if (falta(cat) >= 0.5) why.push(`Faltan ${(CAT_MAP[cat] || cat).replace(/^\S+\s/, "").toLowerCase()}`);
+            if (oc && d.ocasiones.has(oc.id)) { s += 3; why.push(`${oc.emoji || ""} ${oc.nombre}`.trim()); }
+            if (nuevo && d.registro && ahora - d.registro < 30 * D) { s += 2; why.push("Nuevo"); }
+            if (repetir) {
+                if (!d.publicadoEn && !d.despublicadoEn) { s += 1; why.push("Nunca publicado"); }
+                else if (d.despublicadoEn && ahora - d.despublicadoEn > 60 * D) { s += 1; why.push(`No se publica hace ${Math.round((ahora - d.despublicadoEn) / D)} días`); }
+                else if (d.despublicadoEn && ahora - d.despublicadoEn < 14 * D) s -= 1.5;
+            }
+            if (_spTramo(d.precio) === tramoMin) { s += 1; why.push(`Falta ${tramoMin.toLowerCase()}`); }
+            if (d.mat === matMin) { s += 1; why.push(`Falta ${SP_MATS[d.mat].toLowerCase()}`); }
+            if (!mejor || s > mejor.s) mejor = { d, s, why };
+        });
+        if (oc && mejor.d.ocasiones.has(oc.id)) deOcasion++;
+        // La ocasión va primero entre las razones, para que se vea por qué se eligió.
+        const ocTxt = oc ? `${oc.emoji || ""} ${oc.nombre}`.trim() : "";
+        const why = mejor.why.includes(ocTxt) ? [ocTxt, ...mejor.why.filter(w => w !== ocTxt)] : mejor.why;
+        elegidas.push({ ...mejor.d, on: true, why: why.slice(0, 3) });
+        disp.splice(disp.indexOf(mejor.d), 1);
+        cnt.cat[cat] = (cnt.cat[cat] || 0) + 1;
+        cnt.tramo[_spTramo(mejor.d.precio)] = (cnt.tramo[_spTramo(mejor.d.precio)] || 0) + 1;
+        cnt.mat[mejor.d.mat] = (cnt.mat[mejor.d.mat] || 0) + 1;
+    }
+    _spAdd = elegidas;
+    _spPintar(pub, cand.length);
+}
+
+function spToggle(tipo, i) { const l = tipo === "add" ? _spAdd : _spDel; l[i].on = !l[i].on; _spPintar(); }
+function spTodo(tipo, v) { (tipo === "add" ? _spAdd : _spDel).forEach(d => d.on = v); _spPintar(); }
+
+let _spPub = [], _spNCand = 0;
+function _spPintar(pub, nCand) {
+    if (pub) { _spPub = pub; _spNCand = nCand; }
+    const $ = id => document.getElementById(id);
+    $("sp-n").innerHTML = [5, 10, 15, 20, 30].map(v => `<button type="button" class="wz-card${_spN === v ? " on" : ""}" onclick="_spN=${v};spSugerir()"><span class="nm">${v}</span></button>`).join("")
+        + `<label class="wz-card${[5, 10, 15, 20, 30].includes(_spN) ? "" : " on"}" style="cursor:text;"><span class="nm" style="font-size:12px;">Otro</span><input type="number" min="1" max="100" value="${[5, 10, 15, 20, 30].includes(_spN) ? "" : _spN}" placeholder="#" style="display:block !important;width:100%;padding:4px 6px !important;margin-top:2px;" onchange="_spN=Math.max(1,Math.min(100,parseInt(this.value)||10));spSugerir()"></label>`;
+    const temp = _spTemporada();
+    $("sp-temp-hint").textContent = temp ? `📅 ${temp.nombre} en ${temp.dias} días` : "";
+    const conCand = id => _spDisenos().filter(d => !d.publicado && d.stock > 0 && d.foto && d.ocasiones.has(id)).length;
+    $("sp-ocasion").innerHTML = `<button type="button" class="wz-card${!_spOcasion ? " on" : ""}" onclick="_spOcasion='';spSugerir()"><span class="ic">⚖️</span><span class="nm">Solo variedad</span><span class="ct">sin ocasión especial</span></button>`
+        + ocasionesLista().map(o => { const n = conCand(o.id); return n || _spOcasion === o.id ? `<button type="button" class="wz-card${_spOcasion === o.id ? " on" : ""}" onclick="_spOcasion='${esc(o.id)}';spSugerir()"><span class="ic">${esc(o.emoji || "🏷️")}</span><span class="nm">${esc(o.nombre)}</span><span class="ct">${n} sin publicar${temp && temp.ocasion === o.id ? " · se acerca" : ""}</span></button>` : ""; }).join("");
+
+    const tarjeta = (d, tipo, i) => `<button type="button" class="sp-prod ${tipo}${d.on ? " on" : ""}" onclick="spToggle('${tipo}',${i})">
+        <div class="ph">${d.foto ? `<img src="${ikSharp(d.foto)}" loading="lazy" alt="" onerror="this.remove()">` : "💍"}</div>
+        <span class="ck">${d.on ? (tipo === "add" ? "+ Publicar" : "− Quitar") : "No"}</span>
+        <div class="bd"><span class="n">${esc(d.nombre || "—")}</span><span class="p">$${d.precio.toFixed(2)}</span>
+        <span class="m">${(CAT_MAP[d.cat] || d.cat)} · ${SP_MATS[d.mat]} · ${esc(d.base)}</span>
+        <span class="sp-why">${d.why.map(w => `<i>${esc(w)}</i>`).join("")}</span></div></button>`;
+    $("sp-g-add").innerHTML = _spAdd.length ? _spAdd.map((d, i) => tarjeta(d, "add", i)).join("")
+        : `<div style="grid-column:1/-1;color:#888;font-size:13px;padding:20px;text-align:center;border:1.5px dashed var(--borde);border-radius:12px;">No hay piezas sin publicar que tengan stock y foto.</div>`;
+    $("sp-g-del").innerHTML = _spDel.map((d, i) => tarjeta(d, "del", i)).join("");
+    $("sp-sec-del").hidden = !_spDel.length;
+
+    const a = _spAdd.filter(d => d.on), q = _spDel.filter(d => d.on);
+    const fin = _spPub.length + a.length - q.length;
+    $("sp-k-pub").textContent = _spPub.length; $("sp-k-add").textContent = "+" + a.length; $("sp-k-del").textContent = "−" + q.length; $("sp-k-fin").textContent = fin;
+    $("sp-s-add").textContent = `${a.length} de ${_spAdd.length} · de ${_spNCand} piezas que se pueden publicar · toca una para no incluirla`;
+    $("sp-s-del").textContent = `${q.length} de ${_spDel.length} · toca una para dejarla publicada`;
+
+    const salen = new Set(q.map(d => d.base));
+    const hoyC = _spConteo(_spPub), nuevaC = _spConteo([..._spPub.filter(d => !salen.has(d.base)), ...a]);
+    const filas = (el, claves, nombres, h, n) => {
+        const tH = Object.values(h).reduce((x, y) => x + y, 0) || 1, tN = Object.values(n).reduce((x, y) => x + y, 0) || 1;
+        $(el).innerHTML = claves.filter(k => h[k] || n[k]).map(k => { const x = Math.round((h[k] || 0) / tH * 100), y = Math.round((n[k] || 0) / tN * 100);
+            return `<div class="sp-row"><span>${nombres(k)}</span><div class="sp-bars"><div class="sp-bar" style="width:${x}%"></div><div class="sp-bar n" style="width:${y}%"></div></div><span class="v">${x}% → <b style="color:#111;">${y}%</b></span></div>`; }).join("")
+            || `<div style="font-size:12px;color:#888;">Sin piezas</div>`;
+    };
+    filas("sp-mx-cat", Object.keys(CAT_MAP), k => (CAT_MAP[k] || k).replace(/^\S+\s/, ""), hoyC.cat, nuevaC.cat);
+    filas("sp-mx-pre", SP_TRAMOS, k => k, hoyC.tramo, nuevaC.tramo);
+    filas("sp-mx-mat", Object.keys(SP_MATS), k => SP_MATS[k], hoyC.mat, nuevaC.mat);
+
+    $("sp-props").innerHTML = Object.keys(CAT_MAP).map(k => `<label class="sp-prop"><span>${CAT_MAP[k]}</span>
+        <input type="range" min="0" max="70" step="5" value="${_spProps[k] || 0}" oninput="_spProps.${k}=+this.value;this.parentNode.querySelector('.v').textContent=this.value+'%'" onchange="spSugerir()"><span class="v">${_spProps[k] || 0}%</span></label>`).join("");
+    $("sp-bar-info").innerHTML = `<b>+${a.length}</b> publicar · <b>−${q.length}</b> quitar → <b>${fin}</b> publicadas`;
+    $("sp-publicar").disabled = !a.length && !q.length;
+}
+
+async function spPublicar() {
+    const a = _spAdd.filter(d => d.on), q = _spDel.filter(d => d.on);
+    if (!a.length && !q.length) return;
+    if (!confirm(`¿Publicar ${a.length} pieza(s) y quitar ${q.length} de verexstore.com?`)) return;
+    const btn = document.getElementById("sp-publicar");
+    btn.disabled = true; btn.textContent = "⏳ Publicando…";
+    const llamar = async (codigos, visible) => {
+        for (let i = 0; i < codigos.length; i += 900) {
+            const r = await fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "STOCK_PUBLICAR_VISIBLE", _pass: ADMIN_PASS, codigos: codigos.slice(i, i + 900), visible }) }).then(x => x.json()).catch(() => null);
+            if (!r?.ok) throw new Error(r?.error || "sin respuesta del servidor");
+            const ahora = new Date().toISOString();
+            (r.cambiados || []).forEach(c => { const p = productos.find(x => x.codigo === c); if (p) { p.enCatalogo = visible; p[visible ? "publicadoEn" : "despublicadoEn"] = ahora; } });
+        }
+    };
+    try {
+        if (a.length) await llamar(a.flatMap(d => d.codigos), true);
+        if (q.length) await llamar(q.flatMap(d => d.codigos), false);
+        cfg.sugerirPublicar = { n: _spN, props: _spProps };
+        fetch(API_URL, { method: "POST", body: JSON.stringify({ accion: "ACTUALIZAR_CONFIG", _pass: ADMIN_PASS, config: { sugerirPublicar: cfg.sugerirPublicar } }) }).catch(() => {});
+        try { localStorage.setItem("vx_cfg", JSON.stringify(cfg)); } catch (_) {}
+        toast(`✅ Tienda actualizada: +${a.length} publicadas, −${q.length} quitadas`, "#22c55e");
+        _spVistos = new Set();
+        spSugerir();
+        try { renderAll(true); } catch (_) {}
+    } catch (e) {
+        toast("❌ No se pudo publicar: " + e.message + ". Lo que ya se publicó quedó guardado.", "#ef4444");
+    } finally {
+        btn.textContent = "Publicar cambios";
+        btn.disabled = false;
+    }
+}
+
 function getCatKey(p) {
     // Acepta el producto completo (preferido) o solo el código (compatibilidad)
     const prod = (p && typeof p === "object") ? p : { codigo: p };
@@ -7606,7 +7837,7 @@ async function generarPDFCatalogo() {
      .wz-card:has(input:checked), así cualquier código que marque un checkbox
      (IA, recetas, plantillas) se ve bien sin tocar estilos. -->
 <style>
-  #modal-catalogo .mb.wz{max-width:1000px;padding:24px 26px 0;}
+  .mb.wz{max-width:1000px;padding:24px 26px 0;}
   .wz-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px;}
   .wz-step{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;border:1.5px solid var(--borde);background:#fff;color:#777;font:inherit;cursor:pointer;text-align:left;min-width:0;}
   .wz-step b{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#f1efe8;color:#777;font-size:13px;flex:none;}
@@ -7698,7 +7929,7 @@ async function generarPDFCatalogo() {
     .wz-step{padding:8px;gap:6px;}
     .wz-step b{width:22px;height:22px;font-size:12px;}
     .wz-step span{font-size:12px;}
-    #modal-catalogo .mb.wz{padding:18px 16px 0;}
+    .mb.wz{padding:18px 16px 0;}
     .wz-bar{margin:0 -16px;padding:10px 16px;}
   }
 </style>
@@ -8024,6 +8255,111 @@ async function generarPDFCatalogo() {
       <button type="button" class="wz-btn ghost" id="wz-atras" onclick="wzIr(_wzPaso-1)" hidden>← Atrás</button>
       <div class="info" id="wz-bar-info"></div>
       <button type="button" class="wz-btn gold" id="wz-sig" onclick="wzIr(_wzPaso+1)">Siguiente →</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL «✨ SUGERIR QUÉ PUBLICAR» (verexstore.com) -->
+<style>
+  #modal-sugerir [hidden]{display:none !important;}
+  .sp-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+  .sp-kpi{border:1.5px solid var(--borde);border-radius:12px;padding:10px 12px;}
+  .sp-kpi b{display:block;font-size:24px;line-height:1.1;font-variant-numeric:tabular-nums;}
+  .sp-kpi span{font-size:12px;color:#888;}
+  .sp-kpi.add b{color:#15803d;} .sp-kpi.del b{color:#b91c1c;} .sp-kpi.fin{background:#fbf5e3;border-color:#C9A84C;}
+  .sp-mix{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+  .sp-box{border:1.5px solid var(--borde);border-radius:12px;padding:10px 12px;min-width:0;}
+  .sp-box h4{margin:0 0 6px;font-size:13px;}
+  .sp-row{display:grid;grid-template-columns:84px 1fr 72px;gap:8px;align-items:center;font-size:12px;margin:5px 0;}
+  .sp-bars{display:grid;gap:3px;} .sp-bar{height:8px;border-radius:4px;background:#d6d0c2;} .sp-bar.n{background:#C9A84C;}
+  .sp-row .v{text-align:right;color:#888;font-variant-numeric:tabular-nums;}
+  .sp-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));}
+  .sp-prod{position:relative;border:2px solid var(--borde);border-radius:12px;overflow:hidden;background:#fff;cursor:pointer;text-align:left;padding:0;font:inherit;color:#1a1a1a;}
+  .sp-prod.add.on{border-color:#15803d;} .sp-prod.del.on{border-color:#b91c1c;} .sp-prod:not(.on){opacity:.55;}
+  .sp-prod .ph{aspect-ratio:1/1;background:#f3f3f3;display:grid;place-items:center;font-size:30px;color:#ccc;}
+  .sp-prod .ph img{width:100%;height:100%;object-fit:cover;display:block;}
+  .sp-prod .ck{position:absolute;top:8px;right:8px;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:800;color:#fff;background:#888;}
+  .sp-prod.add.on .ck{background:#15803d;} .sp-prod.del.on .ck{background:#b91c1c;}
+  .sp-prod .bd{padding:8px 10px 10px;display:grid;gap:2px;}
+  .sp-prod .n{font-weight:700;font-size:13px;line-height:1.25;}
+  .sp-prod .p{font-weight:800;font-size:13px;}
+  .sp-prod .m{font-size:11px;color:#888;}
+  .sp-why{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px;}
+  .sp-why i{font-style:normal;font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 7px;background:#f1efe8;color:#333;}
+  .sp-prod.del .sp-why i{background:#fdecec;color:#b91c1c;}
+  .sp-prop{display:grid;grid-template-columns:110px 1fr 44px;gap:10px;align-items:center;font-size:13px;}
+  .sp-prop input{width:100%;accent-color:#C9A84C;padding:0 !important;}
+  .sp-prop .v{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;}
+  .sp-tog{display:flex;gap:10px;align-items:flex-start;font-size:13px;text-transform:none;letter-spacing:0;margin:0;cursor:pointer;}
+  .sp-tog input{width:18px;height:18px;accent-color:#C9A84C;margin-top:1px;}
+  @media (max-width:760px){.sp-kpis{grid-template-columns:1fr 1fr;}.sp-mix{grid-template-columns:1fr;}}
+</style>
+<div class="mo" id="modal-sugerir" style="z-index:600;">
+  <div class="mb wz" style="max-width:1000px;">
+    <button class="mc" onclick="cerrarSugerirPublicar()">✕</button>
+    <h3 style="margin-bottom:4px;">✨ Sugerir qué publicar</h3>
+    <p style="font-size:13px;color:#777;margin:0 0 16px;">Propuesta variada para verexstore.com (y us.verexstore.com, que usa la misma lista). Nada cambia hasta que le das «Publicar».</p>
+
+    <div class="wz-pane" style="padding-bottom:0;">
+      <div>
+        <div class="wz-t">¿Cuántas piezas publicar hoy?</div>
+        <div class="wz-cards xs" id="sp-n"></div>
+      </div>
+
+      <div>
+        <div class="wz-t">Dar prioridad a <small id="sp-temp-hint"></small></div>
+        <div class="wz-cards sm" id="sp-ocasion"></div>
+      </div>
+
+      <div class="sp-kpis">
+        <div class="sp-kpi"><b id="sp-k-pub">0</b><span>publicadas hoy</span></div>
+        <div class="sp-kpi add"><b id="sp-k-add">+0</b><span>para publicar</span></div>
+        <div class="sp-kpi del"><b id="sp-k-del">−0</b><span>para quitar</span></div>
+        <div class="sp-kpi fin"><b id="sp-k-fin">0</b><span>quedarían publicadas</span></div>
+      </div>
+
+      <div>
+        <div class="wz-t">Cómo queda la mezcla <small>gris = hoy · dorado = con la propuesta</small></div>
+        <div class="sp-mix">
+          <div class="sp-box"><h4>Tipo de pieza</h4><div id="sp-mx-cat"></div></div>
+          <div class="sp-box"><h4>Precio</h4><div id="sp-mx-pre"></div></div>
+          <div class="sp-box"><h4>Material</h4><div id="sp-mx-mat"></div></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="wz-t">Publicar <small id="sp-s-add"></small>
+          <span class="wz-acc"><button type="button" class="wz-mini" onclick="spTodo('add',true)">Todas</button><button type="button" class="wz-mini" onclick="spTodo('add',false)">Ninguna</button><button type="button" class="wz-mini gold" onclick="spSugerir(true)">🔀 Sugerir otras</button></span>
+        </div>
+        <div class="sp-grid" id="sp-g-add"></div>
+      </div>
+
+      <div id="sp-sec-del">
+        <div class="wz-t">Quitar de la tienda <small id="sp-s-del"></small></div>
+        <div class="sp-grid" id="sp-g-del"></div>
+      </div>
+
+      <details class="wz-fold">
+        <summary>⚙️ Ajustes de la sugerencia <span class="hint">proporciones y criterios</span></summary>
+        <div class="in">
+          <div>
+            <div class="wz-t">Proporción por tipo de pieza <small>a qué se le da más espacio en la tienda</small></div>
+            <div id="sp-props" style="display:grid;gap:8px;"></div>
+          </div>
+          <div style="display:grid;gap:10px;">
+            <div class="wz-t" style="margin:0;">Qué tiene en cuenta</div>
+            <label class="sp-tog"><input type="checkbox" id="sp-c-nuevo" checked onchange="spSugerir()"><span><b>Lo nuevo primero</b> · piezas registradas en los últimos 30 días</span></label>
+            <label class="sp-tog"><input type="checkbox" id="sp-c-repetir" checked onchange="spSugerir()"><span><b>Que no se repita</b> · prioriza lo que nunca se publicó o se quitó hace más de 60 días</span></label>
+            <label class="sp-tog"><input type="checkbox" id="sp-c-quitar" checked onchange="spSugerir()"><span><b>Sugerir quitar</b> lo publicado que ya no tiene stock o no tiene foto</span></label>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="wz-bar">
+      <div class="info" id="sp-bar-info"></div>
+      <button type="button" class="wz-btn ghost" onclick="spSugerir(true)">🔀 Sugerir otras</button>
+      <button type="button" class="wz-btn gold" id="sp-publicar" onclick="spPublicar()">Publicar cambios</button>
     </div>
   </div>
 </div>

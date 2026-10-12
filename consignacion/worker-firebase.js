@@ -3900,7 +3900,8 @@ async function enviar(){
             if (x.estado === "inactivo") { inactivos.push(c); continue; }
             const actual = x.enCatalogo === true || x.enCatalogo === "true" || x.enCatalogo === "TRUE";
             if (actual === visible) { yaEstaban.push(c); continue; }
-            cambiar.push({ ...x, enCatalogo: visible });
+            // Fecha de publicación / retiro: la usa «✨ Sugerir qué publicar» del admin para no repetir lo de hace poco.
+            cambiar.push({ ...x, enCatalogo: visible, [visible ? "publicadoEn" : "despublicadoEn"]: new Date().toISOString() });
           }
           if (cambiar.length) await sb.setMany("stock", cambiar);
           result = { ok: true, visible, cambiados: cambiar.map(x => x.id), yaEstaban, noExisten, inactivos };
