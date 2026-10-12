@@ -329,7 +329,7 @@ async function enviar(){
         return json({
           // Igual que GET_CATALOGO: sin costo de las piezas, ocasiones internas ni quién usó cada cupón.
           productos: prods.filter(p => (p.enCatalogo === true || p.enCatalogo === "true" || p.enCatalogo === "TRUE") && p.estado !== "inactivo").map(({ ocasiones, costo, ...p }) => p),
-          cupones:   cups.filter(c => c.activo !== false && c.activo !== "false").map(({ usadoPor, ...c }) => c),
+          cupones:   [],
           config:    sanearConfigPublico(cfgDoc)
         });
       } catch(e) {
@@ -2213,12 +2213,16 @@ async function enviar(){
         // Revisa (sin gastarlo) si un cupón se puede usar: activo, sin vencer, con usos y — si es de un uso por
         // cliente — que ese cliente (correo o teléfono) no lo haya usado ya. Las tiendas lo llaman antes de cobrar.
         case "VALIDAR_CUPON": {
-          const cupV = await sb.get("cupones", String(d.codigo || "").toUpperCase());
-          result = cuponNoUsable(cupV, d.cliente, d.tienda) || { ok: true };
+          const codV = String(d.codigo || "").trim().toUpperCase().slice(0, 40);
+          const cupV = codV ? await sb.get("cupones", codV) : null;
+          result = cuponNoUsable(cupV, d.cliente, d.tienda) || { ok: true, cupon: cuponPublico(cupV) };
           break;
         }
 
         case "USAR_CUPON": {
+          // Antes era pública: cualquiera podía agotar un cupón con límite de usos llamándola en bucle. Ahora el cupón lo
+          // gasta el servidor al crear el pedido (NUEVO_PEDIDO) o el cobro USA; esta acción queda solo para el admin.
+          if (!esAdmin) { result = { ok: true, ignorado: true }; break; }
           const cup = await sb.get("cupones", d.codigo);
           const errUso = cuponNoUsable(cup, d.cliente, d.tienda);
           if (errUso) { result = errUso; break; }
@@ -2321,7 +2325,8 @@ async function enviar(){
             // (Rentabilidad de Logística USA) — ninguno de los dos se publica en la tienda.
             productos: final.map(({ ocasiones, costo, ...p }) => p),
             // usadoPor = correos/teléfonos de quienes ya usaron un cupón de un uso por cliente: nunca se publica.
-            cupones:   cups.filter(c => c.activo !== false && c.activo !== "false").map(({ usadoPor, ...c }) => c),
+            // Los códigos de cupón ya no se publican: la tienda los valida uno por uno con VALIDAR_CUPON.
+            cupones:   [],
             config:    sanearConfigPublico(cfg2)
           };
           break;
@@ -2445,6 +2450,52 @@ async function enviar(){
             break;
           }
 
+          // Total verificado en el servidor (precios del inventario + cupón + reglas de envío). Estos pedidos se pagan
+          // contra entrega y el admin los confirma, así que no se rechazan: si el total del navegador no coincide, el
+          // pedido queda con un aviso para revisarlo. El cupón se gasta AQUÍ (antes lo gastaba el navegador).
+          let alertaTotal = null, totalEsperadoSV = null;
+          try {
+            const codsSV = itemsPedNuevo.filter(i => i && i.codigo).map(i => String(i.codigo));
+            const filasSV = new Map((await sb.getMany("stock", codsSV)).map(x => [String(x.id), x]));
+            const hayRings = [...filasSV.values()].some(x => x.set_config);
+            const todoStock = hayRings ? await sb.getAll("stock") : [];
+            let precioMal = false;
+            const lineasSV = itemsPedNuevo.filter(i => i && i.codigo).map(i => {
+              const row = filasSV.get(String(i.codigo));
+              const pCli = Math.round((parseFloat(i.precioNum ?? i.precio) || 0) * 100) / 100;
+              if (!row) { precioMal = true; return { codigo: i.codigo, precio: pCli, qty: 1 }; }
+              const herm = row.set_config ? todoStock.filter(x => _baseDeCodigo(x.codigo || x.id).toUpperCase() === _baseDeCodigo(i.codigo).toUpperCase()) : [];
+              const perm = preciosPermitidosUSA(row, herm, i.codigoCab);
+              const ok = perm.find(p => Math.abs(p - pCli) < 0.011);
+              if (ok == null) precioMal = true;
+              return { codigo: i.codigo, precio: ok ?? perm[0], qty: Math.min(10, Math.max(1, parseInt(i.cantidad) || 1)) };
+            });
+            const subSV = _r2(lineasSV.reduce((a, l) => a + l.precio * l.qty, 0));
+            let cupSV = null, motivoCup = "";
+            if (d.cuponUsado) {
+              const c = await sb.get("cupones", String(d.cuponUsado).toUpperCase());
+              const err = cuponNoUsable(c, d.telefono, "sv");
+              if (err) motivoCup = err.motivo; else cupSV = c;
+            }
+            const descSV = descuentoCuponUSA(cupSV, lineasSV, subSV);
+            const cfgSV = await sb.get("config", "settings");
+            let envSV = envioSV(cfgSV, subSV);
+            const cupEnvioOk = cupSV && cupSV.tipo === "envio_gratis" && !((parseFloat(cupSV.montoMinimo) || 0) > subSV);
+            if (cupEnvioOk) envSV = 0;
+            totalEsperadoSV = _r2(subSV - descSV + envSV);
+            const totalCli = parseFloat(String(d.total || "").replace(/[^0-9.]/g, "")) || 0;
+            if (precioMal || motivoCup || Math.abs(totalEsperadoSV - totalCli) > 0.011) {
+              alertaTotal = { esperado: totalEsperadoSV, recibido: totalCli, precioDistinto: precioMal, cupon: motivoCup || "" };
+            }
+            if (cupSV && (descSV > 0 || cupEnvioOk)) {
+              const usos = (parseInt(cupSV.usosActuales) || 0) + 1, lim = parseInt(cupSV.limiteUsos) || 0;
+              const patchC = { usosActuales: usos, activo: lim > 0 ? usos < lim : true };
+              const idC = idClienteCupon(d.telefono);
+              if (cupSV.unoPorCliente && idC) patchC.usadoPor = [...(Array.isArray(cupSV.usadoPor) ? cupSV.usadoPor : []), idC].slice(-5000);
+              await sb.update("cupones", cupSV.codigo, patchC);
+            }
+          } catch (eTot) { console.error("NUEVO_PEDIDO verificar total:", eTot); }
+
           const now      = new Date();
           const dd       = String(now.getDate()).padStart(2, "0");
           const mm       = String(now.getMonth() + 1).padStart(2, "0");
@@ -2489,7 +2540,9 @@ async function enviar(){
             // De dónde salió exactamente cada unidad reservada arriba —
             // necesario para poder reponerla al lugar correcto si el pedido
             // se cancela (ver ACTUALIZAR_ESTADO_PEDIDO).
-            reservas: reservasPed
+            reservas: reservasPed,
+            ...(totalEsperadoSV != null ? { totalVerificado: totalEsperadoSV } : {}),
+            ...(alertaTotal ? { alertaTotal } : {})
           });
 
           // ── Notificación por email ─────────────────────────────────
@@ -2503,7 +2556,7 @@ async function enviar(){
                 from: "VEREX Store <hola@notificaciones.verexstore.com>",
                 reply_to: "hola@verexstore.com",
                 to:   ["hola@verexstore.com"],
-                subject: `🛍️ Nuevo Pedido ${numeroPedido} — ${d.total}`,
+                subject: `${alertaTotal ? "⚠️ REVISAR TOTAL — " : ""}🛍️ Nuevo Pedido ${numeroPedido} — ${d.total}${alertaTotal ? ` (debería ser $${alertaTotal.esperado.toFixed(2)})` : ""}`,
                 html: `
                   <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#fff;border:2px solid #C9A84C;border-radius:12px;overflow:hidden;">
                     <div style="background:linear-gradient(135deg,#aaa,#d0d0d0);padding:24px;text-align:center;">
@@ -4480,6 +4533,17 @@ async function enviar(){
           // Permitir subida con key pública (desde celular) o con pass admin
           const keyOk = d.key === "vx_upload_7c4406c55f0f10174b0cb08da23cae88" || esAdmin;
           if (!keyOk) return forbidden();
+          // La clave pública está en upload.html (la usa el celular sin sesión): con ella solo se suben IMÁGENES de hasta
+          // ~8 MB y máx. 120 por hora por IP. Antes cualquiera podía subir lo que fuera, sin límite, a ImageKit.
+          if (!esAdmin) {
+            if (!/^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(String(d.imagen || "").slice(0, 60) + "A") || String(d.imagen || "").length > 11_000_000) {
+              result = { ok: false, error: "Solo imágenes JPG, PNG o WebP de hasta 8 MB" }; break;
+            }
+            const rkUp = "upload:" + ip;
+            if (await rlBlocked(sb, rkUp)) { result = { ok: false, error: "Demasiadas fotos seguidas: espera un rato" }; break; }
+            await rlFail(sb, rkUp, RL_UPLOAD);
+            d.nombre = String(d.nombre || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 60);
+          }
           const ikKey = env.IMAGEKIT_PRIVATE_KEY;
           if (!ikKey) { result = { ok: false, error: "ImageKit no configurado en secrets" }; break; }
           const authHeader = "Basic " + btoa(ikKey + ":");
@@ -5685,6 +5749,7 @@ const RL_LOGIN     = { max: 5,  windowMs: 15 * MIN, baseLockMs: 15 * MIN };
 const RL_API       = { max: 15, windowMs: 15 * MIN, baseLockMs: 15 * MIN };
 const RL_TOTP_ALL  = { max: 10, windowMs: 15 * MIN, baseLockMs: 15 * MIN };
 const RL_PIN       = { max: 8,  windowMs: 15 * MIN, baseLockMs: 15 * MIN };
+const RL_UPLOAD    = { max: 120, windowMs: 60 * MIN, baseLockMs: 30 * MIN };   // subidas con la clave pública de upload.html
 const RL_CACHE = new Map();
 const RL_TTL = 20 * 1000;
 
@@ -5699,32 +5764,45 @@ async function rlBlocked(sb, key) {
   return until;
 }
 
+// Cada fallo se guarda como un registro PROPIO (config/rlfx-<clave>-<ms>-<azar>) y luego se cuentan los de la ventana.
+// Antes era leer-sumar-guardar un contador: con muchos intentos en paralelo se perdían sumas y el límite se podía
+// saltar. Los registros no se pisan entre sí, así que ningún intento se pierde.
+const _rlPref = key => "rlfx-" + String(key).replace(/[_%*\\]/g, "-") + "-";
 async function rlFail(sb, key, cfg) {
-  const now = Date.now();
-  let rec = null;
-  try { rec = await sb.get("config", "rl_" + key); } catch (_) { /* fail-open */ }
-  rec = rec ? { n: rec.n || 0, start: rec.start || now, until: rec.until || 0, strikes: rec.strikes || 0 } : { n: 0, start: now, until: 0, strikes: 0 };
-  if (rec.until && now - rec.until > 24 * 60 * MIN) rec.strikes = 0;      // el historial se olvida tras 24 h limpio
-  if (now - rec.start > cfg.windowMs) { rec.n = 0; rec.start = now; }
-  rec.n++;
-  if (rec.n >= cfg.max) {
+  const now = Date.now(), pref = _rlPref(key);
+  let filas = null;
+  try {
+    await sb.insertIfAbsent("config", pref + now + "-" + Math.random().toString(36).slice(2, 10), { k: key, t: now });
+    filas = (await sb.listPrefix("config", pref, { limite: 400 })).filter(r => r.k === key && typeof r.t === "number");
+  } catch (_) { /* fail-open: si Supabase falla, no se bloquea */ }
+  if (!filas) return;
+  const recientes = filas.filter(r => now - r.t <= cfg.windowMs);
+  const viejas = filas.filter(r => now - r.t > cfg.windowMs).map(r => r.id);
+  let until = 0;
+  if (recientes.length >= cfg.max) {
+    let rec = null;
+    try { rec = await sb.get("config", "rl_" + key); } catch (_) {}
+    rec = rec ? { until: rec.until || 0, strikes: rec.strikes || 0 } : { until: 0, strikes: 0 };
+    if (rec.until && now - rec.until > 24 * 60 * MIN) rec.strikes = 0;      // el historial se olvida tras 24 h limpio
     rec.strikes++;
-    rec.until = now + Math.min(cfg.baseLockMs * Math.pow(2, rec.strikes - 1), 24 * 60 * MIN);
-    rec.n = 0; rec.start = now;
+    until = now + Math.min(cfg.baseLockMs * Math.pow(2, rec.strikes - 1), 24 * 60 * MIN);
+    try { await sb.set("config", "rl_" + key, { n: 0, start: now, until, strikes: rec.strikes }); } catch (_) {}
+    viejas.push(...recientes.map(r => r.id));   // el bloqueo ya cuenta: se empieza de cero
   }
-  try { await sb.set("config", "rl_" + key, rec); } catch (_) { /* fail-open */ }
-  RL_CACHE.set(key, { until: rec.until > now ? rec.until : 0, n: rec.n, exp: now + RL_TTL });
+  if (viejas.length) { try { await sb.deleteMany("config", viejas); } catch (_) {} }
+  RL_CACHE.set(key, { until, n: until ? 0 : recientes.length, exp: now + RL_TTL });
 }
 
-/** Tras un acceso correcto: borra los fallos pendientes (solo escribe si había alguno). */
+/** Tras un acceso correcto: borra los fallos pendientes (solo si había alguno). */
 async function rlReset(sb, key) {
   const c = RL_CACHE.get(key), now = Date.now();
   if (c && c.exp > now && !c.n && !c.until) return;
-  let rec = null;
-  try { rec = await sb.get("config", "rl_" + key); } catch (_) { return; }
-  if (rec && (rec.n || 0) > 0 && !(rec.until > now)) {
-    try { await sb.set("config", "rl_" + key, { n: 0, start: now, until: rec.until || 0, strikes: rec.strikes || 0 }); } catch (_) {}
-  }
+  let rec = null, filas = [];
+  try {
+    rec = await sb.get("config", "rl_" + key);
+    filas = (await sb.listPrefix("config", _rlPref(key), { limite: 400 })).filter(r => r.k === key);
+  } catch (_) { return; }
+  if (filas.length && !(rec && rec.until > now)) { try { await sb.deleteMany("config", filas.map(r => r.id)); } catch (_) {} }
   RL_CACHE.set(key, { until: rec && rec.until > now ? rec.until : 0, n: 0, exp: now + RL_TTL });
 }
 
@@ -7180,6 +7258,18 @@ async function cerrarCobroUSA(sb, cobro, extra) {
 }
 
 // ── Cupones: condiciones de uso ──
+// Lo que la tienda necesita para calcular el descuento (sin la lista de clientes ni contadores).
+function cuponPublico(c) {
+  if (!c) return null;
+  const { codigo, tipo, descuento, descuentoFijo, montoMinimo, descuentoMax, categorias, tienda, vence, activo } = c;
+  return { codigo, tipo, descuento, descuentoFijo, montoMinimo, descuentoMax, categorias, tienda, vence, activo };
+}
+// Envío de El Salvador: mismas reglas que verexstore.com (config.reglasEnvio; si no hay, $2 hasta $30 y gratis desde $30).
+function envioSV(cfg, subtotal) {
+  const reglas = Array.isArray(cfg && cfg.reglasEnvio) ? cfg.reglasEnvio.slice().sort((a, b) => a.min - b.min) : [];
+  if (reglas.length) { const r = reglas.find(x => subtotal >= x.min && subtotal <= x.max); if (r !== undefined) return parseFloat(r.costo) || 0; }
+  return subtotal >= 30 ? 0 : subtotal >= 1 ? 2 : 0;
+}
 // Cliente = correo (minúsculas) o, si no hay, solo los dígitos del teléfono.
 function idClienteCupon(c) {
   const v = String(c || "").trim().toLowerCase();

@@ -1375,6 +1375,14 @@ document.addEventListener("click", (e) => {
 // ═════════════════════════════════════════════
 // Para pasar un texto como argumento de una función dentro de onclick="…": JSON lo vuelve un string JS válido y esc()
 // lo protege dentro del atributo (un nombre con comillas ya no puede salirse del atributo ni del string).
+// Aviso cuando el total que mandó la tienda no coincide con el que calculó el servidor (precios del inventario,
+// cupón y envío): el pedido se recibe igual, pero hay que revisarlo antes de cobrar.
+function avisoTotalPedido(p) {
+    const a = p && p.alertaTotal;
+    if (!a) return "";
+    const det = [a.precioDistinto ? "precio distinto al inventario" : "", a.cupon ? "cupón " + ({ ya_usado: "ya usado por este cliente", agotado: "agotado", vencido: "vencido", inactivo: "inactivo", no_existe: "no existe", otra_tienda: "de otra tienda" }[a.cupon] || "no válido") : ""].filter(Boolean).join(" · ");
+    return `<div style="color:#b91c1c;font-size:10.5px;font-weight:700;white-space:normal;" title="Total calculado por el servidor">⚠️ Revisar: debería ser $${(parseFloat(a.esperado) || 0).toFixed(2)}${det ? " — " + esc(det) : ""}</div>`;
+}
 function jsAttr(v) { return esc(JSON.stringify(String(v ?? ""))); }
 function esc(str) {
     return String(str ?? "")
@@ -2446,7 +2454,7 @@ function renderPedidos() {
             </td>
             <td style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.municipio)||"—"}</td>
             <td style="font-size:11px;color:#777;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.productos)||"—"}</td>
-            <td style="font-weight:700;color:var(--verde);white-space:nowrap;">$${parseFloat(String(p.total).replace(/[^0-9.]/g,"")||0).toFixed(2)}</td>
+            <td style="font-weight:700;color:var(--verde);white-space:nowrap;">$${parseFloat(String(p.total).replace(/[^0-9.]/g,"")||0).toFixed(2)}${avisoTotalPedido(p)}</td>
             <td style="font-size:11px;color:#aaa;">${esc(pagoCorto)}</td>
             <td><select class="es" style="font-size:11px;padding:3px 4px;border-color:${estadoColor};color:${estadoColor};" onchange="cambiarEstado(this,${jsAttr(p.numeroPedido||"")},${jsAttr(p.cliente)},${jsAttr(p.fecha)})">${opts}</select></td>
             <td>
@@ -2480,7 +2488,7 @@ function renderPedidos() {
                 <span>📱 <a href="https://wa.me/${tel}" target="_blank" style="color:var(--verde);font-weight:600;text-decoration:none;">${esc(p.telefono)||"—"}</a></span>
                 <span>📍 ${esc(p.municipio)||"—"}</span>
                 <span>🛍️ ${esc(p.productos)||"—"}</span>
-                <span>💰 <b style="color:var(--verde)">${esc(p.total)||"—"}</b></span>
+                <span>💰 <b style="color:var(--verde)">${esc(p.total)||"—"}</b>${avisoTotalPedido(p)}</span>
                 <span>💳 ${esc(p.metodoPago)||"—"}</span>
             </div>
             <div class="ped-card-footer">
