@@ -1,4 +1,5 @@
 import { esAdminValido, vendedorValido, noAutorizado } from "./_auth.js";
+import { igualSeguro, sanearCatalogoLyra, cupoLyra } from "./_lyra-catalog.js";
 
 export async function onRequest(context) {
     const cors = {
@@ -17,7 +18,18 @@ export async function onRequest(context) {
 
     try {
         let body = await context.request.json();
-        if (!(await esAdminValido(body?._pass, context))) {
+        // Lyra (WhatsApp) crea catálogos de Cliente con su propia llave — ver _lyra-catalog.js.
+        let clienteRefLyra = "";
+        const llaveLyra = context.request.headers.get("X-Lyra-Key");
+        if (llaveLyra) {
+            if (!context.env.LYRA_CATALOG_KEY || !igualSeguro(llaveLyra, context.env.LYRA_CATALOG_KEY)) return noAutorizado(cors);
+            const r = sanearCatalogoLyra(body);
+            if (r.error) return new Response(JSON.stringify({ error: r.error }), { status: 400, headers });
+            const cupo = await cupoLyra(context.env.CATALOGS, r.clienteRef);
+            if (!cupo.ok) return new Response(JSON.stringify({ error: cupo.motivo }), { status: 429, headers });
+            body = r.data;
+            clienteRefLyra = r.clienteRef;
+        } else if (!(await esAdminValido(body?._pass, context))) {
             // Inventario Sellers → "Compartir mi catálogo": el vendedor no tiene
             // la contraseña de admin, se valida con SU token (+ PIN). Solo puede
             // crear un catálogo propio: nombre, nota y código salen del registro
@@ -90,6 +102,7 @@ export async function onRequest(context) {
             expiresAt,
             dias,
             data: dataWithMeta,
+            ...(clienteRefLyra && { creadoPor: "lyra", clienteRef: clienteRefLyra }),
         };
         await context.env.CATALOGS.put("__hist__" + id, JSON.stringify(hist));
 
@@ -102,7 +115,7 @@ export async function onRequest(context) {
             await context.env.CATALOGS.put(idxKey, JSON.stringify(idx));
         }
 
-        return new Response(JSON.stringify({ url: "/c/" + id }), { headers });
+        return new Response(JSON.stringify({ url: "/c/" + id, id, expiresAt }), { headers });
     } catch (e) {
         return new Response(JSON.stringify({ error: e.message }), { status: 500, headers });
     }
