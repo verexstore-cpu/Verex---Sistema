@@ -50,7 +50,7 @@ Worker (worker-firebase.js) → npx wrangler deploy (manual)
 - IA vía Groq (misma cuenta que el Worker): la clave va SOLO como Secret `GROQ_API_KEY` en Cloudflare Pages (proyecto verex-catalogo-us). Sin clave funciona por reglas.
 - Si cambian tarifas de envío / mínimo de compra en `verex-catalogo-us/index.html`, actualizar también `functions/_lib/knowledge.js`.
 - Guía completa: `verex-catalogo-us/docs/AI-ASSISTANT.md`.
-- **Lyra en WhatsApp (El Salvador)**: webhook `us.verexstore.com/api/whatsapp/webhook` (`functions/_lib/wa/`), lee TODO el stock ofrecible (`WA_STOCK` del Worker) y crea catálogos de Cliente en admin-tienda con la llave `LYRA_CATALOG_KEY` (Secret igual en verex-catalogo-us y admin-tienda; reglas en `admin-tienda/functions/_lyra-catalog.js`). Promo: solo `config.settings.promoLyra` vigente. Guía: `verex-catalogo-us/docs/WHATSAPP.md`.
+- **Lyra en WhatsApp (El Salvador)**: webhook `us.verexstore.com/api/whatsapp/webhook` (`functions/_lib/wa/`), lee TODO el stock ofrecible (`WA_STOCK` del Worker) y crea catálogos de Cliente en admin-tienda con la llave `LYRA_CATALOG_KEY` (Secret igual en verex-catalogo-us y admin-tienda; reglas en `admin-tienda/functions/_lyra-catalog.js`). Se configura en Admin → 🤖 Lyra WhatsApp (`config/lyra` del Worker: encendido, modo, Promo de Lyra, anuncio → piezas). El código vive en verex-catalogo-us solo porque ahí ya estaba el cerebro de Lyra (búsqueda, IA, chat en vivo); funciona en «modo El Salvador» (`VEREX_MARKET=sv`), no tiene nada de la tienda USA. Guía: `verex-catalogo-us/docs/WHATSAPP.md`.
 
 ---
 
