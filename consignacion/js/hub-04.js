@@ -344,6 +344,7 @@ function activarEdicionProducto() {
     document.getElementById("ep-precio").value = p.precio || p.precioNum || "";
     document.getElementById("ep-existencia").value = 0;
     document.getElementById("ep-caract").value = p.caracterEspecial || "";
+    iniciarOcasionesEP(p.codigo);
     // Marcar material actual
     document.querySelectorAll(".ep-mat-btn").forEach(b => {
         b.style.outline = (b.dataset.mat === p.material) ? "2px solid var(--dorado)" : "";
@@ -372,11 +373,9 @@ function activarEdicionProducto() {
     // anillos y conjuntos — antes ocultaban por error también la "Cantidad
     // a sumar" (compartían el mismo div contenedor vía .closest("div")).
     const esAnilloEP = p.categoria === "AN" || p.categoria === "CJ";
-    const tallaWrap = document.getElementById("ep-talla-add-wrap");
-    if (tallaWrap) tallaWrap.style.display = esAnilloEP ? "inline-block" : "none";
     const tallaHint = document.getElementById("ep-talla-hint");
     if (tallaHint) tallaHint.style.display = esAnilloEP ? "block" : "none";
-    if (!esAnilloEP && document.getElementById("ep-talla-add")) document.getElementById("ep-talla-add").value = "";
+
     const setAnilloWrap = document.getElementById("ep-set-anillo-wrap");
     if (setAnilloWrap) setAnilloWrap.style.display = esAnilloEP ? "block" : "none";
     document.getElementById("modal-prod-vista").style.display = "none";
@@ -400,6 +399,106 @@ function activarEdicionProducto() {
         productoEditando.nuevaFoto = r.preview;
         prev.innerHTML = `<img src="${r.preview}" style="width:100%;height:100%;object-fit:contain;border-radius:10px;">`;
     };
+}
+
+// ── Ocasiones (15 años, compromiso, caballero…) ──────────────────────
+// Etiquetas internas para armar Catálogos de Cliente en el admin; el cliente
+// no las ve. Se guardan con STOCK_OCASIONES, que las aplica a TODAS las tallas
+// del diseño. La lista se edita en el admin (⚙️ Ocasiones → config.ocasiones);
+// esta es la lista inicial por si nunca se ha guardado (igual a la del admin).
+const OCASIONES_DEFAULT_HUB = [
+    { id: "15anos",       emoji: "👑", nombre: "15 años" },
+    { id: "compromiso",   emoji: "💍", nombre: "Compromiso" },
+    { id: "matrimonio",   emoji: "💑", nombre: "Matrimonio" },
+    { id: "caballero",    emoji: "🧔", nombre: "Caballero" },
+    { id: "graduacion",   emoji: "🎓", nombre: "Graduación" },
+    { id: "dia-madre",    emoji: "🎁", nombre: "Día de la Madre" },
+    { id: "san-valentin", emoji: "❤️", nombre: "San Valentín" },
+    { id: "religioso",    emoji: "✝️", nombre: "Bautizo / Primera Comunión" },
+    { id: "navidad",      emoji: "🎄", nombre: "Navidad" },
+    { id: "bebe",         emoji: "👶", nombre: "Bebé / niña" },
+];
+let _ocasionesHub = null;
+let _epOcasiones = new Set();
+let _epOcasionesOrig = [];
+let _snOcasiones = new Set();   // formulario Stock → Nuevo producto
+
+// Vuelve a leer la lista por si se editó en el admin; mientras tanto se usa la última conocida.
+function _refrescarListaOcasiones(alTerminar) {
+    apiPost({ accion: "GET_CONFIG" }).then(r => {
+        const l = r && r.config && r.config.ocasiones;
+        if (Array.isArray(l) && l.length) { _ocasionesHub = l; alTerminar(); }
+    }).catch(() => {});
+}
+
+// Chips de ocasión; `fn` es el nombre de la función global que alterna una ocasión.
+// Una ocasión oculta solo se muestra si ya está marcada (para poder quitarla).
+function _chipsOcasionesHTML(seleccion, fn) {
+    const lista = _ocasionesHub || OCASIONES_DEFAULT_HUB;
+    return lista.filter(o => !o.oculta || seleccion.has(o.id)).map(o => {
+        const on = seleccion.has(o.id);
+        return `<button type="button" data-id="${o.id}" onclick="${fn}(this.dataset.id)"
+            style="padding:5px 10px;border:1px solid ${on ? "var(--dorado)" : "var(--borde)"};border-radius:14px;background:${on ? "var(--dorado)" : "var(--gris2)"};color:${on ? "#111" : "var(--blanco)"};font-size:11px;font-weight:700;cursor:pointer;">${o.emoji || ""} ${String(o.nombre || o.id).replace(/</g, "&lt;")}</button>`;
+    }).join("");
+}
+
+function iniciarOcasionesSN() {
+    _snOcasiones = new Set();
+    renderOcasionesSN();
+    _refrescarListaOcasiones(renderOcasionesSN);
+}
+
+function renderOcasionesSN() {
+    const cont = document.getElementById("sn-ocasiones");
+    if (cont) cont.innerHTML = _chipsOcasionesHTML(_snOcasiones, "toggleOcasionSN");
+}
+
+function toggleOcasionSN(id) {
+    if (_snOcasiones.has(id)) _snOcasiones.delete(id); else _snOcasiones.add(id);
+    renderOcasionesSN();
+}
+
+// Ocasiones que ya tiene el diseño (unión de todas sus tallas activas).
+function _ocasionesDelDiseno(codigo) {
+    const base = getCodigoBase(codigo);
+    const s = new Set();
+    (stockData || []).filter(x => x.estado !== "inactivo" && (x.codigo === codigo || getCodigoBase(x.codigo) === base))
+        .forEach(x => (Array.isArray(x.ocasiones) ? x.ocasiones : []).forEach(o => s.add(o)));
+    return [...s];
+}
+
+function iniciarOcasionesEP(codigo) {
+    _epOcasionesOrig = _ocasionesDelDiseno(codigo);
+    _epOcasiones = new Set(_epOcasionesOrig);
+    renderOcasionesEP();
+    _refrescarListaOcasiones(renderOcasionesEP);
+}
+
+function renderOcasionesEP() {
+    const cont = document.getElementById("ep-ocasiones");
+    if (cont) cont.innerHTML = _chipsOcasionesHTML(_epOcasiones, "toggleOcasionEP");
+}
+
+function toggleOcasionEP(id) {
+    if (_epOcasiones.has(id)) _epOcasiones.delete(id); else _epOcasiones.add(id);
+    renderOcasionesEP();
+}
+
+// Guarda las ocasiones si cambiaron. Devuelve false si el servidor no las guardó.
+async function guardarOcasionesEP(codigo) {
+    const nuevas = [..._epOcasiones];
+    const igual = nuevas.length === _epOcasionesOrig.length && nuevas.every(o => _epOcasionesOrig.includes(o));
+    if (igual) return true;
+    try {
+        const r = await apiPost({ accion: "STOCK_OCASIONES", codigos: [codigo], ocasiones: nuevas });
+        if (!r || !r.ok) throw new Error((r && r.error) || "sin respuesta");
+        (r.actualizados || []).forEach(a => { const x = stockData.find(s => s.codigo === a.codigo); if (x) x.ocasiones = a.ocasiones; });
+        _epOcasionesOrig = nuevas;
+        return true;
+    } catch (e) {
+        console.error("[ocasiones]", e);
+        return false;
+    }
 }
 
 function cancelarEdicionProducto() {
@@ -503,8 +602,10 @@ async function guardarEdicionProducto() {
     // Propagar nombre_base, foto, material, descripción y caracterEspecial al
     // resto de tallas del mismo diseño — así editar cualquier talla actualiza
     // todo el grupo sin tener que hacerlo una por una.
-    const codigoBaseActual = getCodigoBase(codigoViejo);
-    const hermanos = stockData.filter(s => getCodigoBase(s.codigo) === codigoBaseActual && s.codigo !== codigoViejo && s.estado !== "inactivo");
+    // «Hermanos» = todo lo que la pestaña Stock agrupa en la misma tarjeta (incluida la 2da pieza de dama «B» de un trío,
+    // que tiene otro codigoBase): si no se actualiza también esa, la tarjeta sigue mostrando su foto/«mejorada» vieja.
+    const claveGrupoActual = claveGrupoStock(productoEditando.p);
+    const hermanos = stockData.filter(s => claveGrupoStock(s) === claveGrupoActual && s.codigo !== codigoViejo && s.estado !== "inactivo");
     for (const h of hermanos) {
         const tallaH = getTallaFromCodigo(h.codigo);
         const nombreH = tallaH ? `${nombreBaseEP} T${tallaH}` : nombreBaseEP;
@@ -516,42 +617,26 @@ async function guardarEdicionProducto() {
         h.img = img; h.foto = img; h.material = material; h.caracterEspecial = caracterEspecial;
         if (cambioFoto) { h.fotoMejorada = ""; h.fotoMejoraNivel = ""; }
     }
+    const ocasionesOk = await guardarOcasionesEP(codigo);
     // Sumar existencia a bodega si se ingresó cantidad
     const existencia = parseInt(document.getElementById("ep-existencia")?.value) || 0;
-    const catEP = productoEditando.p.categoria || "";
-    const esAnilloCategoria = catEP === "AN" || catEP === "CJ";
-    const tallaAdd = esAnilloCategoria ? (document.getElementById("ep-talla-add")?.value || "").trim() : "";
-    if (tallaAdd && existencia <= 0) {
-        toast("⚠️ Ingresa la cantidad de unidades para la talla " + tallaAdd);
-        btn.textContent = "💾 Guardar"; btn.disabled = false;
-        return;
-    }
     if (existencia > 0) {
-        if (tallaAdd) {
-            // Registrar variante con talla — puede ser nueva o existente
-            const codigoBase  = getCodigoBase(codigo);
-            const codigoTalla = `${codigoBase}T${tallaAdd}`;
-            const stockTalla  = stockData.find(s => s.codigo === codigoTalla);
-            if (stockTalla) {
-                // Ya existe esa talla → solo sumar cantidad
-                const bodegaActual = parseInt(stockTalla.stock_bodega || 0);
-                await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo: codigoTalla, stock_bodega: bodegaActual + existencia }] });
-            } else {
-                // Nueva variante — registrar con STOCK_REGISTRAR
-                const p = productoEditando.p;
-                const nombreConTalla = `${p.nombre_base || p.nombre} T${tallaAdd}`;
-                await apiPost({ accion: "STOCK_REGISTRAR", codigo: codigoTalla, codigoBase, talla: tallaAdd, nombre: nombreConTalla, nombre_base: p.nombre_base || p.nombre, categoria: p.categoria || "", material, precio, foto: img, cantidad: existencia, descripcion: desc, caracterEspecial });
-            }
-            toast(`✅ +${existencia} unidades T${tallaAdd} (${codigoBase}T${tallaAdd})`);
-        } else {
-            const stockActual  = stockData.find(s => s.codigo === codigoViejo);
-            const bodegaActual = parseInt(stockActual?.stock_bodega || 0);
-            await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo, stock_bodega: bodegaActual + existencia }] });
-            toast(`✅ Producto actualizado y +${existencia} unidades sumadas a bodega`);
-        }
-    } else {
+        // Si el servidor no confirma, se avisa y el formulario queda abierto (antes decía «✅» aunque no se guardara)
+        const fallo = (r, que) => {
+            if (r && r.ok) return false;
+            toast(`❌ ${que} NO se guardó: ${(r && r.error) || "sin respuesta del servidor"}`, "#ef4444", 8000);
+            btn.textContent = "💾 Guardar"; btn.disabled = false;
+            return true;
+        };
+        const stockActual  = stockData.find(s => s.codigo === codigoViejo);
+        const bodegaActual = parseInt(stockActual?.stock_bodega || 0);
+        const r = await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo, stock_bodega: bodegaActual + existencia }] });
+        if (fallo(r, "La cantidad")) return;
+        toast(`✅ Producto actualizado y +${existencia} unidades sumadas a bodega`);
+    } else if (ocasionesOk) {
         toast("✅ Producto actualizado");
     }
+    if (!ocasionesOk) toast("⚠️ El producto se guardó, pero las ocasiones NO — revisa que el Worker esté actualizado", "#f97316", 8000);
     // Update local — usar codigoViejo para encontrar el índice antes de sobreescribir
     const p = productoEditando.p;
     const idx = productosDisponibles.findIndex(x => x.codigo === codigoViejo);
@@ -571,18 +656,7 @@ async function guardarEdicionProducto() {
     filtrarStock();
     if (existencia > 0) {
         await cargarStock();
-        // Refrescar productosDisponibles desde stockData actualizado (incluye nueva talla)
         await refrescarProductosEtiquetas();
-        if (tallaAdd) {
-            // Ir a etiquetas para imprimir la nueva talla de inmediato
-            cambiarTab('etiquetas');
-            // Pre-seleccionar la nueva talla en el grid de etiquetas
-            const codigoTallaNueva = `${getCodigoBase(codigo)}T${tallaAdd}`;
-            setTimeout(() => {
-                const card = document.querySelector(`#grid-etiquetas [data-codigo="${codigoTallaNueva}"]`);
-                if (card) { card.click(); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-            }, 400);
-        }
     }
 }
 
@@ -1228,6 +1302,13 @@ function fotoNoDisponible(img) {
     d.innerHTML = '📷<span style="font-size:8px;font-weight:700;letter-spacing:.5px;margin-top:2px;">SIN FOTO</span>';
     img.replaceWith(d);
 }
+// Clave del grupo visual de Stock: el codigoBase del diseño, quitando la «B» final de la 2da pieza de dama de un trío
+// (ANL106B → ANL106). La usan la tarjeta de Stock y el guardado de «Editar producto» para hablar del mismo grupo.
+function claveGrupoStock(item) {
+    const base = (item && (item.codigoBase || item.codigo)) || "";
+    return base.replace(/^(.+\d)B$/, "$1");
+}
+
 function renderStock(items) {
     if (!items) items = stockData;
     if (!items) return;
@@ -1281,7 +1362,7 @@ function renderStock(items) {
     const grupos = new Map();
     items.forEach(item => {
         const base = item.codigoBase || item.codigo;
-        const key = base.replace(/^(.+\d)B$/, "$1");
+        const key = claveGrupoStock(item);
         if (!grupos.has(key)) grupos.set(key, { key, nombre: item.nombre_base || item.nombre, material: item.material, caracterEspecial: item.caracterEspecial, foto: item.foto, fotoMejorada: item.fotoMejorada || "", categoria: item.categoria, items: [] });
         const g = grupos.get(key);
         g.items.push(item);
@@ -1464,7 +1545,8 @@ function renderStock(items) {
                 </div>
             </div>
             <div onclick="event.stopPropagation();">
-                <div style="display:flex;justify-content:flex-end;margin:2px 0 6px;position:relative;">
+                <div style="display:flex;justify-content:flex-end;gap:6px;margin:2px 0 6px;position:relative;">
+                    ${(g.categoria === "AN" || g.categoria === "CJ" || g.items?.some?.(it => it.talla)) ? `<button onclick="abrirAgregarTalla(${jsArg(g.key)})" style="padding:5px 10px;font-size:11px;background:var(--dorado);color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:700;" title="Agregar unidades de una talla nueva o de una que ya existe">➕ Agregar talla</button>` : ""}
                     <button onclick="_stockGridToggleMover(this)" style="padding:5px 10px;font-size:11px;background:#4a4a4e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;" title="Mueve todas las tallas en existencia de este diseño">⇄ Mover grupo completo ▾</button>
                     <div class="menu-mover-grid" style="display:none;position:absolute;top:30px;right:0;background:#1e1e1e;border:1px solid #444;border-radius:8px;overflow:hidden;z-index:99;min-width:180px;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
                         <button onclick="moverItemDirecto(${jsArgArr(codigos)},'tienda')" style="display:block;width:100%;padding:9px 14px;font-size:12px;background:none;color:#4caf82;border:none;border-bottom:1px solid #333;cursor:pointer;text-align:left;font-weight:600;">🛍️ Enviar todo a Tienda</button>
@@ -1637,9 +1719,12 @@ async function moverItemDirecto(codigoOCodigos, destino) {
     // arreglo de códigos (tarjeta de grupo en la vista grid): mover desde el
     // grupo mueve TODAS las tallas en existencia de ese diseño, no solo la
     // que estaba activa/resaltada en ese momento.
-    stockSeleccionados = Array.isArray(codigoOCodigos) ? [...codigoOCodigos] : [codigoOCodigos];
-    if (destino === "tienda") await asignarATienda();
-    else if (destino === "bodega") await devolverABodega();
+    // Desde el grupo («Enviar todo» / «Devolver todo») se mueven TODAS las unidades de cada talla, no solo 1:
+    // antes una talla con 9 en bodega pasaba solo 1 a tienda. Desde una fila (una talla) sigue siendo 1 unidad.
+    const todo = Array.isArray(codigoOCodigos);
+    stockSeleccionados = todo ? [...codigoOCodigos] : [codigoOCodigos];
+    if (destino === "tienda") await asignarATienda(todo);
+    else if (destino === "bodega") await devolverABodega(todo);
     stockSeleccionados = [];
 }
 
@@ -2020,4 +2105,83 @@ function poblarFiltroMaterial() {
     sel.innerHTML = '<option value="">Todo material</option>' +
         materiales.map(m => `<option value="${m.replace(/"/g,'&quot;')}">${m}</option>`).join("");
     if (materiales.includes(actual)) sel.value = actual;
+}
+
+// ── ➕ AGREGAR TALLA a un diseño (botón del grupo en Stock) ─────────────────────────────────────────────
+// Una talla nueva se crea con el código correcto del grupo: en alianzas lleva D (dama), C (caballero) o U (unisex)
+// — ANP240CT11 —, con el nombre, precio, foto y visibilidad de sus hermanas. Si la talla ya existe, solo suma unidades.
+let _at = { base: "", talla: "", letra: "", tipos: [] };
+const _atLetraDe = c => ((String(c || "").match(/([DCU])T\d+(\.\d+)?$/i) || [])[1] || "").toUpperCase();
+const _atFilas = base => stockData.filter(s => getCodigoBase(s.codigo) === base);
+function abrirAgregarTalla(base) {
+    const filas = _atFilas(base).filter(f => f.estado !== "inactivo");
+    if (!filas.length) return toast("⚠️ No encontré ese diseño en Stock");
+    const letras = new Set(filas.map(f => _atLetraDe(f.codigo)).filter(Boolean));
+    const tipos = [];
+    if (letras.has("D") || letras.has("C")) tipos.push(["D", "👩 Dama"], ["C", "👨 Caballero"]);
+    if (letras.has("U")) tipos.push(["U", "Unisex"]);
+    _at = { base, talla: "", letra: tipos.length ? tipos[0][0] : "", tipos };
+    const ref = filas[0];
+    document.getElementById("at-titulo").textContent = `➕ Agregar talla · ${base}`;
+    document.getElementById("at-nombre").textContent = ref.nombre_base || ref.nombre || base;
+    document.getElementById("at-cantidad").value = 1;
+    document.getElementById("at-talla-otra").value = "";
+    _atPintar();
+    abrirModal("modal-agregar-talla");
+}
+function _atCodigo() { return _at.talla ? `${_at.base}${_at.letra}T${_at.talla}` : ""; }
+function _atPintar() {
+    const filas = _atFilas(_at.base).filter(f => f.estado !== "inactivo");
+    const tiene = t => filas.find(f => String(f.talla) === String(t) && _atLetraDe(f.codigo) === _at.letra);
+    const btnSt = on => `padding:8px 0;min-width:44px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;border:1px solid ${on ? "var(--dorado)" : "var(--borde)"};background:${on ? "var(--dorado)" : "var(--gris2)"};color:${on ? "#111" : "var(--blanco)"};`;
+    document.getElementById("at-tipo-wrap").style.display = _at.tipos.length ? "block" : "none";
+    document.getElementById("at-tipos").innerHTML = _at.tipos.map(([v, t]) =>
+        `<button type="button" onclick="atElegirTipo('${v}')" style="${btnSt(_at.letra === v)}flex:1;">${t}</button>`).join("");
+    const tallas = []; for (let t = 4; t <= 15; t++) tallas.push(String(t));
+    document.getElementById("at-tallas").innerHTML = tallas.map(t => { const f = tiene(t);
+        return `<button type="button" onclick="atElegirTalla('${t}')" style="${btnSt(_at.talla === t)}position:relative;" title="${f ? `Ya existe (${sanitizar(f.codigo)}): se suman unidades` : "Talla nueva"}">${t}${f ? `<span style="position:absolute;top:-6px;right:-6px;background:#34D399;color:#111;border-radius:8px;font-size:9px;padding:0 4px;">${parseInt(f.stock_bodega) || 0}</span>` : ""}</button>`; }).join("");
+    const prev = document.getElementById("at-preview"), cod = _atCodigo(), f = _at.talla ? tiene(_at.talla) : null;
+    const lado = _at.letra === "D" ? " (dama)" : _at.letra === "C" ? " (caballero)" : _at.letra === "U" ? " (unisex)" : "";
+    prev.innerHTML = !cod ? '<span style="color:var(--plateado);">Elige una talla</span>'
+        : f ? `Ya existe <b style="color:#FF9500;">${sanitizar(cod)}</b>${lado}: tiene ${parseInt(f.stock_bodega) || 0} en bodega → se suman`
+            : `Talla nueva → se crea <b style="color:#FF9500;">${sanitizar(cod)}</b>${lado}`;
+}
+function atElegirTipo(l) { _at.letra = l; _atPintar(); }
+function atElegirTalla(t) { _at.talla = String(t); document.getElementById("at-talla-otra").value = ""; _atPintar(); }
+function atTallaOtra(v) { v = String(v || "").trim().replace(",", "."); _at.talla = /^\d{1,2}(\.5)?$/.test(v) ? String(parseFloat(v)) : ""; _atPintar(); }
+async function guardarAgregarTalla() {
+    const qty = parseInt(document.getElementById("at-cantidad").value) || 0;
+    if (!_at.talla) return toast("⚠️ Elige la talla");
+    if (qty < 1) return toast("⚠️ Pon cuántas unidades");
+    const btn = document.getElementById("at-guardar");
+    const codigo = _atCodigo();
+    const todas = _atFilas(_at.base);
+    const existe = todas.find(s => s.codigo === codigo);
+    if (existe && existe.estado === "inactivo") return toast(`⚠️ ${codigo} existe pero está inactivo — reactívalo en vez de crearlo de nuevo`, "#f97316", 7000);
+    btn.disabled = true; btn.textContent = "⏳ Guardando...";
+    let r;
+    try {
+        if (existe) {
+            r = await apiPost({ accion: "STOCK_ACTUALIZAR_CANTIDADES", items: [{ codigo, stock_bodega: (parseInt(existe.stock_bodega) || 0) + qty }] });
+        } else {
+            const activas = todas.filter(s => s.estado !== "inactivo");
+            const hermana = activas.find(s => _atLetraDe(s.codigo) === _at.letra) || activas[0];
+            const nb = hermana.nombre_base || hermana.nombre || "";
+            // mismo formato de nombre que sus hermanas (solo cambia la talla)
+            const nombre = /T\d+(\.\d+)?\s*$/i.test(hermana.nombre || "") ? hermana.nombre.replace(/T\d+(\.\d+)?\s*$/i, "T" + _at.talla) : `${nb} T${_at.talla}`;
+            const copiar = ["nombre_base", "categoria", "material", "precio", "precio_caballero", "foto", "img", "fotoMejorada", "fotoMejoraNivel", "descripcion", "descripcionTienda", "caracterEspecial", "set_config", "enCatalogo"];
+            // reactivarSiInactivo: si esa talla se había eliminado (queda inactiva y ocupa el código), el servidor la reactiva
+            const nuevo = { accion: "STOCK_REGISTRAR", codigo, codigoBase: _at.base, talla: _at.talla, nombre, cantidad: qty, reactivarSiInactivo: true };
+            for (const k of copiar) if (hermana[k] !== undefined && hermana[k] !== null && hermana[k] !== "") nuevo[k] = hermana[k];
+            r = await apiPost(nuevo);
+        }
+    } catch (e) { r = { ok: false, error: e.message }; }
+    btn.disabled = false; btn.textContent = "💾 Guardar";
+    if (!r || !r.ok) return toast(`❌ ${codigo} NO se guardó: ${(r && r.error) || "sin respuesta del servidor"}`, "#ef4444", 8000);
+    const reactivada = (r.reactivados || []).includes(codigo);
+    toast(existe ? `✅ +${qty} en ${codigo}` : reactivada ? `♻️ ${codigo} estaba eliminada: se reactivó con ${qty} unidad${qty > 1 ? "es" : ""}` : `✅ Talla nueva ${codigo} creada con ${qty} unidad${qty > 1 ? "es" : ""}`, "#22c55e", 6000);
+    cerrarModal("modal-agregar-talla");
+    await cargarStock();
+    if (typeof refrescarProductosEtiquetas === "function") await refrescarProductosEtiquetas();
+    if (typeof ofrecerEtiquetaRapida === "function") ofrecerEtiquetaRapida([{ codigo, qty }]);
 }

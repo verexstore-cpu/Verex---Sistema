@@ -1754,7 +1754,7 @@ async function cargarFotosPendientes() {
         }
         grid.innerHTML = data.fotos.map(f => `
             <div style="position:relative;" title="Usar esta foto">
-                <img src="${f.url}" onclick="usarFotoCelular('${f.id}','${f.url}')"
+                <img src="${sanitizar(f.url)}" onclick="usarFotoCelular(${jsArg(f.id)},${jsArg(f.url)})"
                      style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:2px solid transparent;transition:border-color .2s;cursor:pointer;"
                      onmouseover="this.style.borderColor='var(--dorado)'" onmouseout="this.style.borderColor='transparent'">
                 <div style="position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,.6);border-radius:4px;padding:2px 5px;font-size:9px;color:#fff;">
