@@ -39,6 +39,7 @@ export async function onRequest(context) {
                 id: h.id,
                 url: "https://admin-tienda.pages.dev/c/" + h.id,
                 tipo: h.tipo || (h.afiliadoCodigo ? "afiliado" : "cliente"),
+                creadoPor: h.creadoPor || h.data?.creadoPor || "",
                 nombre: h.nombre || "",
                 afiliadoCodigo: h.afiliadoCodigo || "",
                 createdAt: h.createdAt || null,
