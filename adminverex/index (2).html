@@ -371,6 +371,7 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
             <a href="https://verex-nexus.pages.dev" target="_blank" class="btn-header" title="Abre VEREX Nexus (vendedores, afiliados, stock físico, venta directa)">📦 Nexus</a>
             <a href="logistica-usa.html" target="_blank" class="btn-header" style="border-color:#16a34a;color:#16a34a;" title="Pedidos, pagos y tracking DHL del catálogo de Estados Unidos">🇺🇸 Logística USA</a>
             <button class="btn-header" onclick="abrirEditorUS()" style="border-color:#c9a84c;color:#c9a84c;" title="Editar us.verexstore.com: fotos, textos y secciones, con vista previa">✏️ Página USA</button>
+            <button class="btn-header" onclick="abrirLyraWA()" style="border-color:#25D366;color:#25D366;" title="Lyra en WhatsApp: encender/apagar, modo de atención, Promo de Lyra y piezas por anuncio">🤖 Lyra WhatsApp</button>
             <button class="btn-header" onclick="abrirSugerirPublicar()" style="border-color:#c9a84c;color:#c9a84c;" title="Elegir cuántas piezas publicar hoy en verexstore.com y recibir una selección variada">✨ Sugerir qué publicar</button>
             <a href="chats.html" target="_blank" class="btn-header" style="border-color:#c9a84c;color:#c9a84c;" title="VEREX Chats: chat en vivo con clientes de us.verexstore.com (Lyra traduce inglés ↔ español)">💬 Chats</a>
             <button class="btn-header" onclick="abrirModalGarantia()" style="border-color:#0ea5e9;color:#0ea5e9;" title="Ver/copiar el link o QR de la página pública de Garantía Limitada, y editar su contenido">🛡️ Link/QR Garantía</button>
@@ -468,6 +469,14 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
                     <div style="font-size:11px;color:#888;margin-top:3px;">Fotos de la portada (hasta 10), textos, orden de las secciones, categorías, preguntas y políticas, con vista previa en vivo.</div>
                 </div>
                 <button onclick="abrirEditorUS()" style="padding:8px 14px;background:#C9A84C;color:#111;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px;white-space:nowrap;">✏️ Editar página USA</button>
+            </div>
+            <!-- Lyra en WhatsApp — encendido, modo, Promo de Lyra y anuncio → piezas (lyra-admin.js) -->
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid #333;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+                <div>
+                    <div style="font-size:13px;font-weight:600;">🤖 Lyra en WhatsApp — El Salvador</div>
+                    <div style="font-size:11px;color:#888;margin-top:3px;">Encender/apagar, a quién atiende, la Promo de Lyra para sus catálogos y qué piezas muestra a quien llega de cada anuncio.</div>
+                </div>
+                <button onclick="abrirLyraWA()" style="padding:8px 14px;background:#25D366;color:#111;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px;white-space:nowrap;">🤖 Configurar Lyra</button>
             </div>
             <!-- VEREX AI — lo que los clientes buscan y no encuentran (reporte del asistente de us.verexstore.com) -->
             <div style="margin-top:14px;padding-top:14px;border-top:1px solid #333;">
@@ -8745,5 +8754,6 @@ async function generarPDFCatalogo() {
 </div>
 
 <script src="editor-us.js"></script>
+<script src="lyra-admin.js"></script>
 </body>
 </html>
