@@ -5120,11 +5120,13 @@ async function enviar(){
         //   WA_SESION_SET  → guarda esa memoria
         //   WA_MSG_VISTO   → marca un mensaje como procesado (idempotencia: WhatsApp reintenta los webhooks)
         //   WA_ANUNCIO_VISTO → anota el anuncio de Meta del que llegó un cliente (Admin → Lyra lo lista para asignarle piezas)
+        //   WA_CHAT_REGISTRAR → guarda la conversación en VEREX Chats (livechat-wa…): mensajes del cliente, de Lyra y del equipo
         case "WA_STOCK":
         case "WA_SESION_GET":
         case "WA_SESION_SET":
         case "WA_MSG_VISTO":
-        case "WA_ANUNCIO_VISTO": {
+        case "WA_ANUNCIO_VISTO":
+        case "WA_CHAT_REGISTRAR": {
           if (!env.INTERNAL_SECRET || !safeEq(request.headers.get("X-Verex-Internal") || "", env.INTERNAL_SECRET)) return forbidden();
           result = await waLyraAccion(sb, d);
           break;
@@ -5231,6 +5233,11 @@ async function liveChatAccion(sb, d) {
       const patch = { estado, actualizado: ahora };
       if (estado === "cerrado") { patch.cerrado = ahora; patch.cerradoPor = delCliente ? "cliente" : "asesor"; }
       await sb.update("config", `livechat-${chatId}`, patch);
+      // WhatsApp: cerrar el chat = devolvérselo a Lyra (se quita la pausa de su sesión)
+      if (estado === "cerrado" && chat.canal === "whatsapp" && chat.tel) {
+        const idSes = await waTelId(chat.tel);
+        if (await sb.get("config", idSes)) await sb.update("config", idSes, { humanoHasta: 0, necesitaHumano: null });
+      }
       return { ok: true, chat: liveChatPublico({ ...chat, ...patch }) };
     }
 
@@ -5266,7 +5273,8 @@ async function liveChatAccion(sb, d) {
       // El idioma del chat sigue al del cliente (si cambia de inglés a español, el asesor deja de traducir).
       if (autor === "cliente" && msg.idioma && msg.idioma !== chat.idioma) patch.idioma = msg.idioma;
       if (autor === "asesor") {
-        if (chat.estado === "esperando") { patch.estado = "activo"; patch.primeraRespuesta = ahora; }
+        // «lyra» = chat de WhatsApp que atendía Lyra: al responder una persona, pasa a activo
+        if (chat.estado === "esperando" || chat.estado === "lyra") { patch.estado = "activo"; if (!chat.primeraRespuesta) patch.primeraRespuesta = ahora; }
         if (msg.agente) patch.agente = msg.agente;
       }
       await sb.update("config", `livechat-${chatId}`, patch);
@@ -5744,6 +5752,53 @@ async function waLyraAccion(sb, d) {
       const top = Object.entries(anuncios).sort((a, b) => String(b[1].ultimo).localeCompare(String(a[1].ultimo))).slice(0, 50);
       await sb.set("config", "lyra-anuncios-vistos", { anuncios: Object.fromEntries(top) });
       return { ok: true };
+    }
+    case "WA_CHAT_REGISTRAR": {
+      // Un chat por número: livechat-wa<hash>. Estados: «lyra» (la atiende Lyra), «esperando» (pidió a una
+      // persona), «activo» (respondió el equipo), «cerrado» (el equipo se lo devolvió a Lyra).
+      const tel = String(d.tel || "").replace(/\D/g, "").slice(0, 20);
+      if (tel.length < 8) return { ok: false, error: "tel requerido" };
+      const chatId = "wa" + (await hashStr("wa|" + tel)).slice(0, 30);
+      const id = `livechat-${chatId}`;
+      const ahora = Date.now();
+      const iso = (i = 0) => new Date(ahora + i).toISOString();
+      const pedido = ["lyra", "esperando"].includes(d.estado) ? d.estado : "";
+      const msgs = (Array.isArray(d.msgs) ? d.msgs : []).slice(0, 10).map(m => ({
+        msgId: String(m?.msgId || ""), autor: ["cliente", "lyra", "asesor"].includes(m?.autor) ? m.autor : "",
+        original: liveTxt(m?.original, 2000), agente: liveTxt(m?.agente, 40),
+      })).filter(m => /^[a-z0-9]{8,40}$/.test(m.msgId) && m.autor && m.original);
+      let chat = await sb.get("config", id);
+      if (!chat) {
+        chat = { chatId, canal: "whatsapp", tel, estado: pedido || "lyra", idioma: "es", tokenHash: "",
+          nombre: liveTxt(d.nombre, 60), email: "", resumen: {}, pagina: "", creado: iso(), actualizado: iso(), ultimo: null, agente: "", mensajes: 0 };
+        await sb.insertIfAbsent("config", id, chat);
+        chat = (await sb.get("config", id)) || chat;
+      }
+      const patch = { actualizado: iso(msgs.length) };
+      if (d.nombre && !chat.nombre) patch.nombre = liveTxt(d.nombre, 60);
+      const delCliente = msgs.some(m => m.autor === "cliente");
+      if (chat.estado === "cerrado" && (delCliente || pedido)) {
+        // el cliente volvió a escribir: se reabre (como lo atienda Lyra o esperando al equipo)
+        Object.assign(patch, { estado: pedido || "lyra", cerrado: "", cerradoPor: "", agente: "" });
+      } else if (pedido === "esperando" && chat.estado === "lyra") patch.estado = "esperando";
+      // el equipo escribió desde la app de WhatsApp (coexistencia): ya lo atiende una persona
+      if (msgs.some(m => m.autor === "asesor") && ["lyra", "esperando", "cerrado"].includes(patch.estado || chat.estado)) {
+        Object.assign(patch, { estado: "activo", cerrado: "", cerradoPor: "" });
+        if (!chat.primeraRespuesta) patch.primeraRespuesta = iso();
+      }
+      if (d.motivo) patch.resumen = { ...(chat.resumen || {}), pregunta: liveTxt(d.motivo, 250) };
+      if (d.anuncio) patch.resumen = { ...(patch.resumen || chat.resumen || {}), busca: liveTxt(d.anuncio, 250) };
+      let n = chat.mensajes || 0, ultimo = chat.ultimo;
+      for (const [i, m] of msgs.entries()) {
+        const msg = { chatId, msgId: m.msgId, autor: m.autor, original: m.original, ts: iso(i), idioma: "es", traduccion: "", dir: "", errorTraduccion: "", agente: m.autor === "asesor" ? m.agente : "" };
+        if (await sb.insertIfAbsent("config", `livemsg-${chatId}-${m.msgId}`, msg)) {
+          n++; ultimo = { autor: m.autor, texto: m.original.slice(0, 140), ts: msg.ts };
+          if (m.autor === "cliente") patch.ultimoCliente = msg.ts;
+        }
+      }
+      patch.mensajes = n; patch.ultimo = ultimo;
+      await sb.update("config", id, patch);
+      return { ok: true, chatId, estado: patch.estado || chat.estado };
     }
     case "WA_MSG_VISTO": {
       const id = String(d.msgId || "").replace(/[^A-Za-z0-9._=:-]/g, "").slice(0, 120);

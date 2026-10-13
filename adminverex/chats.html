@@ -81,6 +81,8 @@ input,textarea{font:inherit}
 .chip-esperando{background:#fdf0dc;color:#9a5c06}
 .chip-activo{background:#e3f4ea;color:#1f6f40}
 .chip-cerrado{background:#eeeeee;color:#777}
+.chip-lyra{background:#efe7fb;color:#5b2d9c}
+.canal-wa{color:#1fa855;font-size:12px}
 .vacio{padding:40px 24px;text-align:center;color:var(--gris);font-size:13.5px;line-height:1.5;white-space:pre-line}
 
 .chat{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--fondo)}
@@ -102,6 +104,9 @@ input,textarea{font:inherit}
 .b{border-radius:14px;padding:10px 13px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
 .m-cli .b{background:#fff;border:1px solid var(--linea);border-top-left-radius:4px}
 .m-ase .b{background:var(--negro);color:#fff;border-top-right-radius:4px}
+.m-lyra{align-self:flex-end;align-items:flex-end}
+.m-lyra .b{background:#f3edfc;border:1px solid #ddd0f3;color:#2d1b4e;border-top-right-radius:4px;font-size:13.5px}
+.wa-nota{background:#fff7e6;border:1px solid #f3d9a4;color:#7a4b00;border-radius:10px;padding:9px 11px;font-size:12.5px;margin-bottom:8px;line-height:1.45}
 .tr-orig{font-size:12px;color:var(--gris);display:block;margin-bottom:6px}
 .tr-orig::before{content:"🇺🇸 Original: "}
 .tr-es{font-weight:600;display:block}
@@ -164,6 +169,7 @@ input,textarea{font:inherit}
     <aside class="lista" aria-label="Chats">
       <div class="tabs" role="tablist">
         <button class="tab" role="tab" aria-selected="true" data-tab="abiertos">Abiertos</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="lyra" title="Chats de WhatsApp que está atendiendo Lyra">🤖 Lyra</button>
         <button class="tab" role="tab" aria-selected="false" data-tab="cerrados">Cerrados</button>
       </div>
       <div class="items" id="items"></div>
@@ -180,6 +186,7 @@ input,textarea{font:inherit}
         <details class="resumen" id="resumen" open><summary>💬 Lo que habló con Lyra</summary><dl id="resumen-dl"></dl></details>
         <div class="msgs" id="msgs"></div>
         <div class="composer" id="composer">
+          <div class="wa-nota" id="wa-nota" hidden></div>
           <div class="preview" id="preview" hidden><b>Así lo leerá el cliente 🇺🇸</b><span id="preview-txt"></span></div>
           <form class="fila" id="form">
             <textarea id="txt" rows="1" maxlength="2000" placeholder="Escribe en español…" aria-label="Respuesta"></textarea>
@@ -233,7 +240,12 @@ input,textarea{font:inherit}
   }
   const hora = iso => iso ? new Date(iso).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" }) : "";
   const FLAG = { en: "🇺🇸", es: "🇲🇽" };
-  const ESTADO = { esperando: "Esperando", activo: "Activo", cerrado: "Cerrado" };
+  const ESTADO = { esperando: "Esperando", activo: "Activo", cerrado: "Cerrado", lyra: "🤖 Lyra" };
+  // WhatsApp (Lyra): solo se le puede escribir al cliente hasta 24 h después de SU último mensaje
+  const esWA = c => c && c.channel === "whatsapp";
+  const telBonito = t => { const d = String(t || "").replace(/\D/g, ""); return d.length === 11 && d.startsWith("503") ? `+503 ${d.slice(3, 7)}-${d.slice(7)}` : d ? `+${d}` : ""; };
+  const enVentana = c => !esWA(c) || (c.lastCustomer && Date.now() - new Date(c.lastCustomer).getTime() < 24 * 3600e3);
+  const nombreChat = c => c.name || c.email || telBonito(c.phone) || "Cliente";
 
   class ApiErr extends Error { constructor(code, status) { super(code); this.code = code; this.status = status; } }
   async function api(path, body = {}) {
@@ -323,22 +335,24 @@ input,textarea{font:inherit}
   const unread = c => c.last && c.last.autor === "cliente" && (!S.seen[c.id] || S.seen[c.id] < c.last.ts);
   function renderList() {
     const box = $("items");
-    const list = S.chats.filter(c => S.tab === "abiertos" ? c.status !== "cerrado" : c.status === "cerrado");
+    const list = S.chats.filter(c => S.tab === "abiertos" ? (c.status === "esperando" || c.status === "activo") : c.status === (S.tab === "lyra" ? "lyra" : "cerrado"));
     const waiting = S.chats.filter(c => c.status === "esperando").length;
     $("espera-pill").hidden = !waiting; $("espera-pill").textContent = waiting;
     const unreadCount = S.chats.filter(c => c.status !== "cerrado" && unread(c)).length;
     document.title = unreadCount ? `(${unreadCount}) VEREX Chats` : "VEREX Chats";
     box.replaceChildren();
     if (!list.length) {
-      box.append(el("div", "vacio", S.tab === "abiertos" ? "No hay chats abiertos.\nCuando un cliente pida hablar con el equipo aparecerá aquí." : "No hay chats cerrados en los últimos 7 días."));
+      box.append(el("div", "vacio", S.tab === "abiertos" ? "No hay chats abiertos.\nCuando un cliente pida hablar con el equipo aparecerá aquí."
+        : S.tab === "lyra" ? "Lyra no está atendiendo ningún chat de WhatsApp ahora.\nSi un cliente pide una persona, pasa a «Abiertos»." : "No hay chats cerrados en los últimos 7 días."));
       return;
     }
     for (const c of list) {
       const b = el("button", "item"); b.type = "button";
       if (c.id === S.current) b.setAttribute("aria-current", "true");
       const l1 = el("div", "item-l1");
-      l1.append(el("span", null, FLAG[c.lang] || "💬"), el("span", "item-name", c.name || c.email || "Cliente"), el("span", `chip chip-${c.status}`, ESTADO[c.status] || c.status), el("span", "item-time", hace(c.updated)));
-      const prev = c.last ? `${c.last.autor === "asesor" ? "Tú: " : ""}${c.last.texto}` : (c.summary?.pregunta || c.summary?.busca || "Quiere hablar con el equipo");
+      l1.append(el("span", esWA(c) ? "canal-wa" : null, esWA(c) ? "🟢" : (FLAG[c.lang] || "💬")), el("span", "item-name", nombreChat(c)), el("span", `chip chip-${c.status}`, ESTADO[c.status] || c.status), el("span", "item-time", hace(c.updated)));
+      const quien = c.last ? ({ asesor: "Tú: ", lyra: "Lyra: " }[c.last.autor] || "") : "";
+      const prev = c.last ? `${quien}${c.last.texto}` : (c.summary?.pregunta || c.summary?.busca || "Quiere hablar con el equipo");
       b.append(l1, el("div", "item-prev", prev));
       if (c.status !== "cerrado" && unread(c)) b.append(el("span", "dot"));
       b.addEventListener("click", () => openChat(c.id));
@@ -389,28 +403,49 @@ input,textarea{font:inherit}
   }
   function renderChat(scroll) {
     const c = S.chat; if (!c) return;
-    $("who").textContent = c.name || c.email || "Cliente";
-    $("who-sub").textContent = [c.lang === "en" ? "🇺🇸 Escribe en inglés · Lyra traduce" : "🇲🇽 Escribe en español", c.email, `desde ${hora(c.created)}`].filter(Boolean).join(" · ");
+    $("who").textContent = nombreChat(c);
+    $("who-sub").textContent = esWA(c)
+      ? ["🟢 WhatsApp", telBonito(c.phone), `desde ${hora(c.created)}`].filter(Boolean).join(" · ")
+      : [c.lang === "en" ? "🇺🇸 Escribe en inglés · Lyra traduce" : "🇲🇽 Escribe en español", c.email, `desde ${hora(c.created)}`].filter(Boolean).join(" · ");
     $("chat-chip").className = `chip chip-${c.status}`; $("chat-chip").textContent = ESTADO[c.status] || c.status;
     // resumen de Lyra
     const dl = $("resumen-dl"); dl.replaceChildren();
-    for (const [k, label] of [["busca", "Busca"], ["vio", "Vio"], ["pregunta", "Preguntó"]]) if (c.summary?.[k]) dl.append(el("dt", null, label), el("dd", null, c.summary[k]));
-    if (c.page) { const a = el("a", null, c.page.replace(/^https?:\/\//, "")); a.href = c.page; a.target = "_blank"; a.rel = "noopener"; const dd = el("dd"); dd.append(a); dl.append(el("dt", null, "Página"), dd); }
+    const etiquetas = esWA(c) ? [["busca", "Anuncio"], ["pregunta", "Motivo"]] : [["busca", "Busca"], ["vio", "Vio"], ["pregunta", "Preguntó"]];
+    for (const [k, label] of etiquetas) if (c.summary?.[k]) dl.append(el("dt", null, label), el("dd", null, c.summary[k]));
+    // El link de la página lo manda el visitante: solo https (nunca javascript: ni otros esquemas).
+    if (c.page && /^https:\/\//i.test(c.page)) { const a = el("a", null, c.page.replace(/^https?:\/\//, "")); a.href = c.page; a.target = "_blank"; a.rel = "noopener"; const dd = el("dd"); dd.append(a); dl.append(el("dt", null, "Página"), dd); }
     $("resumen").hidden = !dl.children.length;
     // traducir: solo tiene sentido si el cliente escribe en inglés
     $("traducir-wrap").hidden = c.lang !== "en"; $("ver-previa").hidden = c.lang !== "en";
     const cerrado = c.status === "cerrado";
     $("composer").hidden = cerrado; $("cerrado-nota").hidden = !cerrado; $("cerrar-chat").hidden = cerrado;
-    if (cerrado) $("cerrado-nota").textContent = `Chat cerrado${c.closedBy === "cliente" ? " por el cliente" : ""}.`;
+    if (cerrado) $("cerrado-nota").textContent = esWA(c) ? "Chat devuelto a Lyra: ella vuelve a contestarle a este cliente." : `Chat cerrado${c.closedBy === "cliente" ? " por el cliente" : ""}.`;
+    // WhatsApp: botón «Devolver a Lyra», aviso de pausa y de la ventana de 24 h
+    $("cerrar-chat").textContent = esWA(c) ? "🤖 Devolver a Lyra" : "Cerrar chat";
+    const nota = $("wa-nota"), abierta = enVentana(c);
+    nota.hidden = !esWA(c) || cerrado;
+    if (esWA(c)) {
+      nota.textContent = !abierta
+        ? "⏰ Pasaron más de 24 h desde el último mensaje del cliente: WhatsApp no deja escribirle desde aquí. Escríbele desde la app de WhatsApp Business."
+        : c.status === "lyra" ? "🤖 Lo está atendiendo Lyra. Si respondes, Lyra se pausa en este chat y le contestas tú (le llega por WhatsApp)."
+        : "🟢 Tu respuesta le llega al cliente por WhatsApp.";
+    }
+    $("form").hidden = esWA(c) && !abierta;
+    $("txt").placeholder = esWA(c) ? "Escribe tu respuesta (le llega por WhatsApp)…" : "Escribe en español…";
     // mensajes
     const box = $("msgs");
     const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-    box.replaceChildren(el("div", "sistema", `${FLAG[c.lang] || ""} Chat iniciado ${hora(c.created)}${c.lang === "en" ? " · el cliente escribe en inglés" : ""}`));
+    box.replaceChildren(el("div", "sistema", esWA(c) ? `🟢 Conversación de WhatsApp · desde ${hora(c.created)}` : `${FLAG[c.lang] || ""} Chat iniciado ${hora(c.created)}${c.lang === "en" ? " · el cliente escribe en inglés" : ""}`));
     for (const m of S.msgs) box.append(renderMsg(m));
-    if (cerrado) box.append(el("div", "sistema", `Chat cerrado ${hora(c.closed)}`));
+    if (cerrado) box.append(el("div", "sistema", esWA(c) ? `Devuelto a Lyra ${hora(c.closed)}` : `Chat cerrado ${hora(c.closed)}`));
     if (scroll || atBottom) box.scrollTop = box.scrollHeight;
   }
   function renderMsg(m) {
+    if (m.from === "lyra") {
+      const w = el("div", "m m-lyra");
+      w.append(el("div", "b", m.original), el("span", "meta", `🤖 Lyra · ${hora(m.ts)}`));
+      return w;
+    }
     if (m.from === "cliente") {
       const w = el("div", "m m-cli"), b = el("div", "b");
       if (m.dir === "en>es" && m.translation) {
@@ -443,12 +478,18 @@ input,textarea{font:inherit}
       const r = await api("reply", { chatId: S.current, msgId, text, agentName: S.name, translate: $("traducir").checked });
       txt.value = ""; txt.style.height = ""; $("preview").hidden = true;
       if (!S.msgs.some(x => x.id === r.msg.id)) S.msgs.push(r.msg);
-      if (S.chat && S.chat.status === "esperando") S.chat.status = "activo";   // la primera respuesta lo activa
+      if (S.chat && (S.chat.status === "esperando" || S.chat.status === "lyra")) S.chat.status = "activo";   // la primera respuesta lo activa (y pausa a Lyra)
       renderChat(true);
       if (r.msg.translationError) toast("No se pudo traducir: se envió en español.", 4000);
       loadList();
     } catch (err) {
-      toast(err.code === "closed" ? "El chat ya está cerrado." : "No se envió. Revisa la conexión e intenta de nuevo.", 4000);
+      const ERR_ENVIO = {
+        closed: "El chat ya está cerrado.",
+        window_closed: "Pasaron más de 24 h desde el último mensaje del cliente: escríbele desde la app de WhatsApp Business.",
+        send_failed: "WhatsApp no aceptó el mensaje. Intenta de nuevo o escríbele desde la app de WhatsApp Business.",
+        whatsapp_not_configured: "WhatsApp todavía no está conectado.", wa_service_unreachable: "No se pudo conectar con el servicio de WhatsApp. Intenta de nuevo.",
+      };
+      toast(ERR_ENVIO[err.code] || "No se envió. Revisa la conexión e intenta de nuevo.", 5000);
     } finally { $("enviar").disabled = false; txt.focus(); }
   });
   $("ver-previa").addEventListener("click", async () => {
@@ -460,8 +501,9 @@ input,textarea{font:inherit}
     txt.focus();      // listo para enviar con Enter
   });
   $("cerrar-chat").addEventListener("click", async () => {
-    if (!S.current || !confirm("¿Cerrar este chat? El cliente verá que terminó la conversación.")) return;
-    try { await api("close", { chatId: S.current }); toast("Chat cerrado."); await loadChat(); loadList(); } catch (_) { toast("No se pudo cerrar."); }
+    const wa = esWA(S.chat);
+    if (!S.current || !confirm(wa ? "¿Devolver este chat a Lyra? Ella vuelve a contestarle a este cliente por WhatsApp." : "¿Cerrar este chat? El cliente verá que terminó la conversación.")) return;
+    try { await api("close", { chatId: S.current }); toast(wa ? "Chat devuelto a Lyra." : "Chat cerrado."); await loadChat(); loadList(); } catch (_) { toast("No se pudo cerrar."); }
   });
 
   // Sonido corto cuando llega algo nuevo con la app a la vista
