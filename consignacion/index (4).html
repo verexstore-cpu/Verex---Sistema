@@ -1154,6 +1154,11 @@
                 </div>
             </div>
             <input type="text" id="ep-caract" placeholder="Características especiales (ej: hipoalergénico, ajustable…)">
+            <!-- Lyra en WhatsApp: esta pieza no se ofrece por WhatsApp (worker: noOfrecerWhatsApp / waOfrecible) -->
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin:10px 0 4px;cursor:pointer;color:var(--blanco);">
+                <input type="checkbox" id="ep-no-wa" style="width:16px;height:16px;accent-color:#ef4444;">
+                🚫 No ofrecer por WhatsApp <span style="font-size:10px;color:var(--plateado);font-weight:400;">(Lyra no la muestra ni la pone en sus catálogos · aplica a todas las tallas)</span>
+            </label>
             <!-- Ocasiones: etiquetas internas para armar Catálogos de Cliente en el admin (el cliente no las ve) -->
             <label style="font-size:11px;color:var(--plateado);display:block;margin:8px 0 4px;font-weight:600;">Ocasiones <span style="font-weight:400;">(para Catálogo Cliente · aplica a todas las tallas)</span></label>
             <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;" id="ep-ocasiones"></div>

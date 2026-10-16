@@ -344,6 +344,8 @@ function activarEdicionProducto() {
     document.getElementById("ep-precio").value = p.precio || p.precioNum || "";
     document.getElementById("ep-existencia").value = 0;
     document.getElementById("ep-caract").value = p.caracterEspecial || "";
+    const chkNoWA = document.getElementById("ep-no-wa");
+    if (chkNoWA) chkNoWA.checked = p.noOfrecerWhatsApp === true;
     iniciarOcasionesEP(p.codigo);
     // Marcar material actual
     document.querySelectorAll(".ep-mat-btn").forEach(b => {
@@ -593,12 +595,16 @@ async function guardarEdicionProducto() {
     const material  = matSelBtn ? matSelBtn.dataset.mat : (productoEditando.p.material || "");
     const caracterEspecial = (document.getElementById("ep-caract")?.value || "").trim();
     const codigoViejo = productoEditando.p.codigo;
+    const noOfrecerWhatsApp = !!document.getElementById("ep-no-wa")?.checked;
     // nombre_base es el nombre "limpio" sin el sufijo de talla (ej. "Pulsera
     // Étoile Blanc T7" -> "Pulsera Étoile Blanc") — es lo que muestran Stock
     // y el catálogo, así que hay que mantenerlo sincronizado con el nombre.
     const nombreBaseEP = nombre.replace(/\s+T?\d+(\.\d+)?\s*$/i, "").trim() || nombre;
     // Update en servidor
-    await apiPost({ accion: "EDITAR_PRODUCTO", codigo: codigoViejo, nuevo_codigo: codigo !== codigoViejo ? codigo : undefined, nombre, nombre_base: nombreBaseEP, descripcion: desc, precio, img, material, caracterEspecial, set_config: setConfigEP || undefined, precio_caballero: precioCaballeroEP, ...limpiaMejora });
+    await apiPost({ accion: "EDITAR_PRODUCTO", codigo: codigoViejo, nuevo_codigo: codigo !== codigoViejo ? codigo : undefined, nombre, nombre_base: nombreBaseEP, descripcion: desc, precio, img, material, caracterEspecial, set_config: setConfigEP || undefined, precio_caballero: precioCaballeroEP, noOfrecerWhatsApp, ...limpiaMejora });
+    productoEditando.p.noOfrecerWhatsApp = noOfrecerWhatsApp;
+    const itemEditado = stockData.find(s => s.codigo === codigoViejo);
+    if (itemEditado) itemEditado.noOfrecerWhatsApp = noOfrecerWhatsApp;
     // Propagar nombre_base, foto, material, descripción y caracterEspecial al
     // resto de tallas del mismo diseño — así editar cualquier talla actualiza
     // todo el grupo sin tener que hacerlo una por una.
@@ -609,12 +615,12 @@ async function guardarEdicionProducto() {
     for (const h of hermanos) {
         const tallaH = getTallaFromCodigo(h.codigo);
         const nombreH = tallaH ? `${nombreBaseEP} T${tallaH}` : nombreBaseEP;
-        await apiPost({ accion: "EDITAR_PRODUCTO", codigo: h.codigo, nombre: nombreH, nombre_base: nombreBaseEP, descripcion: desc, img, material, caracterEspecial, ...limpiaMejora });
+        await apiPost({ accion: "EDITAR_PRODUCTO", codigo: h.codigo, nombre: nombreH, nombre_base: nombreBaseEP, descripcion: desc, img, material, caracterEspecial, noOfrecerWhatsApp, ...limpiaMejora });
         // h es la misma referencia que el objeto dentro de stockData — reflejar
         // el cambio ahí también para que sus tarjetas se vean actualizadas sin
         // esperar a un cargarStock().
         h.nombre = nombreH; h.nombre_base = nombreBaseEP; h.descripcion = desc;
-        h.img = img; h.foto = img; h.material = material; h.caracterEspecial = caracterEspecial;
+        h.img = img; h.foto = img; h.material = material; h.caracterEspecial = caracterEspecial; h.noOfrecerWhatsApp = noOfrecerWhatsApp;
         if (cambioFoto) { h.fotoMejorada = ""; h.fotoMejoraNivel = ""; }
     }
     const ocasionesOk = await guardarOcasionesEP(codigo);
@@ -1079,6 +1085,7 @@ async function cargarStock() {
     try {
         const res = await apiPost({ accion: "STOCK_GET_ALL" });
         stockData = res.stock || [];
+        guardarCodigosInactivos(res);
         poblarFiltroMaterial();
         poblarFiltroCategoria();
         renderStock(stockData);
@@ -1413,6 +1420,7 @@ function renderStock(items) {
                     ${notaCodigoCorregido(g)}${notaCodigoSinLetra(g)}
                     ${g.material ? `<div style="display:inline-block;font-size:9px;font-weight:700;margin-bottom:3px;background:${colorMaterial(g.material).bg};border:1px solid ${colorMaterial(g.material).border};color:${colorMaterial(g.material).color};border-radius:4px;padding:1px 6px;">${sanitizar(g.material)}</div>` : ''}
                     ${g.caracterEspecial ? `<div style="display:inline-block;font-size:9px;font-weight:700;margin-bottom:3px;margin-left:3px;background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.4);color:#c9a8ff;border-radius:4px;padding:1px 6px;" title="Característica especial">✨ ${sanitizar(g.caracterEspecial)}</div>` : ''}
+                    ${g.items.some(it => it.noOfrecerWhatsApp === true) ? `<div style="display:inline-block;font-size:9px;font-weight:700;margin-bottom:3px;margin-left:3px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.45);color:#fca5a5;border-radius:4px;padding:1px 6px;" title="Lyra no la ofrece por WhatsApp (✏️ Editar producto)">🚫 WhatsApp</div>` : ''}
                     ${agotadoGrupo
                         ? '<div style="text-align:center;font-size:11px;font-weight:700;color:#fff;background:#C0392B;border-radius:6px;padding:3px 4px;margin-top:4px;letter-spacing:1px;">AGOTADO</div>'
                         : `<div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px;font-size:9px;color:#666;margin-top:2px;"><span>🏠 Bodega:<b style="color:#fff"> ${totalBodega}</b></span><span>🛍️ Tienda:<b style="color:#34D399"> ${totalTienda}</b></span><span>👤 Consig.:<b style="color:var(--dorado)"> ${totalConsig}</b></span></div>`}
@@ -1535,6 +1543,7 @@ function renderStock(items) {
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;">
                         ${g.material ? `<span style="font-size:10px;font-weight:700;color:${colorMaterial(g.material).color};background:${colorMaterial(g.material).bg};border:1px solid ${colorMaterial(g.material).border};border-radius:4px;padding:1px 7px;">${sanitizar(g.material)}</span>` : ''}
                         ${g.caracterEspecial ? `<span style="font-size:10px;font-weight:700;color:#c9a8ff;background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.4);border-radius:4px;padding:1px 7px;" title="Característica especial">✨ ${sanitizar(g.caracterEspecial)}</span>` : ''}
+                        ${g.items.some(it => it.noOfrecerWhatsApp === true) ? `<span style="font-size:10px;font-weight:700;color:#fca5a5;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.45);border-radius:4px;padding:1px 7px;" title="Lyra no la ofrece por WhatsApp (✏️ Editar producto)">🚫 WhatsApp</span>` : ''}
                         ${agotadoGrupo ? '<span style="font-size:10px;font-weight:700;color:#fff;background:#C0392B;border-radius:6px;padding:2px 8px;letter-spacing:1px;">AGOTADO</span>' : ''}
                     </div>
                 </div>

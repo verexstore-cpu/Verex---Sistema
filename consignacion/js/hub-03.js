@@ -822,6 +822,9 @@ function aplicarTallaNombre(nombreBase, talla) {
     return `${nombreBase} T${talla}`;
 }
 
+// Códigos de productos ELIMINADOS (inactivos): siguen ocupados en el servidor, así que no se pueden volver a generar.
+let _codigosInactivosStock = [];
+function guardarCodigosInactivos(res) { if (res && Array.isArray(res.codigosInactivos)) _codigosInactivosStock = res.codigosInactivos; }
 function generarCodigo(categoria, material, usadosEnSesion = []) {
     const mat = String(material || _materialLote || "").toLowerCase();
     // Un solo carácter por material para códigos compactos (máx 10 chars total)
@@ -835,6 +838,7 @@ function generarCodigo(categoria, material, usadosEnSesion = []) {
     const prefijo = categoria + matChar;
     const todosLosCodigos = [
         ...(stockData || []).map(p => String(p.codigo || p.codigoBase || "")),
+        ..._codigosInactivosStock,
         ...usadosEnSesion
     ];
     let maxN = 0;
@@ -856,6 +860,7 @@ async function refrescarStockData() {
     try {
         const res = await apiPost({ accion: "STOCK_GET_ALL" });
         if (res && res.stock) stockData = res.stock;
+        guardarCodigosInactivos(res);
     } catch (e) { /* si falla, se sigue con lo que ya había en memoria */ }
 }
 
@@ -873,7 +878,9 @@ async function guardarConCodigoUnico(categoria, material, codigoBaseInicial, con
     const probados = [];
     for (let intento = 1; intento <= intentosMax; intento++) {
         const res = await apiPost(construirPayload(codigoBase));
-        if (res.ok || !/ya existe/i.test(res.error || "")) return { res, codigoBase };
+        // «ya existe» (lo tomó otro) o «existe pero está eliminado» / «ya no se usa» (código de un producto eliminado o
+        // reemplazado): en los tres casos se prueba con el siguiente número libre.
+        if (res.ok || !/ya existe|existe pero|ya no se usa/i.test(res.error || "")) return { res, codigoBase };
         probados.push(codigoBase);
         await refrescarStockData();
         codigoBase = generarCodigo(categoria, material, probados);

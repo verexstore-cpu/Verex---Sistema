@@ -1323,6 +1323,7 @@ async function abrirEntrega() {
     try {
         const res = await apiPost({ accion: "STOCK_GET_ALL" });
         stockData = res.stock || [];
+        guardarCodigosInactivos(res);
     } catch(e) { if (!stockData.length) stockData = []; }
 
     // Construir lista a mostrar usando stockData (puede tener múltiples entradas por código/talla)

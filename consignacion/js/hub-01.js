@@ -887,6 +887,7 @@ async function refrescarProductosEtiquetas() {
     } else {
         try {
             const res = await apiPost({ accion: "STOCK_GET_ALL" });
+            guardarCodigosInactivos(res);
             if (res.stock) {
                 stockData = res.stock;
                 productosDisponibles = res.stock.filter(p => p.estado !== "inactivo");
