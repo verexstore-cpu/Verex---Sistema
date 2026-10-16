@@ -1267,7 +1267,9 @@ async function enviar(){
           await sb.update("vendedores", d.vendedor, {
             totalVendido: 0,
             fechaCorte: new Date().toISOString(),
-            proximoCorte: null
+            // Corte hecho ANTES de la fecha programada: si el admin eligió mantenerla, esa fecha se conserva
+            // (si no, se borra y el ciclo vuelve a 30 días desde hoy).
+            proximoCorte: (typeof d.mantenerProximoCorte === "string" && RE_FECHA_CORTE.test(d.mantenerProximoCorte) && !isNaN(Date.parse(d.mantenerProximoCorte))) ? d.mantenerProximoCorte : null
           });
           result = { ok: true };
           break;
