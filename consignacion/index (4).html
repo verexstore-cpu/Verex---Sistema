@@ -28,8 +28,16 @@
     <div class="login-card">
         <h1>VEREX</h1>
         <p>VEREX Nexus</p>
-        <input type="password" id="inp-pass" placeholder="Contraseña" onkeydown="if(event.key==='Enter')login()">
-        <button class="btn btn-dorado btn-full" onclick="login()">Ingresar</button>
+        <div id="login-paso1">
+            <input type="password" id="inp-pass" placeholder="Contraseña" onkeydown="if(event.key==='Enter')login()">
+            <button class="btn btn-dorado btn-full" onclick="login()">Ingresar</button>
+        </div>
+        <div id="login-paso2" style="display:none;">
+            <p style="font-size:13px;margin-bottom:10px;">Escribe el código de 6 dígitos de tu app autenticadora (el mismo del Admin).</p>
+            <input type="text" id="inp-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" onkeydown="if(event.key==='Enter')verificarCodigoLogin()">
+            <button class="btn btn-dorado btn-full" onclick="verificarCodigoLogin()">Verificar</button>
+            <p style="font-size:12px;margin-top:10px;cursor:pointer;opacity:.7;" onclick="volverPaso1Login()">← Volver</p>
+        </div>
     </div>
 </div>
 

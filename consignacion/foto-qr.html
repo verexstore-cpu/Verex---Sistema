@@ -141,11 +141,13 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
     <div class="login-card">
         <div style="font-size:48px;margin-bottom:12px;">🔐</div>
         <h2>Acceso Admin</h2>
-        <p>Ingresa tu contraseña para continuar</p>
+        <p>Ingresa tu contraseña y el código de tu app autenticadora</p>
         <input class="inp" type="password" id="inp-pass" placeholder="Contraseña"
             onkeydown="if(event.key==='Enter')verificarLogin()">
+        <input class="inp" type="text" id="inp-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" style="margin-top:10px;"
+            placeholder="Código de 6 dígitos" onkeydown="if(event.key==='Enter')verificarLogin()">
         <button class="btn-gold" onclick="verificarLogin()" id="btn-login">Entrar</button>
-        <div class="error-txt" id="login-error">Contraseña incorrecta</div>
+        <div class="error-txt" id="login-error">Contraseña o código incorrecto</div>
     </div>
 </div>
 
@@ -255,17 +257,28 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
     // ── LOGIN ────────────────────────────────────────────────────
     async function verificarLogin() {
         const pass = document.getElementById('inp-pass').value.trim();
-        if (!pass) return;
+        const codigo = document.getElementById('inp-otp').value.trim();
+        if (!pass || !/^\d{6}$/.test(codigo)) return;
         const btn = document.getElementById('btn-login');
         btn.textContent = 'Verificando...'; btn.disabled = true;
         try {
+            // Contraseña + código → pase de sesión de 8 h (igual que el Admin y el Hub).
+            // La contraseña no se queda en la página.
+            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pass));
+            const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+            const ses = await fetch(API_URL, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ accion: 'TOTP_VERIFICAR', _pass: hash, codigo })
+            }).then(r => r.json());
+            if (!ses.ok || !ses.sesion) throw new Error('pass');
             const res  = await fetch(API_URL, {
                 method: 'POST', headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({ accion: 'STOCK_GET_ALL', _pass: pass })
+                body: JSON.stringify({ accion: 'STOCK_GET_ALL', _pass: ses.sesion })
             });
             const data = await res.json();
             if (!data.ok) throw new Error('pass');
-            adminPass  = pass;
+            adminPass  = ses.sesion;
+            document.getElementById('inp-pass').value = '';
             stockLocal = data.stock || [];
             document.getElementById('header-sesion').textContent =
                 stockLocal.length + ' productos cargados';
@@ -274,6 +287,7 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
             setTimeout(() => document.getElementById('inp-codigo').focus(), 400);
         } catch(e) {
             document.getElementById('login-error').style.display = 'block';
+            document.getElementById('inp-otp').value = '';
             btn.textContent = 'Entrar'; btn.disabled = false;
         }
     }

@@ -374,6 +374,9 @@ async function enviar(){
       // si mostrar "ingresa tu código" o la pantalla de configuración
       // inicial (QR + secreto).
       if (d.accion === "VERIFICAR_PASS") {
+        // Un pase de sesión no es contraseña: solo se responde si sigue vigente
+        // (sin contar intentos fallidos — un pase vencido viene de una pestaña vieja).
+        if (esPaseSesion(d._pass)) return json({ ok: await sesionValida(d._pass, env, sb), sesion: true });
         const bloq = await rlBlocked(sb, "login:" + ip);
         if (bloq) return tooMany(bloq);
         const ok = await verificarPassword(d._pass, env, sb, ip, "login");
@@ -396,6 +399,14 @@ async function enviar(){
       if (d.accion === "TOTP_INICIAR_SETUP") {
         const ok = await verificarPassword(d._pass, env, sb, ip, "login");
         if (!ok) return json({ ok: false, error: "No autorizado" }, 403);
+        // Si ya hay un código configurado, solo la contraseña no basta para
+        // reemplazarlo (si no, quien robe la contraseña pone SU celular y entra
+        // sin el tuyo): hay que tener además una sesión abierta. Celular perdido
+        // sin sesión abierta: borrar "totpSecret" de config/settings en Supabase.
+        const cfgSetup = await sb.get("config", "settings");
+        if (cfgSetup && cfgSetup.totpSecret && !(await sesionValida(d.sesion, env, sb))) {
+          return json({ ok: false, error: "ya_configurado" }, 403);
+        }
         const secret = base32Encode(crypto.getRandomValues(new Uint8Array(20)));
         await sb.update("config", "settings", { totpSecret: secret });
         const otpauthUrl = `otpauth://totp/${encodeURIComponent("VEREX Admin")}?secret=${secret}&issuer=${encodeURIComponent("VEREX")}&algorithm=SHA1&digits=6&period=30`;
@@ -419,7 +430,9 @@ async function enviar(){
           return json({ ok: false, error: "Código incorrecto" });
         }
         await rlReset(sb, "totp:" + ip);
-        return json({ ok: true });
+        // Contraseña + código correctos → pase de sesión de 8 h. Los paneles lo
+        // mandan en _pass en lugar de la contraseña (ver sesionValida).
+        return json({ ok: true, ...(await crearSesion(env, sb)) });
       }
 
       // ── SSO: el Hub ya autenticado genera un token corto de un solo uso
@@ -427,7 +440,8 @@ async function enviar(){
       // código TOTP — el login normal de Admin (password + TOTP) sigue
       // intacto si se entra directo a su URL sin pasar por el Hub. ──
       if (d.accion === "SSO_CREAR_TOKEN") {
-        const ok = await verificarPassword(d._pass, env, sb, ip, "login");
+        const expSesionSso = await vencimientoSesion(d._pass, env, sb);
+        const ok = expSesionSso > 0 || (enTransicionSesiones() && !esPaseSesion(d._pass) && await verificarPassword(d._pass, env, sb, ip, "login"));
         if (!ok) return json({ ok: false, error: "No autorizado" }, 403);
         const token = crypto.randomUUID();
         const cfgSso = (await sb.get("config", "settings")) || {};
@@ -437,7 +451,8 @@ async function enviar(){
         for (const t of Object.keys(cfgSso.ssoTokens)) {
           if (ahoraSso - cfgSso.ssoTokens[t].creado > 5 * 60 * 1000) delete cfgSso.ssoTokens[t];
         }
-        cfgSso.ssoTokens[token] = { creado: ahoraSso };
+        // exp: la sesión que se abre al otro lado vence cuando vence la del Hub, no se alarga.
+        cfgSso.ssoTokens[token] = { creado: ahoraSso, exp: expSesionSso || (ahoraSso + SESION_MS) };
         await sb.set("config", "settings", cfgSso);
         return json({ ok: true, token });
       }
@@ -455,12 +470,19 @@ async function enviar(){
         }
         delete cfgSso.ssoTokens[d.token];
         await sb.set("config", "settings", cfgSso);
-        const hash = cfgSso.passHash || await hashStr(env.SECRET_PASS || "");
-        return json({ ok: true, hash });
+        // Antes devolvía el hash de la contraseña (una llave permanente). Ahora un
+        // pase de sesión; va también en "hash" para las páginas que lo guardan ahí.
+        const sesSso = await crearSesion(env, sb, entry.exp);
+        if (!sesSso.sesion) return json({ ok: false, error: "Sesión vencida" });
+        return json({ ok: true, hash: sesSso.sesion, ...sesSso });
       }
 
-      // esAdmin: acepta SECRET_PASS (env var) O el hash guardado en Supabase
-      const esAdmin = (await verificarPassword(d._pass, env, sb, ip, "api")) ||
+      // esAdmin: pase de sesión vigente (login con contraseña + código). Durante la
+      // transición (ver SESION_TRANSICION_HASTA) se sigue aceptando también la
+      // contraseña directa (SECRET_PASS o el hash de Supabase), para no tumbar
+      // pestañas y dispositivos que todavía la tienen guardada.
+      const esAdmin = (await sesionValida(d._pass, env, sb)) ||
+                      (enTransicionSesiones() && !esPaseSesion(d._pass) && await verificarPassword(d._pass, env, sb, ip, "api")) ||
                       (await claveLegacyValida(d.key, env, sb, ip));
 
       let result;
@@ -4453,8 +4475,31 @@ async function enviar(){
         // ══ CONFIG / PASS ═════════════════════════════════════════
         case "ACTUALIZAR_PASS_HASH": {
           if (!esAdmin) return forbidden();
-          await sb.update("config", "settings", { passHash: d.nuevoHash });
+          // Cambiar la contraseña cierra todas las sesiones abiertas (incluida esta).
+          const cfgPH = (await sb.get("config", "settings")) || {};
+          const verPH = (parseInt(cfgPH.sesionVersion) || 0) + 1;
+          await sb.update("config", "settings", { passHash: d.nuevoHash, sesionVersion: verPH });
+          _verSesionCache = { v: verPH, t: Date.now() };
+          result = { ok: true, sesionesCerradas: true };
+          break;
+        }
+
+        // Cierra TODAS las sesiones abiertas (todos los dispositivos): sube la
+        // versión y los pases anteriores dejan de valer al instante.
+        case "CERRAR_SESIONES": {
+          if (!esAdmin) return forbidden();
+          const cfgCS = (await sb.get("config", "settings")) || {};
+          const verCS = (parseInt(cfgCS.sesionVersion) || 0) + 1;
+          await sb.update("config", "settings", { sesionVersion: verCS });
+          _verSesionCache = { v: verCS, t: Date.now() };
           result = { ok: true };
+          break;
+        }
+
+        // Lo usan las Functions de admin-tienda (_auth.js) para validar a quien
+        // llama: mismo criterio que esAdmin (pase vigente, o contraseña en transición).
+        case "VERIFICAR_SESION": {
+          result = { ok: esAdmin };
           break;
         }
 
@@ -5903,6 +5948,63 @@ async function waLyraAccion(sb, d) {
 }
 
 // ── AUTENTICACIÓN ────────────────────────────────────────────────
+// ── SESIONES DE ADMIN ───────────────────────────────────────────────
+// Pase "vxs1.<vence>.<versión>.<firma>": lo firma el Worker al entrar con
+// contraseña + código (TOTP_VERIFICAR) y vence a las 8 h. No se guarda en
+// ninguna parte: la firma HMAC basta para comprobarlo. "Cerrar todas las
+// sesiones" (o cambiar la contraseña) sube config.sesionVersion y todos los
+// pases anteriores dejan de valer.
+const SESION_MS = 8 * 60 * 60 * 1000;
+// Hasta esta fecha se sigue aceptando la contraseña directa en las acciones de
+// admin (pestañas/dispositivos con la sesión vieja). Después, solo pases.
+const SESION_TRANSICION_HASTA = Date.parse("2026-10-25T06:00:00Z");
+function enTransicionSesiones() { return Date.now() < SESION_TRANSICION_HASTA; }
+function esPaseSesion(v) { return typeof v === "string" && v.startsWith("vxs1."); }
+async function firmaSesion(env, datos) {
+  const base = String(env.SESSION_SECRET || env.SUPABASE_SERVICE_KEY || "");
+  if (!base) return "";
+  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode("verex-sesion|" + base), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(datos)));
+  return btoa(String.fromCharCode(...sig)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+// expMax: tope de vencimiento (SSO: la sesión nueva vence con la que la generó).
+async function crearSesion(env, sb, expMax) {
+  const cfg = (await sb.get("config", "settings")) || {};
+  const ver = parseInt(cfg.sesionVersion) || 0;
+  _verSesionCache = { v: ver, t: Date.now() };
+  let exp = Date.now() + SESION_MS;
+  if (expMax && expMax < exp) exp = expMax;
+  if (exp <= Date.now()) return {};
+  const firma = await firmaSesion(env, `vxs1.${exp}.${ver}`);
+  if (!firma) return {};
+  return { sesion: `vxs1.${exp}.${ver}.${firma}`, exp };
+}
+// Devuelve el vencimiento (ms) si el pase es válido y sigue vigente; 0 si no.
+async function vencimientoSesion(pase, env, sb) {
+  if (!esPaseSesion(pase) || pase.length > 200) return 0;
+  const partes = pase.split(".");
+  if (partes.length !== 4) return 0;
+  const exp = parseInt(partes[1]), ver = parseInt(partes[2]);
+  const ahora = Date.now();
+  if (!(exp > ahora) || exp > ahora + SESION_MS + 60000 || !(ver >= 0)) return 0;
+  const firma = await firmaSesion(env, `vxs1.${exp}.${ver}`);
+  if (!firma || !safeEq(partes[3], firma)) return 0;
+  const verActual = await versionSesiones(sb).catch(() => -1);
+  if (verActual !== ver) return 0;
+  return exp;
+}
+// Versión vigente de las sesiones, con caché de 20 s por instancia del Worker para no
+// leer config en cada acción del panel. Cerrar sesiones / cambiar la contraseña la
+// actualiza al instante en esta instancia; en las demás tarda como máximo 20 s.
+let _verSesionCache = { v: 0, t: 0 };
+async function versionSesiones(sb) {
+  if (Date.now() - _verSesionCache.t < 20000) return _verSesionCache.v;
+  const cfg = await sb.get("config", "settings");
+  _verSesionCache = { v: parseInt(cfg && cfg.sesionVersion) || 0, t: Date.now() };
+  return _verSesionCache.v;
+}
+async function sesionValida(pase, env, sb) { return (await vencimientoSesion(pase, env, sb)) > 0; }
+
 async function hashStr(str) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");

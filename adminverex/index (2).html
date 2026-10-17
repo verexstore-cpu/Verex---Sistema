@@ -377,6 +377,8 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
             <button class="btn-header" onclick="abrirModalGarantia()" style="border-color:#0ea5e9;color:#0ea5e9;" title="Ver/copiar el link o QR de la página pública de Garantía Limitada, y editar su contenido">🛡️ Link/QR Garantía</button>
             <button class="btn-header" onclick="abrirModalCambios()" style="border-color:#7c3aed;color:#7c3aed;" title="Ver/copiar el link o QR de la página pública de Política de Cambios, y editar su contenido">🔄 Link/QR Cambios</button>
             <button class="btn-header" onclick="abrirCambiarClave()" style="border-color:#f59e0b;color:#f59e0b;" title="Cambiar la contraseña de acceso a este Admin">🔑 Cambiar Clave</button>
+            <button class="btn-header" onclick="cambiarAppAutenticadora()" style="border-color:#f59e0b;color:#f59e0b;" title="Cambiar la app autenticadora (código de 6 dígitos) por la de otro celular">📱 Cambiar app autenticadora</button>
+            <button class="btn-header" onclick="cerrarTodasLasSesiones()" style="border-color:#ef4444;color:#ef4444;" title="Cerrar la sesión en todos los dispositivos (Admin, Hub, Logística USA)">🔒 Cerrar todas las sesiones</button>
             <button class="btn-header btn-logout" onclick="logout()" title="Cerrar sesión de este Admin en este dispositivo">Salir</button>
         </div>
     </header>
@@ -1434,7 +1436,7 @@ const API_URL    = "https://verex-api.verexstore.workers.dev/";
 // número de un afiliado guardado de una sesión anterior.
 const VEREX_WA_OFICIAL = "71250725";
 const SECRET_KEY = "";
-let   ADMIN_PASS = ""; // Hash SHA-256 de la contraseña, nunca el texto plano
+let   ADMIN_PASS = ""; // Pase de sesión del Worker (vence a las 8 h) — nunca la contraseña
 
 async function sha256(str) {
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
@@ -1457,17 +1459,40 @@ let notifLeidas = new Set(JSON.parse(localStorage.getItem("vx_notif")||"[]"));
 // ═════════════════════════════════════════════
 let _hashTemp = ""; // Hash temporal durante el proceso de 2FA
 
+// Sesión guardada en este navegador: { hash: <pase de sesión>, exp, fecha }.
+// "hash" conserva el nombre de antes porque Logística USA y los catálogos lo leen.
+// Sin "exp" es una sesión vieja (guardaba el hash de la contraseña): vale solo hoy,
+// y el Worker la acepta únicamente durante la transición.
+function sesionGuardada() {
+    let data = {};
+    try { data = JSON.parse(localStorage.getItem("vx_sesion_dia") || "{}"); } catch(_) {}
+    if (!data.hash) return null;
+    if (data.exp) return Date.now() < data.exp ? data : null;
+    return data.fecha === new Date().toDateString() ? data : null;
+}
 function sesionValidaHoy() {
-    const data = JSON.parse(localStorage.getItem("vx_sesion_dia") || "{}");
-    const hoy  = new Date().toDateString();
-    return data.fecha === hoy && data.hash;
+    const s = sesionGuardada();
+    return s ? s.hash : false;
+}
+function guardarSesion(pase, exp) {
+    localStorage.setItem("vx_sesion_dia", JSON.stringify({ fecha: new Date().toDateString(), hash: pase, exp: exp || 0 }));
 }
 
+let _vigilaSesion = null;
 function entrarConSesion(hash) {
     ADMIN_PASS = hash;
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("panel").style.display = "block";
     init();
+    // Al vencer la sesión (8 h) se vuelve a pedir contraseña + código, en vez de
+    // dejar el panel abierto fallando en cada acción.
+    clearInterval(_vigilaSesion);
+    _vigilaSesion = setInterval(() => {
+        if (sesionGuardada()) return;
+        clearInterval(_vigilaSesion);
+        alert("🔒 Tu sesión venció (dura 8 horas). Vuelve a entrar con tu contraseña y el código.");
+        logout();
+    }, 60000);
 }
 
 async function login() {
@@ -1503,8 +1528,15 @@ function mostrarPasoLoginNormal() {
 async function mostrarPasoConfiguracionTotp() {
     document.getElementById("totp-setup-info").style.display = "block";
     document.getElementById("totp-login-info").style.display = "none";
-    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"TOTP_INICIAR_SETUP", _pass: _hashTemp }) })
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"TOTP_INICIAR_SETUP", _pass: _hashTemp, sesion: sesionValidaHoy() || "" }) })
         .then(r => r.json()).catch(() => ({ ok: false }));
+    if (!res.ok && res.error === "ya_configurado") {
+        // Solo con la contraseña ya no se puede reemplazar un código existente (si no,
+        // quien robe la contraseña pondría su propio celular).
+        alert("🔒 Ya hay una app autenticadora configurada.\n\nPara cambiarla necesitas una sesión abierta (por ejemplo, en otro dispositivo donde ya entraste: menú 📱 Cambiar app autenticadora).\n\nSi perdiste el celular y no tienes ninguna sesión abierta: en Supabase, tabla config, fila settings, borra el campo totpSecret y vuelve a entrar.");
+        mostrarPasoLoginNormal();
+        return;
+    }
     if (!res.ok) { alert("⚠️ No se pudo generar el código de configuración."); return; }
     document.getElementById("totp-secret-txt").textContent = res.secret;
     const qrDiv = document.getElementById("totp-qr");
@@ -1525,9 +1557,13 @@ async function verificarOTP() {
     if (codigo.length !== 6) return;
     const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"TOTP_VERIFICAR", _pass: _hashTemp, codigo }) }).then(r=>r.json()).catch(()=>({ok:false}));
     if (res.ok) {
-        // Guardar sesión válida para todo el día
-        localStorage.setItem("vx_sesion_dia", JSON.stringify({ fecha: new Date().toDateString(), hash: _hashTemp }));
-        entrarConSesion(_hashTemp);
+        // El Worker entrega un pase de sesión de 8 h; la contraseña no se guarda.
+        const pase = res.sesion || _hashTemp;
+        guardarSesion(pase, res.exp);
+        _hashTemp = "";
+        // Venía de "Cambiar app autenticadora" con el panel ya cargado: recargar en vez de iniciarlo dos veces.
+        if (_recargarTrasOTP) { location.reload(); return; }
+        entrarConSesion(pase);
     } else {
         document.getElementById("otp-err").style.display = "block";
         document.getElementById("in-otp").value = "";
@@ -1539,6 +1575,36 @@ function logout() {
     localStorage.removeItem("vx_sesion_dia");
     sessionStorage.clear();
     location.reload();
+}
+
+// Cierra la sesión en TODOS los dispositivos (Admin, Hub, Logística, editor):
+// útil si perdiste un celular o crees que alguien más entró.
+async function cerrarTodasLasSesiones() {
+    if (!confirm("¿Cerrar la sesión en TODOS los dispositivos (Admin, Hub, Logística USA)?\n\nTodos, incluido este, tendrán que volver a entrar con contraseña y código.")) return;
+    const r = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"CERRAR_SESIONES", _pass: ADMIN_PASS }) }).then(x => x.json()).catch(() => ({ ok:false }));
+    if (!r.ok) { alert("⚠️ No se pudo cerrar las sesiones. Intenta de nuevo."); return; }
+    alert("✅ Se cerraron todas las sesiones.");
+    logout();
+}
+
+// Cambiar la app autenticadora estando dentro (el Worker lo permite solo con sesión abierta).
+let _recargarTrasOTP = false;
+async function cambiarAppAutenticadora() {
+    const pass = prompt("Para cambiar la app autenticadora, escribe tu contraseña:");
+    if (!pass) return;
+    _hashTemp = await sha256(pass);
+    const ok = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"VERIFICAR_PASS", _pass: _hashTemp }) }).then(r => r.json()).catch(() => ({ ok:false }));
+    if (!ok.ok) { alert("⚠️ Contraseña incorrecta."); _hashTemp = ""; return; }
+    _recargarTrasOTP = true;
+    // Mismo paso 2 del login: muestra el QR nuevo y pide el código de la app nueva.
+    document.getElementById("panel").style.display = "none";
+    document.getElementById("login-screen").style.display = "";
+    document.getElementById("login-paso1").style.display = "none";
+    document.getElementById("login-paso2").style.display = "block";
+    document.getElementById("otp-err").style.display = "none";
+    document.getElementById("in-otp").value = "";
+    await mostrarPasoConfiguracionTotp();
+    document.getElementById("in-otp").focus();
 }
 
 // SSO desde el Hub: si viene un token en la URL (?sso=...), lo canjea con
@@ -1559,7 +1625,7 @@ async function intentarSSO() {
         });
         const data = await res.json();
         if (data.ok && data.hash) {
-            localStorage.setItem("vx_sesion_dia", JSON.stringify({ fecha: new Date().toDateString(), hash: data.hash }));
+            guardarSesion(data.hash, data.exp);
             entrarConSesion(data.hash);
             return true;
         }
@@ -1570,11 +1636,8 @@ async function intentarSSO() {
 // Auto-login si la sesión del día sigue válida (o si viene un token SSO del Hub)
 (async function() {
     if (await intentarSSO()) return;
-    const sesion = JSON.parse(localStorage.getItem("vx_sesion_dia") || "{}");
-    const hoy    = new Date().toDateString();
-    if (sesion.fecha === hoy && sesion.hash) {
-        entrarConSesion(sesion.hash);
-    }
+    const sesion = sesionGuardada();
+    if (sesion) entrarConSesion(sesion.hash);
 })()
 
 // ═════════════════════════════════════════════
@@ -3660,15 +3723,25 @@ async function guardarNuevaClave() {
     if (!actual || !nueva || !confirmar) { errEl.textContent = "⚠️ Completa todos los campos"; errEl.style.display = "block"; return; }
     if (nueva.length < 6) { errEl.textContent = "⚠️ Mínimo 6 caracteres"; errEl.style.display = "block"; return; }
     if (nueva !== confirmar) { errEl.textContent = "⚠️ Las contraseñas no coinciden"; errEl.style.display = "block"; return; }
-    if (actual !== ADMIN_PASS) { errEl.textContent = "⚠️ Contraseña actual incorrecta"; errEl.style.display = "block"; return; }
-
     const btn = document.querySelector("#modal-pass button:last-child");
     btn.textContent = "⏳ Guardando..."; btn.disabled = true;
     try {
+        // La contraseña actual se comprueba con el servidor (antes se comparaba contra
+        // ADMIN_PASS, que es el pase de sesión — nunca coincidía).
+        const chk = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"VERIFICAR_PASS", _pass: await hashStr(actual) }) }).then(r => r.json()).catch(() => ({ ok:false }));
+        if (!chk.ok) {
+            errEl.textContent = "⚠️ Contraseña actual incorrecta"; errEl.style.display = "block";
+            btn.textContent = "💾 Guardar Nueva Contraseña"; btn.disabled = false;
+            return;
+        }
         const nuevoHash = await hashStr(nueva);
-        await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"ACTUALIZAR_PASS_HASH", _pass: ADMIN_PASS, nuevoHash }) });
-        toast("✅ Contraseña actualizada. Úsala en tu próximo login.", "#22c55e");
+        const r = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"ACTUALIZAR_PASS_HASH", _pass: ADMIN_PASS, nuevoHash }) }).then(x => x.json());
+        if (!r.ok) throw new Error(r.error || "sin permiso");
         document.getElementById("modal-pass").style.display = "none";
+        // Cambiar la contraseña cierra todas las sesiones (también esta).
+        alert("✅ Contraseña actualizada. Se cerraron todas las sesiones: vuelve a entrar con la contraseña nueva.");
+        logout();
+        return;
     } catch(e) {
         errEl.textContent = "⚠️ Error al guardar"; errEl.style.display = "block";
     }

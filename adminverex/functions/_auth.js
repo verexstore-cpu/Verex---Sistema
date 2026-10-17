@@ -1,6 +1,5 @@
-// Verifica la contraseña de admin contra el worker (misma fuente de verdad
-// que usa el login del panel — Supabase config/settings.passHash o
-// SECRET_PASS) en vez de mantener un segundo secreto separado acá.
+// Verifica la sesión de admin contra el worker (misma fuente de verdad que
+// usa el panel) en vez de mantener un segundo secreto separado acá.
 //
 // Sin esto, las Functions de catálogo/afiliado (save-catalog, clone-catalog,
 // deactivate-catalog, reactivate-catalog, edit-catalog-expiry,
@@ -9,15 +8,24 @@
 // cualquiera con la URL podía leer notas internas y teléfonos de clientes,
 // desactivar o editar cualquier catálogo ajeno, o inyectar productos, sin
 // ninguna credencial.
+//
+// Lo que llega en _pass es el pase de sesión del panel (8 h, contraseña + código).
+// Se valida con VERIFICAR_SESION — mismo criterio que las acciones de admin del
+// Worker. VERIFICAR_PASS no sirve aquí: aceptaría la contraseña sola, sin el código.
 export async function esAdminValido(pass, context) {
   if (!pass) return false;
   try {
-    const r = await fetch("https://verex-api.verexstore.workers.dev/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...cabecerasInternas(context) },
-      body: JSON.stringify({ accion: "VERIFICAR_PASS", _pass: pass }),
-    });
-    const data = await r.json();
+    const llamar = async (accion) => {
+      const r = await fetch("https://verex-api.verexstore.workers.dev/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...cabecerasInternas(context) },
+        body: JSON.stringify({ accion, _pass: pass }),
+      });
+      return r.json();
+    };
+    let data = await llamar("VERIFICAR_SESION");
+    // Worker anterior a las sesiones (solo durante el minuto que tarda en publicarse).
+    if (data?.ok !== true && /no reconocida/i.test(String(data?.error || ""))) data = await llamar("VERIFICAR_PASS");
     return data?.ok === true;
   } catch (e) {
     return false;
