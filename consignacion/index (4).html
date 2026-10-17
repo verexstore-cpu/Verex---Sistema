@@ -29,7 +29,10 @@
         <h1>VEREX</h1>
         <p>VEREX Nexus</p>
         <div id="login-paso1">
-            <input type="password" id="inp-pass" placeholder="Contraseña" onkeydown="if(event.key==='Enter')login()">
+            <div class="campo-pass">
+                <input type="password" id="inp-pass" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()">
+                <button type="button" class="ver-pass" id="btn-ver-pass" onclick="toggleVerPass()" title="Mostrar contraseña" aria-label="Mostrar contraseña">👁️</button>
+            </div>
             <button class="btn btn-dorado btn-full" onclick="login()">Ingresar</button>
         </div>
         <div id="login-paso2" style="display:none;">

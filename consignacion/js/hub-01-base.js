@@ -63,6 +63,19 @@ let promoGeneral = null;
 let carritoEntrega = {};
 let fotoBase64 = "";
 
+// Botón 👁️ de la casilla de contraseña: mostrar / ocultar lo que se escribe.
+function toggleVerPass(forzarOculta) {
+    const inp = document.getElementById("inp-pass"), btn = document.getElementById("btn-ver-pass");
+    if (!inp || !btn) return;
+    const ver = forzarOculta ? false : inp.type === "password";
+    inp.type = ver ? "text" : "password";
+    btn.textContent = ver ? "🙈" : "👁️";
+    btn.classList.toggle("activo", ver);
+    btn.title = ver ? "Ocultar contraseña" : "Mostrar contraseña";
+    btn.setAttribute("aria-label", btn.title);
+    if (!forzarOculta) inp.focus();
+}
+
 // Paso 1: la contraseña la valida el servidor (no el navegador).
 async function login() {
     const pass = document.getElementById("inp-pass").value;
@@ -75,6 +88,7 @@ async function login() {
     if (!res.totpConfigurado) { toast("⚠️ Primero configura la app autenticadora entrando una vez al Admin VEREX", "#c0392b"); return; }
     _loginHashTemp = hash;
     document.getElementById("inp-pass").value = "";
+    toggleVerPass(true);   // vuelve a ocultarse para la próxima vez
     document.getElementById("login-paso1").style.display = "none";
     document.getElementById("login-paso2").style.display = "block";
     document.getElementById("inp-otp").value = "";
@@ -209,6 +223,7 @@ function cerrarSesion() {
     document.getElementById("pantalla-login").style.display = "flex";
     document.getElementById("app").style.display = "none";
     document.getElementById("inp-pass").value = "";
+    toggleVerPass(true);
 }
 
 let leadsData = [];
