@@ -4768,41 +4768,57 @@ async function enviar(){
             const llamarGemini = async () => {
               const gKey = env.GEMINI_KEY;
               if (!gKey) return { ok: false, error: "sin GEMINI_KEY" };
-              let ultimoError = "";
+              const errores = [];
               for (const modelo of ["gemini-flash-latest", "gemini-2.5-flash", "gemini-flash-lite-latest"]) {
-                try {
-                  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${gKey}`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      contents: [{ parts: [
-                        { inline_data: { mime_type: mimeType, data: base64 } },
-                        { text: promptGemini }
-                      ] }],
-                      generationConfig: { temperature: 0.95, maxOutputTokens: 700, responseMimeType: "application/json",
-                        thinkingConfig: { thinkingBudget: 0 } }
-                    }),
-                    signal: AbortSignal.timeout(30000)
-                  });
-                  if (!r.ok) { ultimoError = "Gemini " + modelo + " " + r.status; continue; }
-                  const gData = await r.json();
-                  const txt = (gData.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
-                  if (txt) return { ok: true, texto: txt };
-                  ultimoError = "Gemini " + modelo + " sin respuesta";
-                } catch (e) {
-                  ultimoError = "Gemini " + modelo + ": " + (e.name === "TimeoutError" ? "no respondió a tiempo" : e.message);
+                // Con thinkingBudget:0 responde directo (sin "pensar" y gastar tokens); si algún
+                // modelo no acepta esa opción (400), se reintenta una vez sin ella.
+                for (const sinPensar of [true, false]) {
+                  try {
+                    const generationConfig = { temperature: 0.95, maxOutputTokens: sinPensar ? 700 : 2048, responseMimeType: "application/json" };
+                    if (sinPensar) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+                    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${gKey}`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        contents: [{ parts: [
+                          { inline_data: { mime_type: mimeType, data: base64 } },
+                          { text: promptGemini }
+                        ] }],
+                        generationConfig
+                      }),
+                      signal: AbortSignal.timeout(30000)
+                    });
+                    if (!r.ok) {
+                      const errTxt = await r.text();
+                      let msg = errTxt;
+                      try { msg = JSON.parse(errTxt)?.error?.message || errTxt; } catch(_) {}
+                      if (sinPensar && r.status === 400) continue;
+                      errores.push(modelo + " " + r.status + ": " + String(msg).slice(0, 120));
+                      break;
+                    }
+                    const gData = await r.json();
+                    const txt = (gData.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || "").join("").trim();
+                    if (txt) return { ok: true, texto: txt };
+                    errores.push(modelo + ": sin respuesta (" + (gData.candidates?.[0]?.finishReason || gData.promptFeedback?.blockReason || "vacía") + ")");
+                    break;
+                  } catch (e) {
+                    errores.push(modelo + ": " + (e.name === "TimeoutError" ? "no respondió a tiempo" : e.message));
+                    break;
+                  }
                 }
               }
-              return { ok: false, error: ultimoError };
+              return { ok: false, error: errores.join(" · ") };
             };
 
             let texto = "";
             let errorGroq = "";
+            // proveedor:"gemini" = probar Gemini directo, sin pasar por Groq (diagnóstico desde la consola del Hub).
+            const soloGemini = d.proveedor === "gemini";
             let groqRes;
             try {
-              groqRes = await llamarGroqVision();
+              groqRes = soloGemini ? null : await llamarGroqVision();
               // 429 = límite de uso de la cuenta de Groq. Si pide esperar poco, se reintenta una vez sola.
-              if (groqRes.status === 429) {
+              if (groqRes && groqRes.status === 429) {
                 const espera = parseFloat(groqRes.headers.get("retry-after")) || 0;
                 if (espera > 0 && espera <= 12) {
                   await new Promise(r => setTimeout(r, Math.ceil(espera * 1000) + 300));
@@ -4841,7 +4857,8 @@ async function enviar(){
             if (!texto) {
               const gem = await llamarGemini();
               if (!gem.ok) {
-                result = { ok: false, error: errorGroq || ("La IA no devolvió respuesta (" + gem.error + ")") };
+                // Se muestra también por qué falló Gemini, para no quedar a ciegas si el respaldo no entra.
+                result = { ok: false, error: (errorGroq || "La IA no devolvió respuesta.") + " | Respaldo Gemini: " + gem.error };
                 break;
               }
               texto = gem.texto;
