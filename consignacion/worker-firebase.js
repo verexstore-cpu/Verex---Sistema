@@ -474,7 +474,9 @@ async function enviar(){
         case "STOCK_GET_ALL": {
           if (!esAdmin) return forbidden();
           const docs = await sb.getAll("stock");
-          result = { ok: true, stock: docs.filter(p => p.estado !== "inactivo") };
+          // codigosInactivos: los códigos de productos eliminados SIGUEN ocupados en el servidor (nunca se reutilizan). El Hub
+          // los suma al calcular el siguiente código; si no, proponía uno ya usado por un producto eliminado y lo rechazaba.
+          result = { ok: true, stock: docs.filter(p => p.estado !== "inactivo"), codigosInactivos: docs.filter(p => p.estado === "inactivo").map(p => String(p.codigo || p.id || "")).filter(Boolean) };
           break;
         }
 
@@ -1265,7 +1267,9 @@ async function enviar(){
           await sb.update("vendedores", d.vendedor, {
             totalVendido: 0,
             fechaCorte: new Date().toISOString(),
-            proximoCorte: null
+            // Corte hecho ANTES de la fecha programada: si el admin eligió mantenerla, esa fecha se conserva
+            // (si no, se borra y el ciclo vuelve a 30 días desde hoy).
+            proximoCorte: (typeof d.mantenerProximoCorte === "string" && RE_FECHA_CORTE.test(d.mantenerProximoCorte) && !isNaN(Date.parse(d.mantenerProximoCorte))) ? d.mantenerProximoCorte : null
           });
           result = { ok: true };
           break;
@@ -4732,9 +4736,7 @@ async function enviar(){
             // un modelo descontinuado que igual acepta la petición pero nunca
             // contesta bien), el análisis se queda "pegado" para siempre sin
             // mostrar ningún error en la pantalla.
-            let groqRes;
-            try {
-              groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            const llamarGroqVision = () => fetch("https://api.groq.com/openai/v1/chat/completions", {
                 method: "POST",
                 headers: {
                   "Authorization": `Bearer ${groqKey}`,
@@ -4759,6 +4761,17 @@ async function enviar(){
                 }),
                 signal: AbortSignal.timeout(30000)
               });
+            let groqRes;
+            try {
+              groqRes = await llamarGroqVision();
+              // 429 = límite de uso de la cuenta de Groq. Si pide esperar poco, se reintenta una vez sola.
+              if (groqRes.status === 429) {
+                const espera = parseFloat(groqRes.headers.get("retry-after")) || 0;
+                if (espera > 0 && espera <= 12) {
+                  await new Promise(r => setTimeout(r, Math.ceil(espera * 1000) + 300));
+                  groqRes = await llamarGroqVision();
+                }
+              }
             } catch (e) {
               result = { ok: false, error: e.name === "TimeoutError" ? "Groq no respondió a tiempo (30s) — intenta de nuevo" : "Error de red hacia Groq: " + e.message };
               break;
@@ -4766,6 +4779,16 @@ async function enviar(){
 
             if (!groqRes.ok) {
               const errTxt = await groqRes.text();
+              if (groqRes.status === 429) {
+                let msg = errTxt;
+                try { msg = JSON.parse(errTxt)?.error?.message || errTxt; } catch(_) {}
+                const porDia = /per day|TPD|RPD/i.test(msg);
+                const cuando = (msg.match(/try again in ([^.]+?)(?:\.|\s*Need|$)/i) || [])[1];
+                result = { ok: false, error: "La IA gratuita (Groq) llegó a su límite " + (porDia ? "diario" : "por minuto") +
+                  (cuando ? " — se libera en " + cuando : " — intenta de nuevo en unos minutos") +
+                  ". Mientras tanto puedes llenar nombre y descripción a mano." };
+                break;
+              }
               result = { ok: false, error: "Groq error " + groqRes.status + ": " + errTxt.slice(0, 150) };
               break;
             }
