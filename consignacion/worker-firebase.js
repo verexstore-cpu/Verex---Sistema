@@ -4761,11 +4761,64 @@ async function enviar(){
                 }),
                 signal: AbortSignal.timeout(30000)
               });
+            // Respaldo con Google Gemini (cuenta gratis aparte, Secret GEMINI_KEY): si Groq
+            // llega a su límite diario, falla o no responde, se intenta con Gemini sin que
+            // el usuario note nada. Se prueban varios modelos porque Google también retira
+            // modelos y cada uno tiene su propio cupo gratis.
+            const llamarGemini = async () => {
+              const gKey = env.GEMINI_KEY;
+              if (!gKey) return { ok: false, error: "sin GEMINI_KEY" };
+              const errores = [];
+              for (const modelo of ["gemini-flash-latest", "gemini-flash-lite-latest"]) {
+                // Con thinkingBudget:0 responde directo (sin "pensar" y gastar tokens); si algún
+                // modelo no acepta esa opción (400), se reintenta una vez sin ella.
+                for (const sinPensar of [true, false]) {
+                  try {
+                    const generationConfig = { temperature: 0.95, maxOutputTokens: sinPensar ? 700 : 2048, responseMimeType: "application/json" };
+                    if (sinPensar) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+                    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${gKey}`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        contents: [{ parts: [
+                          { inline_data: { mime_type: mimeType, data: base64 } },
+                          { text: promptGemini }
+                        ] }],
+                        generationConfig
+                      }),
+                      signal: AbortSignal.timeout(30000)
+                    });
+                    if (!r.ok) {
+                      const errTxt = await r.text();
+                      let msg = errTxt;
+                      try { msg = JSON.parse(errTxt)?.error?.message || errTxt; } catch(_) {}
+                      if (sinPensar && r.status === 400) continue;
+                      errores.push(modelo + " " + r.status + ": " + String(msg).slice(0, 120));
+                      break;
+                    }
+                    const gData = await r.json();
+                    const txt = (gData.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || "").join("").trim();
+                    if (txt) return { ok: true, texto: txt };
+                    errores.push(modelo + ": sin respuesta (" + (gData.candidates?.[0]?.finishReason || gData.promptFeedback?.blockReason || "vacía") + ")");
+                    break;
+                  } catch (e) {
+                    errores.push(modelo + ": " + (e.name === "TimeoutError" ? "no respondió a tiempo" : e.message));
+                    break;
+                  }
+                }
+              }
+              return { ok: false, error: errores.join(" · ") };
+            };
+
+            let texto = "";
+            let errorGroq = "";
+            // proveedor:"gemini" = probar Gemini directo, sin pasar por Groq (diagnóstico desde la consola del Hub).
+            const soloGemini = d.proveedor === "gemini";
             let groqRes;
             try {
-              groqRes = await llamarGroqVision();
+              groqRes = soloGemini ? null : await llamarGroqVision();
               // 429 = límite de uso de la cuenta de Groq. Si pide esperar poco, se reintenta una vez sola.
-              if (groqRes.status === 429) {
+              if (groqRes && groqRes.status === 429) {
                 const espera = parseFloat(groqRes.headers.get("retry-after")) || 0;
                 if (espera > 0 && espera <= 12) {
                   await new Promise(r => setTimeout(r, Math.ceil(espera * 1000) + 300));
@@ -4773,36 +4826,52 @@ async function enviar(){
                 }
               }
             } catch (e) {
-              result = { ok: false, error: e.name === "TimeoutError" ? "Groq no respondió a tiempo (30s) — intenta de nuevo" : "Error de red hacia Groq: " + e.message };
-              break;
+              groqRes = null;
+              errorGroq = e.name === "TimeoutError" ? "Groq no respondió a tiempo (30s) — intenta de nuevo" : "Error de red hacia Groq: " + e.message;
             }
 
-            if (!groqRes.ok) {
+            if (groqRes && !groqRes.ok) {
               const errTxt = await groqRes.text();
               if (groqRes.status === 429) {
                 let msg = errTxt;
                 try { msg = JSON.parse(errTxt)?.error?.message || errTxt; } catch(_) {}
                 const porDia = /per day|TPD|RPD/i.test(msg);
-                const cuando = (msg.match(/try again in ([^.]+?)(?:\.|\s*Need|$)/i) || [])[1];
-                result = { ok: false, error: "La IA gratuita (Groq) llegó a su límite " + (porDia ? "diario" : "por minuto") +
-                  (cuando ? " — se libera en " + cuando : " — intenta de nuevo en unos minutos") +
-                  ". Mientras tanto puedes llenar nombre y descripción a mano." };
-                break;
+                // Groq manda la espera como "25m9.6s" o "1h2m3.5s" — se muestra legible ("25 min").
+                const cuandoRaw = (msg.match(/try again in\s+((?:\d+h)?(?:\d+m)?(?:[\d.]+s)?)/i) || [])[1] || "";
+                const hh = +((cuandoRaw.match(/(\d+)h/) || [])[1] || 0);
+                const mm = +((cuandoRaw.match(/(\d+)m/) || [])[1] || 0);
+                const ss = parseFloat((cuandoRaw.match(/([\d.]+)s/) || [])[1] || 0);
+                const totalMin = hh * 60 + mm + (ss > 0 ? 1 : 0);
+                const cuando = !cuandoRaw ? "" : totalMin <= 1 ? "1 min" : totalMin < 60 ? totalMin + " min" : hh + " h " + (mm ? mm + " min" : "");
+                errorGroq = "La IA gratuita (Groq) llegó a su límite " + (porDia ? "diario" : "por minuto") +
+                  (cuando ? " — se libera en " + cuando.trim() : " — intenta de nuevo en unos minutos") +
+                  ". Mientras tanto puedes llenar nombre y descripción a mano.";
+              } else {
+                errorGroq = "Groq error " + groqRes.status + ": " + errTxt.slice(0, 150);
               }
-              result = { ok: false, error: "Groq error " + groqRes.status + ": " + errTxt.slice(0, 150) };
-              break;
+            } else if (groqRes) {
+              const groqData = await groqRes.json();
+              texto = (groqData.choices?.[0]?.message?.content || "").trim();
             }
 
-            const groqData = await groqRes.json();
+            if (!texto) {
+              const gem = await llamarGemini();
+              if (!gem.ok) {
+                // Se muestra también por qué falló Gemini, para no quedar a ciegas si el respaldo no entra.
+                result = { ok: false, error: (errorGroq || "La IA no devolvió respuesta.") + " | Respaldo Gemini: " + gem.error };
+                break;
+              }
+              texto = gem.texto;
+            }
+
             // Por si el modelo igual manda un bloque <think> pese al
             // reasoning_effort:none, se descarta antes de buscar el JSON.
-            let texto = (groqData.choices?.[0]?.message?.content || "").trim();
             texto = texto.replace(/<think>[\s\S]*?<\/think>/i, "").trim();
             const match = texto.match(/\{[\s\S]*?\}/);
-            if (!match) { result = { ok: false, error: "Gemini no devolvió JSON: " + texto.slice(0, 150) }; break; }
+            if (!match) { result = { ok: false, error: "La IA no devolvió JSON: " + texto.slice(0, 150) }; break; }
             let parsed;
             try { parsed = JSON.parse(match[0]); }
-            catch(pe) { result = { ok: false, error: "JSON inválido de Gemini: " + match[0].slice(0, 120) }; break; }
+            catch(pe) { result = { ok: false, error: "JSON inválido de la IA: " + match[0].slice(0, 120) }; break; }
 
             result = { ok: true, resultado: {
               nombre:            parsed.nombre            || "",
