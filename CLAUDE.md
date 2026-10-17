@@ -39,7 +39,7 @@ Worker (worker-firebase.js) → push a `main` de verex-consignacion → GitHub A
 
 ### ⚠️ Worker: un solo origen de publicación
 - El Worker `verex-api` se publica **únicamente** desde `verex-consignacion` (`worker-firebase.js` en `main`). Ese archivo es la versión oficial.
-- La copia `consignacion/worker-firebase.js` de este repo es solo referencia: **no** tiene deploy automático ni `wrangler.toml` (se quitaron a propósito) y **nunca** se debe correr `npx wrangler deploy` desde aquí — publicaría una versión vieja encima de la de producción.
+- La copia `consignacion/worker-firebase.js` + `consignacion/src/` de este repo es solo referencia: **no** tiene deploy automático ni `wrangler.toml` (se quitaron a propósito) y **nunca** se debe correr `npx wrangler deploy` desde aquí — publicaría una versión vieja encima de la de producción.
 - Para cambiar el Worker: editar en `verex-consignacion`, push a `main`, y después copiar el archivo aquí para mantener la referencia al día.
 - **Pruebas antes de publicar:** el deploy del Worker corre primero `node correr-pruebas.mjs` (todos los `test-*.mjs` de `verex-consignacion`). Si alguna falla, GitHub **no publica** y producción se queda con la versión anterior. Correrlo también en local antes de hacer push. Si un cambio de comportamiento es intencional, actualizar la prueba correspondiente en el mismo commit — nunca borrar ni saltar pruebas para que pase.
 
@@ -101,6 +101,7 @@ Para cambios pequeños (ajustes de estilo, texto, correcciones): implementar dir
 ## Recordatorios Importantes
 
 - El worker usa **Supabase**, no Firebase (aunque el archivo se llame `worker-firebase.js`)
+- El Worker está **separado por módulos** (en `verex-consignacion`): `worker-firebase.js` es solo la entrada (rutas GET, webhooks, login y reparto); cada acción vive en `src/acciones/<tema>.js` y las funciones compartidas en `src/lib/`. Para cambiar una acción, buscarla por su nombre (p. ej. `"REGISTRAR_VENTA"`) dentro de `src/acciones/`. Una acción nueva va en el módulo de su tema; si necesita una función de otro archivo, se importa. Una variable de un módulo no se puede asignar desde otro (usar una función como `fijarSbCorreo`).
 - Los nombres de archivos tienen números: `index (4).html`, `index (2).html` — respetar exactamente
 - Siempre copiar los cambios a los repos `_admin-repo`, `_consig-repo`, `_inventario-repo` según corresponda
 - El Hub de VEREX abre archivos locales — siempre están actualizados en el PC
