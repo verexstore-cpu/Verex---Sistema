@@ -4769,7 +4769,7 @@ async function enviar(){
               const gKey = env.GEMINI_KEY;
               if (!gKey) return { ok: false, error: "sin GEMINI_KEY" };
               const errores = [];
-              for (const modelo of ["gemini-flash-latest", "gemini-2.5-flash", "gemini-flash-lite-latest"]) {
+              for (const modelo of ["gemini-flash-latest", "gemini-flash-lite-latest"]) {
                 // Con thinkingBudget:0 responde directo (sin "pensar" y gastar tokens); si algún
                 // modelo no acepta esa opción (400), se reintenta una vez sin ella.
                 for (const sinPensar of [true, false]) {
