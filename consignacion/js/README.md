@@ -1,13 +1,35 @@
 # Hub de consignación — mapa de archivos
 
-`index.html` solo trae el HTML. El código está en archivos que se cargan **en este orden** (scripts clásicos, comparten variables globales: no cambiar el orden).
+`index.html` solo trae el HTML. El código está en archivos que se cargan **en este orden** (scripts clásicos que comparten variables globales: no cambiar el orden; algo que se ejecute al cargar no puede usar funciones de un archivo que carga después).
 
 - `css/hub.css` — estilos
-- `js/hub-01.js` — 2017 líneas. Empieza con: hashStr, sanitizar, jsArg, jsArgArr, safeParseJSON, login
-- `js/hub-02.js` — 2026 líneas. Empieza con: abrirModalVendedor, guardarVendedor, generarContratoPDF, generarContratoConsignacionPDF, generarContratoAfiliadoPDF, toggleMenuProducto
-- `js/hub-03.js` — 2059 líneas. Empieza con: confirmarVentaAfiliado, enviarPorMensajeria, copiarCodigoMensajeria, enviarWhatsAppMensajeria, descargarPDFMensajeria, generarReciboPDF
-- `js/hub-04.js` — 2011 líneas. Empieza con: abrirRegistrarVenta, registrarVenta, calcularComision, abrirCorte, toggleDecision, confirmarCorte
-- `js/hub-05.js` — 2006 líneas. Empieza con: poblarFiltroCategoria, normalizar, limpiarSeleccion, descargarFotosSeleccionadas, abrirEditarStockItem, ejecutarAuditoriaStock
-- `js/hub-06.js` — 2021 líneas. Empieza con: selFormatoNota, actualizarPreviewNota, generarPDFNotaLibre, enviarNotaImpresion, imprimirPDFNotaNavegador, _buscarProducto
-- `js/hub-07.js` — 1576 líneas. Empieza con: cambioVDToggle, cambioVDSeleccion, cambioVDPreview, confirmarCambioVD, agregarProductoVentaDirectaVD, corregirSaldoVD
-- `js/hub-extra.js` — Venta directa / escáner (segundo bloque)
+- `js/hub-01-base.js` — Base: utilidades, login (contraseña + código), sesión, SSO al Admin, sincronización (214 líneas)
+- `js/hub-02-pedidos.js` — Pedidos: tienda + leads de afiliados + catálogo USA, alertas de corte, reposiciones (642 líneas)
+- `js/hub-03-datos-pestanas.js` — Carga de datos, llamadas a la API y pestañas (85 líneas)
+- `js/hub-04-etiquetas.js` — Etiquetas (pestaña) y estado de etiquetas impresas (173 líneas)
+- `js/hub-05-dashboard-corte.js` — Dashboard, próximo corte y entregas pendientes de confirmar (314 líneas)
+- `js/hub-06-vendedores.js` — Lista de vendedores, estadísticas, catálogo del perfil y leads del vendedor (660 líneas)
+- `js/hub-07-vendedor-alta-contratos.js` — Alta/edición de vendedor, hoja informativa y contratos PDF (491 líneas)
+- `js/hub-08-perfil-vendedor.js` — Perfil del vendedor: borradores, verificación física, inventario, ventas y devoluciones (951 líneas)
+- `js/hub-09-entregas-firma.js` — Entrega de mercadería y firma digital (entrega y contrato) (821 líneas)
+- `js/hub-10-mensajeria.js` — Envío por mensajería y recibo (221 líneas)
+- `js/hub-11-fotos-herramientas.js` — Reemplazar fotos, lote para editar y categorías de la tienda (475 líneas)
+- `js/hub-12-imagen.js` — Carga y procesamiento de imagen, mejorar foto (ImageKit), imágenes informativas (833 líneas)
+- `js/hub-13-foto-celular.js` — Fotos desde el celular (sesión, sincronización, pendientes) (386 líneas)
+- `js/hub-14-consignacion-ventas-corte.js` — Consignación: ventas, comisión, corte, link de inventario y PDF del corte (449 líneas)
+- `js/hub-15-producto-ocasiones.js` — Ver/editar producto y ocasiones (15 años, compromiso…) (349 líneas)
+- `js/hub-16-lote.js` — Nuevo lote de productos (399 líneas)
+- `js/hub-17-stock.js` — Stock: vista, compartir producto, selección y movimientos (813 líneas)
+- `js/hub-18-stock-acciones.js` — Stock: escáner QR, editar, corregir cantidades, asignar y devolver (687 líneas)
+- `js/hub-19-stock-nuevo-producto.js` — Stock: nuevo producto (tallas, códigos, foto) (844 líneas)
+- `js/hub-20-impresion.js` — Cola de etiquetas e impresión directa (impresora WiFi) (657 líneas)
+- `js/hub-21-nota-libre.js` — Nota / texto libre para imprimir (333 líneas)
+- `js/hub-22-etiquetas-pdf.js` — PDF de etiquetas (formatos mini, tarjeta y 60×25) (807 líneas)
+- `js/hub-23-utilidades.js` — Detector de escáner, modales, avisos (toast) y selección de tallas (420 líneas)
+- `js/hub-24-entregas-recibos.js` — Entregas y recibos de vendedores (81 líneas)
+- `js/hub-25-venta-directa.js` — Venta directa: inicio, descuentos, promo general, clientes e historial (463 líneas)
+- `js/hub-26-venta-directa-edicion.js` — Venta directa: editar descuento, cambiar producto, saldo y devoluciones (494 líneas)
+- `js/hub-27-venta-directa-recibo.js` — Venta directa: recibo (HTML, PDF e impresora térmica) (460 líneas)
+- `js/hub-28-venta-directa-carrito.js` — Venta directa: carrito, tipo y método de pago, confirmar venta (260 líneas)
+- `js/hub-29-venta-directa-creditos-pdf.js` — Venta directa: créditos, abonos, PDF y estado de cuenta (607 líneas)
+- `js/hub-extra.js` — Venta directa / escáner (segundo bloque, se carga más abajo en index.html)
