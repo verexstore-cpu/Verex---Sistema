@@ -28,7 +28,7 @@ Worker (worker-firebase.js) → push a `main` de verex-consignacion → GitHub A
 ### Repositorios de Deploy
 | Carpeta local | Repo GitHub | Auto-deploy | URL |
 |---|---|---|---|
-| `adminverex/index (2).html` | `admin-tienda` → `_admin-repo/index.html` | ✅ Cloudflare Pages | — |
+| `adminverex/index (2).html` + `adminverex/css/`, `adminverex/js/` | `admin-tienda` → `index.html`, `css/`, `js/` | ✅ Cloudflare Pages | — |
 | `consignacion/index (4).html` | `verex-consignacion` → `_consig-repo/index.html` | ✅ Cloudflare Pages | — |
 | `consignacion/worker-firebase.js` | `verex-consignacion` → `worker-firebase.js` | ✅ GitHub Actions (`deploy-worker.yml`) | `verex-api.verexstore.workers.dev` |
 | `verex-catalogo/index.html` | `verex-catalogo` → `index.html` | ✅ Cloudflare Pages | `verexstore.com` |
@@ -102,6 +102,7 @@ Para cambios pequeños (ajustes de estilo, texto, correcciones): implementar dir
 
 - El worker usa **Supabase**, no Firebase (aunque el archivo se llame `worker-firebase.js`)
 - El Worker está **separado por módulos** (en `verex-consignacion`): `worker-firebase.js` es solo la entrada (rutas GET, webhooks, login y reparto); cada acción vive en `src/acciones/<tema>.js` y las funciones compartidas en `src/lib/`. Para cambiar una acción, buscarla por su nombre (p. ej. `"REGISTRAR_VENTA"`) dentro de `src/acciones/`. Una acción nueva va en el módulo de su tema; si necesita una función de otro archivo, se importa. Una variable de un módulo no se puede asignar desde otro (usar una función como `fijarSbCorreo`).
+- **Admin separado por archivos:** `index.html` tiene solo el HTML; los estilos están en `css/` y el código en `js/admin-NN-<tema>.js` (scripts normales, funciones globales porque los `onclick` del HTML las llaman por nombre). El orden de carga importa y está en `index.html`; `js/admin-99-arranque.js` va siempre al final. Una sentencia que se ejecute al cargar y use funciones de otros archivos va en el arranque. Al copiar a `admin-tienda`, copiar también `css/` y `js/`.
 - Los nombres de archivos tienen números: `index (4).html`, `index (2).html` — respetar exactamente
 - Siempre copiar los cambios a los repos `_admin-repo`, `_consig-repo`, `_inventario-repo` según corresponda
 - El Hub de VEREX abre archivos locales — siempre están actualizados en el PC
