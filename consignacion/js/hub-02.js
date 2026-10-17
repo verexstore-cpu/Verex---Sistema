@@ -545,7 +545,8 @@ function abrirPerfil(codigo) {
     const btnDevol     = document.getElementById("btn-menu-devolucion");
     const btnVentaMenu = document.getElementById("btn-menu-venta");
     const btnCorte     = document.getElementById("btn-menu-corte");
-    [btnEntrega, btnLinkInv, btnHistEnt, btnDevol].forEach(b => { if (b) b.style.display = ocultarFisico ? "none" : ""; });
+    const btnRecibos = document.getElementById("btn-menu-recibos");
+    [btnEntrega, btnLinkInv, btnHistEnt, btnDevol, btnRecibos].forEach(b => { if (b) b.style.display = ocultarFisico ? "none" : ""; });
     // Cuando su pareja en el grid de 2 columnas se oculta, el botón restante ocupa todo el ancho
     if (btnVentaMenu) btnVentaMenu.style.gridColumn = ocultarFisico ? "1 / -1" : "";
     if (btnCorte)     btnCorte.style.gridColumn     = ocultarFisico ? "1 / -1" : "";
@@ -1322,6 +1323,7 @@ async function abrirEntrega() {
     try {
         const res = await apiPost({ accion: "STOCK_GET_ALL" });
         stockData = res.stock || [];
+        guardarCodigosInactivos(res);
     } catch(e) { if (!stockData.length) stockData = []; }
 
     // Construir lista a mostrar usando stockData (puede tener múltiples entradas por código/talla)

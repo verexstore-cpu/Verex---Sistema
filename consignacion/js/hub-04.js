@@ -124,15 +124,32 @@ function toggleDecision(id, decision) {
     if (btnDev) btnDev.classList.toggle("activo", decision === "devolver");
 }
 
+// Aviso al cortar ANTES de la fecha programada (corte = último corte + 30 días, o la fecha fijada a mano). Devuelve
+// { abortar } o { mantenerFecha: "AAAA-MM-DD" | null }. Faltando menos de 3 días no pregunta nada.
+const CORTE_ANTICIPADO_MIN_DIAS = 3;
+function decidirCorteAnticipado(v) {
+    const real = typeof corteRealDe === "function" ? corteRealDe(v) : null;
+    if (!real || !(real.dias >= CORTE_ANTICIPADO_MIN_DIAS)) return { mantenerFecha: null };
+    const f = real.fecha;
+    const fechaTxt = f.toLocaleDateString("es-SV", { day: "numeric", month: "long", year: "numeric" });
+    const iso = f.getFullYear() + "-" + String(f.getMonth() + 1).padStart(2, "0") + "-" + String(f.getDate()).padStart(2, "0");
+    if (!confirm(`⚠️ CORTE ANTICIPADO\n\nEste corte se está haciendo ${real.dias} días antes de la fecha programada (${fechaTxt}).\n\nAl cerrarlo se cierra el link de inventario del vendedor y se reinicia su ciclo.\n\n¿Hacer el corte ahora?`)) return { abortar: true };
+    const reiniciar = confirm(`¿Qué pasa con la fecha del próximo corte?\n\nAceptar = reiniciar: el próximo corte será en 30 días desde hoy.\nCancelar = mantener la fecha ya programada (${fechaTxt}).`);
+    return { mantenerFecha: reiniciar ? null : iso };
+}
+
 async function confirmarCorte() {
     if (_corteProcesando) return;
+    const decCorte = decidirCorteAnticipado(vendedorActual);
+    if (decCorte.abortar) return;
+    const mantenerFechaCorte = decCorte.mantenerFecha || null;
     _corteProcesando = true;
     const btnConfirmarCorte = document.getElementById("btn-confirmar-corte");
     if (btnConfirmarCorte) btnConfirmarCorte.disabled = true;
     try {
     const cobrado = !!document.getElementById("chk-cobrado-corte")?.checked;
     const devueltos = Object.entries(decisionesCorte).filter(([_, d]) => d === "devolver").map(([id]) => id);
-    await apiPost({ accion: "CERRAR_CORTE", vendedor: vendedorActual.codigo, devueltos });
+    await apiPost({ accion: "CERRAR_CORTE", vendedor: vendedorActual.codigo, devueltos, ...(mantenerFechaCorte ? { mantenerProximoCorte: mantenerFechaCorte } : {}) });
     await apiPost({ accion: "GUARDAR_CORTE_HISTORIAL", id: Date.now() + "_" + vendedorActual.codigo,
         vendedor: vendedorActual.codigo, vendedorNombre: vendedorActual.nombre, vendedorTelefono: vendedorActual.telefono || "",
         totalVendido: _corteValorVend, comisionPct: _cortePct,
@@ -154,7 +171,7 @@ async function confirmarCorte() {
         if (cant > 0 && vend >= cant) c.estado = "vendido";
         else c.vendido = 0;
     });
-    if (vendedorActual) { vendedorActual.fechaCorte = new Date().toISOString(); vendedorActual.tokenInventario = ""; vendedorActual.proximoCorte = null; }
+    if (vendedorActual) { vendedorActual.fechaCorte = new Date().toISOString(); vendedorActual.tokenInventario = ""; vendedorActual.proximoCorte = mantenerFechaCorte; }
     renderProximoCortePerfil();
     const recCorte = document.getElementById("recordatorio-corte");
     if (recCorte) recCorte.style.display = "none";
@@ -1085,6 +1102,7 @@ async function cargarStock() {
     try {
         const res = await apiPost({ accion: "STOCK_GET_ALL" });
         stockData = res.stock || [];
+        guardarCodigosInactivos(res);
         poblarFiltroMaterial();
         poblarFiltroCategoria();
         renderStock(stockData);
