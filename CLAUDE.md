@@ -7,7 +7,7 @@ Sistema de gestión para VEREX Store (joyería/accesorios). Incluye:
 - **Consignación VEREX** — gestión de vendedores y consignaciones (Cloudflare Pages → `verex-consignacion` repo)
 - **Catálogo VEREX** — tienda pública en `verexstore.com` (Cloudflare Pages → `verex-catalogo` repo)
 - **Inventario Sellers** — inventario para vendedores (Cloudflare Pages → `inventario-sellers` repo)
-- **Worker API** — backend en Cloudflare Workers (`worker-firebase.js`) — requiere `npx wrangler deploy` manual
+- **Worker API** — backend en Cloudflare Workers (`worker-firebase.js`) — se despliega solo con GitHub Actions al hacer push a `main` de `verex-consignacion`
 - **Sistema de Impresión** — generador de etiquetas Brother QL
 
 ## Stack Tecnológico
@@ -16,13 +16,13 @@ Sistema de gestión para VEREX Store (joyería/accesorios). Incluye:
 - Backend: Cloudflare Worker (JavaScript)
 - Base de datos: Supabase (PostgreSQL)
 - Imágenes: ImageKit
-- Deploy: Cloudflare Pages (auto desde GitHub) + Cloudflare Workers (manual con wrangler)
+- Deploy: Cloudflare Pages (auto desde GitHub) + Cloudflare Workers (auto con GitHub Actions)
 
 ## Flujo de Deploy
 
 ```
 Editar archivo local → git commit+push al repo correspondiente → Cloudflare Pages auto-despliega
-Worker (worker-firebase.js) → npx wrangler deploy (manual)
+Worker (worker-firebase.js) → git push a main de verex-consignacion → GitHub Actions corre wrangler deploy
 ```
 
 ### Repositorios de Deploy
@@ -30,12 +30,19 @@ Worker (worker-firebase.js) → npx wrangler deploy (manual)
 |---|---|---|---|
 | `adminverex/index (2).html` | `admin-tienda` → `_admin-repo/index.html` | ✅ Cloudflare Pages | — |
 | `consignacion/index (4).html` | `verex-consignacion` → `_consig-repo/index.html` | ✅ Cloudflare Pages | — |
-| `consignacion/worker-firebase.js` | `verex-consignacion` → `_consig-repo/worker-firebase.js` | ❌ Manual wrangler | `verex-api.verexstore.workers.dev` |
+| `consignacion/worker-firebase.js` | `verex-consignacion` → `_consig-repo/worker-firebase.js` | ✅ GitHub Actions (`.github/workflows/deploy-worker.yml`) | `verex-api.verexstore.workers.dev` |
 | `verex-catalogo/index.html` | `verex-catalogo` → `index.html` | ✅ Cloudflare Pages | `verexstore.com` |
 | `inventario-sellers/index (5).html` | `inventario-sellers` → `_inventario-repo/index.html` | ✅ Cloudflare Pages | — |
 | — (repo propio, sin copia aquí) | `verex-catalogo-us` → `index.html`, `assistant/`, `functions/` | ✅ Cloudflare Pages (+ Pages Functions `/api/*`) | `us.verexstore.com` |
 
 **Siempre hacer push a los repos de deploy además del repo principal.**
+
+### Deploy automático del Worker
+- El repo `verex-consignacion` tiene `.github/workflows/deploy-worker.yml`: cada push a `main` que cambie `worker-firebase.js`, `wrangler.toml` o el propio workflow ejecuta `wrangler deploy`. También se puede correr a mano desde GitHub → Actions → «Deploy Worker VEREX API» → *Run workflow*.
+- Para verificar el deploy: revisar que la corrida de ese push en la pestaña Actions de `verex-consignacion` terminó en ✅. Si falla, el Worker sigue con la versión anterior.
+- El token va como secret de GitHub con un typo heredado: **`CLOUFLARE_API_TOKEN`** (sin la «D»). No corregir el nombre en el workflow sin renombrar también el secret, o el deploy falla.
+- Los Secrets del Worker (`GROQ_KEY`, `GEMINI_KEY`, etc.) NO los toca el workflow: se agregan con `npx wrangler secret put NOMBRE` o en el panel de Cloudflare.
+- `npx wrangler deploy` manual sigue funcionando como respaldo, pero lo normal es solo hacer push.
 
 ### ⚠️ Reglas críticas del catálogo
 - El archivo fuente del catálogo es **`verex-catalogo/index.html`** — es su propio repo git
