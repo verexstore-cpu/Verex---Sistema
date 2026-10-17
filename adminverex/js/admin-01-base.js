@@ -145,7 +145,7 @@ async function login() {
     const input = document.getElementById("in-pass").value;
     if (!input) return;
     const hash = await sha256(input);
-    const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"VERIFICAR_PASS", _pass: hash }) }).then(r=>r.json()).catch(()=>({ok:false}));
+    const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"VERIFICAR_PASS", _pass: hash }) }).then(r=>r.json()).catch(()=>({ok:false, error:"red"}));
     if (res.ok) {
         _hashTemp = hash;
         toggleVerPass(true);   // vuelve a ocultarse para la próxima vez
@@ -159,7 +159,13 @@ async function login() {
         }
         document.getElementById("in-otp").focus();
     } else {
-        document.getElementById("login-err").style.display = "block";
+        // Mostrar el motivo real: si el servidor bloqueó por demasiados intentos, la contraseña
+        // puede estar bien — antes siempre decía "Contraseña incorrecta" y confundía.
+        const err = document.getElementById("login-err");
+        err.textContent = res.bloqueado ? "⏳ " + res.error + " (aunque la contraseña sea correcta, espera a que termine el bloqueo)"
+                        : res.error === "red" ? "⚠️ Sin conexión con el servidor"
+                        : "⚠️ Contraseña incorrecta";
+        err.style.display = "block";
         document.getElementById("in-pass").value = "";
     }
 }
@@ -212,7 +218,9 @@ async function verificarOTP() {
         if (_recargarTrasOTP) { location.reload(); return; }
         entrarConSesion(pase);
     } else {
-        document.getElementById("otp-err").style.display = "block";
+        const err = document.getElementById("otp-err");
+        err.textContent = res.bloqueado ? "⏳ " + res.error + " (aunque el código sea correcto, espera a que termine el bloqueo)" : "⚠️ Código incorrecto";
+        err.style.display = "block";
         document.getElementById("in-otp").value = "";
         document.getElementById("in-otp").focus();
     }
