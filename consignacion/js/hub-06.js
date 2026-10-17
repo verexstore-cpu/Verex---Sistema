@@ -227,10 +227,10 @@ async function generarPDFParaServidor(codigos, formato, notaTexto) {
             doc.text(precio, dataX, 5.0);
 
             // ── Material debajo del precio ───────────────────────────────────
-            const material = p.material || extraerMaterial(p.nombre || '', p.descripcion || '');
+            const material = abreviarMaterial(p.material || extraerMaterial(p.nombre || '', p.descripcion || ''));
             if (material) {
-                doc.setFont('helvetica', 'bold'); doc.setFontSize(6); doc.setTextColor(...B);
-                doc.text(doc.splitTextToSize(material, dataW)[0], dataX, 7.5);
+                doc.setFont('helvetica', 'bold'); doc.setTextColor(...B);
+                doc.text(_materialQueCabe(doc, material, dataW, 6, 4.5), dataX, 7.5);
             }
 
             // ── Código debajo del material (Tahoma Bold 5pt, hasta 12 chars) ─
@@ -573,13 +573,29 @@ function _dibujarMiniEn(doc, p, qrImg, ox, oy, hasTahoma, engrosar) {
         codLines.forEach((l, j) => doc.text(l, ox + dataX, oy + 6.5 + j * 1.6, modo));
     }
 
-    // Material — helvetica bold, ancho completo inferior
+    // Material — helvetica bold, ancho completo inferior. Se achica la letra lo
+    // justo para que quepa entero (antes se cortaba: "Plata 925 / Oro" sin "Lam.").
     const mat = abreviarMaterial(p.material || extraerMaterial(p.nombre || '', p.descripcion || ''));
     if (mat) {
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5); doc.setTextColor(...B);
+        doc.setFont('helvetica', 'bold'); doc.setTextColor(...B);
         if (engrosar) doc.setLineWidth(trazoMaterial);
-        doc.text(doc.splitTextToSize(mat, W - 1)[0], ox + 0.5, oy + 11.2, modo);
+        doc.text(_materialQueCabe(doc, mat, W - 1, 6.5, 5), ox + 0.5, oy + 11.2, modo);
     }
+}
+
+// Devuelve el material listo para escribir en maxW mm y deja puesto el tamaño de
+// letra: empieza en fsMax y baja de a 0.25pt hasta fsMin; si aún no cabe, quita
+// los espacios alrededor de "/" ("Plata 925/Oro Lam.") y, como último recurso,
+// corta a la primera línea. La fuente (familia/peso) debe estar puesta antes.
+function _materialQueCabe(doc, material, maxW, fsMax, fsMin) {
+    for (const t of [material, material.replace(/\s*\/\s*/g, '/')]) {
+        for (let fs = fsMax; fs >= fsMin - 0.001; fs -= 0.25) {
+            doc.setFontSize(fs);
+            if (doc.getTextWidth(t) <= maxW) return t;
+        }
+    }
+    doc.setFontSize(fsMin);
+    return doc.splitTextToSize(material, maxW)[0];
 }
 
 // ── FORMATO MINI 1.2×2cm — DK-2214 cinta 12mm — una etiqueta por página ──────
