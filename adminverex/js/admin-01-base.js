@@ -128,6 +128,19 @@ function entrarConSesion(hash) {
     }, 60000);
 }
 
+// Botón 👁️ de la casilla de contraseña: mostrar / ocultar lo que se escribe.
+function toggleVerPass(forzarOculta) {
+    const inp = document.getElementById("in-pass"), btn = document.getElementById("btn-ver-pass");
+    if (!inp || !btn) return;
+    const ver = forzarOculta ? false : inp.type === "password";
+    inp.type = ver ? "text" : "password";
+    btn.textContent = ver ? "🙈" : "👁️";
+    btn.classList.toggle("activo", ver);
+    btn.title = ver ? "Ocultar contraseña" : "Mostrar contraseña";
+    btn.setAttribute("aria-label", btn.title);
+    if (!forzarOculta) inp.focus();
+}
+
 async function login() {
     const input = document.getElementById("in-pass").value;
     if (!input) return;
@@ -135,6 +148,7 @@ async function login() {
     const res  = await fetch(API_URL, { method:'POST', body: JSON.stringify({ accion:"VERIFICAR_PASS", _pass: hash }) }).then(r=>r.json()).catch(()=>({ok:false}));
     if (res.ok) {
         _hashTemp = hash;
+        toggleVerPass(true);   // vuelve a ocultarse para la próxima vez
         document.getElementById("login-paso1").style.display = "none";
         document.getElementById("login-paso2").style.display = "block";
         document.getElementById("otp-err").style.display = "none";

@@ -40,6 +40,11 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
         .login-box input:focus{outline:none;border-color:var(--azul);background:#fff;}
         .login-box button{width:100%;padding:13px;background:#111;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:1px;transition:background .2s;}
         .login-box button:hover{background:var(--azul);}
+        /* Casilla de contraseña con botón 👁️ para ver lo que se escribe */
+        .login-box .campo-pass{position:relative;}
+        .login-box .campo-pass input{padding-right:46px;}
+        .login-box .campo-pass .ver-pass{position:absolute;top:0;bottom:14px;right:0;width:44px;height:auto;padding:0;background:none;border:none;font-size:18px;line-height:1;letter-spacing:0;opacity:.55;cursor:pointer;}
+        .login-box .campo-pass .ver-pass:hover,.login-box .campo-pass .ver-pass.activo{background:none;opacity:1;}
         #login-err{color:var(--rojo);font-size:13px;margin-top:10px;display:none;}
 
         /* HEADER */

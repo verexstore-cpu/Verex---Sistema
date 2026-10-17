@@ -30,6 +30,11 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
         .login-card p  { font-size: 13px; color: #888; margin-bottom: 24px; }
         .inp { width: 100%; padding: 14px 16px; background: #111; border: 1px solid #333; border-radius: 10px; color: #e0e0e0; font-size: 16px; outline: none; transition: border-color 0.2s; }
         .inp:focus { border-color: #C9A84C; }
+        /* Casilla de contraseña con botón 👁️ para ver lo que se escribe */
+        .campo-pass { position: relative; }
+        .campo-pass .inp { padding-right: 50px; }
+        .campo-pass .ver-pass { position: absolute; top: 0; right: 0; width: 48px; height: 100%; padding: 0; background: none; border: none; font-size: 20px; line-height: 1; opacity: .6; cursor: pointer; }
+        .campo-pass .ver-pass.activo { opacity: 1; }
         .btn-gold { width: 100%; padding: 14px; background: linear-gradient(135deg, #8a6500, #C9A84C, #8a6500); color: #000; font-weight: 800; font-size: 15px; border: none; border-radius: 10px; cursor: pointer; margin-top: 12px; letter-spacing: 1px; }
         .btn-gold:active { opacity: 0.85; }
         .error-txt { font-size: 13px; color: #e74c3c; margin-top: 8px; display: none; }
@@ -142,8 +147,11 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
         <div style="font-size:48px;margin-bottom:12px;">🔐</div>
         <h2>Acceso Admin</h2>
         <p>Ingresa tu contraseña y el código de tu app autenticadora</p>
-        <input class="inp" type="password" id="inp-pass" placeholder="Contraseña"
-            onkeydown="if(event.key==='Enter')verificarLogin()">
+        <div class="campo-pass">
+            <input class="inp" type="password" id="inp-pass" placeholder="Contraseña" autocomplete="current-password"
+                onkeydown="if(event.key==='Enter')verificarLogin()">
+            <button type="button" class="ver-pass" id="btn-ver-pass" onclick="toggleVerPass()" title="Mostrar contraseña" aria-label="Mostrar contraseña">👁️</button>
+        </div>
         <input class="inp" type="text" id="inp-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" style="margin-top:10px;"
             placeholder="Código de 6 dígitos" onkeydown="if(event.key==='Enter')verificarLogin()">
         <button class="btn-gold" onclick="verificarLogin()" id="btn-login">Entrar</button>
@@ -255,6 +263,19 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
     let scanner        = null;
 
     // ── LOGIN ────────────────────────────────────────────────────
+    // Botón 👁️ de la casilla de contraseña: mostrar / ocultar lo que se escribe.
+    function toggleVerPass(forzarOculta) {
+        const inp = document.getElementById('inp-pass'), btn = document.getElementById('btn-ver-pass');
+        if (!inp || !btn) return;
+        const ver = forzarOculta ? false : inp.type === 'password';
+        inp.type = ver ? 'text' : 'password';
+        btn.textContent = ver ? '🙈' : '👁️';
+        btn.classList.toggle('activo', ver);
+        btn.title = ver ? 'Ocultar contraseña' : 'Mostrar contraseña';
+        btn.setAttribute('aria-label', btn.title);
+        if (!forzarOculta) inp.focus();
+    }
+
     async function verificarLogin() {
         const pass = document.getElementById('inp-pass').value.trim();
         const codigo = document.getElementById('inp-otp').value.trim();
@@ -279,6 +300,7 @@ html,body{ max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
             if (!data.ok) throw new Error('pass');
             adminPass  = ses.sesion;
             document.getElementById('inp-pass').value = '';
+            toggleVerPass(true);
             stockLocal = data.stock || [];
             document.getElementById('header-sesion').textContent =
                 stockLocal.length + ' productos cargados';

@@ -20,7 +20,10 @@
         <p>Panel de Administración</p>
         <!-- Paso 1: Contraseña -->
         <div id="login-paso1">
-            <input type="password" id="in-pass" placeholder="Contraseña" onkeydown="if(event.key==='Enter')login()">
+            <div class="campo-pass">
+                <input type="password" id="in-pass" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()">
+                <button type="button" class="ver-pass" id="btn-ver-pass" onclick="toggleVerPass()" title="Mostrar contraseña" aria-label="Mostrar contraseña">👁️</button>
+            </div>
             <button onclick="login()">INGRESAR</button>
             <p id="login-err">⚠️ Contraseña incorrecta</p>
         </div>
