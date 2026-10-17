@@ -41,6 +41,7 @@ Worker (worker-firebase.js) → push a `main` de verex-consignacion → GitHub A
 - El Worker `verex-api` se publica **únicamente** desde `verex-consignacion` (`worker-firebase.js` en `main`). Ese archivo es la versión oficial.
 - La copia `consignacion/worker-firebase.js` de este repo es solo referencia: **no** tiene deploy automático ni `wrangler.toml` (se quitaron a propósito) y **nunca** se debe correr `npx wrangler deploy` desde aquí — publicaría una versión vieja encima de la de producción.
 - Para cambiar el Worker: editar en `verex-consignacion`, push a `main`, y después copiar el archivo aquí para mantener la referencia al día.
+- **Pruebas antes de publicar:** el deploy del Worker corre primero `node correr-pruebas.mjs` (todos los `test-*.mjs` de `verex-consignacion`). Si alguna falla, GitHub **no publica** y producción se queda con la versión anterior. Correrlo también en local antes de hacer push. Si un cambio de comportamiento es intencional, actualizar la prueba correspondiente en el mismo commit — nunca borrar ni saltar pruebas para que pase.
 
 ### ⚠️ Reglas críticas del catálogo
 - El archivo fuente del catálogo es **`verex-catalogo/index.html`** — es su propio repo git
