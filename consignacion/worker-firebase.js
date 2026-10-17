@@ -4761,6 +4761,43 @@ async function enviar(){
                 }),
                 signal: AbortSignal.timeout(30000)
               });
+            // Respaldo con Google Gemini (cuenta gratis aparte, Secret GEMINI_KEY): si Groq
+            // llega a su límite diario, falla o no responde, se intenta con Gemini sin que
+            // el usuario note nada. Se prueban varios modelos porque Google también retira
+            // modelos y cada uno tiene su propio cupo gratis.
+            const llamarGemini = async () => {
+              const gKey = env.GEMINI_KEY;
+              if (!gKey) return { ok: false, error: "sin GEMINI_KEY" };
+              let ultimoError = "";
+              for (const modelo of ["gemini-flash-latest", "gemini-2.5-flash", "gemini-flash-lite-latest"]) {
+                try {
+                  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${gKey}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      contents: [{ parts: [
+                        { inline_data: { mime_type: mimeType, data: base64 } },
+                        { text: promptGemini }
+                      ] }],
+                      generationConfig: { temperature: 0.95, maxOutputTokens: 700, responseMimeType: "application/json",
+                        thinkingConfig: { thinkingBudget: 0 } }
+                    }),
+                    signal: AbortSignal.timeout(30000)
+                  });
+                  if (!r.ok) { ultimoError = "Gemini " + modelo + " " + r.status; continue; }
+                  const gData = await r.json();
+                  const txt = (gData.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
+                  if (txt) return { ok: true, texto: txt };
+                  ultimoError = "Gemini " + modelo + " sin respuesta";
+                } catch (e) {
+                  ultimoError = "Gemini " + modelo + ": " + (e.name === "TimeoutError" ? "no respondió a tiempo" : e.message);
+                }
+              }
+              return { ok: false, error: ultimoError };
+            };
+
+            let texto = "";
+            let errorGroq = "";
             let groqRes;
             try {
               groqRes = await llamarGroqVision();
@@ -4773,36 +4810,51 @@ async function enviar(){
                 }
               }
             } catch (e) {
-              result = { ok: false, error: e.name === "TimeoutError" ? "Groq no respondió a tiempo (30s) — intenta de nuevo" : "Error de red hacia Groq: " + e.message };
-              break;
+              groqRes = null;
+              errorGroq = e.name === "TimeoutError" ? "Groq no respondió a tiempo (30s) — intenta de nuevo" : "Error de red hacia Groq: " + e.message;
             }
 
-            if (!groqRes.ok) {
+            if (groqRes && !groqRes.ok) {
               const errTxt = await groqRes.text();
               if (groqRes.status === 429) {
                 let msg = errTxt;
                 try { msg = JSON.parse(errTxt)?.error?.message || errTxt; } catch(_) {}
                 const porDia = /per day|TPD|RPD/i.test(msg);
-                const cuando = (msg.match(/try again in ([^.]+?)(?:\.|\s*Need|$)/i) || [])[1];
-                result = { ok: false, error: "La IA gratuita (Groq) llegó a su límite " + (porDia ? "diario" : "por minuto") +
-                  (cuando ? " — se libera en " + cuando : " — intenta de nuevo en unos minutos") +
-                  ". Mientras tanto puedes llenar nombre y descripción a mano." };
-                break;
+                // Groq manda la espera como "25m9.6s" o "1h2m3.5s" — se muestra legible ("25 min").
+                const cuandoRaw = (msg.match(/try again in\s+((?:\d+h)?(?:\d+m)?(?:[\d.]+s)?)/i) || [])[1] || "";
+                const hh = +((cuandoRaw.match(/(\d+)h/) || [])[1] || 0);
+                const mm = +((cuandoRaw.match(/(\d+)m/) || [])[1] || 0);
+                const ss = parseFloat((cuandoRaw.match(/([\d.]+)s/) || [])[1] || 0);
+                const totalMin = hh * 60 + mm + (ss > 0 ? 1 : 0);
+                const cuando = !cuandoRaw ? "" : totalMin <= 1 ? "1 min" : totalMin < 60 ? totalMin + " min" : hh + " h " + (mm ? mm + " min" : "");
+                errorGroq = "La IA gratuita (Groq) llegó a su límite " + (porDia ? "diario" : "por minuto") +
+                  (cuando ? " — se libera en " + cuando.trim() : " — intenta de nuevo en unos minutos") +
+                  ". Mientras tanto puedes llenar nombre y descripción a mano.";
+              } else {
+                errorGroq = "Groq error " + groqRes.status + ": " + errTxt.slice(0, 150);
               }
-              result = { ok: false, error: "Groq error " + groqRes.status + ": " + errTxt.slice(0, 150) };
-              break;
+            } else if (groqRes) {
+              const groqData = await groqRes.json();
+              texto = (groqData.choices?.[0]?.message?.content || "").trim();
             }
 
-            const groqData = await groqRes.json();
+            if (!texto) {
+              const gem = await llamarGemini();
+              if (!gem.ok) {
+                result = { ok: false, error: errorGroq || ("La IA no devolvió respuesta (" + gem.error + ")") };
+                break;
+              }
+              texto = gem.texto;
+            }
+
             // Por si el modelo igual manda un bloque <think> pese al
             // reasoning_effort:none, se descarta antes de buscar el JSON.
-            let texto = (groqData.choices?.[0]?.message?.content || "").trim();
             texto = texto.replace(/<think>[\s\S]*?<\/think>/i, "").trim();
             const match = texto.match(/\{[\s\S]*?\}/);
-            if (!match) { result = { ok: false, error: "Gemini no devolvió JSON: " + texto.slice(0, 150) }; break; }
+            if (!match) { result = { ok: false, error: "La IA no devolvió JSON: " + texto.slice(0, 150) }; break; }
             let parsed;
             try { parsed = JSON.parse(match[0]); }
-            catch(pe) { result = { ok: false, error: "JSON inválido de Gemini: " + match[0].slice(0, 120) }; break; }
+            catch(pe) { result = { ok: false, error: "JSON inválido de la IA: " + match[0].slice(0, 120) }; break; }
 
             result = { ok: true, resultado: {
               nombre:            parsed.nombre            || "",

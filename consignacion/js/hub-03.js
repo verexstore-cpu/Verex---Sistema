@@ -1103,18 +1103,20 @@ function procesarFotoJoya(file) {
 }
 
 // Comprime a 800px máx para enviar a la IA (no altera la foto original)
+// Copia SOLO para la IA (la foto que se guarda en stock no se toca): a 640px la
+// IA identifica igual la pieza y cada análisis gasta ~35% menos del cupo gratis.
 function comprimirParaIA(base64) {
     return new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
-            const MAX = 800;
+            const MAX = 640;
             const scale = Math.min(1, MAX / Math.max(img.width, img.height));
             const w = Math.round(img.width * scale);
             const h = Math.round(img.height * scale);
             const c = document.createElement("canvas");
             c.width = w; c.height = h;
             c.getContext("2d").drawImage(img, 0, 0, w, h);
-            resolve(c.toDataURL("image/jpeg", 0.82));
+            resolve(c.toDataURL("image/jpeg", 0.8));
         };
         img.onerror = () => resolve(base64);
         img.src = base64;
