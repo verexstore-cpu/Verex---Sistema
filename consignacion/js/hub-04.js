@@ -1487,12 +1487,17 @@ function renderStock(items) {
             const total = (parseInt(item.stock_bodega)||0) + (parseInt(item.stock_tienda)||0) + (parseInt(item.stock_consignacion)||0);
             const bajo = total > 0 && (parseInt(item.stock_bodega)||0) <= 1;
             const label = item.talla ? `T${sanitizar(item.talla)}` : "—";
-            // Sin unidades en bodega/tienda/consignación y con ventas registradas
-            // (stock_vendido sube en todos los canales: venta directa, vendedor,
-            // tienda, pedido USA) = esta pieza se vendió, no solo "se acabó".
-            const vendido = total===0 && (parseInt(item.stock_vendido)||0) > 0;
-            const estadoTxt = vendido ? "Vendido" : total===0 ? "Agotado" : bajo ? "Última unidad" : "Disponible";
-            const estadoColorTxt = vendido ? "#5AC8FA" : total===0 ? "#888" : bajo ? "#e74c3c" : "#34D399";
+            // Sin unidades en bodega/tienda/consignación:
+            //  · Reservado — apartada por un pedido aún no cerrado (tienda online
+            //    o USA pagado sin entregar, pedido de catálogo/afiliado): está en
+            //    stock_reservado hasta que se marca entregado o se libera.
+            //  · Vendido — la venta ya se cerró: stock_vendido sube en todos los
+            //    canales (venta directa, vendedor, consignación desde el Hub,
+            //    tienda online "Entregado", lead/afiliado y USA entregados).
+            const reservadoPedido = total===0 && (parseInt(item.stock_reservado)||0) > 0;
+            const vendido = total===0 && !reservadoPedido && (parseInt(item.stock_vendido)||0) > 0;
+            const estadoTxt = reservadoPedido ? "Reservado" : vendido ? "Vendido" : total===0 ? "Agotado" : bajo ? "Última unidad" : "Disponible";
+            const estadoColorTxt = reservadoPedido ? "#FF9500" : vendido ? "#5AC8FA" : total===0 ? "#888" : bajo ? "#e74c3c" : "#34D399";
             return `<tr style="border-top:1px solid #333;">
                 <td style="padding:7px 6px;font-size:12px;font-weight:700;color:#FF9500;">${label}</td>
                 <td style="padding:7px 6px;font-size:11px;color:#aaa;">${sanitizar(item.codigo)}</td>
